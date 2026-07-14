@@ -53,3 +53,15 @@ export function allStoreCacheTags(storeId: string): string[] {
     paymentMethodsCacheTag(storeId),
   ];
 }
+
+/**
+ * Objeto de conveniência para uso nas Server Actions.
+ */
+export const CACHE_TAGS = {
+  store: storeCacheTag,
+  catalog: catalogCacheTag,
+  delivery: deliveryCacheTag,
+  hours: openingHoursCacheTag,
+  paymentMethods: paymentMethodsCacheTag,
+  all: allStoreCacheTags,
+} as const;

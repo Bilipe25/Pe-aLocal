@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { requireTenantMember } from '@/server/auth';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, NotFoundError, type ActionResult } from '@/server/errors';
@@ -28,7 +28,7 @@ export async function createDeliveryZoneAction(formData: FormData): Promise<Acti
     const raw = Object.fromEntries(formData);
     const parsed = createDeliveryZoneSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     const zone = await dzRepo.createDeliveryZone({
@@ -39,7 +39,7 @@ export async function createDeliveryZoneAction(formData: FormData): Promise<Acti
       minOrderValue: parsed.data.minOrderValue ? Math.round(parsed.data.minOrderValue * 100) : null,
     });
 
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess({ id: zone.id });
   } catch (error) {
     return actionError(error);
@@ -53,7 +53,7 @@ export async function updateDeliveryZoneAction(id: string, formData: FormData): 
     const raw = Object.fromEntries(formData);
     const parsed = createDeliveryZoneSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await dzRepo.updateDeliveryZone(id, ctx.tenantId, {
@@ -62,7 +62,7 @@ export async function updateDeliveryZoneAction(id: string, formData: FormData): 
       minOrderValue: parsed.data.minOrderValue ? Math.round(parsed.data.minOrderValue * 100) : null,
     });
 
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -73,7 +73,7 @@ export async function deleteDeliveryZoneAction(id: string): Promise<ActionResult
   try {
     const ctx = await requireTenantMember();
     await dzRepo.deleteDeliveryZone(id, ctx.tenantId);
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);

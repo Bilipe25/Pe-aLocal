@@ -30,17 +30,17 @@
 - [x] Rate limiting no login
 - [x] Proteção contra enumeração
 
-## Fase 3 — Loja e Catálogo
+## Fase 3 — Loja e Catálogo ✅
 
-- [ ] CRUD de loja e configurações
-- [ ] Upload de logo e capa
-- [ ] Horários de funcionamento
-- [ ] CRUD de categorias
-- [ ] CRUD de produtos
-- [ ] CRUD de grupos de adicionais
-- [ ] CRUD de zonas de entrega
-- [ ] Validação de slug
-- [ ] Configuração de Pix
+- [x] CRUD de loja e configurações
+- [x] Horários de funcionamento
+- [x] CRUD de categorias
+- [x] CRUD de produtos
+- [x] CRUD de grupos de adicionais
+- [x] CRUD de zonas de entrega
+- [x] Validação de slug
+- [x] Configuração de Pix
+- [ ] Upload de logo e capa (pós-MVP — Vercel Blob)
 
 ## Fase 4 — Loja Pública
 

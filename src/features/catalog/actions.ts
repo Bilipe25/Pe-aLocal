@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { requireTenantMember } from '@/server/auth';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, NotFoundError, type ActionResult } from '@/server/errors';
@@ -35,7 +35,7 @@ export async function createCategoryAction(formData: FormData): Promise<ActionRe
     const raw = Object.fromEntries(formData);
     const parsed = createCategorySchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     const category = await categoryRepo.createCategory({
@@ -44,7 +44,7 @@ export async function createCategoryAction(formData: FormData): Promise<ActionRe
       ...parsed.data,
     });
 
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess({ id: category.id });
   } catch (error) {
     return actionError(error);
@@ -58,11 +58,11 @@ export async function updateCategoryAction(id: string, formData: FormData): Prom
     const raw = Object.fromEntries(formData);
     const parsed = createCategorySchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await categoryRepo.updateCategory(id, ctx.tenantId, parsed.data);
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -73,7 +73,7 @@ export async function deleteCategoryAction(id: string): Promise<ActionResult> {
   try {
     const ctx = await requireTenantMember();
     await categoryRepo.deleteCategory(id, ctx.tenantId);
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -105,7 +105,7 @@ export async function createProductAction(formData: FormData): Promise<ActionRes
     const raw = Object.fromEntries(formData);
     const parsed = createProductSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     // Converter preço de reais para centavos
@@ -116,7 +116,7 @@ export async function createProductAction(formData: FormData): Promise<ActionRes
       basePrice: Math.round(parsed.data.basePrice * 100),
     });
 
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess({ id: product.id });
   } catch (error) {
     return actionError(error);
@@ -130,7 +130,7 @@ export async function updateProductAction(id: string, formData: FormData): Promi
     const raw = Object.fromEntries(formData);
     const parsed = createProductSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await productRepo.updateProduct(id, ctx.tenantId, {
@@ -138,7 +138,7 @@ export async function updateProductAction(id: string, formData: FormData): Promi
       basePrice: Math.round(parsed.data.basePrice * 100),
     });
 
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -149,7 +149,7 @@ export async function deleteProductAction(id: string): Promise<ActionResult> {
   try {
     const ctx = await requireTenantMember();
     await productRepo.deleteProduct(id, ctx.tenantId);
-    revalidateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -167,7 +167,7 @@ export async function createOptionGroupAction(formData: FormData): Promise<Actio
     const raw = Object.fromEntries(formData);
     const parsed = createOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     const group = await optionGroupRepo.createOptionGroup(parsed.data);
@@ -184,7 +184,7 @@ export async function updateOptionGroupAction(id: string, formData: FormData): P
     const raw = Object.fromEntries(formData);
     const parsed = updateOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await optionGroupRepo.updateOptionGroup(id, parsed.data);
@@ -211,7 +211,7 @@ export async function createOptionAction(formData: FormData): Promise<ActionResu
     const raw = Object.fromEntries(formData);
     const parsed = createOptionSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     const option = await optionGroupRepo.createOption({
@@ -231,7 +231,7 @@ export async function updateOptionAction(id: string, formData: FormData): Promis
     const raw = Object.fromEntries(formData);
     const parsed = updateOptionSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await optionGroupRepo.updateOption(id, {

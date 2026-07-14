@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { requireTenantMember } from '@/server/auth';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, type ActionResult } from '@/server/errors';
@@ -34,7 +34,7 @@ export async function updateStoreAction(formData: FormData): Promise<ActionResul
     const raw = Object.fromEntries(formData);
     const parsed = updateStoreSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     // Verificar slug único (se mudou)
@@ -46,7 +46,7 @@ export async function updateStoreAction(formData: FormData): Promise<ActionResul
     }
 
     await storeRepo.updateStore(store.id, ctx.tenantId, parsed.data);
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -62,11 +62,11 @@ export async function updateStoreSettingsAction(formData: FormData): Promise<Act
     const raw = Object.fromEntries(formData);
     const parsed = updateStoreSettingsSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await storeRepo.upsertStoreSettings(store.id, parsed.data);
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -82,11 +82,11 @@ export async function updatePixConfigAction(formData: FormData): Promise<ActionR
     const raw = Object.fromEntries(formData);
     const parsed = updatePixConfigSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await storeRepo.upsertStoreSettings(store.id, parsed.data);
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -102,11 +102,11 @@ export async function updateAddressAction(formData: FormData): Promise<ActionRes
     const raw = Object.fromEntries(formData);
     const parsed = updateAddressSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await storeRepo.upsertStoreAddress(store.id, parsed.data);
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -121,11 +121,11 @@ export async function updateHoursAction(data: { hours: { dayOfWeek: string; open
 
     const parsed = updateHoursSchema.safeParse(data);
     if (!parsed.success) {
-      return actionError({ code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
+      return actionError(new Error(parsed.error.issues[0].message));
     }
 
     await storeRepo.upsertOpeningHours(store.id, parsed.data.hours);
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -139,7 +139,7 @@ export async function toggleStoreStatusAction(status: 'OPEN' | 'CLOSED' | 'PAUSE
     if (!store) return actionError(new NotFoundError('Loja'));
 
     await storeRepo.updateStore(store.id, ctx.tenantId, { status });
-    revalidateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.store(store.id));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);

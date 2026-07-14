@@ -1,8 +1,6 @@
-import Link from 'next/link';
-import { Plus, Truck } from 'lucide-react';
+import { Truck } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { listDeliveryZonesAction } from '@/features/delivery/actions';
 import { formatCurrency } from '@/lib/utils';

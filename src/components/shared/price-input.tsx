@@ -3,43 +3,17 @@
 import * as React from 'react';
 import { Input } from '@/components/ui/input';
 
-interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'onChange' | 'value'> {
-  value: number; // em reais (ex: 24.90)
-  onChange: (value: number) => void;
+interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'type'> {
+  /** Preço em reais (ex: 24.90) */
+  defaultPrice?: number;
+  name: string;
 }
 
 /**
- * Input de preço em reais.
- * Aceita input do usuário em reais (24.90) e converte automaticamente.
+ * Input de preço em reais com prefixo R$.
+ * Usa input nativo com step 0.01 — simples e acessível.
  */
-export function PriceInput({ value, onChange, ...props }: PriceInputProps) {
-  const [displayValue, setDisplayValue] = React.useState(value.toFixed(2));
-
-  React.useEffect(() => {
-    setDisplayValue(value.toFixed(2));
-  }, [value]);
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.');
-    setDisplayValue(raw);
-
-    const num = parseFloat(raw);
-    if (!isNaN(num) && num >= 0) {
-      onChange(num);
-    }
-  }
-
-  function handleBlur() {
-    const num = parseFloat(displayValue);
-    if (isNaN(num) || num < 0) {
-      setDisplayValue('0.00');
-      onChange(0);
-    } else {
-      setDisplayValue(num.toFixed(2));
-      onChange(num);
-    }
-  }
-
+export function PriceInput({ defaultPrice = 0, name, ...props }: PriceInputProps) {
   return (
     <div className="relative">
       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-tertiary">
@@ -47,11 +21,12 @@ export function PriceInput({ value, onChange, ...props }: PriceInputProps) {
       </span>
       <Input
         {...props}
-        type="text"
+        type="number"
         inputMode="decimal"
-        value={displayValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
+        step="0.01"
+        min="0"
+        name={name}
+        defaultValue={defaultPrice.toFixed(2)}
         className="pl-10"
       />
     </div>
