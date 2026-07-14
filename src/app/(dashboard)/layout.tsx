@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
 import { requireAuthenticatedUser } from '@/server/auth';
 import { LogOut } from 'lucide-react';
 
@@ -6,11 +7,13 @@ export const metadata = {
   title: 'Painel',
 };
 
+
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await connection();
   let session;
   try {
     session = await requireAuthenticatedUser();

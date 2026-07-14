@@ -42,15 +42,15 @@
 - [x] Configuração de Pix
 - [ ] Upload de logo e capa (pós-MVP — Vercel Blob)
 
-## Fase 4 — Loja Pública
+## Fase 4 — Loja Pública ✅
 
-- [ ] Rota dinâmica por slug
-- [ ] Página pública da loja
-- [ ] Exibição do cardápio
-- [ ] Seleção de adicionais
-- [ ] Cache com revalidação
-- [ ] Carrinho com Zustand
-- [ ] Validação de loja aberta/fechada
+- [x] Rota dinâmica por slug
+- [x] Página pública da loja
+- [x] Exibição do cardápio
+- [x] Seleção de adicionais
+- [x] Cache com revalidação
+- [x] Carrinho com Zustand
+- [x] Validação de loja aberta/fechada
 
 ## Fase 5 — Checkout e Pedidos
 

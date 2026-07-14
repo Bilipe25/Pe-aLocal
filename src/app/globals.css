@@ -137,3 +137,19 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-secondary);
 }
+
+/*
+ * =============================================================================
+ * Utilitários customizados
+ * =============================================================================
+ */
+
+/* Esconder scrollbar mantendo funcionalidade de scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
