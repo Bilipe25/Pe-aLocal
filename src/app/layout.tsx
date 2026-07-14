@@ -1,11 +1,25 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Bricolage_Grotesque, Inter, Space_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import './globals.css';
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ['latin'],
+  variable: '--font-bricolage',
+  weight: ['700'],
+  display: 'swap',
+});
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
+  display: 'swap',
+});
+
+const spaceMono = Space_Mono({
+  subsets: ['latin'],
+  variable: '--font-space-mono',
+  weight: ['700'],
   display: 'swap',
 });
 
@@ -31,8 +45,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={inter.variable}>
-      <body className="min-h-screen bg-surface font-sans text-text-primary antialiased">
+    <html
+      lang="pt-BR"
+      className={`${bricolage.variable} ${inter.variable} ${spaceMono.variable}`}
+    >
+      <body className="min-h-screen bg-papel font-body text-tinta antialiased">
         {children}
         <Toaster
           position="top-right"

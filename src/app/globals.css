@@ -4,63 +4,85 @@
  * =============================================================================
  * Design Tokens — PedidoLocal
  * =============================================================================
- * Variáveis CSS centralizadas para cores, espaçamento, tipografia, etc.
- * Usadas por todos os componentes e páginas.
+ * Identidade Visual definitiva do PedidoLocal.
+ * Referência completa: docs/design-system.md
+ *
+ * CORES:
+ *   papel    (#FFFDF9) — Fundo principal
+ *   tinta    (#241C15) — Textos e títulos
+ *   pimenta  (#D9480F) — Primária / CTAs / ação
+ *   erva     (#3F7D58) — Sucesso / positivo
+ *   azulejo  (#3B6E8F) — Info / secundária
+ *   kraft    (#EFE0C3) — Superfícies de destaque
+ *
+ * TIPOGRAFIA:
+ *   font-display  — Bricolage Grotesque (títulos)
+ *   font-body     — Inter (texto corrido)
+ *   font-mono     — Space Mono (preços, códigos)
  * =============================================================================
  */
 
 @theme {
-  /* Cores da marca */
+  /* ── Cores do Design System ── */
+  --color-papel: #FFFDF9;
+  --color-tinta: #241C15;
+  --color-pimenta: #D9480F;
+  --color-erva: #3F7D58;
+  --color-azulejo: #3B6E8F;
+  --color-kraft: #EFE0C3;
+
+  /* ── Aliases de compatibilidade (mapeiam tokens antigos → novos) ── */
   --color-brand-50: #fff7ed;
   --color-brand-100: #ffedd5;
   --color-brand-200: #fed7aa;
   --color-brand-300: #fdba74;
   --color-brand-400: #fb923c;
-  --color-brand-500: #f97316;
-  --color-brand-600: #ea580c;
-  --color-brand-700: #c2410c;
-  --color-brand-800: #9a3412;
-  --color-brand-900: #7c2d12;
+  --color-brand-500: #D9480F;
+  --color-brand-600: #c2410c;
+  --color-brand-700: #9a3412;
+  --color-brand-800: #7c2d12;
+  --color-brand-900: #5c2108;
 
-  /* Cores de superfície (modo claro) */
-  --color-surface: #ffffff;
-  --color-surface-secondary: #f8fafc;
-  --color-surface-tertiary: #f1f5f9;
+  --color-surface: #FFFDF9;
+  --color-surface-secondary: #f5f0e8;
+  --color-surface-tertiary: #EFE0C3;
 
-  /* Texto */
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
-  --color-text-inverse: #ffffff;
+  --color-text-primary: #241C15;
+  --color-text-secondary: #5c4f42;
+  --color-text-muted: #8a7e72;
+  --color-text-tertiary: #a89c90;
+  --color-text-inverse: #FFFDF9;
 
-  /* Bordas */
-  --color-border: #e2e8f0;
-  --color-border-hover: #cbd5e1;
+  --color-border: #d6cec4;
+  --color-border-hover: #b8ad9f;
 
-  /* Status */
-  --color-success: #22c55e;
-  --color-success-light: #dcfce7;
-  --color-warning: #f59e0b;
+  /* ── Status ── */
+  --color-success: #3F7D58;
+  --color-success-light: #e6f3ec;
+  --color-warning: #e89b0c;
   --color-warning-light: #fef3c7;
-  --color-error: #ef4444;
-  --color-error-light: #fee2e2;
-  --color-info: #3b82f6;
-  --color-info-light: #dbeafe;
+  --color-error: #d63b3b;
+  --color-error-light: #fde8e8;
+  --color-info: #3B6E8F;
+  --color-info-light: #e3eef5;
 
-  /* Tipografia */
+  /* ── Tipografia ── */
+  --font-display: var(--font-bricolage), ui-serif, Georgia, serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, "Cascadia Code", "Fira Code", monospace;
 
-  /* Raios de borda */
+  /* ── Raios de borda ── */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* Sombras */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  /* ── Sombras ── */
+  --shadow-sm: 0 1px 2px 0 rgb(36 28 21 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(36 28 21 / 0.08), 0 2px 4px -2px rgb(36 28 21 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(36 28 21 / 0.08), 0 4px 6px -4px rgb(36 28 21 / 0.06);
 }
 
 /*
@@ -74,9 +96,9 @@
 }
 
 body {
-  font-family: var(--font-sans);
-  color: var(--color-text-primary);
-  background-color: var(--color-surface);
+  font-family: var(--font-body);
+  color: var(--color-tinta);
+  background-color: var(--color-papel);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -88,7 +110,7 @@ body {
  */
 
 :focus-visible {
-  outline: 2px solid var(--color-brand-500);
+  outline: 2px solid var(--color-pimenta);
   outline-offset: 2px;
 }
 

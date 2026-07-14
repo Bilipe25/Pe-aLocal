@@ -90,6 +90,54 @@ Após executar o seed:
 
 > ⚠️ **Nunca use estas credenciais em produção.**
 
+## 🎨 Identidade Visual (Design System)
+
+O PedidoLocal possui um design system próprio com cores semânticas inspiradas em ingredientes e materiais de cozinha, e uma tipografia pensada para clareza e personalidade.
+
+### Cores
+
+| Nome | Hex | Uso |
+|---|---|---|
+| **Papel** | `#FFFDF9` | Fundo principal da aplicação |
+| **Tinta** | `#241C15` | Cor principal para textos e títulos |
+| **Pimenta** | `#D9480F` | Cor primária — botões, CTAs, links de ação |
+| **Erva** | `#3F7D58` | Estados positivos — disponível, confirmado, sucesso |
+| **Azulejo** | `#3B6E8F` | Informação secundária, links de apoio, alertas neutros |
+| **Kraft** | `#EFE0C3` | Superfícies de destaque — cards especiais, comandas |
+
+### Fontes
+
+| Família | Classe Tailwind | Uso |
+|---|---|---|
+| **Bricolage Grotesque** | `font-display` | Headlines, títulos, nome da marca |
+| **Inter** | `font-body` / `font-sans` | Texto corrido, labels, botões |
+| **Space Mono** | `font-mono` | Preços, números de pedido, senhas |
+
+> 📖 Referência técnica completa com exemplos de código, tokens e guia para IA: [`docs/design-system.md`](docs/design-system.md)
+
+## 🎨 Identidade Visual (Design System)
+
+O projeto segue uma identidade visual própria com cores nomeadas em português e tipografia curada. Referência técnica completa em [`docs/design-system.md`](docs/design-system.md).
+
+### Cores
+
+| Nome | Hex | Uso |
+|---|---|---|
+| **Papel** | `#FFFDF9` | Fundo principal da aplicação |
+| **Tinta** | `#241C15` | Cor principal para textos e títulos |
+| **Pimenta** | `#D9480F` | Cor primária — botões, CTAs, links de ação |
+| **Erva** | `#3F7D58` | Estados positivos — disponível, confirmado, sucesso |
+| **Azulejo** | `#3B6E8F` | Informação secundária, links de apoio, alertas neutros |
+| **Kraft** | `#EFE0C3` | Superfícies de destaque — cards especiais, comandas |
+
+### Tipografia
+
+| Família | Classe Tailwind | Uso |
+|---|---|---|
+| **Bricolage Grotesque** | `font-display` | Headlines, títulos, nome da marca |
+| **Inter** | `font-body` / `font-sans` | Texto corrido, labels, botões, formulários |
+| **Space Mono** | `font-mono` | Preços, número de pedido, senhas |
+
 ## Estrutura do Projeto
 
 ```
