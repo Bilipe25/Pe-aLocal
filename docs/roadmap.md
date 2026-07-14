@@ -1,0 +1,99 @@
+# Roadmap — PedidoLocal
+
+## Fase 1 — Fundação ✅
+
+- [x] Next.js 15 + TypeScript strict
+- [x] Tailwind CSS v4 + shadcn/ui
+- [x] Prisma + Schema completo
+- [x] Estrutura de pastas por domínio
+- [x] Design tokens e componentes base
+- [x] Sistema de erros de domínio
+- [x] Interface de rate limiting
+- [x] Interface de storage
+- [x] Sistema de permissões
+- [x] Validação de variáveis de ambiente
+- [x] Middleware de segurança
+- [x] Health check
+- [x] Documentação básica
+- [x] Configuração de testes (Vitest + Playwright)
+
+## Fase 2 — Autenticação e Tenants ✅
+
+- [x] Modelo de sessão com cookies httpOnly
+- [x] Login com Argon2
+- [x] Logout com revogação de sessão
+- [x] Proteção de rotas (middleware)
+- [x] Registro de tenant
+- [x] Vínculo usuário ↔ tenant
+- [x] Funções e permissões
+- [x] Isolamento multi-tenant
+- [x] Rate limiting no login
+- [x] Proteção contra enumeração
+
+## Fase 3 — Loja e Catálogo
+
+- [ ] CRUD de loja e configurações
+- [ ] Upload de logo e capa
+- [ ] Horários de funcionamento
+- [ ] CRUD de categorias
+- [ ] CRUD de produtos
+- [ ] CRUD de grupos de adicionais
+- [ ] CRUD de zonas de entrega
+- [ ] Validação de slug
+- [ ] Configuração de Pix
+
+## Fase 4 — Loja Pública
+
+- [ ] Rota dinâmica por slug
+- [ ] Página pública da loja
+- [ ] Exibição do cardápio
+- [ ] Seleção de adicionais
+- [ ] Cache com revalidação
+- [ ] Carrinho com Zustand
+- [ ] Validação de loja aberta/fechada
+
+## Fase 5 — Checkout e Pedidos
+
+- [ ] Formulário de checkout
+- [ ] Cálculo de preços no servidor
+- [ ] Transação atômica para criação de pedido
+- [ ] Idempotência
+- [ ] Pix manual (copia e cola + WhatsApp)
+- [ ] Consulta pública de pedido
+- [ ] Snapshot de itens e preços
+
+## Fase 6 — Painel Operacional
+
+- [ ] Lista de pedidos com TanStack Query
+- [ ] Filtros e paginação
+- [ ] Polling de 10 segundos
+- [ ] Detalhes do pedido
+- [ ] Atualização de status
+- [ ] Confirmação manual de pagamento
+- [ ] Dashboard com métricas do dia
+
+## Fase 7 — Qualidade e Deploy
+
+- [ ] Testes unitários de services
+- [ ] Testes de integração
+- [ ] Testes E2E com Playwright
+- [ ] Acessibilidade (WCAG)
+- [ ] Performance (Core Web Vitals)
+- [ ] Documentação completa
+- [ ] Build de produção
+- [ ] Deploy na Vercel
+
+---
+
+## Futuro (pós-MVP)
+
+- Supabase Realtime (WebSockets) para pedidos em tempo real
+- Integração com gateways de pagamento (Mercado Pago, Efí, Asaas)
+- Redis (Upstash) para rate limiting e cache
+- Impressão de comanda térmica
+- Cupons automáticos
+- Relatórios avançados
+- Programa de fidelidade
+- App PWA (Progressive Web App)
+- Notificações push
+- Múltiplas lojas por tenant

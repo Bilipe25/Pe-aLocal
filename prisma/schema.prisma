@@ -1,0 +1,659 @@
+// =============================================================================
+// PedidoLocal — Schema Prisma
+// =============================================================================
+// Todas as entidades do MVP.
+// Usa PostgreSQL + Supabase.
+// UUIDs como chave primária.
+// Todas as entidades privadas possuem tenantId.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  MANAGER
+  ATTENDANT
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum StoreStatus {
+  OPEN
+  CLOSED
+  PAUSED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum OrderModality {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethodType {
+  PIX
+  CASH
+  CARD_ON_DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  CUSTOMER_REPORTED_PAID
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PixKeyType {
+  CPF
+  CNPJ
+  EMAIL
+  PHONE
+  RANDOM
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  STATUS_CHANGE
+  PAYMENT_CONFIRMED
+  TENANT_SUSPENDED
+  TENANT_ACTIVATED
+}
+
+// =============================================================================
+// Usuário e Sessão
+// =============================================================================
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  isActive      Boolean  @default(true)
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      Session[]
+  tenantMembers TenantMember[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// =============================================================================
+// Tenant (Estabelecimento)
+// =============================================================================
+
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  document  String?      // CNPJ/CPF
+  status    TenantStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  members       TenantMember[]
+  stores        Store[]
+  categories    Category[]
+  products      Product[]
+  deliveryZones DeliveryZone[]
+  customers     Customer[]
+  orders        Order[]
+  coupons       Coupon[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
+model TenantMember {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  role      Role
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+// =============================================================================
+// Loja
+// =============================================================================
+
+model Store {
+  id          String      @id @default(uuid())
+  tenantId    String
+  slug        String      @unique
+  name        String
+  description String?
+  phone       String?
+  whatsapp    String?
+  logoUrl     String?
+  coverUrl    String?
+  status      StoreStatus @default(CLOSED)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  settings StoreSettings?
+
+  address       StoreAddress?
+  openingHours  OpeningHour[]
+  categories    Category[]
+  products      Product[]
+  deliveryZones DeliveryZone[]
+  orders        Order[]
+
+  @@index([tenantId])
+  @@index([slug])
+  @@index([status])
+  @@map("stores")
+}
+
+model StoreSettings {
+  id        String @id @default(uuid())
+  storeId   String @unique
+
+  // Cores e aparência
+  primaryColor   String @default("#f97316")
+  secondaryColor String @default("#1e293b")
+  fontFamily     String @default("Inter")
+
+  // Configurações de pedido
+  minOrderValue    Int     @default(0)        // Em centavos
+  estimatedTime    String  @default("30-50 min")
+  deliveryEnabled  Boolean @default(true)
+  pickupEnabled    Boolean @default(true)
+
+  // Formas de pagamento aceitas
+  acceptsPix            Boolean @default(true)
+  acceptsCash           Boolean @default(true)
+  acceptsCardOnDelivery Boolean @default(true)
+
+  // Pix
+  pixKeyType    PixKeyType?
+  pixKey        String?
+  pixRecipient  String?
+  pixBank       String?
+  pixInstructions String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_settings")
+}
+
+model StoreAddress {
+  id           String  @id @default(uuid())
+  storeId      String  @unique
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  zipCode      String
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_addresses")
+}
+
+model OpeningHour {
+  id        String    @id @default(uuid())
+  storeId   String
+  dayOfWeek DayOfWeek
+  openTime  String          // "08:00"
+  closeTime String          // "23:00"
+  isActive  Boolean   @default(true)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, dayOfWeek])
+  @@index([storeId])
+  @@map("opening_hours")
+}
+
+// =============================================================================
+// Catálogo
+// =============================================================================
+
+model Category {
+  id          String   @id @default(uuid())
+  tenantId    String
+  storeId     String
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([sortOrder])
+  @@map("categories")
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  tenantId      String
+  storeId       String
+  categoryId    String
+  name          String
+  description   String?
+  imageUrl      String?
+  basePrice     Int               // Em centavos
+  isAvailable   Boolean  @default(true)
+  isFeatured    Boolean  @default(false)
+  isSoldOut     Boolean  @default(false)
+  allowNotes    Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category     Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  optionGroups ProductOptionGroup[]
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isAvailable])
+  @@map("products")
+}
+
+model ProductOptionGroup {
+  id           String   @id @default(uuid())
+  productId    String
+  title        String
+  description  String?
+  isRequired   Boolean  @default(false)
+  isMultiple   Boolean  @default(false)
+  minSelections Int     @default(0)
+  maxSelections Int     @default(1)
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options ProductOption[]
+
+  @@index([productId])
+  @@index([sortOrder])
+  @@map("product_option_groups")
+}
+
+model ProductOption {
+  id           String   @id @default(uuid())
+  groupId      String
+  name         String
+  price        Int      @default(0)   // Preço adicional em centavos
+  isAvailable  Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  group ProductOptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([sortOrder])
+  @@map("product_options")
+}
+
+// =============================================================================
+// Entrega
+// =============================================================================
+
+model DeliveryZone {
+  id            String   @id @default(uuid())
+  tenantId      String
+  storeId       String
+  name          String
+  fee           Int      @default(0)    // Taxa em centavos
+  minOrderValue Int?                     // Pedido mínimo em centavos (opcional)
+  estimatedTime String?                  // Ex: "30-40 min"
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([sortOrder])
+  @@map("delivery_zones")
+}
+
+// =============================================================================
+// Clientes
+// =============================================================================
+
+model Customer {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses CustomerAddress[]
+  orders    Order[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([phone])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id           String  @id @default(uuid())
+  customerId   String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  zipCode      String?
+  reference    String?
+  isDefault    Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+// =============================================================================
+// Pedidos
+// =============================================================================
+
+model Order {
+  id              String        @id @default(uuid())
+  tenantId        String
+  storeId         String
+  customerId      String?
+  orderNumber     Int
+  idempotencyKey  String
+  publicToken     String        @unique @default(uuid())
+
+  // Dados do cliente (snapshot)
+  customerName    String
+  customerPhone   String
+
+  // Modalidade e endereço
+  modality        OrderModality
+  deliveryAddress String?
+  deliveryZoneName String?
+
+  // Valores (em centavos)
+  subtotal        Int
+  discount        Int           @default(0)
+  deliveryFee     Int           @default(0)
+  total           Int
+
+  // Pagamento
+  paymentMethod   PaymentMethodType
+  changeFor       Int?                // Troco para (em centavos)
+
+  // Status
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+
+  // Observações
+  notes           String?
+
+  // Cupom
+  couponId        String?
+  couponCode      String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store           Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  payment         Payment?
+
+  @@unique([storeId, idempotencyKey])
+  @@unique([storeId, orderNumber])
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@index([customerPhone])
+  @@index([publicToken])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String @id @default(uuid())
+  orderId       String
+
+  // Snapshot do produto no momento do pedido
+  productId     String
+  productName   String
+  unitPrice     Int         // Em centavos
+  quantity      Int
+  notes         String?
+  itemTotal     Int         // Em centavos (unitPrice * quantity + opções)
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  options OrderItemOption[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderItemOption {
+  id            String @id @default(uuid())
+  orderItemId   String
+
+  // Snapshot da opção no momento do pedido
+  optionId      String
+  optionName    String
+  optionPrice   Int         // Em centavos
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("order_item_options")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  fromStatus OrderStatus?
+  toStatus  OrderStatus
+  note      String?
+  changedBy String?     // userId ou "system"
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("order_status_history")
+}
+
+// =============================================================================
+// Pagamento
+// =============================================================================
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String        @unique
+  method        PaymentMethodType
+  status        PaymentStatus @default(PENDING)
+  amount        Int                              // Em centavos
+  paidAt        DateTime?
+  confirmedBy   String?                          // userId que confirmou
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("payments")
+}
+
+// =============================================================================
+// Cupons
+// =============================================================================
+
+model Coupon {
+  id            String     @id @default(uuid())
+  tenantId      String
+  code          String
+  type          CouponType
+  value         Int                          // Percentual (ex: 10 = 10%) ou centavos
+  minOrderValue Int?                         // Pedido mínimo em centavos
+  maxDiscount   Int?                         // Desconto máximo em centavos
+  maxUsages     Int?                         // Limite total de usos
+  usageCount    Int        @default(0)
+  isActive      Boolean    @default(true)
+  startsAt      DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usages CouponUsage[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([code])
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id        String   @id @default(uuid())
+  couponId  String
+  orderId   String
+  discount  Int                            // Desconto aplicado em centavos
+  createdAt DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([orderId])
+  @@map("coupon_usages")
+}
+
+// =============================================================================
+// Auditoria
+// =============================================================================
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  tenantId   String?
+  userId     String?
+  action     AuditAction
+  entity     String           // Ex: "Product", "Order", "Store"
+  entityId   String?
+  metadata   Json?            // Dados seguros (sem senhas, tokens, etc.)
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
