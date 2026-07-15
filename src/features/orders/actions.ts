@@ -6,6 +6,7 @@ import { createOrder, type ResolvedItem } from '@/server/repositories/order.repo
 import { actionSuccess, actionError } from '@/server/errors';
 import type { ActionResult } from '@/server/errors';
 import { BusinessRuleError } from '@/server/errors';
+import { triggerNewOrder } from '@/lib/pusher/server';
 
 // =============================================================================
 // Checkout — Server Action
@@ -223,6 +224,9 @@ export async function createOrderAction(
       subtotal,
       total,
     });
+
+    // Disparar evento Pusher para o painel em tempo real
+    await triggerNewOrder(store.id, order.id, order.orderNumber);
 
     return actionSuccess({
       publicToken: order.publicToken,

@@ -170,8 +170,8 @@ export type ActionResult<T = void> =
 /**
  * Cria um resultado de sucesso para Server Action.
  */
-export function actionSuccess<T>(data: T): ActionResult<T> {
-  return { success: true, data };
+export function actionSuccess<T = void>(data?: T): ActionResult<T> {
+  return { success: true, data: data as T };
 }
 
 /**

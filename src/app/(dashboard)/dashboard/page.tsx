@@ -30,11 +30,10 @@ const NAV_ITEMS = [
   },
   {
     title: 'Pedidos',
-    description: 'Gerencie os pedidos da sua loja',
+    description: 'Gerencie os pedidos em tempo real',
     icon: ShoppingBag,
     href: '/dashboard/orders',
-    ready: false,
-    phase: 'Fase 5',
+    ready: true,
   },
   {
     title: 'Equipe',

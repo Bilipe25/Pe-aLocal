@@ -62,15 +62,15 @@
 - [x] Consulta pública de pedido
 - [x] Snapshot de itens e preços
 
-## Fase 6 — Painel Operacional
+## Fase 6 — Painel Operacional ✅
 
-- [ ] Lista de pedidos com TanStack Query
-- [ ] Filtros e paginação
-- [ ] Polling de 10 segundos
-- [ ] Detalhes do pedido
-- [ ] Atualização de status
-- [ ] Confirmação manual de pagamento
-- [ ] Dashboard com métricas do dia
+- [x] Lista de pedidos em tempo real (Pusher WebSockets)
+- [x] TanStack Query integrado
+- [x] Detalhes e Status do pedido
+- [x] Atualização de status e Pusher trigger
+- [x] Confirmação manual de pagamento Pix/Dinheiro
+- [x] Filtros por Data/Status
+- [x] Dashboard com métricas do dia
 
 ## Fase 7 — Qualidade e Deploy
 

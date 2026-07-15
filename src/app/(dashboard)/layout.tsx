@@ -2,11 +2,11 @@ import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { requireAuthenticatedUser } from '@/server/auth';
 import { LogOut } from 'lucide-react';
+import { QueryProvider } from '@/providers/query-provider';
 
 export const metadata = {
   title: 'Painel',
 };
-
 
 export default async function DashboardLayout({
   children,
@@ -43,7 +43,11 @@ export default async function DashboardLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <QueryProvider>
+          {children}
+        </QueryProvider>
+      </main>
     </div>
   );
 }
