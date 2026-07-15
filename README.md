@@ -6,7 +6,7 @@ Cada estabelecimento tem sua própria página pública, cardápio, pedidos e pai
 
 ## Stack
 
-- **Framework**: Next.js 15 (App Router, Server Components, Server Actions)
+- **Framework**: Next.js 16 (App Router, Server Components, Server Actions)
 - **Linguagem**: TypeScript (strict)
 - **Estilo**: Tailwind CSS v4 + shadcn/ui
 - **Banco**: PostgreSQL (Supabase)
@@ -53,13 +53,21 @@ pnpm db:seed
 
 Veja `.env.example` para todas as variáveis necessárias.
 
-| Variável | Descrição |
-|---|---|
-| `DATABASE_URL` | URL de conexão PostgreSQL (com pooling) |
-| `DIRECT_URL` | URL de conexão direta (para migrations) |
-| `AUTH_SECRET` | Segredo para cookies de sessão (min 32 chars) |
-| `APP_URL` | URL base da aplicação |
-| `SUPER_ADMIN_EMAIL` | E-mail do super admin |
+| Variável                                        | Descrição                                     |
+| ----------------------------------------------- | --------------------------------------------- |
+| `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling)       |
+| `DIRECT_URL`                                    | URL de conexão direta (para migrations)       |
+| `AUTH_SECRET`                                   | Segredo para cookies de sessão (min 32 chars) |
+| `APP_URL`                                       | URL base da aplicação                         |
+| `SUPER_ADMIN_EMAIL`                             | E-mail do super admin                         |
+| `SUPABASE_URL`                                  | URL da API do projeto Supabase                |
+| `SUPABASE_PUBLISHABLE_KEY`                      | Chave publicável da API Supabase              |
+| `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor            |
+| `SUPABASE_JWKS_URL`                             | Endpoint JWKS do Supabase Auth                |
+| `PUSHER_APP_ID`                                 | ID da aplicação Pusher (servidor)             |
+| `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente           |
+| `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)             |
+| `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente          |
 
 ## Scripts
 
@@ -83,10 +91,10 @@ pnpm format        # Formatar código
 
 Após executar o seed:
 
-| Perfil | E-mail | Senha |
-|---|---|---|
-| Super Admin | admin@pedidolocal.com.br | (definido no seed) |
-| Proprietário | dono@demo.com | SenhaDemo123! |
+| Perfil       | E-mail                   | Senha              |
+| ------------ | ------------------------ | ------------------ |
+| Super Admin  | admin@pedidolocal.com.br | (definido no seed) |
+| Proprietário | dono@demo.com            | SenhaDemo123!      |
 
 > ⚠️ **Nunca use estas credenciais em produção.**
 
@@ -96,47 +104,24 @@ O PedidoLocal possui um design system próprio com cores semânticas inspiradas 
 
 ### Cores
 
-| Nome | Hex | Uso |
-|---|---|---|
-| **Papel** | `#FFFDF9` | Fundo principal da aplicação |
-| **Tinta** | `#241C15` | Cor principal para textos e títulos |
-| **Pimenta** | `#D9480F` | Cor primária — botões, CTAs, links de ação |
-| **Erva** | `#3F7D58` | Estados positivos — disponível, confirmado, sucesso |
+| Nome        | Hex       | Uso                                                    |
+| ----------- | --------- | ------------------------------------------------------ |
+| **Papel**   | `#FFFDF9` | Fundo principal da aplicação                           |
+| **Tinta**   | `#241C15` | Cor principal para textos e títulos                    |
+| **Pimenta** | `#D9480F` | Cor primária — botões, CTAs, links de ação             |
+| **Erva**    | `#3F7D58` | Estados positivos — disponível, confirmado, sucesso    |
 | **Azulejo** | `#3B6E8F` | Informação secundária, links de apoio, alertas neutros |
-| **Kraft** | `#EFE0C3` | Superfícies de destaque — cards especiais, comandas |
+| **Kraft**   | `#EFE0C3` | Superfícies de destaque — cards especiais, comandas    |
 
 ### Fontes
 
-| Família | Classe Tailwind | Uso |
-|---|---|---|
-| **Bricolage Grotesque** | `font-display` | Headlines, títulos, nome da marca |
-| **Inter** | `font-body` / `font-sans` | Texto corrido, labels, botões |
-| **Space Mono** | `font-mono` | Preços, números de pedido, senhas |
+| Família                 | Classe Tailwind           | Uso                               |
+| ----------------------- | ------------------------- | --------------------------------- |
+| **Bricolage Grotesque** | `font-display`            | Headlines, títulos, nome da marca |
+| **Inter**               | `font-body` / `font-sans` | Texto corrido, labels, botões     |
+| **Space Mono**          | `font-mono`               | Preços, números de pedido, senhas |
 
 > 📖 Referência técnica completa com exemplos de código, tokens e guia para IA: [`docs/design-system.md`](docs/design-system.md)
-
-## 🎨 Identidade Visual (Design System)
-
-O projeto segue uma identidade visual própria com cores nomeadas em português e tipografia curada. Referência técnica completa em [`docs/design-system.md`](docs/design-system.md).
-
-### Cores
-
-| Nome | Hex | Uso |
-|---|---|---|
-| **Papel** | `#FFFDF9` | Fundo principal da aplicação |
-| **Tinta** | `#241C15` | Cor principal para textos e títulos |
-| **Pimenta** | `#D9480F` | Cor primária — botões, CTAs, links de ação |
-| **Erva** | `#3F7D58` | Estados positivos — disponível, confirmado, sucesso |
-| **Azulejo** | `#3B6E8F` | Informação secundária, links de apoio, alertas neutros |
-| **Kraft** | `#EFE0C3` | Superfícies de destaque — cards especiais, comandas |
-
-### Tipografia
-
-| Família | Classe Tailwind | Uso |
-|---|---|---|
-| **Bricolage Grotesque** | `font-display` | Headlines, títulos, nome da marca |
-| **Inter** | `font-body` / `font-sans` | Texto corrido, labels, botões, formulários |
-| **Space Mono** | `font-mono` | Preços, número de pedido, senhas |
 
 ## Estrutura do Projeto
 
@@ -164,20 +149,20 @@ Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja
 
 ## Fases de Implementação
 
-| Fase | Descrição | Status |
-|---|---|---|
-| 1 | Fundação | ✅ Concluída |
-| 2 | Autenticação e Tenants | 🔲 Pendente |
-| 3 | Loja e Catálogo | 🔲 Pendente |
-| 4 | Loja Pública | 🔲 Pendente |
-| 5 | Checkout e Pedidos | 🔲 Pendente |
-| 6 | Painel Operacional | 🔲 Pendente |
-| 7 | Qualidade e Deploy | 🔲 Pendente |
+| Fase | Descrição              | Status                        |
+| ---- | ---------------------- | ----------------------------- |
+| 1    | Fundação               | ✅ Concluída                  |
+| 2    | Autenticação e Tenants | ✅ Concluída                  |
+| 3    | Loja e Catálogo        | ✅ Concluída (upload pós-MVP) |
+| 4    | Loja Pública           | ✅ Concluída                  |
+| 5    | Checkout e Pedidos     | ✅ Concluída                  |
+| 6    | Painel Operacional     | ✅ Concluída                  |
+| 7    | Qualidade e Deploy     | 🚧 Em andamento               |
 
 ## Limitações do MVP
 
 - Sem pagamentos online (PIX manual via WhatsApp)
-- Sem WebSockets (polling de 10s no painel)
+- Realtime depende da configuração do Pusher; sem as chaves, os eventos ficam desabilitados
 - Sem Redis (rate limiting in-memory)
 - Sem app mobile nativo (PWA-friendly)
 - Sem rastreamento de entrega
@@ -186,6 +171,12 @@ Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja
 ## Roadmap
 
 Veja `docs/roadmap.md`.
+
+## Qualidade
+
+A estratégia, a matriz atual e os comandos de testes estão documentados em
+[`docs/testing.md`](docs/testing.md). O fluxo local inclui Vitest, testes de integração,
+Playwright em desktop/mobile, lint, typecheck e build de produção.
 
 ## Licença
 

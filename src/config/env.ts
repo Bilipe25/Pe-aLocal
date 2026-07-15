@@ -17,10 +17,14 @@ const envSchema = z.object({
   APP_URL: z.string().url('APP_URL deve ser uma URL válida'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
+  // Supabase API (opcional; Prisma usa DATABASE_URL/DIRECT_URL)
+  SUPABASE_URL: z.string().url().or(z.literal('')).optional(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_').or(z.literal('')).optional(),
+  SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').or(z.literal('')).optional(),
+  SUPABASE_JWKS_URL: z.string().url().or(z.literal('')).optional(),
+
   // Storage
-  STORAGE_PROVIDER: z
-    .enum(['local', 'vercel-blob', 'supabase', 's3', 'r2'])
-    .default('local'),
+  STORAGE_PROVIDER: z.enum(['local', 'vercel-blob', 'supabase', 's3', 'r2']).default('local'),
   STORAGE_TOKEN: z.string().optional().default(''),
 
   // Super Admin

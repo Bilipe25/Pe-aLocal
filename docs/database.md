@@ -9,31 +9,31 @@
 
 ## Modelos
 
-| Modelo | Descrição |
-|---|---|
-| `User` | Usuários do sistema |
-| `Session` | Sessões autenticadas |
-| `Tenant` | Estabelecimentos |
-| `TenantMember` | Vínculo usuário ↔ tenant |
-| `Store` | Lojas públicas |
-| `StoreSettings` | Configurações da loja |
-| `StoreAddress` | Endereço da loja |
-| `OpeningHour` | Horários de funcionamento |
-| `Category` | Categorias do cardápio |
-| `Product` | Produtos |
-| `ProductOptionGroup` | Grupos de adicionais |
-| `ProductOption` | Opções de um grupo |
-| `DeliveryZone` | Zonas de entrega |
-| `Customer` | Clientes (dados do checkout) |
-| `CustomerAddress` | Endereços de clientes |
-| `Order` | Pedidos |
-| `OrderItem` | Itens do pedido (snapshot) |
-| `OrderItemOption` | Opções selecionadas (snapshot) |
-| `OrderStatusHistory` | Histórico de status |
-| `Payment` | Pagamentos |
-| `Coupon` | Cupons de desconto |
-| `CouponUsage` | Uso de cupons |
-| `AuditLog` | Log de auditoria |
+| Modelo               | Descrição                      |
+| -------------------- | ------------------------------ |
+| `User`               | Usuários do sistema            |
+| `Session`            | Sessões autenticadas           |
+| `Tenant`             | Estabelecimentos               |
+| `TenantMember`       | Vínculo usuário ↔ tenant       |
+| `Store`              | Lojas públicas                 |
+| `StoreSettings`      | Configurações da loja          |
+| `StoreAddress`       | Endereço da loja               |
+| `OpeningHour`        | Horários de funcionamento      |
+| `Category`           | Categorias do cardápio         |
+| `Product`            | Produtos                       |
+| `ProductOptionGroup` | Grupos de adicionais           |
+| `ProductOption`      | Opções de um grupo             |
+| `DeliveryZone`       | Zonas de entrega               |
+| `Customer`           | Clientes (dados do checkout)   |
+| `CustomerAddress`    | Endereços de clientes          |
+| `Order`              | Pedidos                        |
+| `OrderItem`          | Itens do pedido (snapshot)     |
+| `OrderItemOption`    | Opções selecionadas (snapshot) |
+| `OrderStatusHistory` | Histórico de status            |
+| `Payment`            | Pagamentos                     |
+| `Coupon`             | Cupons de desconto             |
+| `CouponUsage`        | Uso de cupons                  |
+| `AuditLog`           | Log de auditoria               |
 
 ## Convenções
 
@@ -71,6 +71,14 @@ User ──────── Session
 - **Aplicação**: Usa `DATABASE_URL` com pooling (PgBouncer do Supabase, porta 6543)
 - **Migrations**: Usa `DIRECT_URL` com conexão direta (porta 5432)
 - **Desenvolvimento**: Prisma Client singleton para evitar vazamento de conexões
+- **API Supabase**: `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` não substituem as URLs PostgreSQL
+
+Para conectar um novo projeto Supabase ao Prisma, copie no botão **Connect** do Dashboard:
+
+- Supavisor Transaction Mode (porta 6543) para `DATABASE_URL`, com `pgbouncer=true`;
+- Supavisor Session Mode (porta 5432) para `DIRECT_URL`, usada nas migrations.
+
+A chave secreta do Supabase nunca deve usar o prefixo `NEXT_PUBLIC_` nem ser enviada ao navegador.
 
 ## Comandos
 

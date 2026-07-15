@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-PedidoLocal é um **monólito modular full-stack** construído com Next.js 15.
+PedidoLocal é um **monólito modular full-stack** construído com Next.js 16.
 
 O Next.js é responsável por todas as camadas: páginas públicas, painel administrativo, autenticação, autorização, Server Components, Server Actions, Route Handlers, regras de negócio, acesso ao banco e renderização.
 
@@ -67,20 +67,21 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 
 ## Decisões Técnicas
 
-| Decisão | Razão |
-|---|---|
-| Monólito | Simplicidade, menos infra, deploy único |
-| Server Components | Menos JS no cliente, SSR rápido |
-| Prisma | Type-safe, migrations, studio |
-| Zustand | Leve, simples, persistência local |
-| TanStack Query | Polling, cache, invalidação para painel |
-| Zod | Validação compartilhada client/server |
+| Decisão           | Razão                                           |
+| ----------------- | ----------------------------------------------- |
+| Monólito          | Simplicidade, menos infra, deploy único         |
+| Server Components | Menos JS no cliente, SSR rápido                 |
+| Prisma            | Type-safe, migrations, studio                   |
+| Zustand           | Leve, simples, persistência local               |
+| TanStack Query    | Cache e invalidação para o painel               |
+| Pusher            | Eventos em tempo real para pedidos e pagamentos |
+| Zod               | Validação compartilhada client/server           |
 
 ## O que NÃO usamos
 
 - Microsserviços
 - API separada (NestJS, Express)
 - Redis (MVP)
-- WebSockets (MVP)
+- Infraestrutura própria de WebSockets (o realtime usa Pusher)
 - Filas de processamento (MVP)
 - App mobile nativo

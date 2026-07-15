@@ -68,10 +68,14 @@ export function LoginForm() {
           autoComplete="email"
           autoFocus
           disabled={isLoading}
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? 'email-error' : undefined}
           {...register('email')}
         />
         {errors.email && (
-          <p className="text-sm text-error">{errors.email.message}</p>
+          <p id="email-error" role="alert" className="text-error text-sm">
+            {errors.email.message}
+          </p>
         )}
       </div>
 
@@ -83,19 +87,18 @@ export function LoginForm() {
           placeholder="••••••••"
           autoComplete="current-password"
           disabled={isLoading}
+          aria-invalid={!!errors.password}
+          aria-describedby={errors.password ? 'password-error' : undefined}
           {...register('password')}
         />
         {errors.password && (
-          <p className="text-sm text-error">{errors.password.message}</p>
+          <p id="password-error" role="alert" className="text-error text-sm">
+            {errors.password.message}
+          </p>
         )}
       </div>
 
-      <Button
-        type="submit"
-        className="w-full"
-        size="lg"
-        disabled={isLoading}
-      >
+      <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
         {isLoading ? (
           <>
             <Loader2 className="animate-spin" />

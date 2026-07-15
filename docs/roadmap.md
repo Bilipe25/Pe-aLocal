@@ -2,7 +2,7 @@
 
 ## Fase 1 — Fundação ✅
 
-- [x] Next.js 15 + TypeScript strict
+- [x] Next.js 16 + TypeScript strict
 - [x] Tailwind CSS v4 + shadcn/ui
 - [x] Prisma + Schema completo
 - [x] Estrutura de pastas por domínio
@@ -74,13 +74,24 @@
 
 ## Fase 7 — Qualidade e Deploy
 
-- [ ] Testes unitários de services
-- [ ] Testes de integração
+- [x] Testes unitários de services
+  - [x] AuthService (login, logout, sessão e rate limit)
+  - [x] TenantService (owner, membros e conflitos)
+- [x] Testes de integração
+  - [x] Route Handlers de health e autenticação
 - [ ] Testes E2E com Playwright
+  - [x] Smoke test da home, login e health check
+  - [x] Execução desktop e mobile
+  - [ ] Fluxo de compra e acompanhamento do pedido
+  - [ ] Fluxo autenticado do painel operacional
 - [ ] Acessibilidade (WCAG)
+  - [x] Associação de erros e campos no login
+  - [x] Landmarks e heading principal no login
+  - [ ] Auditoria automatizada de todas as rotas críticas
 - [ ] Performance (Core Web Vitals)
 - [ ] Documentação completa
-- [ ] Build de produção
+  - [x] README e guia de testes alinhados ao estado atual
+- [x] Build de produção local
 - [ ] Deploy na Vercel
 
 ---

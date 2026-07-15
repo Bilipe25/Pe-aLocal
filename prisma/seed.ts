@@ -1,11 +1,23 @@
+import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import argon2 from 'argon2';
+import { config as loadEnv } from 'dotenv';
 
 // =============================================================================
 // Seed — PedidoLocal
 // =============================================================================
 
-const prisma = new PrismaClient();
+loadEnv({ path: path.join(process.cwd(), '.env.local'), quiet: true });
+
+const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DIRECT_URL ou DATABASE_URL deve estar definida no .env.local');
+}
+
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
 async function hash(password: string): Promise<string> {
   return argon2.hash(password, {
