@@ -4,7 +4,7 @@ import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@prisma/client', '.prisma/client'],
+  serverExternalPackages: ['@prisma/client', '.prisma/client', 'pg-cloudflare'],
 
   // Otimizações de imagem
   images: {
