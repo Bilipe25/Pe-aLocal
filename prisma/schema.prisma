@@ -111,9 +111,10 @@ enum AuditAction {
 
 model User {
   id            String   @id @default(uuid())
+  authUserId    String?  @unique
   email         String   @unique
   name          String
-  passwordHash  String
+  passwordHash  String?
   isActive      Boolean  @default(true)
   emailVerified Boolean  @default(false)
   createdAt     DateTime @default(now())

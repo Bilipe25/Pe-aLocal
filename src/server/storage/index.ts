@@ -6,8 +6,8 @@
 // =============================================================================
 
 export interface UploadInput {
-  /** Buffer do arquivo */
-  buffer: Buffer;
+  /** Bytes do arquivo, compatíveis com Web APIs e Workers. */
+  buffer: Uint8Array;
   /** Nome original do arquivo */
   filename: string;
   /** MIME type (ex: "image/jpeg") */
@@ -37,12 +37,7 @@ export interface StorageProvider {
 // =============================================================================
 
 /** Tipos MIME permitidos para imagens */
-export const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-]);
+export const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 
 /** Tamanho máximo de upload: 5MB */
 export const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -86,7 +81,7 @@ export function validateFile(
  */
 export function generateSafeFilename(originalName: string): string {
   const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 8);
+  const random = crypto.randomUUID().replaceAll('-', '').slice(0, 8);
   const extension = originalName.split('.').pop()?.toLowerCase() ?? 'bin';
   const baseName = originalName
     .replace(/\.[^/.]+$/, '')

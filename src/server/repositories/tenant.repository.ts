@@ -1,4 +1,4 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import type { TenantStatus } from '@prisma/client';
 
 // =============================================================================
@@ -13,7 +13,7 @@ export async function createTenant(data: {
   document?: string;
   status?: TenantStatus;
 }) {
-  return db.tenant.create({
+  return getDb().tenant.create({
     data: {
       name: data.name.trim(),
       document: data.document?.trim(),
@@ -26,7 +26,7 @@ export async function createTenant(data: {
  * Busca um tenant pelo ID.
  */
 export async function findTenantById(id: string) {
-  return db.tenant.findUnique({
+  return getDb().tenant.findUnique({
     where: { id },
   });
 }
@@ -44,13 +44,13 @@ export async function listTenants(params?: {
   const skip = (page - 1) * pageSize;
 
   const [data, total] = await Promise.all([
-    db.tenant.findMany({
+    getDb().tenant.findMany({
       where: params?.status ? { status: params.status } : undefined,
       orderBy: { createdAt: 'desc' },
       skip,
       take: pageSize,
     }),
-    db.tenant.count({
+    getDb().tenant.count({
       where: params?.status ? { status: params.status } : undefined,
     }),
   ]);
@@ -70,7 +70,7 @@ export async function listTenants(params?: {
  * Atualiza o status de um tenant.
  */
 export async function updateTenantStatus(id: string, status: TenantStatus) {
-  return db.tenant.update({
+  return getDb().tenant.update({
     where: { id },
     data: { status },
   });

@@ -1,18 +1,18 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 
 // =============================================================================
 // DeliveryZone Repository
 // =============================================================================
 
 export async function listDeliveryZones(tenantId: string, storeId: string) {
-  return db.deliveryZone.findMany({
+  return getDb().deliveryZone.findMany({
     where: { tenantId, storeId },
     orderBy: { sortOrder: 'asc' },
   });
 }
 
 export async function findDeliveryZoneById(id: string, tenantId: string) {
-  return db.deliveryZone.findFirst({
+  return getDb().deliveryZone.findFirst({
     where: { id, tenantId },
   });
 }
@@ -27,7 +27,7 @@ export async function createDeliveryZone(data: {
   isActive?: boolean;
   sortOrder?: number;
 }) {
-  return db.deliveryZone.create({ data });
+  return getDb().deliveryZone.create({ data });
 }
 
 export async function updateDeliveryZone(
@@ -42,14 +42,14 @@ export async function updateDeliveryZone(
     sortOrder?: number;
   },
 ) {
-  return db.deliveryZone.updateMany({
+  return getDb().deliveryZone.updateMany({
     where: { id, tenantId },
     data,
   });
 }
 
 export async function deleteDeliveryZone(id: string, tenantId: string) {
-  return db.deliveryZone.deleteMany({
+  return getDb().deliveryZone.deleteMany({
     where: { id, tenantId },
   });
 }

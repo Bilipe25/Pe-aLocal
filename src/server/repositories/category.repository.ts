@@ -1,11 +1,11 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 
 // =============================================================================
 // Category Repository
 // =============================================================================
 
 export async function listCategories(tenantId: string, storeId: string) {
-  return db.category.findMany({
+  return getDb().category.findMany({
     where: { tenantId, storeId },
     include: {
       _count: { select: { products: true } },
@@ -15,7 +15,7 @@ export async function listCategories(tenantId: string, storeId: string) {
 }
 
 export async function findCategoryById(id: string, tenantId: string) {
-  return db.category.findFirst({
+  return getDb().category.findFirst({
     where: { id, tenantId },
     include: {
       products: {
@@ -34,7 +34,7 @@ export async function createCategory(data: {
   sortOrder?: number;
   isActive?: boolean;
 }) {
-  return db.category.create({ data });
+  return getDb().category.create({ data });
 }
 
 export async function updateCategory(
@@ -47,14 +47,14 @@ export async function updateCategory(
     isActive?: boolean;
   },
 ) {
-  return db.category.updateMany({
+  return getDb().category.updateMany({
     where: { id, tenantId },
     data,
   });
 }
 
 export async function deleteCategory(id: string, tenantId: string) {
-  return db.category.deleteMany({
+  return getDb().category.deleteMany({
     where: { id, tenantId },
   });
 }

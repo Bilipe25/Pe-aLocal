@@ -11,7 +11,8 @@ Cada estabelecimento tem sua própria página pública, cardápio, pedidos e pai
 - **Estilo**: Tailwind CSS v4 + shadcn/ui
 - **Banco**: PostgreSQL (Supabase)
 - **ORM**: Prisma
-- **Autenticação**: Sessões em banco com cookies httpOnly
+- **Autenticação**: Supabase Auth com cookies SSR
+- **Runtime**: Cloudflare Workers via OpenNext e Hyperdrive
 - **Validação**: Zod
 - **Formulários**: React Hook Form
 - **Estado remoto**: TanStack Query
@@ -22,7 +23,7 @@ Cada estabelecimento tem sua própria página pública, cardápio, pedidos e pai
 ## Pré-requisitos
 
 - Node.js 20+
-- pnpm 9+
+- pnpm 11+
 - PostgreSQL (ou Supabase)
 
 ## Instalação
@@ -53,21 +54,19 @@ pnpm db:seed
 
 Veja `.env.example` para todas as variáveis necessárias.
 
-| Variável                                        | Descrição                                     |
-| ----------------------------------------------- | --------------------------------------------- |
-| `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling)       |
-| `DIRECT_URL`                                    | URL de conexão direta (para migrations)       |
-| `AUTH_SECRET`                                   | Segredo para cookies de sessão (min 32 chars) |
-| `APP_URL`                                       | URL base da aplicação                         |
-| `SUPER_ADMIN_EMAIL`                             | E-mail do super admin                         |
-| `SUPABASE_URL`                                  | URL da API do projeto Supabase                |
-| `SUPABASE_PUBLISHABLE_KEY`                      | Chave publicável da API Supabase              |
-| `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor            |
-| `SUPABASE_JWKS_URL`                             | Endpoint JWKS do Supabase Auth                |
-| `PUSHER_APP_ID`                                 | ID da aplicação Pusher (servidor)             |
-| `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente           |
-| `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)             |
-| `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente          |
+| Variável                                        | Descrição                               |
+| ----------------------------------------------- | --------------------------------------- |
+| `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling) |
+| `DIRECT_URL`                                    | URL de conexão direta (para migrations) |
+| `APP_URL`                                       | URL base da aplicação                   |
+| `SUPER_ADMIN_EMAIL`                             | E-mail do super admin                   |
+| `NEXT_PUBLIC_SUPABASE_URL`                      | URL da API do projeto Supabase          |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`          | Chave publicável da API Supabase        |
+| `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor      |
+| `PUSHER_APP_ID`                                 | ID da aplicação Pusher (servidor)       |
+| `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente     |
+| `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)       |
+| `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente    |
 
 ## Scripts
 

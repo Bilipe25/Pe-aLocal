@@ -1,12 +1,13 @@
 'use server';
 
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import { checkoutSchema, type CheckoutInput } from '@/schemas/checkout';
 import { createOrder, type ResolvedItem } from '@/server/repositories/order.repository';
 import { actionSuccess, actionError } from '@/server/errors';
 import type { ActionResult } from '@/server/errors';
 import { BusinessRuleError } from '@/server/errors';
 import { triggerNewOrder } from '@/lib/pusher/server';
+import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 
 // =============================================================================
 // Checkout — Server Action
@@ -47,8 +48,16 @@ export async function createOrderAction(
 
     const input: CheckoutInput = parsed.data;
 
+    const rateLimit = await getRateLimiter().check({
+      identifier: `order:${storeSlug}:${input.customerPhone}`,
+      ...RATE_LIMITS.createOrder,
+    });
+    if (!rateLimit.allowed) {
+      throw new BusinessRuleError('Muitos pedidos em sequência. Aguarde um minuto.');
+    }
+
     // 2. Buscar loja pelo slug
-    const store = await db.store.findUnique({
+    const store = await getDb().store.findUnique({
       where: { slug: storeSlug },
       select: {
         id: true,
@@ -98,7 +107,7 @@ export async function createOrderAction(
 
     // 5. Buscar produtos REAIS do banco
     const productIds = input.items.map((i) => i.productId);
-    const products = await db.product.findMany({
+    const products = await getDb().product.findMany({
       where: {
         id: { in: productIds },
         storeId: store.id,
@@ -129,9 +138,7 @@ export async function createOrderAction(
     for (const cartItem of input.items) {
       const product = productMap.get(cartItem.productId);
       if (!product) {
-        throw new BusinessRuleError(
-          `Produto "${cartItem.productId}" não está disponível`,
-        );
+        throw new BusinessRuleError(`Produto "${cartItem.productId}" não está disponível`);
       }
 
       // Buscar opções reais (flat de todos os groups)
@@ -142,9 +149,7 @@ export async function createOrderAction(
       for (const optionId of cartItem.optionIds) {
         const option = optionMap.get(optionId);
         if (!option) {
-          throw new BusinessRuleError(
-            `Adicional "${optionId}" não está disponível`,
-          );
+          throw new BusinessRuleError(`Adicional "${optionId}" não está disponível`);
         }
         resolvedOptions.push({ id: option.id, name: option.name, price: option.price });
       }
@@ -173,7 +178,7 @@ export async function createOrderAction(
     let deliveryZoneName: string | null = null;
 
     if (input.modality === 'DELIVERY' && input.deliveryZoneId) {
-      const zone = await db.deliveryZone.findFirst({
+      const zone = await getDb().deliveryZone.findFirst({
         where: {
           id: input.deliveryZoneId,
           storeId: store.id,

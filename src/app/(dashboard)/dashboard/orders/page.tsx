@@ -1,5 +1,5 @@
 import { requireTenantMember } from '@/server/auth';
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import { OrdersPanel } from '@/components/dashboard/orders-panel';
 
 export const metadata = {
@@ -12,11 +12,11 @@ export default async function OrdersPage() {
   let storeId = session.storeId;
 
   if (!storeId) {
-    const firstStore = await db.store.findFirst({
+    const firstStore = await getDb().store.findFirst({
       where: { tenantId: session.tenantId },
       select: { id: true },
     });
-    
+
     if (firstStore) {
       storeId = firstStore.id;
     } else {

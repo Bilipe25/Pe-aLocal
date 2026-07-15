@@ -1,4 +1,4 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import type { Role } from '@prisma/client';
 
 // =============================================================================
@@ -9,7 +9,7 @@ import type { Role } from '@prisma/client';
  * Busca o vínculo de um usuário com um tenant específico.
  */
 export async function findMembership(userId: string, tenantId: string) {
-  return db.tenantMember.findUnique({
+  return getDb().tenantMember.findUnique({
     where: {
       tenantId_userId: { tenantId, userId },
     },
@@ -30,7 +30,7 @@ export async function findMembership(userId: string, tenantId: string) {
  * Usado no login para determinar o contexto default.
  */
 export async function findFirstActiveMembership(userId: string) {
-  return db.tenantMember.findFirst({
+  return getDb().tenantMember.findFirst({
     where: {
       userId,
       isActive: true,
@@ -60,12 +60,8 @@ export async function findFirstActiveMembership(userId: string) {
 /**
  * Cria um vínculo usuário ↔ tenant.
  */
-export async function createMembership(data: {
-  tenantId: string;
-  userId: string;
-  role: Role;
-}) {
-  return db.tenantMember.create({
+export async function createMembership(data: { tenantId: string; userId: string; role: Role }) {
+  return getDb().tenantMember.create({
     data: {
       tenantId: data.tenantId,
       userId: data.userId,
@@ -78,7 +74,7 @@ export async function createMembership(data: {
  * Lista membros de um tenant.
  */
 export async function listTenantMembers(tenantId: string) {
-  return db.tenantMember.findMany({
+  return getDb().tenantMember.findMany({
     where: { tenantId },
     include: {
       user: {
@@ -98,7 +94,7 @@ export async function listTenantMembers(tenantId: string) {
  * Atualiza o role de um membro.
  */
 export async function updateMemberRole(id: string, role: Role) {
-  return db.tenantMember.update({
+  return getDb().tenantMember.update({
     where: { id },
     data: { role },
   });

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2 } from 'lucide-react';
@@ -40,14 +41,27 @@ export function LoginForm() {
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      const result: unknown = await response.json();
+      const message =
+        typeof result === 'object' && result !== null && 'message' in result
+          ? String(result.message)
+          : undefined;
+      const userName =
+        typeof result === 'object' &&
+        result !== null &&
+        'user' in result &&
+        typeof result.user === 'object' &&
+        result.user !== null &&
+        'name' in result.user
+          ? String(result.user.name)
+          : 'usuário';
 
       if (!response.ok) {
-        toast.error(result.message ?? 'Erro ao fazer login.');
+        toast.error(message ?? 'Erro ao fazer login.');
         return;
       }
 
-      toast.success(`Bem-vindo, ${result.user.name}!`);
+      toast.success(`Bem-vindo, ${userName}!`);
       router.push(redirectTo);
       router.refresh();
     } catch {
@@ -108,6 +122,9 @@ export function LoginForm() {
           'Entrar'
         )}
       </Button>
+      <Link className="block text-center text-sm underline" href="/forgot-password">
+        Esqueci minha senha
+      </Link>
     </form>
   );
 }
