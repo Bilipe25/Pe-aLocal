@@ -52,15 +52,15 @@
 - [x] Carrinho com Zustand
 - [x] Validação de loja aberta/fechada
 
-## Fase 5 — Checkout e Pedidos
+## Fase 5 — Checkout e Pedidos ✅
 
-- [ ] Formulário de checkout
-- [ ] Cálculo de preços no servidor
-- [ ] Transação atômica para criação de pedido
-- [ ] Idempotência
-- [ ] Pix manual (copia e cola + WhatsApp)
-- [ ] Consulta pública de pedido
-- [ ] Snapshot de itens e preços
+- [x] Formulário de checkout
+- [x] Cálculo de preços no servidor
+- [x] Transação atômica para criação de pedido
+- [x] Idempotência
+- [x] Pix manual (copia e cola + WhatsApp)
+- [x] Consulta pública de pedido
+- [x] Snapshot de itens e preços
 
 ## Fase 6 — Painel Operacional
 

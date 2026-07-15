@@ -121,15 +121,13 @@ export default function CartPage() {
               {formatCurrency(total)}
             </span>
           </div>
-          <Button
-            className="w-full bg-pimenta text-white hover:bg-pimenta/90 font-body font-medium shadow-sm"
-            disabled
-          >
-            Finalizar pedido (em breve)
-          </Button>
-          <p className="mt-1 text-center text-[10px] text-tinta/40">
-            Checkout será implementado na Fase 5
-          </p>
+          <Link href={`/${params.storeSlug}/checkout`} className="block w-full">
+            <Button
+              className="w-full bg-pimenta text-white hover:bg-pimenta/90 font-body font-medium shadow-sm"
+            >
+              Ir para o Checkout
+            </Button>
+          </Link>
         </div>
       </div>
     </main>

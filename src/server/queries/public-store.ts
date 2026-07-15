@@ -127,3 +127,27 @@ export const getPublicCatalog = unstable_cache(
   ['public-catalog'],
   { revalidate: 60, tags: ['catalog'] }
 );
+
+async function getDeliveryZonesFromDb(storeId: string) {
+  return db.deliveryZone.findMany({
+    where: { storeId, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      fee: true,
+      estimatedTime: true,
+      minOrderValue: true,
+    },
+  });
+}
+
+/**
+ * Busca zonas de entrega ativas de uma loja. Usando cache do Next.js.
+ */
+export const getPublicDeliveryZones = unstable_cache(
+  async (storeId: string) => getDeliveryZonesFromDb(storeId),
+  ['public-delivery-zones'],
+  { revalidate: 60, tags: ['store', 'delivery-zones'] }
+);
+
