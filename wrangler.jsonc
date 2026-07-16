@@ -64,6 +64,9 @@
       "vars": {
         "APP_ENV": "staging",
       },
+      "images": {
+        "binding": "IMAGES",
+      },
       "services": [
         {
           "binding": "WORKER_SELF_REFERENCE",
@@ -99,6 +102,9 @@
       "name": "pedidolocal-production",
       "vars": {
         "APP_ENV": "production",
+      },
+      "images": {
+        "binding": "IMAGES",
       },
       "services": [
         {
