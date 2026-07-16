@@ -43,7 +43,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "00000000000000000000000000000000",
+      "id": "db9213cd1b214074928647719ddff805",
     },
   ],
   "ratelimits": [
@@ -79,7 +79,7 @@
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
-          "id": "00000000000000000000000000000000",
+          "id": "db9213cd1b214074928647719ddff805",
         },
       ],
       "ratelimits": [
@@ -115,7 +115,7 @@
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
-          "id": "00000000000000000000000000000000",
+          "id": "4e8ea7785f6443a682350235f432d380",
         },
       ],
       "ratelimits": [
