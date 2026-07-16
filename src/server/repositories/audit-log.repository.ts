@@ -1,4 +1,4 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import type { AuditAction, Prisma } from '@prisma/client';
 
 // =============================================================================
@@ -19,7 +19,7 @@ export async function createAuditLog(data: {
   ipAddress?: string | null;
   userAgent?: string | null;
 }) {
-  return db.auditLog.create({
+  return getDb().auditLog.create({
     data: {
       tenantId: data.tenantId ?? undefined,
       userId: data.userId ?? undefined,

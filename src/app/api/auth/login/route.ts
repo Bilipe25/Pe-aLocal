@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         storeId: result.storeId,
         role: result.role,
       },
-      { status: 200 },
+      { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {
     return errorToResponse(error);

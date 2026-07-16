@@ -1,7 +1,8 @@
 'use server';
 
-import { db } from '@/server/database/client';
-import { requireTenantMember } from '@/server/auth';
+import { getDb } from '@/server/database/client';
+import { requirePermission } from '@/server/auth';
+import { Permission } from '@/server/permissions';
 import { actionSuccess, actionError, type ActionResult, BusinessRuleError } from '@/server/errors';
 import { triggerOrderUpdated, triggerPaymentUpdated } from '@/lib/pusher/server';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
@@ -22,13 +23,13 @@ export interface GetOrdersParams {
  */
 export async function getOrdersAction(params?: GetOrdersParams) {
   try {
-    const session = await requireTenantMember();
-    
+    const session = await requirePermission(Permission.VIEW_ORDERS);
+
     // Para o MVP, se o usuário não tem storeId fixo (dono de tudo), precisa pegar o primeiro store ou passar por param.
     // Vamos assumir que a loja principal é a que tem pedidos, ou buscar a storeId.
     let storeId = session.storeId;
     if (!storeId) {
-      const firstStore = await db.store.findFirst({
+      const firstStore = await getDb().store.findFirst({
         where: { tenantId: session.tenantId },
         select: { id: true },
       });
@@ -39,7 +40,7 @@ export async function getOrdersAction(params?: GetOrdersParams) {
       }
     }
 
-    const orders = await db.order.findMany({
+    const orders = await getDb().order.findMany({
       where: {
         tenantId: session.tenantId,
         storeId,
@@ -55,7 +56,7 @@ export async function getOrdersAction(params?: GetOrdersParams) {
         items: {
           include: {
             options: true,
-          }
+          },
         },
         payment: true,
       },
@@ -70,11 +71,14 @@ export async function getOrdersAction(params?: GetOrdersParams) {
 /**
  * Atualiza o status de um pedido
  */
-export async function updateOrderStatusAction(orderId: string, newStatus: OrderStatus): Promise<ActionResult> {
+export async function updateOrderStatusAction(
+  orderId: string,
+  newStatus: OrderStatus,
+): Promise<ActionResult> {
   try {
-    const session = await requireTenantMember();
+    const session = await requirePermission(Permission.UPDATE_ORDER_STATUS);
 
-    const order = await db.order.findUnique({
+    const order = await getDb().order.findUnique({
       where: { id: orderId, tenantId: session.tenantId },
       select: { id: true, storeId: true, status: true },
     });
@@ -87,7 +91,7 @@ export async function updateOrderStatusAction(orderId: string, newStatus: OrderS
       return actionSuccess();
     }
 
-    await db.$transaction(async (tx) => {
+    await getDb().$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
         data: { status: newStatus },
@@ -117,9 +121,9 @@ export async function updateOrderStatusAction(orderId: string, newStatus: OrderS
  */
 export async function confirmPaymentAction(orderId: string): Promise<ActionResult> {
   try {
-    const session = await requireTenantMember();
+    const session = await requirePermission(Permission.CONFIRM_MANUAL_PAYMENT);
 
-    const order = await db.order.findUnique({
+    const order = await getDb().order.findUnique({
       where: { id: orderId, tenantId: session.tenantId },
       select: { id: true, storeId: true, paymentStatus: true },
     });
@@ -132,7 +136,7 @@ export async function confirmPaymentAction(orderId: string): Promise<ActionResul
       throw new BusinessRuleError('Este pedido já está pago');
     }
 
-    await db.$transaction(async (tx) => {
+    await getDb().$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
         data: { paymentStatus: 'PAID' },

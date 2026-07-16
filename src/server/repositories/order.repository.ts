@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
 
 // =============================================================================
@@ -43,9 +43,18 @@ interface CreateOrderResult {
  * Order + OrderItems + OrderItemOptions + Payment + OrderStatusHistory
  */
 export async function createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
-  const { input, storeId, tenantId, resolvedItems, deliveryFee, deliveryZoneName, subtotal, total } = params;
+  const {
+    input,
+    storeId,
+    tenantId,
+    resolvedItems,
+    deliveryFee,
+    deliveryZoneName,
+    subtotal,
+    total,
+  } = params;
 
-  return db.$transaction(async (tx) => {
+  return getDb().$transaction(async (tx) => {
     // 1. Checar idempotência — se já existe, retornar o existente
     const existing = await tx.order.findUnique({
       where: {
@@ -144,7 +153,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
  * Busca um pedido pelo publicToken para exibição pública.
  */
 export async function getOrderByPublicToken(publicToken: string) {
-  return db.order.findUnique({
+  return getDb().order.findUnique({
     where: { publicToken },
     select: {
       id: true,

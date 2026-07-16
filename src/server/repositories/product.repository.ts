@@ -1,11 +1,11 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 
 // =============================================================================
 // Product Repository
 // =============================================================================
 
 export async function listProducts(tenantId: string, storeId: string) {
-  return db.product.findMany({
+  return getDb().product.findMany({
     where: { tenantId, storeId },
     include: {
       category: { select: { id: true, name: true } },
@@ -16,14 +16,14 @@ export async function listProducts(tenantId: string, storeId: string) {
 }
 
 export async function listProductsByCategory(categoryId: string, tenantId: string) {
-  return db.product.findMany({
+  return getDb().product.findMany({
     where: { categoryId, tenantId },
     orderBy: { sortOrder: 'asc' },
   });
 }
 
 export async function findProductById(id: string, tenantId: string) {
-  return db.product.findFirst({
+  return getDb().product.findFirst({
     where: { id, tenantId },
     include: {
       category: { select: { id: true, name: true } },
@@ -49,7 +49,7 @@ export async function createProduct(data: {
   allowNotes?: boolean;
   sortOrder?: number;
 }) {
-  return db.product.create({ data });
+  return getDb().product.create({ data });
 }
 
 export async function updateProduct(
@@ -68,14 +68,14 @@ export async function updateProduct(
     sortOrder?: number;
   },
 ) {
-  return db.product.updateMany({
+  return getDb().product.updateMany({
     where: { id, tenantId },
     data,
   });
 }
 
 export async function deleteProduct(id: string, tenantId: string) {
-  return db.product.deleteMany({
+  return getDb().product.deleteMany({
     where: { id, tenantId },
   });
 }

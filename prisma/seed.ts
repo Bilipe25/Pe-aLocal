@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import argon2 from 'argon2';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { config as loadEnv } from 'dotenv';
 
 // =============================================================================
@@ -19,13 +19,33 @@ if (!connectionString) {
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-async function hash(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 65536,
-    timeCost: 3,
-    parallelism: 1,
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} deve estar definida para executar o seed`);
+  return value;
+}
+
+const supabase = createSupabaseClient(
+  requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  requiredEnv('SUPABASE_SECRET_KEY'),
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
+
+async function ensureAuthUser(email: string, password: string) {
+  const created = await supabase.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
   });
+  if (created.data.user) return created.data.user;
+
+  const listed = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const existing = listed.data.users.find(
+    (user) => user.email?.toLowerCase() === email.toLowerCase(),
+  );
+  if (existing) return existing;
+
+  throw created.error ?? listed.error ?? new Error(`Falha ao criar ${email} no Supabase Auth`);
 }
 
 async function main() {
@@ -33,15 +53,16 @@ async function main() {
 
   // 1. Super Admin
   const superAdminEmail = process.env.SUPER_ADMIN_EMAIL ?? 'admin@pedidolocal.com.br';
-  const superAdminPassword = 'SuperAdmin123!';
+  const superAdminPassword = requiredEnv('SEED_SUPER_ADMIN_PASSWORD');
+  const superAdminAuth = await ensureAuthUser(superAdminEmail, superAdminPassword);
 
   const superAdmin = await prisma.user.upsert({
     where: { email: superAdminEmail },
-    update: {},
+    update: { authUserId: superAdminAuth.id, passwordHash: null },
     create: {
       email: superAdminEmail,
       name: 'Administrador',
-      passwordHash: await hash(superAdminPassword),
+      authUserId: superAdminAuth.id,
       isActive: true,
       emailVerified: true,
     },
@@ -63,15 +84,16 @@ async function main() {
 
   // 3. Owner
   const ownerEmail = process.env.SEED_OWNER_EMAIL ?? 'dono@demo.com';
-  const ownerPassword = process.env.SEED_OWNER_PASSWORD ?? 'SenhaDemo123!';
+  const ownerPassword = requiredEnv('SEED_OWNER_PASSWORD');
+  const ownerAuth = await ensureAuthUser(ownerEmail, ownerPassword);
 
   const owner = await prisma.user.upsert({
     where: { email: ownerEmail },
-    update: {},
+    update: { authUserId: ownerAuth.id, passwordHash: null },
     create: {
       email: ownerEmail,
       name: 'Zé da Lanchonete',
-      passwordHash: await hash(ownerPassword),
+      authUserId: ownerAuth.id,
       isActive: true,
       emailVerified: true,
     },
@@ -85,13 +107,15 @@ async function main() {
   console.log(`✅ Owner: ${owner.email}`);
 
   // 4. Manager
+  const teamPassword = requiredEnv('SEED_TEAM_PASSWORD');
+  const managerAuth = await ensureAuthUser('gerente@demo.com', teamPassword);
   const manager = await prisma.user.upsert({
     where: { email: 'gerente@demo.com' },
-    update: {},
+    update: { authUserId: managerAuth.id, passwordHash: null },
     create: {
       email: 'gerente@demo.com',
       name: 'Maria Gerente',
-      passwordHash: await hash('SenhaDemo123!'),
+      authUserId: managerAuth.id,
       isActive: true,
     },
   });
@@ -104,13 +128,14 @@ async function main() {
   console.log(`✅ Manager: ${manager.email}`);
 
   // 5. Attendant
+  const attendantAuth = await ensureAuthUser('atendente@demo.com', teamPassword);
   const attendant = await prisma.user.upsert({
     where: { email: 'atendente@demo.com' },
-    update: {},
+    update: { authUserId: attendantAuth.id, passwordHash: null },
     create: {
       email: 'atendente@demo.com',
       name: 'João Atendente',
-      passwordHash: await hash('SenhaDemo123!'),
+      authUserId: attendantAuth.id,
       isActive: true,
     },
   });
@@ -399,11 +424,7 @@ async function main() {
   console.log('✅ Zonas de entrega criadas');
 
   console.log('\n🎉 Seed concluído!\n');
-  console.log('Credenciais:');
-  console.log(`  Super Admin:  ${superAdminEmail} / ${superAdminPassword}`);
-  console.log(`  Owner:        ${ownerEmail} / ${ownerPassword}`);
-  console.log('  Manager:      gerente@demo.com / SenhaDemo123!');
-  console.log('  Attendant:    atendente@demo.com / SenhaDemo123!');
+  console.log('Usuários de desenvolvimento associados ao Supabase Auth.');
   console.log(`\n  Loja: http://localhost:3000/${store.slug}`);
 }
 

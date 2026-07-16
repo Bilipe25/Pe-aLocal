@@ -1,0 +1,135 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pedidolocal-staging",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-03",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "images": {
+    "binding": "IMAGES",
+  },
+  "placement": {
+    "mode": "smart",
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05,
+    },
+  },
+  "vars": {
+    "APP_ENV": "staging",
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "pedidolocal-staging",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "pedidolocal-staging-opennext-cache",
+    },
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 },
+    },
+    {
+      "name": "ORDER_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
+  "env": {
+    "staging": {
+      "name": "pedidolocal-staging",
+      "vars": {
+        "APP_ENV": "staging",
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "pedidolocal-staging",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "pedidolocal-staging-opennext-cache",
+        },
+      ],
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "00000000000000000000000000000000",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "AUTH_RATE_LIMITER",
+          "namespace_id": "1001",
+          "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "ORDER_RATE_LIMITER",
+          "namespace_id": "1002",
+          "simple": { "limit": 10, "period": 60 },
+        },
+      ],
+    },
+    "production": {
+      "name": "pedidolocal-production",
+      "vars": {
+        "APP_ENV": "production",
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "pedidolocal-production",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "pedidolocal-production-opennext-cache",
+        },
+      ],
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "00000000000000000000000000000000",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "AUTH_RATE_LIMITER",
+          "namespace_id": "2001",
+          "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "ORDER_RATE_LIMITER",
+          "namespace_id": "2002",
+          "simple": { "limit": 10, "period": 60 },
+        },
+      ],
+    },
+  },
+}

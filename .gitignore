@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/.pnpm-store/
 /.pnp
 .pnp.*
 .yarn/*
@@ -16,6 +17,9 @@
 # next.js
 /.next/
 /out/
+/.open-next/
+/.wrangler/
+/.wrangler-config/
 
 # production
 /build
@@ -39,6 +43,7 @@ yarn-error.log*
 
 # Keep .env.example tracked
 !.env.example
+!.dev.vars.example
 
 # vercel
 .vercel

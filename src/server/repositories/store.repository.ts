@@ -1,4 +1,4 @@
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 import type { StoreStatus } from '@prisma/client';
 
 // =============================================================================
@@ -6,7 +6,7 @@ import type { StoreStatus } from '@prisma/client';
 // =============================================================================
 
 export async function findStoreByTenantId(tenantId: string) {
-  return db.store.findFirst({
+  return getDb().store.findFirst({
     where: { tenantId },
     include: {
       settings: true,
@@ -17,7 +17,7 @@ export async function findStoreByTenantId(tenantId: string) {
 }
 
 export async function findStoreById(id: string, tenantId: string) {
-  return db.store.findFirst({
+  return getDb().store.findFirst({
     where: { id, tenantId },
     include: {
       settings: true,
@@ -28,7 +28,7 @@ export async function findStoreById(id: string, tenantId: string) {
 }
 
 export async function findStoreBySlug(slug: string) {
-  return db.store.findUnique({
+  return getDb().store.findUnique({
     where: { slug },
     select: { id: true, tenantId: true },
   });
@@ -48,7 +48,7 @@ export async function updateStore(
     coverUrl?: string;
   },
 ) {
-  return db.store.update({
+  return getDb().store.update({
     where: { id, tenantId },
     data,
   });
@@ -73,7 +73,7 @@ export async function upsertStoreSettings(
     pixInstructions?: string;
   },
 ) {
-  return db.storeSettings.upsert({
+  return getDb().storeSettings.upsert({
     where: { storeId },
     update: data,
     create: { storeId, ...data },
@@ -92,7 +92,7 @@ export async function upsertStoreAddress(
     zipCode: string;
   },
 ) {
-  return db.storeAddress.upsert({
+  return getDb().storeAddress.upsert({
     where: { storeId },
     update: data,
     create: { storeId, ...data },
@@ -109,11 +109,17 @@ export async function upsertOpeningHours(
   }[],
 ) {
   const operations = hours.map((h) =>
-    db.openingHour.upsert({
+    getDb().openingHour.upsert({
       where: { storeId_dayOfWeek: { storeId, dayOfWeek: h.dayOfWeek } },
       update: { openTime: h.openTime, closeTime: h.closeTime, isActive: h.isActive },
-      create: { storeId, dayOfWeek: h.dayOfWeek, openTime: h.openTime, closeTime: h.closeTime, isActive: h.isActive },
+      create: {
+        storeId,
+        dayOfWeek: h.dayOfWeek,
+        openTime: h.openTime,
+        closeTime: h.closeTime,
+        isActive: h.isActive,
+      },
     }),
   );
-  return db.$transaction(operations);
+  return getDb().$transaction(operations);
 }

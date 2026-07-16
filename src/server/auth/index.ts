@@ -5,22 +5,20 @@
 // Usadas em Server Actions, Route Handlers e Server Components.
 // =============================================================================
 
-import { Role, isRoleAtLeast } from '@/server/permissions';
+import { Role, hasPermission, isRoleAtLeast, type Permission } from '@/server/permissions';
 import { validateCurrentSession } from '@/server/services/auth.service';
-import {
-  AuthenticationError,
-  AuthorizationError,
-  TenantAccessError,
-} from '@/server/errors';
+import * as storeRepo from '@/server/repositories/store.repository';
+import { AuthenticationError, AuthorizationError, TenantAccessError } from '@/server/errors';
 
 /**
  * Contexto de sessão autenticada.
  */
 export interface SessionContext {
   userId: string;
+  authUserId: string;
   email: string;
   name: string;
-  role: Role;
+  role: Role | null;
   tenantId: string | null;
   storeId: string | null;
 }
@@ -28,7 +26,8 @@ export interface SessionContext {
 /**
  * Contexto de tenant para operações privadas.
  */
-export interface TenantContext extends SessionContext {
+export interface TenantContext extends Omit<SessionContext, 'role' | 'tenantId'> {
+  role: Role;
   tenantId: string;
 }
 
@@ -77,11 +76,19 @@ export async function requireSuperAdmin(): Promise<SessionContext> {
 export async function requireTenantMember(): Promise<TenantContext> {
   const session = await requireAuthenticatedUser();
 
-  if (!session.tenantId) {
+  if (!session.tenantId || !session.role) {
     throw new TenantAccessError('Você não está vinculado a nenhum estabelecimento.');
   }
 
   return session as TenantContext;
+}
+
+export async function requirePermission(permission: Permission): Promise<TenantContext> {
+  const session = await requireTenantMember();
+  if (!hasPermission(session.role, permission)) {
+    throw new AuthorizationError('Seu perfil não possui permissão para esta ação.');
+  }
+  return session;
 }
 
 /**
@@ -95,9 +102,7 @@ export async function requireTenantRole(minimumRole: Role): Promise<TenantContex
   const session = await requireTenantMember();
 
   if (!isRoleAtLeast(session.role, minimumRole)) {
-    throw new AuthorizationError(
-      'Seu perfil não possui permissão para esta ação.',
-    );
+    throw new AuthorizationError('Seu perfil não possui permissão para esta ação.');
   }
 
   return session;
@@ -114,10 +119,9 @@ export async function requireTenantRole(minimumRole: Role): Promise<TenantContex
 export async function requireStoreAccess(storeId: string): Promise<TenantContext> {
   const session = await requireTenantMember();
 
-  // No MVP, se o usuário pertence ao tenant, tem acesso a todas as lojas do tenant
-  if (session.storeId !== storeId) {
-    // Verificação básica — futuramente, consultar o banco para garantir que a loja pertence ao tenant
-    // Por ora, aceitar qualquer loja do mesmo tenant (será reforçado nas queries)
+  const store = await storeRepo.findStoreById(storeId, session.tenantId);
+  if (!store) {
+    throw new TenantAccessError('A loja não pertence ao tenant autenticado.');
   }
 
   return session;

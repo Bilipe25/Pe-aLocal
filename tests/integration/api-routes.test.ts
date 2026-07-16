@@ -34,6 +34,14 @@ describe('API routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(body).toMatchObject({ status: 'ok', version: '0.1.0' });
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !('timestamp' in body) ||
+      typeof body.timestamp !== 'string'
+    ) {
+      throw new Error('Health check sem timestamp válido');
+    }
     expect(new Date(body.timestamp).toISOString()).toBe(body.timestamp);
   });
 
@@ -66,13 +74,13 @@ describe('API routes', () => {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.code).toBe('VALIDATION_ERROR');
-      expect(body.details).toEqual(
-        expect.arrayContaining([
+      expect(body).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: expect.arrayContaining([
           expect.objectContaining({ field: 'email' }),
           expect.objectContaining({ field: 'password' }),
         ]),
-      );
+      });
     });
 
     it('encaminha IP e user-agent e retorna o contexto autenticado', async () => {

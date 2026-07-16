@@ -1,14 +1,14 @@
 import 'server-only';
 
 import { unstable_cache } from 'next/cache';
-import { db } from '@/server/database/client';
+import { getDb } from '@/server/database/client';
 
 // =============================================================================
 // Queries Públicas da Loja (com cache)
 // =============================================================================
 
 async function getStoreFromDb(slug: string) {
-  const store = await db.store.findUnique({
+  const store = await getDb().store.findUnique({
     where: { slug },
     select: {
       id: true,
@@ -64,11 +64,11 @@ async function getStoreFromDb(slug: string) {
 export const getPublicStoreBySlug = unstable_cache(
   async (slug: string) => getStoreFromDb(slug),
   ['public-store'], // cache key
-  { revalidate: 60, tags: ['store'] } // revalidate a cada 60s ou quando tag for invalidada
+  { revalidate: 60, tags: ['store'] }, // revalidate a cada 60s ou quando tag for invalidada
 );
 
 async function getCatalogFromDb(storeId: string, tenantId: string) {
-  const categories = await db.category.findMany({
+  const categories = await getDb().category.findMany({
     where: { storeId, tenantId, isActive: true },
     orderBy: { sortOrder: 'asc' },
     select: {
@@ -125,11 +125,11 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
 export const getPublicCatalog = unstable_cache(
   async (storeId: string, tenantId: string) => getCatalogFromDb(storeId, tenantId),
   ['public-catalog'],
-  { revalidate: 60, tags: ['catalog'] }
+  { revalidate: 60, tags: ['catalog'] },
 );
 
 async function getDeliveryZonesFromDb(storeId: string) {
-  return db.deliveryZone.findMany({
+  return getDb().deliveryZone.findMany({
     where: { storeId, isActive: true },
     orderBy: { sortOrder: 'asc' },
     select: {
@@ -148,6 +148,5 @@ async function getDeliveryZonesFromDb(storeId: string) {
 export const getPublicDeliveryZones = unstable_cache(
   async (storeId: string) => getDeliveryZonesFromDb(storeId),
   ['public-delivery-zones'],
-  { revalidate: 60, tags: ['store', 'delivery-zones'] }
+  { revalidate: 60, tags: ['store', 'delivery-zones'] },
 );
-

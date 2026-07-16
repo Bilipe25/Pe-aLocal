@@ -1,7 +1,8 @@
 'use server';
 
 import { updateTag } from 'next/cache';
-import { requireTenantMember } from '@/server/auth';
+import { requirePermission, requireTenantMember } from '@/server/auth';
+import { Permission } from '@/server/permissions';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, NotFoundError, type ActionResult } from '@/server/errors';
 import { createDeliveryZoneSchema } from '@/schemas/delivery';
@@ -19,9 +20,11 @@ export async function listDeliveryZonesAction() {
   return dzRepo.listDeliveryZones(ctx.tenantId, store.id);
 }
 
-export async function createDeliveryZoneAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createDeliveryZoneAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_DELIVERY);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -46,9 +49,12 @@ export async function createDeliveryZoneAction(formData: FormData): Promise<Acti
   }
 }
 
-export async function updateDeliveryZoneAction(id: string, formData: FormData): Promise<ActionResult> {
+export async function updateDeliveryZoneAction(
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_DELIVERY);
 
     const raw = Object.fromEntries(formData);
     const parsed = createDeliveryZoneSchema.safeParse(raw);
@@ -71,7 +77,7 @@ export async function updateDeliveryZoneAction(id: string, formData: FormData): 
 
 export async function deleteDeliveryZoneAction(id: string): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_DELIVERY);
     await dzRepo.deleteDeliveryZone(id, ctx.tenantId);
     updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);

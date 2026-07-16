@@ -1,7 +1,8 @@
 'use server';
 
 import { updateTag } from 'next/cache';
-import { requireTenantMember } from '@/server/auth';
+import { requirePermission, requireTenantMember } from '@/server/auth';
+import { Permission } from '@/server/permissions';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, type ActionResult } from '@/server/errors';
 import {
@@ -27,7 +28,7 @@ export async function getStoreForDashboard() {
 
 export async function updateStoreAction(formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_STORE);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -55,7 +56,7 @@ export async function updateStoreAction(formData: FormData): Promise<ActionResul
 
 export async function updateStoreSettingsAction(formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_STORE);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -75,7 +76,7 @@ export async function updateStoreSettingsAction(formData: FormData): Promise<Act
 
 export async function updatePixConfigAction(formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_STORE);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -95,7 +96,7 @@ export async function updatePixConfigAction(formData: FormData): Promise<ActionR
 
 export async function updateAddressAction(formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_STORE);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -113,9 +114,11 @@ export async function updateAddressAction(formData: FormData): Promise<ActionRes
   }
 }
 
-export async function updateHoursAction(data: { hours: { dayOfWeek: string; openTime: string; closeTime: string; isActive: boolean }[] }): Promise<ActionResult> {
+export async function updateHoursAction(data: {
+  hours: { dayOfWeek: string; openTime: string; closeTime: string; isActive: boolean }[];
+}): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_HOURS);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -132,9 +135,11 @@ export async function updateHoursAction(data: { hours: { dayOfWeek: string; open
   }
 }
 
-export async function toggleStoreStatusAction(status: 'OPEN' | 'CLOSED' | 'PAUSED'): Promise<ActionResult> {
+export async function toggleStoreStatusAction(
+  status: 'OPEN' | 'CLOSED' | 'PAUSED',
+): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.CONFIGURE_STORE);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 

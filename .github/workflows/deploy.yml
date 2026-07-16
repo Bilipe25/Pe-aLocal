@@ -1,0 +1,44 @@
+name: Deploy Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente autorizado para deploy
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm cf:build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
+      - run: pnpm exec opennextjs-cloudflare deploy --env "${{ inputs.environment }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Rollback hint
+        if: failure()
+        run: echo "Use 'pnpm exec wrangler rollback --env ${{ inputs.environment }}' após revisar a versão anterior."

@@ -1,10 +1,18 @@
 'use server';
 
 import { updateTag } from 'next/cache';
-import { requireTenantMember } from '@/server/auth';
+import { requirePermission, requireTenantMember } from '@/server/auth';
+import { Permission } from '@/server/permissions';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionSuccess, actionError, NotFoundError, type ActionResult } from '@/server/errors';
-import { createCategorySchema, createProductSchema, createOptionGroupSchema, createOptionSchema, updateOptionGroupSchema, updateOptionSchema } from '@/schemas/catalog';
+import {
+  createCategorySchema,
+  createProductSchema,
+  createOptionGroupSchema,
+  createOptionSchema,
+  updateOptionGroupSchema,
+  updateOptionSchema,
+} from '@/schemas/catalog';
 import * as categoryRepo from '@/server/repositories/category.repository';
 import * as productRepo from '@/server/repositories/product.repository';
 import * as optionGroupRepo from '@/server/repositories/option-group.repository';
@@ -26,9 +34,11 @@ export async function getCategoryAction(id: string) {
   return categoryRepo.findCategoryById(id, ctx.tenantId);
 }
 
-export async function createCategoryAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createCategoryAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -53,7 +63,7 @@ export async function createCategoryAction(formData: FormData): Promise<ActionRe
 
 export async function updateCategoryAction(id: string, formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = createCategorySchema.safeParse(raw);
@@ -71,7 +81,7 @@ export async function updateCategoryAction(id: string, formData: FormData): Prom
 
 export async function deleteCategoryAction(id: string): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
     await categoryRepo.deleteCategory(id, ctx.tenantId);
     updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
@@ -96,9 +106,11 @@ export async function getProductAction(id: string) {
   return productRepo.findProductById(id, ctx.tenantId);
 }
 
-export async function createProductAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createProductAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
     const store = await storeRepo.findStoreByTenantId(ctx.tenantId);
     if (!store) return actionError(new NotFoundError('Loja'));
 
@@ -125,7 +137,7 @@ export async function createProductAction(formData: FormData): Promise<ActionRes
 
 export async function updateProductAction(id: string, formData: FormData): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = createProductSchema.safeParse(raw);
@@ -147,7 +159,7 @@ export async function updateProductAction(id: string, formData: FormData): Promi
 
 export async function deleteProductAction(id: string): Promise<ActionResult> {
   try {
-    const ctx = await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
     await productRepo.deleteProduct(id, ctx.tenantId);
     updateTag(CACHE_TAGS.catalog(ctx.tenantId));
     return actionSuccess(undefined);
@@ -160,15 +172,20 @@ export async function deleteProductAction(id: string): Promise<ActionResult> {
 // Option Group & Option Actions
 // =============================================================================
 
-export async function createOptionGroupAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createOptionGroupAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = createOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
     }
+
+    const product = await productRepo.findProductById(parsed.data.productId, ctx.tenantId);
+    if (!product) return actionError(new NotFoundError('Produto'));
 
     const group = await optionGroupRepo.createOptionGroup(parsed.data);
     return actionSuccess({ id: group.id });
@@ -177,14 +194,22 @@ export async function createOptionGroupAction(formData: FormData): Promise<Actio
   }
 }
 
-export async function updateOptionGroupAction(id: string, formData: FormData): Promise<ActionResult> {
+export async function updateOptionGroupAction(
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = updateOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
+    }
+
+    const group = await optionGroupRepo.findOptionGroupById(id);
+    if (!group || group.product.tenantId !== ctx.tenantId) {
+      return actionError(new NotFoundError('Grupo de opções'));
     }
 
     await optionGroupRepo.updateOptionGroup(id, parsed.data);
@@ -196,7 +221,11 @@ export async function updateOptionGroupAction(id: string, formData: FormData): P
 
 export async function deleteOptionGroupAction(id: string): Promise<ActionResult> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const group = await optionGroupRepo.findOptionGroupById(id);
+    if (!group || group.product.tenantId !== ctx.tenantId) {
+      return actionError(new NotFoundError('Grupo de opções'));
+    }
     await optionGroupRepo.deleteOptionGroup(id);
     return actionSuccess(undefined);
   } catch (error) {
@@ -204,14 +233,21 @@ export async function deleteOptionGroupAction(id: string): Promise<ActionResult>
   }
 }
 
-export async function createOptionAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
+export async function createOptionAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = createOptionSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
+    }
+
+    const group = await optionGroupRepo.findOptionGroupById(parsed.data.groupId);
+    if (!group || group.product.tenantId !== ctx.tenantId) {
+      return actionError(new NotFoundError('Grupo de opções'));
     }
 
     const option = await optionGroupRepo.createOption({
@@ -226,12 +262,17 @@ export async function createOptionAction(formData: FormData): Promise<ActionResu
 
 export async function updateOptionAction(id: string, formData: FormData): Promise<ActionResult> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
     const parsed = updateOptionSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
+    }
+
+    const option = await optionGroupRepo.findOptionById(id);
+    if (!option || option.group.product.tenantId !== ctx.tenantId) {
+      return actionError(new NotFoundError('Opção'));
     }
 
     await optionGroupRepo.updateOption(id, {
@@ -246,7 +287,11 @@ export async function updateOptionAction(id: string, formData: FormData): Promis
 
 export async function deleteOptionAction(id: string): Promise<ActionResult> {
   try {
-    await requireTenantMember();
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const option = await optionGroupRepo.findOptionById(id);
+    if (!option || option.group.product.tenantId !== ctx.tenantId) {
+      return actionError(new NotFoundError('Opção'));
+    }
     await optionGroupRepo.deleteOption(id);
     return actionSuccess(undefined);
   } catch (error) {

@@ -6,13 +6,17 @@ import { errorToResponse } from '@/server/errors';
  *
  * Revoga a sessão e remove o cookie.
  */
-export async function POST() {
+export async function POST(request?: Request) {
   try {
     await logout();
 
+    if (request?.headers.get('accept')?.includes('text/html')) {
+      return Response.redirect(new URL('/login', request.url), 303);
+    }
+
     return Response.json(
       { message: 'Logout realizado com sucesso.' },
-      { status: 200 },
+      { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {
     return errorToResponse(error);

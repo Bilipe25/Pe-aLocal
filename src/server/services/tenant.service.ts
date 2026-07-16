@@ -1,8 +1,23 @@
-import { hashPassword } from '@/server/auth/password';
+import { createAdminClient } from '@/lib/supabase/admin';
 import * as tenantRepo from '@/server/repositories/tenant.repository';
 import * as memberRepo from '@/server/repositories/tenant-member.repository';
 import * as userRepo from '@/server/repositories/user.repository';
 import { ConflictError } from '@/server/errors';
+
+async function createAuthIdentity(email: string, password: string, name: string) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: email.toLowerCase().trim(),
+    password,
+    email_confirm: false,
+    user_metadata: { name },
+  });
+
+  if (error || !data.user) {
+    throw new ConflictError('Não foi possível criar a identidade de acesso.');
+  }
+  return data.user;
+}
 
 // =============================================================================
 // Tenant Service
@@ -24,6 +39,8 @@ export async function createTenantWithOwner(data: {
     throw new ConflictError('Este e-mail já está em uso.');
   }
 
+  const authUser = await createAuthIdentity(data.ownerEmail, data.ownerPassword, data.ownerName);
+
   // 2. Criar tenant
   const tenant = await tenantRepo.createTenant({
     name: data.tenantName,
@@ -32,11 +49,10 @@ export async function createTenantWithOwner(data: {
   });
 
   // 3. Criar owner
-  const passwordHash = await hashPassword(data.ownerPassword);
   const owner = await userRepo.createUser({
+    authUserId: authUser.id,
     email: data.ownerEmail,
     name: data.ownerName,
-    passwordHash,
   });
 
   // 4. Vincular como OWNER
@@ -72,11 +88,11 @@ export async function addTenantMember(data: {
     }
     userId = existingUser.id;
   } else {
-    const passwordHash = await hashPassword(data.password);
+    const authUser = await createAuthIdentity(data.email, data.password, data.name);
     const newUser = await userRepo.createUser({
+      authUserId: authUser.id,
       email: data.email,
       name: data.name,
-      passwordHash,
     });
     userId = newUser.id;
   }
