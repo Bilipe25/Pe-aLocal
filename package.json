@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:a11y": "playwright test tests/e2e/accessibility.spec.ts",
     "test:workerd": "playwright test --config=playwright.workerd.config.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
@@ -62,6 +63,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "6.9.1",

@@ -1,0 +1,53 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+
+import { credentialsFromEnv, loginAs } from './helpers';
+
+async function expectNoHighImpactViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const violations = results.violations.filter(
+    (violation) => violation.impact === 'critical' || violation.impact === 'serious',
+  );
+
+  expect(
+    violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      help: violation.help,
+      targets: violation.nodes.flatMap((node) => node.target),
+    })),
+  ).toEqual([]);
+}
+
+test.describe('acessibilidade WCAG', () => {
+  test('home e login não possuem violações críticas ou sérias', async ({ page }) => {
+    await page.goto('/');
+    await expectNoHighImpactViolations(page);
+
+    await page.goto('/login');
+    await expectNoHighImpactViolations(page);
+  });
+
+  test('cardápio público mantém semântica e contraste verificáveis', async ({ page }) => {
+    const storeSlug = process.env.E2E_STORE_SLUG;
+    test.skip(!storeSlug, 'E2E_STORE_SLUG não foi configurado.');
+
+    await page.goto(`/${storeSlug}`);
+    await expect(page.locator('.storefront-theme')).toBeVisible();
+    await expectNoHighImpactViolations(page);
+  });
+
+  test('editor administrativo não possui violações críticas ou sérias', async ({ page }) => {
+    const credentials = credentialsFromEnv('SUPER_ADMIN');
+    const tenantId = process.env.E2E_TENANT_ID;
+    const storeId = process.env.E2E_STORE_ID;
+    test.skip(!credentials || !tenantId || !storeId, 'Ambiente E2E administrativo incompleto.');
+
+    await loginAs(page, credentials!);
+    await page.goto(`/admin/tenants/${tenantId}/stores/${storeId}/customization`);
+    await expect(page.getByRole('heading', { name: 'Prévia responsiva' })).toBeVisible();
+    await expectNoHighImpactViolations(page);
+  });
+});
