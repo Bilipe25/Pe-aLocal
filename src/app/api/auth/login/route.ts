@@ -39,14 +39,20 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') ?? undefined;
 
     // Login
-    const result = await login(parsed.data, { ipAddress, userAgent });
+    const requestedRedirect =
+      typeof body === 'object' && body !== null && 'redirect' in body
+        ? String(body.redirect)
+        : null;
+    const result = await login(parsed.data, {
+      ipAddress,
+      userAgent,
+      redirectTo: requestedRedirect,
+    });
 
     return Response.json(
       {
         user: result.user,
-        tenantId: result.tenantId,
-        storeId: result.storeId,
-        role: result.role,
+        destination: result.destination,
       },
       { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
     );

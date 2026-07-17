@@ -6,8 +6,48 @@ import * as auditRepo from '@/server/repositories/audit-log.repository';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { AuthenticationError, RateLimitError, ValidationError } from '@/server/errors';
 import type { SessionContext } from '@/server/auth';
+import { PlatformRole, type TenantRole } from '@/server/permissions';
 
 const LOGIN_ERROR_MESSAGE = 'E-mail ou senha incorretos.';
+
+function safeInternalPath(value?: string | null): string | null {
+  if (!value || value.length > 2048 || !value.startsWith('/') || value.startsWith('//')) {
+    return null;
+  }
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return null;
+
+  try {
+    const parsed = new URL(value, 'https://pedidolocal.internal');
+    if (parsed.origin !== 'https://pedidolocal.internal') return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function resolvePostLoginDestination(
+  context: {
+    platformRole: PlatformRole;
+    tenantId: string | null;
+  },
+  requestedRedirect?: string | null,
+): string {
+  const safeRedirect = safeInternalPath(requestedRedirect);
+
+  if (context.platformRole === PlatformRole.SUPER_ADMIN) {
+    return safeRedirect === '/admin' || safeRedirect?.startsWith('/admin/')
+      ? safeRedirect
+      : '/admin';
+  }
+
+  if (context.tenantId) {
+    return safeRedirect === '/dashboard' || safeRedirect?.startsWith('/dashboard/')
+      ? safeRedirect
+      : '/dashboard';
+  }
+
+  return '/access-pending';
+}
 
 async function resolveProfile(authUser: {
   id: string;
@@ -31,12 +71,14 @@ async function resolveProfile(authUser: {
 
 export async function login(
   input: LoginInput,
-  meta?: { ipAddress?: string; userAgent?: string },
+  meta?: { ipAddress?: string; userAgent?: string; redirectTo?: string | null },
 ): Promise<{
   user: { id: string; email: string; name: string };
+  platformRole: PlatformRole;
+  tenantRole: TenantRole | null;
   tenantId: string | null;
   storeId: string | null;
-  role: string | null;
+  destination: string;
 }> {
   const parsed = loginSchema.safeParse(input);
   if (!parsed.success) {
@@ -89,7 +131,7 @@ export async function login(
   await rateLimiter.reset(identifier);
   const membership = await memberRepo.findFirstActiveMembership(profile.id);
   const tenantId = membership?.tenantId ?? null;
-  const role = membership?.role ?? null;
+  const tenantRole = membership?.role ?? null;
   const storeId = membership?.tenant?.stores?.[0]?.id ?? null;
 
   await auditRepo.createAuditLog({
@@ -104,9 +146,14 @@ export async function login(
 
   return {
     user: { id: profile.id, email: profile.email, name: profile.name },
+    platformRole: profile.platformRole,
+    tenantRole,
     tenantId,
     storeId,
-    role,
+    destination: resolvePostLoginDestination(
+      { platformRole: profile.platformRole, tenantId },
+      meta?.redirectTo,
+    ),
   };
 }
 
@@ -147,7 +194,8 @@ export async function validateCurrentSession(): Promise<SessionContext | null> {
     authUserId,
     email: profile.email,
     name: profile.name,
-    role: membership?.role ?? null,
+    platformRole: profile.platformRole,
+    tenantRole: membership?.role ?? null,
     tenantId: membership?.tenantId ?? null,
     storeId: membership?.tenant?.stores?.[0]?.id ?? null,
   };

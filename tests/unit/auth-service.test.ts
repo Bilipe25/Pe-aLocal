@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { RateLimitError, ValidationError } from '@/server/errors';
-import { login, logout, validateCurrentSession } from '@/server/services/auth.service';
+
+import { AuthenticationError, RateLimitError, ValidationError } from '@/server/errors';
+import {
+  login,
+  logout,
+  resolvePostLoginDestination,
+  validateCurrentSession,
+} from '@/server/services/auth.service';
 
 const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
@@ -24,27 +30,20 @@ vi.mock('@/lib/supabase/server', () => ({
     },
   }),
 }));
-
 vi.mock('@/server/repositories/user.repository', () => ({
   findUserByAuthUserId: mocks.findUserByAuthUserId,
   findUserByEmail: mocks.findUserByEmail,
   linkAuthIdentity: mocks.linkAuthIdentity,
 }));
-
 vi.mock('@/server/repositories/tenant-member.repository', () => ({
   findFirstActiveMembership: mocks.findFirstActiveMembership,
 }));
-
 vi.mock('@/server/repositories/audit-log.repository', () => ({
   createAuditLog: mocks.createAuditLog,
 }));
-
 vi.mock('@/server/rate-limit', () => ({
   RATE_LIMITS: { login: { maxAttempts: 5, windowInSeconds: 60 } },
-  getRateLimiter: () => ({
-    check: mocks.rateLimitCheck,
-    reset: mocks.rateLimitReset,
-  }),
+  getRateLimiter: () => ({ check: mocks.rateLimitCheck, reset: mocks.rateLimitReset }),
 }));
 
 const profile = {
@@ -52,6 +51,7 @@ const profile = {
   authUserId: 'auth-1',
   email: 'dono@demo.com',
   name: 'Dono Demo',
+  platformRole: 'USER',
   isActive: true,
   emailVerified: true,
 };
@@ -72,10 +72,7 @@ describe('AuthService com Supabase Auth', () => {
     });
     mocks.findUserByAuthUserId.mockResolvedValue(profile);
     mocks.findFirstActiveMembership.mockResolvedValue(null);
-    mocks.getClaims.mockResolvedValue({
-      data: { claims: { sub: 'auth-1' } },
-      error: null,
-    });
+    mocks.getClaims.mockResolvedValue({ data: { claims: { sub: 'auth-1' } }, error: null });
     mocks.signOut.mockResolvedValue({ error: null });
   });
 
@@ -107,17 +104,34 @@ describe('AuthService com Supabase Auth', () => {
     );
   });
 
-  it('retorna role nula para identidade válida sem membership', async () => {
+  it('não transforma usuário sem membership em administrador', async () => {
     await expect(login({ email: 'dono@demo.com', password: 'SenhaDemo123!' })).resolves.toEqual({
       user: { id: 'profile-1', email: 'dono@demo.com', name: 'Dono Demo' },
+      platformRole: 'USER',
+      tenantRole: null,
       tenantId: null,
       storeId: null,
-      role: null,
+      destination: '/access-pending',
     });
-    expect(mocks.rateLimitReset).toHaveBeenCalled();
   });
 
-  it('monta o contexto somente a partir de claims e perfil ativo', async () => {
+  it('SUPER_ADMIN não depende de tenant e segue para /admin', async () => {
+    mocks.findUserByAuthUserId.mockResolvedValue({
+      ...profile,
+      email: 'admin@pedidolocal.com.br',
+      platformRole: 'SUPER_ADMIN',
+    });
+    await expect(
+      login({ email: 'dono@demo.com', password: 'SenhaDemo123!' }),
+    ).resolves.toMatchObject({
+      platformRole: 'SUPER_ADMIN',
+      tenantRole: null,
+      tenantId: null,
+      destination: '/admin',
+    });
+  });
+
+  it('monta os papéis independentemente a partir do perfil e membership', async () => {
     mocks.findFirstActiveMembership.mockResolvedValue({
       tenantId: 'tenant-1',
       role: 'MANAGER',
@@ -128,13 +142,41 @@ describe('AuthService com Supabase Auth', () => {
       authUserId: 'auth-1',
       email: 'dono@demo.com',
       name: 'Dono Demo',
-      role: 'MANAGER',
+      platformRole: 'USER',
+      tenantRole: 'MANAGER',
       tenantId: 'tenant-1',
       storeId: 'store-1',
     });
 
     mocks.getClaims.mockResolvedValueOnce({ data: null, error: new Error('expired') });
     await expect(validateCurrentSession()).resolves.toBeNull();
+  });
+
+  it('bloqueia usuário inativo', async () => {
+    mocks.findUserByAuthUserId.mockResolvedValue({ ...profile, isActive: false });
+    await expect(validateCurrentSession()).resolves.toBeNull();
+    await expect(
+      login({ email: 'dono@demo.com', password: 'SenhaDemo123!' }),
+    ).rejects.toBeInstanceOf(AuthenticationError);
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('rejeita open redirect e limita o destino à área autorizada', () => {
+    expect(
+      resolvePostLoginDestination(
+        { platformRole: 'SUPER_ADMIN', tenantId: null },
+        '//evil.example',
+      ),
+    ).toBe('/admin');
+    expect(
+      resolvePostLoginDestination(
+        { platformRole: 'USER', tenantId: 'tenant-1' },
+        'https://evil.example',
+      ),
+    ).toBe('/dashboard');
+    expect(
+      resolvePostLoginDestination({ platformRole: 'USER', tenantId: 'tenant-1' }, '/admin'),
+    ).toBe('/dashboard');
   });
 
   it('audita e encerra a sessão Supabase', async () => {

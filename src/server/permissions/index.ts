@@ -1,75 +1,54 @@
 // =============================================================================
-// Permissões e Roles — PedidoLocal
+// Permissões e papéis — PedidoLocal
 // =============================================================================
-// Define os perfis do sistema e as permissões de cada um.
-// Toda verificação de permissão no servidor usa estas definições.
+// Papéis de plataforma e de tenant são domínios de autorização independentes.
 // =============================================================================
 
-/**
- * Perfis do sistema.
- * Devem coincidir com o enum Role do Prisma.
- */
-export const Role = {
+export const PlatformRole = {
+  USER: 'USER',
   SUPER_ADMIN: 'SUPER_ADMIN',
+} as const;
+
+export type PlatformRole = (typeof PlatformRole)[keyof typeof PlatformRole];
+
+export const TenantRole = {
   OWNER: 'OWNER',
   MANAGER: 'MANAGER',
   ATTENDANT: 'ATTENDANT',
 } as const;
 
-export type Role = (typeof Role)[keyof typeof Role];
+export type TenantRole = (typeof TenantRole)[keyof typeof TenantRole];
 
-/**
- * Permissões granulares do sistema.
- */
 export const Permission = {
-  // Tenants
   VIEW_TENANTS: 'VIEW_TENANTS',
   ACTIVATE_TENANT: 'ACTIVATE_TENANT',
   SUSPEND_TENANT: 'SUSPEND_TENANT',
   VIEW_GLOBAL_METRICS: 'VIEW_GLOBAL_METRICS',
   ACCESS_SUPPORT_TOOLS: 'ACCESS_SUPPORT_TOOLS',
   VIEW_ADMIN_LOGS: 'VIEW_ADMIN_LOGS',
-
-  // Loja
   CONFIGURE_STORE: 'CONFIGURE_STORE',
   EDIT_TENANT_INFO: 'EDIT_TENANT_INFO',
-
-  // Equipe
   MANAGE_TEAM: 'MANAGE_TEAM',
-
-  // Catálogo
   MANAGE_CATALOG: 'MANAGE_CATALOG',
-
-  // Pedidos
   VIEW_ORDERS: 'VIEW_ORDERS',
   MANAGE_ORDERS: 'MANAGE_ORDERS',
   ACCEPT_ORDERS: 'ACCEPT_ORDERS',
   UPDATE_ORDER_STATUS: 'UPDATE_ORDER_STATUS',
   VIEW_ORDER_DETAILS: 'VIEW_ORDER_DETAILS',
-
-  // Pagamentos
   CONFIRM_PAYMENT: 'CONFIRM_PAYMENT',
   CONFIRM_MANUAL_PAYMENT: 'CONFIRM_MANUAL_PAYMENT',
-
-  // Entrega
   MANAGE_DELIVERY: 'MANAGE_DELIVERY',
   CONFIGURE_DELIVERY_ZONES: 'CONFIGURE_DELIVERY_ZONES',
-
-  // Horários
   CONFIGURE_HOURS: 'CONFIGURE_HOURS',
-
-  // Relatórios
   VIEW_REPORTS: 'VIEW_REPORTS',
   VIEW_BASIC_REPORTS: 'VIEW_BASIC_REPORTS',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
-/**
- * Mapeamento de permissões por role.
- */
-const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
-  [Role.SUPER_ADMIN]: new Set([
+const PLATFORM_PERMISSIONS: Record<PlatformRole, Set<Permission>> = {
+  [PlatformRole.USER]: new Set(),
+  [PlatformRole.SUPER_ADMIN]: new Set([
     Permission.VIEW_TENANTS,
     Permission.ACTIVATE_TENANT,
     Permission.SUSPEND_TENANT,
@@ -77,8 +56,10 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     Permission.ACCESS_SUPPORT_TOOLS,
     Permission.VIEW_ADMIN_LOGS,
   ]),
+};
 
-  [Role.OWNER]: new Set([
+const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
+  [TenantRole.OWNER]: new Set([
     Permission.CONFIGURE_STORE,
     Permission.EDIT_TENANT_INFO,
     Permission.MANAGE_TEAM,
@@ -96,8 +77,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     Permission.VIEW_REPORTS,
     Permission.VIEW_BASIC_REPORTS,
   ]),
-
-  [Role.MANAGER]: new Set([
+  [TenantRole.MANAGER]: new Set([
     Permission.MANAGE_CATALOG,
     Permission.VIEW_ORDERS,
     Permission.MANAGE_ORDERS,
@@ -108,8 +88,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     Permission.CONFIGURE_DELIVERY_ZONES,
     Permission.VIEW_BASIC_REPORTS,
   ]),
-
-  [Role.ATTENDANT]: new Set([
+  [TenantRole.ATTENDANT]: new Set([
     Permission.VIEW_ORDERS,
     Permission.ACCEPT_ORDERS,
     Permission.UPDATE_ORDER_STATUS,
@@ -118,48 +97,36 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
   ]),
 };
 
-/**
- * Verifica se um role possui uma permissão específica.
- */
-export function hasPermission(role: Role, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role]?.has(permission) ?? false;
+export function hasPlatformPermission(role: PlatformRole, permission: Permission): boolean {
+  return PLATFORM_PERMISSIONS[role].has(permission);
 }
 
-/**
- * Retorna todas as permissões de um role.
- */
-export function getPermissions(role: Role): Permission[] {
-  return [...(ROLE_PERMISSIONS[role] ?? [])];
+export function hasTenantPermission(role: TenantRole, permission: Permission): boolean {
+  return TENANT_PERMISSIONS[role].has(permission);
 }
 
-/**
- * Verifica se um role é de nível administrativo (tenant).
- */
-export function isTenantAdmin(role: Role): boolean {
-  return role === Role.OWNER || role === Role.MANAGER;
+export function getPlatformPermissions(role: PlatformRole): Permission[] {
+  return [...PLATFORM_PERMISSIONS[role]];
 }
 
-/**
- * Verifica se é super admin (plataforma).
- */
-export function isSuperAdmin(role: Role): boolean {
-  return role === Role.SUPER_ADMIN;
+export function getTenantPermissions(role: TenantRole): Permission[] {
+  return [...TENANT_PERMISSIONS[role]];
 }
 
-/**
- * Hierarquia de roles para comparação.
- * Número maior = mais permissões.
- */
-const ROLE_HIERARCHY: Record<Role, number> = {
-  [Role.SUPER_ADMIN]: 100,
-  [Role.OWNER]: 80,
-  [Role.MANAGER]: 60,
-  [Role.ATTENDANT]: 40,
+export function isTenantAdmin(role: TenantRole): boolean {
+  return role === TenantRole.OWNER || role === TenantRole.MANAGER;
+}
+
+export function isSuperAdmin(role: PlatformRole): boolean {
+  return role === PlatformRole.SUPER_ADMIN;
+}
+
+const TENANT_ROLE_HIERARCHY: Record<TenantRole, number> = {
+  [TenantRole.OWNER]: 80,
+  [TenantRole.MANAGER]: 60,
+  [TenantRole.ATTENDANT]: 40,
 };
 
-/**
- * Verifica se roleA tem nível igual ou superior a roleB.
- */
-export function isRoleAtLeast(roleA: Role, roleB: Role): boolean {
-  return (ROLE_HIERARCHY[roleA] ?? 0) >= (ROLE_HIERARCHY[roleB] ?? 0);
+export function isTenantRoleAtLeast(role: TenantRole, minimumRole: TenantRole): boolean {
+  return TENANT_ROLE_HIERARCHY[role] >= TENANT_ROLE_HIERARCHY[minimumRole];
 }

@@ -86,9 +86,11 @@ describe('API routes', () => {
     it('encaminha IP e user-agent e retorna o contexto autenticado', async () => {
       mocks.login.mockResolvedValue({
         user: { id: 'user-1', email: 'dono@demo.com', name: 'Dono Demo' },
+        platformRole: 'USER',
+        tenantRole: 'OWNER',
         tenantId: 'tenant-1',
         storeId: 'store-1',
-        role: 'OWNER',
+        destination: '/dashboard',
       });
       const request = new NextRequest('http://localhost/api/auth/login', {
         method: 'POST',
@@ -107,13 +109,12 @@ describe('API routes', () => {
 
       expect(mocks.login).toHaveBeenCalledWith(
         { email: 'dono@demo.com', password: 'SenhaDemo123!' },
-        { ipAddress: '203.0.113.10', userAgent: 'Vitest' },
+        { ipAddress: '203.0.113.10', userAgent: 'Vitest', redirectTo: null },
       );
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
-        tenantId: 'tenant-1',
-        storeId: 'store-1',
-        role: 'OWNER',
+        user: { id: 'user-1' },
+        destination: '/dashboard',
       });
     });
 
@@ -154,7 +155,8 @@ describe('API routes', () => {
       userId: 'user-1',
       email: 'dono@demo.com',
       name: 'Dono Demo',
-      role: 'OWNER',
+      platformRole: 'USER',
+      tenantRole: 'OWNER',
       tenantId: 'tenant-1',
       storeId: 'store-1',
     });
@@ -164,7 +166,8 @@ describe('API routes', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       user: { id: 'user-1', email: 'dono@demo.com', name: 'Dono Demo' },
-      role: 'OWNER',
+      platformRole: 'USER',
+      tenantRole: 'OWNER',
       tenantId: 'tenant-1',
       storeId: 'store-1',
     });

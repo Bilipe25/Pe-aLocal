@@ -8,7 +8,10 @@ const LEGACY_COOKIE = 'pedidolocal_session';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isProtectedRoute =
-    pathname.startsWith('/dashboard') || pathname.startsWith('/api/dashboard');
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/api/dashboard') ||
+    pathname.startsWith('/api/admin');
 
   let response: NextResponse;
   let isAuthenticated = false;
@@ -46,10 +49,6 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  if (pathname === '/login' && isAuthenticated) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
   response.headers.set('X-Frame-Options', 'DENY');

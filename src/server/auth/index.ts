@@ -5,7 +5,13 @@
 // Usadas em Server Actions, Route Handlers e Server Components.
 // =============================================================================
 
-import { Role, hasPermission, isRoleAtLeast, type Permission } from '@/server/permissions';
+import {
+  PlatformRole,
+  hasTenantPermission,
+  isTenantRoleAtLeast,
+  type Permission,
+  type TenantRole,
+} from '@/server/permissions';
 import { validateCurrentSession } from '@/server/services/auth.service';
 import * as storeRepo from '@/server/repositories/store.repository';
 import { AuthenticationError, AuthorizationError, TenantAccessError } from '@/server/errors';
@@ -18,7 +24,8 @@ export interface SessionContext {
   authUserId: string;
   email: string;
   name: string;
-  role: Role | null;
+  platformRole: PlatformRole;
+  tenantRole: TenantRole | null;
   tenantId: string | null;
   storeId: string | null;
 }
@@ -26,8 +33,8 @@ export interface SessionContext {
 /**
  * Contexto de tenant para operações privadas.
  */
-export interface TenantContext extends Omit<SessionContext, 'role' | 'tenantId'> {
-  role: Role;
+export interface TenantContext extends Omit<SessionContext, 'tenantRole' | 'tenantId'> {
+  tenantRole: TenantRole;
   tenantId: string;
 }
 
@@ -60,7 +67,7 @@ export async function requireAuthenticatedUser(): Promise<SessionContext> {
 export async function requireSuperAdmin(): Promise<SessionContext> {
   const session = await requireAuthenticatedUser();
 
-  if (session.role !== Role.SUPER_ADMIN) {
+  if (session.platformRole !== PlatformRole.SUPER_ADMIN) {
     throw new AuthorizationError('Acesso restrito a administradores da plataforma.');
   }
 
@@ -76,7 +83,7 @@ export async function requireSuperAdmin(): Promise<SessionContext> {
 export async function requireTenantMember(): Promise<TenantContext> {
   const session = await requireAuthenticatedUser();
 
-  if (!session.tenantId || !session.role) {
+  if (!session.tenantId || !session.tenantRole) {
     throw new TenantAccessError('Você não está vinculado a nenhum estabelecimento.');
   }
 
@@ -85,7 +92,7 @@ export async function requireTenantMember(): Promise<TenantContext> {
 
 export async function requirePermission(permission: Permission): Promise<TenantContext> {
   const session = await requireTenantMember();
-  if (!hasPermission(session.role, permission)) {
+  if (!hasTenantPermission(session.tenantRole, permission)) {
     throw new AuthorizationError('Seu perfil não possui permissão para esta ação.');
   }
   return session;
@@ -98,10 +105,10 @@ export async function requirePermission(permission: Permission): Promise<TenantC
  * @throws {TenantAccessError}
  * @throws {AuthorizationError}
  */
-export async function requireTenantRole(minimumRole: Role): Promise<TenantContext> {
+export async function requireTenantRole(minimumRole: TenantRole): Promise<TenantContext> {
   const session = await requireTenantMember();
 
-  if (!isRoleAtLeast(session.role, minimumRole)) {
+  if (!isTenantRoleAtLeast(session.tenantRole, minimumRole)) {
     throw new AuthorizationError('Seu perfil não possui permissão para esta ação.');
   }
 
@@ -133,7 +140,7 @@ export async function requireStoreAccess(storeId: string): Promise<TenantContext
 export async function getCurrentTenantContext(): Promise<TenantContext | null> {
   const session = await validateCurrentSession();
 
-  if (!session || !session.tenantId) {
+  if (!session || !session.tenantId || !session.tenantRole) {
     return null;
   }
 

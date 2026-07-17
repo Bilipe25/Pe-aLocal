@@ -1,8 +1,13 @@
 import { Suspense } from 'react';
 import { Store } from 'lucide-react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  resolvePostLoginDestination,
+  validateCurrentSession,
+} from '@/server/services/auth.service';
 import { LoginForm } from './login-form';
 
 export const metadata = {
@@ -10,7 +15,22 @@ export const metadata = {
   description: 'Acesse o painel do seu estabelecimento.',
 };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect?: string | string[] }>;
+}) {
+  const requestedRedirect = (await searchParams).redirect;
+  const session = await validateCurrentSession();
+  if (session) {
+    redirect(
+      resolvePostLoginDestination(
+        session,
+        typeof requestedRedirect === 'string' ? requestedRedirect : null,
+      ),
+    );
+  }
+
   return (
     <main className="from-brand-50 via-surface to-brand-100 flex min-h-screen items-center justify-center bg-gradient-to-br p-4">
       <div className="w-full max-w-sm space-y-6">

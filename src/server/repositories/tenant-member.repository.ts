@@ -1,5 +1,5 @@
 import { getDb } from '@/server/database/client';
-import type { Role } from '@prisma/client';
+import type { TenantRole } from '@prisma/client';
 
 // =============================================================================
 // TenantMember Repository
@@ -60,7 +60,11 @@ export async function findFirstActiveMembership(userId: string) {
 /**
  * Cria um vínculo usuário ↔ tenant.
  */
-export async function createMembership(data: { tenantId: string; userId: string; role: Role }) {
+export async function createMembership(data: {
+  tenantId: string;
+  userId: string;
+  role: TenantRole;
+}) {
   return getDb().tenantMember.create({
     data: {
       tenantId: data.tenantId,
@@ -93,7 +97,7 @@ export async function listTenantMembers(tenantId: string) {
 /**
  * Atualiza o role de um membro.
  */
-export async function updateMemberRole(id: string, role: Role) {
+export async function updateMemberRole(id: string, role: TenantRole) {
   return getDb().tenantMember.update({
     where: { id },
     data: { role },

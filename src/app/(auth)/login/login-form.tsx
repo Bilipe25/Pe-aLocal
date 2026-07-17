@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') ?? '/dashboard';
+  const redirectTo = searchParams.get('redirect');
   const [isLoading, setIsLoading] = useState(false);
 
   const {
@@ -38,7 +38,7 @@ export function LoginForm() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, redirect: redirectTo }),
       });
 
       const result: unknown = await response.json();
@@ -55,6 +55,13 @@ export function LoginForm() {
         'name' in result.user
           ? String(result.user.name)
           : 'usuário';
+      const destination =
+        typeof result === 'object' &&
+        result !== null &&
+        'destination' in result &&
+        typeof result.destination === 'string'
+          ? result.destination
+          : '/access-pending';
 
       if (!response.ok) {
         toast.error(message ?? 'Erro ao fazer login.');
@@ -62,7 +69,7 @@ export function LoginForm() {
       }
 
       toast.success(`Bem-vindo, ${userName}!`);
-      router.push(redirectTo);
+      router.push(destination);
       router.refresh();
     } catch {
       toast.error('Erro de conexão. Tente novamente.');

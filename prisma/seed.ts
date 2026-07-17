@@ -49,24 +49,60 @@ async function ensureAuthUser(email: string, password: string) {
 }
 
 async function main() {
+  const appEnvironment = (
+    process.env.APP_ENV ??
+    process.env.NODE_ENV ??
+    'development'
+  ).toLowerCase();
+  if (!['development', 'staging', 'test', 'seed'].includes(appEnvironment)) {
+    throw new Error(`O seed de demonstração não pode ser executado em ${appEnvironment}.`);
+  }
+
   console.log('🌱 Iniciando seed...\n');
 
   // 1. Super Admin
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL ?? 'admin@pedidolocal.com.br';
+  const superAdminEmail = 'admin@pedidolocal.com.br';
+  if (
+    process.env.SUPER_ADMIN_EMAIL &&
+    process.env.SUPER_ADMIN_EMAIL.toLowerCase() !== superAdminEmail
+  ) {
+    throw new Error(`SUPER_ADMIN_EMAIL deve ser ${superAdminEmail} no seed.`);
+  }
+
+  const existingSuperAdmin = await prisma.user.findUnique({
+    where: { email: superAdminEmail },
+    select: { id: true, _count: { select: { tenantMembers: true } } },
+  });
+  if (existingSuperAdmin && existingSuperAdmin._count.tenantMembers > 0) {
+    throw new Error('O perfil destinado a SUPER_ADMIN possui tenant membership.');
+  }
+
   const superAdminPassword = requiredEnv('SEED_SUPER_ADMIN_PASSWORD');
   const superAdminAuth = await ensureAuthUser(superAdminEmail, superAdminPassword);
 
   const superAdmin = await prisma.user.upsert({
     where: { email: superAdminEmail },
-    update: { authUserId: superAdminAuth.id, passwordHash: null },
+    update: {
+      authUserId: superAdminAuth.id,
+      passwordHash: null,
+      platformRole: 'SUPER_ADMIN',
+    },
     create: {
       email: superAdminEmail,
       name: 'Administrador',
       authUserId: superAdminAuth.id,
+      platformRole: 'SUPER_ADMIN',
       isActive: true,
       emailVerified: true,
     },
   });
+
+  const superAdminMemberships = await prisma.tenantMember.count({
+    where: { userId: superAdmin.id },
+  });
+  if (superAdminMemberships > 0) {
+    throw new Error('O SUPER_ADMIN não pode possuir tenant membership.');
+  }
   console.log(`✅ Super Admin: ${superAdmin.email}`);
 
   // 2. Tenant
@@ -89,11 +125,12 @@ async function main() {
 
   const owner = await prisma.user.upsert({
     where: { email: ownerEmail },
-    update: { authUserId: ownerAuth.id, passwordHash: null },
+    update: { authUserId: ownerAuth.id, passwordHash: null, platformRole: 'USER' },
     create: {
       email: ownerEmail,
       name: 'Zé da Lanchonete',
       authUserId: ownerAuth.id,
+      platformRole: 'USER',
       isActive: true,
       emailVerified: true,
     },
@@ -111,11 +148,12 @@ async function main() {
   const managerAuth = await ensureAuthUser('gerente@demo.com', teamPassword);
   const manager = await prisma.user.upsert({
     where: { email: 'gerente@demo.com' },
-    update: { authUserId: managerAuth.id, passwordHash: null },
+    update: { authUserId: managerAuth.id, passwordHash: null, platformRole: 'USER' },
     create: {
       email: 'gerente@demo.com',
       name: 'Maria Gerente',
       authUserId: managerAuth.id,
+      platformRole: 'USER',
       isActive: true,
     },
   });
@@ -131,11 +169,12 @@ async function main() {
   const attendantAuth = await ensureAuthUser('atendente@demo.com', teamPassword);
   const attendant = await prisma.user.upsert({
     where: { email: 'atendente@demo.com' },
-    update: { authUserId: attendantAuth.id, passwordHash: null },
+    update: { authUserId: attendantAuth.id, passwordHash: null, platformRole: 'USER' },
     create: {
       email: 'atendente@demo.com',
       name: 'João Atendente',
       authUserId: attendantAuth.id,
+      platformRole: 'USER',
       isActive: true,
     },
   });
