@@ -23,7 +23,7 @@ export default async function AdminStoreCustomizationPage({
     throw error;
   }
 
-  const { store, customization, revisions } = data;
+  const { store, customization, revisions, assets } = data;
 
   return (
     <div className="space-y-6">
@@ -71,6 +71,11 @@ export default async function AdminStoreCustomizationPage({
           origin: revision.origin,
           publishedAt: revision.publishedAt.toISOString(),
           actor: revision.actor ? { name: revision.actor.name, email: revision.actor.email } : null,
+        }))}
+        initialAssets={assets.map((asset) => ({
+          ...asset,
+          createdAt: asset.createdAt.toISOString(),
+          deletedAt: asset.deletedAt?.toISOString() ?? null,
         }))}
       />
     </div>

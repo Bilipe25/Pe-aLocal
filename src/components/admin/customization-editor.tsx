@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Check, History, RotateCcw, Save, Send } from 'lucide-react';
+import {
+  StoreAssetsManager,
+  type AdminStoreAssetItem,
+} from '@/components/admin/store-assets-manager';
 
 import {
   discardCustomizationDraftAction,
@@ -39,6 +43,7 @@ interface CustomizationEditorProps {
   initialHasDraft: boolean;
   publishedAt: string | null;
   revisions: RevisionItem[];
+  initialAssets: AdminStoreAssetItem[];
 }
 
 type Feedback = { tone: 'success' | 'error'; message: string } | null;
@@ -77,6 +82,7 @@ export function CustomizationEditor({
   initialHasDraft,
   publishedAt,
   revisions,
+  initialAssets,
 }: CustomizationEditorProps) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
@@ -464,8 +470,18 @@ export function CustomizationEditor({
           </div>
         </section>
 
+        <StoreAssetsManager
+          tenantId={tenantId}
+          storeId={storeId}
+          identity={config.identity}
+          initialAssets={initialAssets}
+          onAssign={(field, assetId) =>
+            updateSection('identity', { ...config.identity, [field]: assetId })
+          }
+        />
+
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">4. SEO e marca</h2>
+          <h2 className="text-text-primary text-lg font-semibold">5. SEO e marca</h2>
           <div className="mt-5 grid gap-4">
             <label className="text-text-secondary grid gap-1.5 text-sm">
               Título SEO

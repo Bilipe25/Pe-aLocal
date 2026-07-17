@@ -21,6 +21,7 @@ function renderEditor(hasDraft = false) {
     <CustomizationEditor
       tenantId="tenant-1"
       storeId="store-1"
+      initialAssets={[]}
       initialConfig={config}
       initialPublishedConfig={structuredClone(config)}
       initialDraftVersion={0}

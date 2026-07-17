@@ -27,7 +27,12 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     config.identity.shortDescription ||
     store.description ||
     `Faça seu pedido em ${store.name}`;
-  const socialImage = store.coverUrl ?? store.logoUrl;
+  const socialImage =
+    store.customization.assets.socialImage?.url ??
+    store.customization.assets.cover?.url ??
+    store.coverUrl ??
+    store.customization.assets.logo?.url ??
+    store.logoUrl;
   let canonical = config.seo.canonicalUrl ?? undefined;
   if (!canonical && process.env.APP_URL) {
     try {
@@ -41,6 +46,9 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     title: { default: title, template: `%s | ${store.name}` },
     description,
     alternates: canonical ? { canonical } : undefined,
+    icons: store.customization.assets.favicon
+      ? { icon: store.customization.assets.favicon.url }
+      : undefined,
     robots: { index: config.seo.indexable, follow: config.seo.indexable },
     openGraph: {
       title,
@@ -74,8 +82,8 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         estimatedTime={store.settings?.estimatedTime}
         neighborhood={store.address?.neighborhood}
         city={store.address?.city}
-        logoUrl={store.logoUrl}
-        coverUrl={store.coverUrl}
+        logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+        coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
         config={config}
       />
 

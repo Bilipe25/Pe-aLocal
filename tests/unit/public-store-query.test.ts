@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
   categoryFindMany: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
+  storeAssetFindMany: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -63,10 +64,42 @@ describe('queries públicas da loja', () => {
     mocks.storeFindUnique.mockResolvedValue(publicStore());
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
+    mocks.storeAssetFindMany.mockResolvedValue([]);
     mocks.getDb.mockReturnValue({
       store: { findUnique: mocks.storeFindUnique },
       category: { findMany: mocks.categoryFindMany },
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
+      storeAsset: { findMany: mocks.storeAssetFindMany },
+    });
+  });
+
+  it('resolve apenas assets publicados, ativos e pertencentes à mesma loja', async () => {
+    const assetId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const store = publicStore();
+    const config = createDefaultCustomization();
+    config.identity.logoAssetId = assetId;
+    store.customization.publishedConfig = config;
+    mocks.storeFindUnique.mockResolvedValue(store);
+    mocks.storeAssetFindMany.mockResolvedValue([
+      { id: assetId, assetType: 'LOGO', altText: 'Logo da loja' },
+    ]);
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(mocks.storeAssetFindMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [assetId] },
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, assetType: true, altText: true },
+    });
+    expect(result?.customization.assets.logo).toEqual({
+      id: assetId,
+      altText: 'Logo da loja',
+      url: `/api/store-assets/${assetId}?width=384`,
     });
   });
 

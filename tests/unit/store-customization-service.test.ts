@@ -14,11 +14,13 @@ const mocks = vi.hoisted(() => ({
   requireSuperAdminStoreAccess: vi.fn(),
   ensureCustomization: vi.fn(),
   listRevisions: vi.fn(),
+  listActiveStoreAssets: vi.fn(),
   findRevision: vi.fn(),
   getDb: vi.fn(),
   updateMany: vi.fn(),
   auditCreate: vi.fn(),
   revisionCreate: vi.fn(),
+  assetFindMany: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -30,6 +32,9 @@ vi.mock('@/server/repositories/store-customization.repository', () => ({
   findRevision: mocks.findRevision,
   jsonInput: (value: unknown) => value,
   normalizeDraftOrigin: (value: string | null) => value ?? 'SUPER_ADMIN_UI',
+}));
+vi.mock('@/server/repositories/store-asset.repository', () => ({
+  listActiveStoreAssets: mocks.listActiveStoreAssets,
 }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 
@@ -76,9 +81,11 @@ describe('StoreCustomizationService', () => {
     mocks.requireSuperAdminStoreAccess.mockResolvedValue(context);
     mocks.ensureCustomization.mockResolvedValue(customization());
     mocks.listRevisions.mockResolvedValue([]);
+    mocks.listActiveStoreAssets.mockResolvedValue([]);
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.auditCreate.mockResolvedValue({ id: 'audit-1' });
     mocks.revisionCreate.mockResolvedValue({ id: 'revision-1' });
+    mocks.assetFindMany.mockResolvedValue([]);
 
     const tx = {
       storeCustomization: { updateMany: mocks.updateMany },
@@ -87,6 +94,7 @@ describe('StoreCustomizationService', () => {
     };
     mocks.getDb.mockReturnValue({
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
+      storeAsset: { findMany: mocks.assetFindMany },
     });
   });
 
@@ -129,6 +137,31 @@ describe('StoreCustomizationService', () => {
         metadata: expect.objectContaining({ changedSections: ['identity'] }),
       }),
     });
+  });
+
+  it('rejeita asset ausente ou pertencente a outro tenant/store', async () => {
+    const draft = createDefaultCustomization();
+    const assetId = '4da03571-bffd-45ef-8c44-20686c487838';
+    draft.identity.logoAssetId = assetId;
+
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(mocks.assetFindMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [assetId] },
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, assetType: true },
+    });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it('preserva a origem de restauração ao editar o draft restaurado', async () => {

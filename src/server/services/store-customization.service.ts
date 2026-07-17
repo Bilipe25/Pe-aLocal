@@ -13,7 +13,9 @@ import {
 import { requireSuperAdminStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import { ConflictError, NotFoundError, ValidationError } from '@/server/errors';
+import { storeAssetUrl } from '@/features/assets/urls';
 import * as customizationRepo from '@/server/repositories/store-customization.repository';
+import * as assetRepo from '@/server/repositories/store-asset.repository';
 
 function parseConfig(value: unknown): StoreCustomizationConfig {
   const parsed = storeCustomizationConfigSchema.safeParse(value);
@@ -66,6 +68,39 @@ function assertBrandingPolicy(config: StoreCustomizationConfig) {
   }
 }
 
+async function assertAssetReferences(
+  tenantId: string,
+  storeId: string,
+  config: StoreCustomizationConfig,
+) {
+  const references = [
+    { id: config.identity.logoAssetId, type: 'LOGO' },
+    { id: config.identity.logoDarkAssetId, type: 'LOGO_DARK' },
+    { id: config.identity.coverAssetId, type: 'COVER' },
+    { id: config.identity.faviconAssetId, type: 'FAVICON' },
+    { id: config.identity.socialImageAssetId, type: 'SOCIAL_IMAGE' },
+  ].filter((item): item is { id: string; type: typeof item.type } => Boolean(item.id));
+  if (references.length === 0) return;
+
+  const assets = await getDb().storeAsset.findMany({
+    where: {
+      id: { in: references.map((item) => item.id) },
+      tenantId,
+      storeId,
+      status: 'ACTIVE',
+      deletedAt: null,
+    },
+    select: { id: true, assetType: true },
+  });
+  const typeById = new Map(assets.map((asset) => [asset.id, asset.assetType]));
+  const invalid = references.find((reference) => typeById.get(reference.id) !== reference.type);
+  if (invalid) {
+    throw new ValidationError(
+      'A personalização referencia um asset ausente, de outro estabelecimento ou do tipo incorreto.',
+    );
+  }
+}
+
 async function ensureScopedCustomization(tenantId: string, storeId: string) {
   const context = await requireSuperAdminStoreAccess(tenantId, storeId);
   const customization = await customizationRepo.ensureCustomization(
@@ -88,7 +123,10 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const publishedConfig = parseConfig(customization.publishedConfig);
   const draftConfig = customization.draftConfig ? parseConfig(customization.draftConfig) : null;
-  const revisions = await customizationRepo.listRevisions(tenantId, storeId);
+  const [revisions, assets] = await Promise.all([
+    customizationRepo.listRevisions(tenantId, storeId),
+    assetRepo.listActiveStoreAssets(tenantId, storeId),
+  ]);
   const effectiveConfig = draftConfig ?? publishedConfig;
 
   return {
@@ -106,6 +144,11 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
       contrastIssues: evaluateCustomizationContrast(effectiveConfig),
     },
     revisions,
+    assets: assets.map((asset) => ({
+      ...asset,
+      url: storeAssetUrl(asset.id),
+      previewUrl: storeAssetUrl(asset.id, 384),
+    })),
   };
 }
 
@@ -117,6 +160,7 @@ export async function saveCustomizationDraft(
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const config = parseConfig(input.config);
   assertBrandingPolicy(config);
+  await assertAssetReferences(tenantId, storeId, config);
   const version = parseVersion(input.expectedDraftVersion);
   assertExpectedVersion(customization.draftVersion, version.expectedDraftVersion);
 
@@ -222,6 +266,7 @@ export async function publishCustomization(
 
   const config = parseConfig(customization.draftConfig);
   assertBrandingPolicy(config);
+  await assertAssetReferences(tenantId, storeId, config);
   const contrastIssues = evaluateCustomizationContrast(config);
   const criticalIssues = contrastIssues.filter((item) => item.severity === 'error');
   if (criticalIssues.length > 0) {
@@ -325,6 +370,7 @@ async function replaceDraft(
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const parsedInput = parsePublishInput(input);
   assertBrandingPolicy(config);
+  await assertAssetReferences(tenantId, storeId, config);
   assertExpectedVersion(customization.draftVersion, parsedInput.expectedDraftVersion);
   const nextDraftVersion = customization.draftVersion + 1;
 

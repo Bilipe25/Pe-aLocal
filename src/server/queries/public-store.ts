@@ -3,6 +3,7 @@ import 'server-only';
 import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
+import { storeAssetUrl } from '@/features/assets/urls';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
 
@@ -67,18 +68,55 @@ async function getStoreFromDb(slug: string) {
   if (!store || !store.isActive) return null;
 
   const { customization, ...publicStore } = store;
+  const resolvedCustomization = resolvePublicCustomization({
+    publishedConfig: customization?.publishedConfig,
+    publishedVersion: customization?.publishedVersion,
+    publishedAt: customization?.publishedAt,
+    legacy: {
+      primaryColor: store.settings?.primaryColor,
+      secondaryColor: store.settings?.secondaryColor,
+      fontFamily: store.settings?.fontFamily,
+    },
+  });
+  const identityAssetIds = [
+    resolvedCustomization.config.identity.logoAssetId,
+    resolvedCustomization.config.identity.logoDarkAssetId,
+    resolvedCustomization.config.identity.coverAssetId,
+    resolvedCustomization.config.identity.faviconAssetId,
+    resolvedCustomization.config.identity.socialImageAssetId,
+  ].filter((id): id is string => Boolean(id));
+  const assets =
+    identityAssetIds.length > 0
+      ? await getDb().storeAsset.findMany({
+          where: {
+            id: { in: identityAssetIds },
+            tenantId: store.tenantId,
+            storeId: store.id,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+          select: { id: true, assetType: true, altText: true },
+        })
+      : [];
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  const resolveAsset = (id: string | null, width?: number) => {
+    if (!id) return null;
+    const asset = assetById.get(id);
+    return asset ? { id: asset.id, altText: asset.altText, url: storeAssetUrl(asset.id, width) } : null;
+  };
+
   return {
     ...publicStore,
-    customization: resolvePublicCustomization({
-      publishedConfig: customization?.publishedConfig,
-      publishedVersion: customization?.publishedVersion,
-      publishedAt: customization?.publishedAt,
-      legacy: {
-        primaryColor: store.settings?.primaryColor,
-        secondaryColor: store.settings?.secondaryColor,
-        fontFamily: store.settings?.fontFamily,
+    customization: {
+      ...resolvedCustomization,
+      assets: {
+        logo: resolveAsset(resolvedCustomization.config.identity.logoAssetId, 384),
+        logoDark: resolveAsset(resolvedCustomization.config.identity.logoDarkAssetId, 384),
+        cover: resolveAsset(resolvedCustomization.config.identity.coverAssetId, 1280),
+        favicon: resolveAsset(resolvedCustomization.config.identity.faviconAssetId, 96),
+        socialImage: resolveAsset(resolvedCustomization.config.identity.socialImageAssetId, 1280),
       },
-    }),
+    },
   };
 }
 
