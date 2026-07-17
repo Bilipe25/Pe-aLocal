@@ -54,7 +54,7 @@ export async function createCategoryAction(
       ...parsed.data,
     });
 
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(store.id));
     return actionSuccess({ id: category.id });
   } catch (error) {
     return actionError(error);
@@ -71,8 +71,10 @@ export async function updateCategoryAction(id: string, formData: FormData): Prom
       return actionError(new Error(parsed.error.issues[0].message));
     }
 
+    const category = await categoryRepo.findCategoryById(id, ctx.tenantId);
+    if (!category) return actionError(new NotFoundError('Categoria'));
     await categoryRepo.updateCategory(id, ctx.tenantId, parsed.data);
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(category.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -82,8 +84,10 @@ export async function updateCategoryAction(id: string, formData: FormData): Prom
 export async function deleteCategoryAction(id: string): Promise<ActionResult> {
   try {
     const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const category = await categoryRepo.findCategoryById(id, ctx.tenantId);
+    if (!category) return actionError(new NotFoundError('Categoria'));
     await categoryRepo.deleteCategory(id, ctx.tenantId);
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(category.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -128,7 +132,7 @@ export async function createProductAction(
       basePrice: Math.round(parsed.data.basePrice * 100),
     });
 
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(store.id));
     return actionSuccess({ id: product.id });
   } catch (error) {
     return actionError(error);
@@ -145,12 +149,14 @@ export async function updateProductAction(id: string, formData: FormData): Promi
       return actionError(new Error(parsed.error.issues[0].message));
     }
 
+    const product = await productRepo.findProductById(id, ctx.tenantId);
+    if (!product) return actionError(new NotFoundError('Produto'));
     await productRepo.updateProduct(id, ctx.tenantId, {
       ...parsed.data,
       basePrice: Math.round(parsed.data.basePrice * 100),
     });
 
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -160,8 +166,10 @@ export async function updateProductAction(id: string, formData: FormData): Promi
 export async function deleteProductAction(id: string): Promise<ActionResult> {
   try {
     const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const product = await productRepo.findProductById(id, ctx.tenantId);
+    if (!product) return actionError(new NotFoundError('Produto'));
     await productRepo.deleteProduct(id, ctx.tenantId);
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.catalog(product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -188,6 +196,7 @@ export async function createOptionGroupAction(
     if (!product) return actionError(new NotFoundError('Produto'));
 
     const group = await optionGroupRepo.createOptionGroup(parsed.data);
+    updateTag(CACHE_TAGS.catalog(product.storeId));
     return actionSuccess({ id: group.id });
   } catch (error) {
     return actionError(error);
@@ -213,6 +222,7 @@ export async function updateOptionGroupAction(
     }
 
     await optionGroupRepo.updateOptionGroup(id, parsed.data);
+    updateTag(CACHE_TAGS.catalog(group.product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -227,6 +237,7 @@ export async function deleteOptionGroupAction(id: string): Promise<ActionResult>
       return actionError(new NotFoundError('Grupo de opções'));
     }
     await optionGroupRepo.deleteOptionGroup(id);
+    updateTag(CACHE_TAGS.catalog(group.product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -254,6 +265,7 @@ export async function createOptionAction(
       ...parsed.data,
       price: Math.round(parsed.data.price * 100),
     });
+    updateTag(CACHE_TAGS.catalog(group.product.storeId));
     return actionSuccess({ id: option.id });
   } catch (error) {
     return actionError(error);
@@ -279,6 +291,7 @@ export async function updateOptionAction(id: string, formData: FormData): Promis
       ...parsed.data,
       price: Math.round(parsed.data.price * 100),
     });
+    updateTag(CACHE_TAGS.catalog(option.group.product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -293,6 +306,7 @@ export async function deleteOptionAction(id: string): Promise<ActionResult> {
       return actionError(new NotFoundError('Opção'));
     }
     await optionGroupRepo.deleteOption(id);
+    updateTag(CACHE_TAGS.catalog(option.group.product.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);

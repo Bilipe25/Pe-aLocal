@@ -48,6 +48,8 @@ export async function updateStoreAction(formData: FormData): Promise<ActionResul
 
     await storeRepo.updateStore(store.id, ctx.tenantId, parsed.data);
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
+    if (parsed.data.slug !== store.slug) updateTag(CACHE_TAGS.storeSlug(parsed.data.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -68,6 +70,7 @@ export async function updateStoreSettingsAction(formData: FormData): Promise<Act
 
     await storeRepo.upsertStoreSettings(store.id, parsed.data);
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -88,6 +91,7 @@ export async function updatePixConfigAction(formData: FormData): Promise<ActionR
 
     await storeRepo.upsertStoreSettings(store.id, parsed.data);
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -108,6 +112,7 @@ export async function updateAddressAction(formData: FormData): Promise<ActionRes
 
     await storeRepo.upsertStoreAddress(store.id, parsed.data);
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -129,6 +134,7 @@ export async function updateHoursAction(data: {
 
     await storeRepo.upsertOpeningHours(store.id, parsed.data.hours);
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -145,6 +151,7 @@ export async function toggleStoreStatusAction(
 
     await storeRepo.updateStore(store.id, ctx.tenantId, { status });
     updateTag(CACHE_TAGS.store(store.id));
+    updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);

@@ -42,7 +42,7 @@ export async function createDeliveryZoneAction(
       minOrderValue: parsed.data.minOrderValue ? Math.round(parsed.data.minOrderValue * 100) : null,
     });
 
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.delivery(store.id));
     return actionSuccess({ id: zone.id });
   } catch (error) {
     return actionError(error);
@@ -62,13 +62,15 @@ export async function updateDeliveryZoneAction(
       return actionError(new Error(parsed.error.issues[0].message));
     }
 
+    const zone = await dzRepo.findDeliveryZoneById(id, ctx.tenantId);
+    if (!zone) return actionError(new NotFoundError('Zona de entrega'));
     await dzRepo.updateDeliveryZone(id, ctx.tenantId, {
       ...parsed.data,
       fee: Math.round(parsed.data.fee * 100),
       minOrderValue: parsed.data.minOrderValue ? Math.round(parsed.data.minOrderValue * 100) : null,
     });
 
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.delivery(zone.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);
@@ -78,8 +80,10 @@ export async function updateDeliveryZoneAction(
 export async function deleteDeliveryZoneAction(id: string): Promise<ActionResult> {
   try {
     const ctx = await requirePermission(Permission.MANAGE_DELIVERY);
+    const zone = await dzRepo.findDeliveryZoneById(id, ctx.tenantId);
+    if (!zone) return actionError(new NotFoundError('Zona de entrega'));
     await dzRepo.deleteDeliveryZone(id, ctx.tenantId);
-    updateTag(CACHE_TAGS.catalog(ctx.tenantId));
+    updateTag(CACHE_TAGS.delivery(zone.storeId));
     return actionSuccess(undefined);
   } catch (error) {
     return actionError(error);

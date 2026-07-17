@@ -19,7 +19,7 @@ export async function findOptionGroupById(id: string) {
     where: { id },
     include: {
       options: { orderBy: { sortOrder: 'asc' } },
-      product: { select: { id: true, name: true, tenantId: true } },
+      product: { select: { id: true, name: true, tenantId: true, storeId: true } },
     },
   });
 }
@@ -96,7 +96,7 @@ export async function findOptionById(id: string) {
       id: true,
       group: {
         select: {
-          product: { select: { tenantId: true } },
+          product: { select: { tenantId: true, storeId: true } },
         },
       },
     },

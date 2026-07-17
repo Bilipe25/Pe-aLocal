@@ -54,6 +54,7 @@ export async function publishCustomizationAction(
     const result = await publishCustomization(tenantId, storeId, input);
     updateTag(CACHE_TAGS.customization(storeId));
     updateTag(CACHE_TAGS.store(storeId));
+    updateTag(CACHE_TAGS.storeSlug(result.storeSlug));
     revalidateEditor(tenantId, storeId);
     revalidatePath(`/${result.storeSlug}`);
     return actionSuccess({
