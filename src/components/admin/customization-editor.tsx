@@ -19,6 +19,7 @@ import {
   StoreEntitlementsForm,
   type AdminStoreEntitlementItem,
 } from '@/components/admin/store-entitlements-form';
+import { StorefrontPreview } from '@/components/admin/storefront-preview';
 
 import {
   discardCustomizationDraftAction,
@@ -65,6 +66,8 @@ interface CustomizationEditorProps {
     coupons: { id: string; code: string }[];
   };
   storeSlug: string;
+  storeName: string;
+  storeStatus: 'OPEN' | 'CLOSED' | 'PAUSED';
 }
 
 type Feedback = { tone: 'success' | 'error'; message: string } | null;
@@ -109,6 +112,8 @@ export function CustomizationEditor({
   initialEntitlement,
   destinations,
   storeSlug,
+  storeName,
+  storeStatus,
 }: CustomizationEditorProps) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
@@ -125,6 +130,10 @@ export function CustomizationEditor({
   const [isPending, startTransition] = useTransition();
   const contrastIssues = useMemo(() => evaluateCustomizationContrast(config), [config]);
   const criticalContrast = contrastIssues.filter((item) => item.severity === 'error');
+  const logoUrl =
+    initialAssets.find((asset) => asset.id === config.identity.logoAssetId)?.previewUrl ?? null;
+  const coverUrl =
+    initialAssets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
 
   useEffect(() => {
     const preventExit = (event: BeforeUnloadEvent) => {
@@ -643,47 +652,13 @@ export function CustomizationEditor({
       </div>
 
       <aside className="space-y-5 xl:sticky xl:top-6 xl:self-start">
-        <section
-          className="rounded-xl border p-5 shadow-sm"
-          style={{
-            backgroundColor: config.palette.background,
-            borderColor: config.palette.border,
-            color: config.palette.text,
-          }}
-        >
-          <p
-            className="text-xs font-medium tracking-wide uppercase"
-            style={{ color: config.palette.primary }}
-          >
-            Prévia da paleta
-          </p>
-          <h2 className="mt-3 text-xl font-bold">
-            {config.identity.slogan || 'Identidade da loja'}
-          </h2>
-          <p className="mt-2 text-sm" style={{ color: config.palette.mutedText }}>
-            {config.identity.shortDescription ||
-              'Uma prévia simples antes da renderização completa da Fase 2.'}
-          </p>
-          <div
-            className="mt-4 rounded-lg border p-4"
-            style={{ backgroundColor: config.palette.surface, borderColor: config.palette.border }}
-          >
-            <p className="font-medium">Produto em destaque</p>
-            <p className="mt-1 text-sm" style={{ color: config.palette.mutedText }}>
-              Descrição do produto e informações.
-            </p>
-            <button
-              type="button"
-              className="mt-4 rounded-md px-4 py-2 text-sm font-medium"
-              style={{
-                backgroundColor: config.palette.buttonBackground,
-                color: config.palette.buttonText,
-              }}
-            >
-              Adicionar
-            </button>
-          </div>
-        </section>
+        <StorefrontPreview
+          config={config}
+          storeName={storeName}
+          storeStatus={storeStatus}
+          logoUrl={logoUrl}
+          coverUrl={coverUrl}
+        />
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
           <label className="text-text-secondary grid gap-1.5 text-sm">

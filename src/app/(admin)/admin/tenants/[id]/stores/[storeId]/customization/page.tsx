@@ -23,16 +23,8 @@ export default async function AdminStoreCustomizationPage({
     throw error;
   }
 
-  const {
-    store,
-    customization,
-    revisions,
-    assets,
-    banners,
-    domains,
-    entitlement,
-    destinations,
-  } = data;
+  const { store, customization, revisions, assets, banners, domains, entitlement, destinations } =
+    data;
 
   return (
     <div className="space-y-6">
@@ -68,6 +60,8 @@ export default async function AdminStoreCustomizationPage({
         tenantId={tenantId}
         storeId={storeId}
         storeSlug={store.slug}
+        storeName={store.name}
+        storeStatus={store.status}
         initialConfig={customization.effectiveConfig}
         initialPublishedConfig={customization.publishedConfig}
         initialDraftVersion={customization.draftVersion}

@@ -46,6 +46,8 @@ function renderEditor(hasDraft = false) {
       }}
       destinations={{ categories: [], products: [], coupons: [] }}
       storeSlug="loja-1"
+      storeName="Loja de teste"
+      storeStatus="OPEN"
       initialConfig={config}
       initialPublishedConfig={structuredClone(config)}
       initialDraftVersion={0}
@@ -67,6 +69,7 @@ describe('CustomizationEditor', () => {
       screen.getByRole('heading', { name: '3. Tipografia, tema e layout' }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/json/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Prévia responsiva' })).toBeInTheDocument();
   });
 
   it('marca alterações locais e habilita o salvamento de draft', () => {

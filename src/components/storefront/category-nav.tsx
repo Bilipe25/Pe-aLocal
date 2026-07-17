@@ -25,7 +25,9 @@ export function CategoryNav({
       const container = scrollRef.current;
       const active = activeRef.current;
       const left = active.offsetLeft - container.offsetWidth / 2 + active.offsetWidth / 2;
-      container.scrollTo({ left, behavior: 'smooth' });
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ left, behavior: 'smooth' });
+      }
     }
   }, [activeCategoryId, variant]);
 
