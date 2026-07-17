@@ -13,6 +13,13 @@ export function storeCacheTag(storeId: string): string {
 }
 
 /**
+ * Tag pública resolvida antes de conhecermos o ID interno da loja.
+ */
+export function storeSlugCacheTag(slug: string): string {
+  return `store-slug:${slug}`;
+}
+
+/**
  * Tag de cache para catálogo (categorias + produtos + adicionais).
  */
 export function catalogCacheTag(storeId: string): string {
@@ -64,6 +71,7 @@ export function allStoreCacheTags(storeId: string): string[] {
  */
 export const CACHE_TAGS = {
   store: storeCacheTag,
+  storeSlug: storeSlugCacheTag,
   catalog: catalogCacheTag,
   delivery: deliveryCacheTag,
   hours: openingHoursCacheTag,

@@ -2,46 +2,72 @@
 
 import { useEffect, useRef } from 'react';
 
+import type { StoreCustomizationConfig } from '@/schemas/customization';
+
 interface CategoryNavProps {
   categories: { id: string; name: string }[];
   activeCategoryId: string | null;
   onCategoryClick: (id: string) => void;
+  variant: StoreCustomizationConfig['layout']['categoryNavigation'];
 }
 
-export function CategoryNav({ categories, activeCategoryId, onCategoryClick }: CategoryNavProps) {
+export function CategoryNav({
+  categories,
+  activeCategoryId,
+  onCategoryClick,
+  variant,
+}: CategoryNavProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
-  // Scroll active tab into view
   useEffect(() => {
-    if (activeRef.current && scrollRef.current) {
+    if (variant === 'HORIZONTAL_STICKY' && activeRef.current && scrollRef.current) {
       const container = scrollRef.current;
       const active = activeRef.current;
       const left = active.offsetLeft - container.offsetWidth / 2 + active.offsetWidth / 2;
       container.scrollTo({ left, behavior: 'smooth' });
     }
-  }, [activeCategoryId]);
+  }, [activeCategoryId, variant]);
+
+  if (variant === 'DROPDOWN') {
+    return (
+      <div className="storefront-category-dropdown">
+        <label htmlFor="storefront-category" className="sr-only">
+          Ir para categoria
+        </label>
+        <select
+          id="storefront-category"
+          value={activeCategoryId ?? ''}
+          onChange={(event) => onCategoryClick(event.target.value)}
+        >
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
 
   return (
-    <nav className="sticky top-0 z-10 border-b border-tinta/10 bg-papel/95 backdrop-blur-sm">
-      <div
-        ref={scrollRef}
-        className="scrollbar-hide mx-auto flex max-w-2xl gap-1 overflow-x-auto px-4 py-2"
-      >
-        {categories.map((cat) => {
-          const isActive = cat.id === activeCategoryId;
+    <nav
+      aria-label="Categorias do cardápio"
+      className={`storefront-category-nav ${variant === 'VERTICAL' ? 'storefront-category-nav-vertical' : ''}`}
+    >
+      <div ref={scrollRef} className="storefront-category-list scrollbar-hide">
+        {categories.map((category) => {
+          const isActive = category.id === activeCategoryId;
           return (
             <button
-              key={cat.id}
+              type="button"
+              key={category.id}
               ref={isActive ? activeRef : undefined}
-              onClick={() => onCategoryClick(cat.id)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-pimenta text-white'
-                  : 'text-tinta/60 hover:bg-tinta/5 hover:text-tinta'
-              }`}
+              onClick={() => onCategoryClick(category.id)}
+              aria-current={isActive ? 'true' : undefined}
+              className={`storefront-category-button ${isActive ? 'is-active' : ''}`}
             >
-              {cat.name}
+              {category.name}
             </button>
           );
         })}

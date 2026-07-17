@@ -14,10 +14,10 @@ export function CartFab() {
   if (count === 0 || !storeSlug) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-2xl">
+    <div className="storefront-cart-fab fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-2xl">
       <Link
         href={`/${storeSlug}/cart`}
-        className="flex items-center justify-between rounded-xl bg-pimenta px-4 py-3 text-white shadow-lg transition-all hover:bg-pimenta/90 active:scale-[0.98]"
+        className="storefront-primary-action flex items-center justify-between rounded-xl px-4 py-3 shadow-lg transition-all active:scale-[0.98]"
       >
         <div className="flex items-center gap-3">
           <div className="relative">

@@ -322,7 +322,7 @@ export function CheckoutForm({
       <Button
         type="submit"
         disabled={isPending || items.length === 0}
-        className="w-full bg-pimenta text-white hover:bg-pimenta/90 font-body font-medium shadow-sm disabled:opacity-50"
+        className="storefront-primary-action w-full font-body font-medium shadow-sm disabled:opacity-50"
       >
         {isPending ? (
           <>
