@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-import { AuthenticationError } from '@/server/errors';
+import { AuthenticationError, AuthorizationError } from '@/server/errors';
 import { GET as getHealth } from '@/app/api/health/route';
 import { POST as postLogin } from '@/app/api/auth/login/route';
 import { POST as postLogout } from '@/app/api/auth/logout/route';
 import { GET as getCurrentUser } from '@/app/api/auth/me/route';
+import { POST as postStoreAsset } from '@/app/api/admin/tenants/[tenantId]/stores/[storeId]/assets/route';
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
   logout: vi.fn(),
   requireAuthenticatedUser: vi.fn(),
+  requireSuperAdminStoreAccess: vi.fn(),
+  uploadStoreAsset: vi.fn(),
 }));
 
 vi.mock('@/server/services/auth.service', () => ({
@@ -20,6 +23,11 @@ vi.mock('@/server/services/auth.service', () => ({
 
 vi.mock('@/server/auth', () => ({
   requireAuthenticatedUser: mocks.requireAuthenticatedUser,
+  requireSuperAdminStoreAccess: mocks.requireSuperAdminStoreAccess,
+}));
+
+vi.mock('@/server/services/store-asset.service', () => ({
+  uploadStoreAsset: mocks.uploadStoreAsset,
 }));
 
 describe('API routes', () => {
@@ -182,5 +190,22 @@ describe('API routes', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTHENTICATION_ERROR',
     });
+  });
+
+  it('autoriza upload administrativo antes de materializar o multipart', async () => {
+    mocks.requireSuperAdminStoreAccess.mockRejectedValue(new AuthorizationError());
+    const request = new Request('http://localhost/api/admin/assets', {
+      method: 'POST',
+      body: 'conteúdo que não deve ser lido',
+    });
+    const formDataSpy = vi.spyOn(request, 'formData');
+
+    const response = await postStoreAsset(request, {
+      params: Promise.resolve({ tenantId: 'tenant-1', storeId: 'store-1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(mocks.uploadStoreAsset).not.toHaveBeenCalled();
   });
 });

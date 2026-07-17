@@ -51,6 +51,14 @@ export function customizationCacheTag(storeId: string): string {
   return `customization:${storeId}`;
 }
 
+export function assetsCacheTag(storeId: string): string {
+  return `assets:${storeId}`;
+}
+
+export function assetCacheTag(assetId: string): string {
+  return `asset:${assetId}`;
+}
+
 /**
  * Retorna todas as tags de cache de uma loja.
  * Útil para invalidar tudo quando a loja é suspensa.
@@ -63,6 +71,7 @@ export function allStoreCacheTags(storeId: string): string[] {
     openingHoursCacheTag(storeId),
     paymentMethodsCacheTag(storeId),
     customizationCacheTag(storeId),
+    assetsCacheTag(storeId),
   ];
 }
 
@@ -77,5 +86,7 @@ export const CACHE_TAGS = {
   hours: openingHoursCacheTag,
   paymentMethods: paymentMethodsCacheTag,
   customization: customizationCacheTag,
+  assets: assetsCacheTag,
+  asset: assetCacheTag,
   all: allStoreCacheTags,
 } as const;
