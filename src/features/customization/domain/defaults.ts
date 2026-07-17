@@ -82,7 +82,6 @@ export function createCustomizationFromLegacy(input: {
 
   if (primary?.success) {
     config.palette.primary = primary.data;
-    config.palette.buttonBackground = primary.data;
   }
   if (secondary?.success) config.palette.secondary = secondary.data;
 

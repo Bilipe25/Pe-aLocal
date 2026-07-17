@@ -107,6 +107,22 @@ enum AuditAction {
   PAYMENT_CONFIRMED
   TENANT_SUSPENDED
   TENANT_ACTIVATED
+  CUSTOMIZATION_DRAFT_SAVED
+  CUSTOMIZATION_DRAFT_DISCARDED
+  CUSTOMIZATION_PUBLISHED
+  CUSTOMIZATION_REVISION_RESTORED
+  CUSTOMIZATION_DEFAULT_RESTORED
+}
+
+enum CustomizationRevisionAction {
+  PUBLISHED
+}
+
+enum CustomizationRevisionOrigin {
+  SUPER_ADMIN_UI
+  RESTORE
+  MIGRATION
+  SYSTEM_DEFAULT
 }
 
 // =============================================================================
@@ -125,9 +141,12 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  sessions      Session[]
-  tenantMembers TenantMember[]
-  auditLogs     AuditLog[]
+  sessions                Session[]
+  tenantMembers           TenantMember[]
+  auditLogs               AuditLog[]
+  customizationsPublished StoreCustomization[]         @relation("CustomizationPublishedBy")
+  customizationsUpdated   StoreCustomization[]         @relation("CustomizationUpdatedBy")
+  customizationRevisions  StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
 
   @@index([email])
   @@map("users")
@@ -220,7 +239,10 @@ model Store {
   products      Product[]
   deliveryZones DeliveryZone[]
   orders        Order[]
+  customization StoreCustomization?
+  auditLogs     AuditLog[]
 
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([slug])
   @@index([status])
@@ -260,6 +282,63 @@ model StoreSettings {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("store_settings")
+}
+
+model StoreCustomization {
+  id                    String                       @id @default(uuid())
+  tenantId              String
+  storeId               String                       @unique
+  schemaVersion         Int                          @default(1)
+  publishedConfig       Json
+  draftConfig           Json?
+  draftVersion          Int                          @default(0)
+  publishedVersion      Int                          @default(0)
+  publishedAt           DateTime?
+  publishedById         String?
+  updatedById           String?
+  draftOrigin           CustomizationRevisionOrigin?
+  draftSourceRevisionId String?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  store       Store                        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  publishedBy User?                        @relation("CustomizationPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  updatedBy   User?                        @relation("CustomizationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  revisions   StoreCustomizationRevision[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, tenantId])
+  @@index([tenantId])
+  @@index([publishedById])
+  @@index([updatedById])
+  @@index([draftSourceRevisionId])
+  @@map("store_customizations")
+}
+
+model StoreCustomizationRevision {
+  id              String                      @id @default(uuid())
+  customizationId String
+  tenantId        String
+  storeId         String
+  version         Int
+  schemaVersion   Int                         @default(1)
+  snapshot        Json
+  actorUserId     String?
+  action          CustomizationRevisionAction @default(PUBLISHED)
+  reason          String
+  origin          CustomizationRevisionOrigin
+  createdAt       DateTime                    @default(now())
+  publishedAt     DateTime
+
+  customization StoreCustomization @relation(fields: [customizationId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  actor         User?              @relation("CustomizationRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, version])
+  @@index([customizationId])
+  @@index([tenantId, storeId])
+  @@index([actorUserId])
+  @@index([storeId, createdAt, id])
+  @@map("store_customization_revisions")
 }
 
 model StoreAddress {
@@ -644,6 +723,7 @@ model CouponUsage {
 model AuditLog {
   id        String      @id @default(uuid())
   tenantId  String?
+  storeId   String?
   userId    String?
   action    AuditAction
   entity    String // Ex: "Product", "Order", "Store"
@@ -654,9 +734,11 @@ model AuditLog {
   createdAt DateTime    @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  store  Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([storeId])
   @@index([userId])
   @@index([action])
   @@index([entity])
