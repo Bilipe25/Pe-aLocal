@@ -65,6 +65,22 @@ function changedSections(before: StoreCustomizationConfig, after: StoreCustomiza
   );
 }
 
+function parseEntitlementConfig(
+  entitlement: Awaited<ReturnType<typeof ensureStoreEntitlement>>,
+) {
+  return storeEntitlementInputSchema.parse({
+    maxAssetCount: entitlement.maxAssetCount,
+    maxAssetStorageBytes: entitlement.maxAssetStorageBytes,
+    maxBanners: entitlement.maxBanners,
+    allowedLayoutTemplates: entitlement.allowedLayoutTemplates,
+    allowedVisualPresets: entitlement.allowedVisualPresets,
+    advancedTypographyEnabled: entitlement.advancedTypographyEnabled,
+    customDomainEnabled: entitlement.customDomainEnabled,
+    platformBrandingRemovalEnabled: entitlement.platformBrandingRemovalEnabled,
+    scheduledBannersEnabled: entitlement.scheduledBannersEnabled,
+  });
+}
+
 async function assertCustomizationPolicy(
   tenantId: string,
   storeId: string,
@@ -213,7 +229,7 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
       imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
     })),
     domains,
-    entitlement: storeEntitlementInputSchema.parse(entitlement),
+    entitlement: parseEntitlementConfig(entitlement),
     destinations: { categories, products, coupons },
   };
 }

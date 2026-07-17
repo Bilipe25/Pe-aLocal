@@ -107,6 +107,9 @@ describe('StoreCustomizationService', () => {
     mocks.listAdminStoreDomains.mockResolvedValue([]);
     mocks.findActiveStoreDomainByHostname.mockResolvedValue(null);
     mocks.ensureStoreEntitlement.mockResolvedValue({
+      id: 'entitlement-1',
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
       maxAssetCount: 25,
       maxAssetStorageBytes: 50 * 1024 * 1024,
       maxBanners: 5,
@@ -125,6 +128,8 @@ describe('StoreCustomizationService', () => {
       customDomainEnabled: false,
       platformBrandingRemovalEnabled: false,
       scheduledBannersEnabled: false,
+      createdAt: new Date('2026-07-17T12:00:00Z'),
+      updatedAt: new Date('2026-07-17T12:00:00Z'),
     });
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.productFindMany.mockResolvedValue([]);
@@ -153,6 +158,29 @@ describe('StoreCustomizationService', () => {
 
     expect(result.customization.effectiveConfig.identity.slogan).toBe('Rascunho');
     expect(result.customization.hasDraft).toBe(true);
+    expect(result.entitlement).toEqual({
+      maxAssetCount: 25,
+      maxAssetStorageBytes: 50 * 1024 * 1024,
+      maxBanners: 5,
+      allowedLayoutTemplates: ['CLASSIC_LIST', 'MODERN_GRID', 'EDITORIAL_HERO'],
+      allowedVisualPresets: [
+        'CLASSIC',
+        'MODERN',
+        'MINIMALIST',
+        'BURGER',
+        'PIZZA',
+        'ACAI_DESSERT',
+        'EXECUTIVE_RESTAURANT',
+        'DARK_PREMIUM',
+      ],
+      advancedTypographyEnabled: true,
+      customDomainEnabled: false,
+      platformBrandingRemovalEnabled: false,
+      scheduledBannersEnabled: false,
+    });
+    expect(result.entitlement).not.toHaveProperty('id');
+    expect(result.entitlement).not.toHaveProperty('tenantId');
+    expect(result.entitlement).not.toHaveProperty('createdAt');
     expect(mocks.listRevisions).toHaveBeenCalledWith('tenant-1', 'store-1');
   });
 
