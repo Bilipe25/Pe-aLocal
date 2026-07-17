@@ -40,6 +40,10 @@ export function paymentMethodsCacheTag(storeId: string): string {
   return `payment-methods:${storeId}`;
 }
 
+export function customizationCacheTag(storeId: string): string {
+  return `customization:${storeId}`;
+}
+
 /**
  * Retorna todas as tags de cache de uma loja.
  * Útil para invalidar tudo quando a loja é suspensa.
@@ -51,6 +55,7 @@ export function allStoreCacheTags(storeId: string): string[] {
     deliveryCacheTag(storeId),
     openingHoursCacheTag(storeId),
     paymentMethodsCacheTag(storeId),
+    customizationCacheTag(storeId),
   ];
 }
 
@@ -63,5 +68,6 @@ export const CACHE_TAGS = {
   delivery: deliveryCacheTag,
   hours: openingHoursCacheTag,
   paymentMethods: paymentMethodsCacheTag,
+  customization: customizationCacheTag,
   all: allStoreCacheTags,
 } as const;
