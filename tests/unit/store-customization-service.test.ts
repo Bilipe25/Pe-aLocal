@@ -131,6 +131,30 @@ describe('StoreCustomizationService', () => {
     });
   });
 
+  it('preserva a origem de restauração ao editar o draft restaurado', async () => {
+    mocks.ensureCustomization.mockResolvedValue(
+      customization({
+        draftConfig: config,
+        draftOrigin: 'RESTORE',
+        draftSourceRevisionId: 'revision-1',
+      }),
+    );
+
+    await saveCustomizationDraft('tenant-1', 'store-1', {
+      config,
+      expectedDraftVersion: 2,
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          draftOrigin: 'RESTORE',
+          draftSourceRevisionId: 'revision-1',
+        }),
+      }),
+    );
+  });
+
   it('rejeita versão obsoleta antes de abrir a transação', async () => {
     await expect(
       saveCustomizationDraft('tenant-1', 'store-1', {

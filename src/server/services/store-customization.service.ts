@@ -114,10 +114,10 @@ export async function saveCustomizationDraft(
   storeId: string,
   input: { config: unknown; expectedDraftVersion: unknown },
 ) {
+  const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const config = parseConfig(input.config);
   assertBrandingPolicy(config);
   const version = parseVersion(input.expectedDraftVersion);
-  const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   assertExpectedVersion(customization.draftVersion, version.expectedDraftVersion);
 
   const previous = parseConfig(customization.draftConfig ?? customization.publishedConfig);
@@ -136,8 +136,8 @@ export async function saveCustomizationDraft(
         draftConfig: customizationRepo.jsonInput(config),
         draftVersion: { increment: 1 },
         updatedById: context.session.userId,
-        draftOrigin: 'SUPER_ADMIN_UI',
-        draftSourceRevisionId: null,
+        draftOrigin: customization.draftOrigin ?? 'SUPER_ADMIN_UI',
+        draftSourceRevisionId: customization.draftSourceRevisionId,
       },
     });
     if (updated.count !== 1) {
@@ -169,8 +169,8 @@ export async function discardCustomizationDraft(
   storeId: string,
   expectedDraftVersion: unknown,
 ) {
-  const version = parseVersion(expectedDraftVersion);
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
+  const version = parseVersion(expectedDraftVersion);
   assertExpectedVersion(customization.draftVersion, version.expectedDraftVersion);
   const nextDraftVersion = customization.draftVersion + 1;
 
@@ -213,8 +213,8 @@ export async function publishCustomization(
   storeId: string,
   input: { expectedDraftVersion: unknown; reason: unknown },
 ) {
-  const publishInput = parsePublishInput(input);
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
+  const publishInput = parsePublishInput(input);
   assertExpectedVersion(customization.draftVersion, publishInput.expectedDraftVersion);
   if (!customization.draftConfig) {
     throw new ValidationError('Não existe rascunho para publicar.');
@@ -322,9 +322,9 @@ async function replaceDraft(
   auditAction: 'CUSTOMIZATION_REVISION_RESTORED' | 'CUSTOMIZATION_DEFAULT_RESTORED',
   metadata: Record<string, string | number | null>,
 ) {
+  const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const parsedInput = parsePublishInput(input);
   assertBrandingPolicy(config);
-  const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   assertExpectedVersion(customization.draftVersion, parsedInput.expectedDraftVersion);
   const nextDraftVersion = customization.draftVersion + 1;
 
