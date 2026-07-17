@@ -14,11 +14,19 @@ const mocks = vi.hoisted(() => ({
   categoryFindMany: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
   storeAssetFindMany: vi.fn(),
+  listPublicStoreBanners: vi.fn(),
+  findActivePrimaryStoreDomain: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/cache', () => ({ unstable_cache: mocks.unstableCache }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
+vi.mock('@/server/repositories/store-banner.repository', () => ({
+  listPublicStoreBanners: mocks.listPublicStoreBanners,
+}));
+vi.mock('@/server/repositories/store-domain.repository', () => ({
+  findActivePrimaryStoreDomain: mocks.findActivePrimaryStoreDomain,
+}));
 
 function publicStore() {
   return {
@@ -65,6 +73,8 @@ describe('queries públicas da loja', () => {
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
     mocks.storeAssetFindMany.mockResolvedValue([]);
+    mocks.listPublicStoreBanners.mockResolvedValue([]);
+    mocks.findActivePrimaryStoreDomain.mockResolvedValue(null);
     mocks.getDb.mockReturnValue({
       store: { findUnique: mocks.storeFindUnique },
       category: { findMany: mocks.categoryFindMany },
@@ -116,6 +126,42 @@ describe('queries públicas da loja', () => {
     expect(customizationSelect).not.toHaveProperty('draftConfig');
     expect(customizationSelect).not.toHaveProperty('revisions');
     expect(result?.customization.config.identity.slogan).toBe('');
+  });
+
+  it('retorna somente banners públicos resolvidos e o domínio primário ativo', async () => {
+    mocks.listPublicStoreBanners.mockResolvedValue([
+      {
+        id: 'banner-1',
+        title: 'Frete grátis',
+        subtitle: 'Hoje',
+        buttonText: 'Ver categoria',
+        destinationType: 'CATEGORY',
+        destinationValue: 'category-1',
+        priority: 10,
+        asset: { id: 'asset-banner', altText: 'Frete grátis' },
+      },
+    ]);
+    mocks.findActivePrimaryStoreDomain.mockResolvedValue({
+      id: 'domain-1',
+      hostname: 'cardapio.exemplo.com.br',
+      domainType: 'CUSTOM',
+    });
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(mocks.listPublicStoreBanners).toHaveBeenCalledWith(
+      'tenant-1',
+      'store-1',
+      expect.any(Date),
+    );
+    expect(result?.customization.banners).toEqual([
+      expect.objectContaining({
+        id: 'banner-1',
+        href: '#category-category-1',
+        imageUrl: '/api/store-assets/asset-banner?width=1280',
+      }),
+    ]);
+    expect(result?.customization.primaryDomain?.hostname).toBe('cardapio.exemplo.com.br');
   });
 
   it('isola as tags de store, catálogo e entrega', async () => {

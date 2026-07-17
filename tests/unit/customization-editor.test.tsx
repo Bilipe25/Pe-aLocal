@@ -22,6 +22,30 @@ function renderEditor(hasDraft = false) {
       tenantId="tenant-1"
       storeId="store-1"
       initialAssets={[]}
+      initialBanners={[]}
+      initialDomains={[]}
+      initialEntitlement={{
+        maxAssetCount: 25,
+        maxAssetStorageBytes: 50 * 1024 * 1024,
+        maxBanners: 5,
+        allowedLayoutTemplates: ['CLASSIC_LIST', 'MODERN_GRID', 'EDITORIAL_HERO'],
+        allowedVisualPresets: [
+          'CLASSIC',
+          'MODERN',
+          'MINIMALIST',
+          'BURGER',
+          'PIZZA',
+          'ACAI_DESSERT',
+          'EXECUTIVE_RESTAURANT',
+          'DARK_PREMIUM',
+        ],
+        advancedTypographyEnabled: true,
+        customDomainEnabled: false,
+        platformBrandingRemovalEnabled: false,
+        scheduledBannersEnabled: false,
+      }}
+      destinations={{ categories: [], products: [], coupons: [] }}
+      storeSlug="loja-1"
       initialConfig={config}
       initialPublishedConfig={structuredClone(config)}
       initialDraftVersion={0}

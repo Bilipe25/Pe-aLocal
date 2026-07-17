@@ -21,6 +21,13 @@ const mocks = vi.hoisted(() => ({
   auditCreate: vi.fn(),
   revisionCreate: vi.fn(),
   assetFindMany: vi.fn(),
+  listAdminStoreBanners: vi.fn(),
+  listAdminStoreDomains: vi.fn(),
+  findActiveStoreDomainByHostname: vi.fn(),
+  ensureStoreEntitlement: vi.fn(),
+  categoryFindMany: vi.fn(),
+  productFindMany: vi.fn(),
+  couponFindMany: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -35,6 +42,16 @@ vi.mock('@/server/repositories/store-customization.repository', () => ({
 }));
 vi.mock('@/server/repositories/store-asset.repository', () => ({
   listActiveStoreAssets: mocks.listActiveStoreAssets,
+}));
+vi.mock('@/server/repositories/store-banner.repository', () => ({
+  listAdminStoreBanners: mocks.listAdminStoreBanners,
+}));
+vi.mock('@/server/repositories/store-domain.repository', () => ({
+  listAdminStoreDomains: mocks.listAdminStoreDomains,
+  findActiveStoreDomainByHostname: mocks.findActiveStoreDomainByHostname,
+}));
+vi.mock('@/server/repositories/store-entitlement.repository', () => ({
+  ensureStoreEntitlement: mocks.ensureStoreEntitlement,
 }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 
@@ -86,6 +103,32 @@ describe('StoreCustomizationService', () => {
     mocks.auditCreate.mockResolvedValue({ id: 'audit-1' });
     mocks.revisionCreate.mockResolvedValue({ id: 'revision-1' });
     mocks.assetFindMany.mockResolvedValue([]);
+    mocks.listAdminStoreBanners.mockResolvedValue([]);
+    mocks.listAdminStoreDomains.mockResolvedValue([]);
+    mocks.findActiveStoreDomainByHostname.mockResolvedValue(null);
+    mocks.ensureStoreEntitlement.mockResolvedValue({
+      maxAssetCount: 25,
+      maxAssetStorageBytes: 50 * 1024 * 1024,
+      maxBanners: 5,
+      allowedLayoutTemplates: ['CLASSIC_LIST', 'MODERN_GRID', 'EDITORIAL_HERO'],
+      allowedVisualPresets: [
+        'CLASSIC',
+        'MODERN',
+        'MINIMALIST',
+        'BURGER',
+        'PIZZA',
+        'ACAI_DESSERT',
+        'EXECUTIVE_RESTAURANT',
+        'DARK_PREMIUM',
+      ],
+      advancedTypographyEnabled: true,
+      customDomainEnabled: false,
+      platformBrandingRemovalEnabled: false,
+      scheduledBannersEnabled: false,
+    });
+    mocks.categoryFindMany.mockResolvedValue([]);
+    mocks.productFindMany.mockResolvedValue([]);
+    mocks.couponFindMany.mockResolvedValue([]);
 
     const tx = {
       storeCustomization: { updateMany: mocks.updateMany },
@@ -95,6 +138,9 @@ describe('StoreCustomizationService', () => {
     mocks.getDb.mockReturnValue({
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
       storeAsset: { findMany: mocks.assetFindMany },
+      category: { findMany: mocks.categoryFindMany },
+      product: { findMany: mocks.productFindMany },
+      coupon: { findMany: mocks.couponFindMany },
     });
   });
 
@@ -226,6 +272,43 @@ describe('StoreCustomizationService', () => {
       }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(mocks.getDb).not.toHaveBeenCalled();
+  });
+
+  it('aceita remoção habilitada e audita a mudança somente na publicação', async () => {
+    mocks.ensureStoreEntitlement.mockResolvedValue({
+      ...(await mocks.ensureStoreEntitlement()),
+      platformBrandingRemovalEnabled: true,
+    });
+    const draft = createDefaultCustomization();
+    draft.platformBranding.showPedidoLocalBranding = false;
+    mocks.ensureCustomization.mockResolvedValue(
+      customization({ draftConfig: draft, draftVersion: 4, publishedVersion: 2 }),
+    );
+
+    await publishCustomization('tenant-1', 'store-1', {
+      expectedDraftVersion: 4,
+      reason: 'Plano permite white-label completo',
+    });
+
+    expect(mocks.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'BRANDING_VISIBILITY_CHANGED',
+        metadata: expect.objectContaining({ previousVisible: true, nextVisible: false }),
+      }),
+    });
+  });
+
+  it('rejeita canonical externo que não pertence à loja', async () => {
+    const draft = createDefaultCustomization();
+    draft.seo.canonicalUrl = 'https://outra-loja.example/cardapio';
+
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it('publica em uma transação com revisão imutável e auditoria', async () => {

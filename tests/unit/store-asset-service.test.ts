@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   assetCreate: vi.fn(),
   assetUpdateMany: vi.fn(),
   auditCreate: vi.fn(),
+  ensureStoreEntitlement: vi.fn(),
+  lockStoreEntitlement: vi.fn(),
+  assetAggregate: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -32,6 +35,10 @@ vi.mock('@/server/storage/store-assets', () => ({
   getStoreAssetRuntime: mocks.getStoreAssetRuntime,
   inspectStoreAssetFile: mocks.inspectStoreAssetFile,
   buildStoreAssetObjectKey: mocks.buildStoreAssetObjectKey,
+}));
+vi.mock('@/server/repositories/store-entitlement.repository', () => ({
+  ensureStoreEntitlement: mocks.ensureStoreEntitlement,
+  lockStoreEntitlement: mocks.lockStoreEntitlement,
 }));
 
 const activeAsset = {
@@ -72,8 +79,18 @@ describe('StoreAssetService', () => {
     mocks.assetCreate.mockResolvedValue(activeAsset);
     mocks.assetUpdateMany.mockResolvedValue({ count: 1 });
     mocks.auditCreate.mockResolvedValue({ id: 'audit-1' });
+    mocks.ensureStoreEntitlement.mockResolvedValue({ id: 'entitlement-1' });
+    mocks.lockStoreEntitlement.mockResolvedValue({
+      maxAssetCount: 25,
+      maxAssetStorageBytes: 50 * 1024 * 1024,
+    });
+    mocks.assetAggregate.mockResolvedValue({ _count: { id: 0 }, _sum: { sizeBytes: 0 } });
     const tx = {
-      storeAsset: { create: mocks.assetCreate, updateMany: mocks.assetUpdateMany },
+      storeAsset: {
+        create: mocks.assetCreate,
+        updateMany: mocks.assetUpdateMany,
+        aggregate: mocks.assetAggregate,
+      },
       auditLog: { create: mocks.auditCreate },
     };
     mocks.getDb.mockReturnValue({
@@ -115,6 +132,26 @@ describe('StoreAssetService', () => {
     ).rejects.toBe(databaseError);
 
     expect(mocks.bucketDelete).toHaveBeenCalledWith('tenants/tenant-1/stores/store-1/logo/new.png');
+  });
+
+  it('compensa o R2 quando o limite de assets é atingido sob lock', async () => {
+    mocks.lockStoreEntitlement.mockResolvedValue({
+      maxAssetCount: 1,
+      maxAssetStorageBytes: 50 * 1024 * 1024,
+    });
+    mocks.assetAggregate.mockResolvedValue({ _count: { id: 1 }, _sum: { sizeBytes: 3 } });
+
+    await expect(
+      uploadStoreAsset('tenant-1', 'store-1', new File(['png'], 'logo.png'), {
+        assetType: 'LOGO',
+        altText: 'Logo',
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(mocks.assetCreate).not.toHaveBeenCalled();
+    expect(mocks.bucketDelete).toHaveBeenCalledWith(
+      'tenants/tenant-1/stores/store-1/logo/new.png',
+    );
   });
 
   it('não permite substituir um asset ausente no escopo tenant/store', async () => {
