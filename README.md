@@ -59,7 +59,7 @@ Veja `.env.example` para todas as variáveis necessárias.
 | `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling) |
 | `DIRECT_URL`                                    | URL de conexão direta (para migrations) |
 | `APP_URL`                                       | URL base da aplicação                   |
-| `SUPER_ADMIN_EMAIL`                             | E-mail do super admin                   |
+| `SEED_SUPER_ADMIN_EMAIL`                        | Identidade criada pelo seed local       |
 | `NEXT_PUBLIC_SUPABASE_URL`                      | URL da API do projeto Supabase          |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`          | Chave publicável da API Supabase        |
 | `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor      |
@@ -90,10 +90,10 @@ pnpm format        # Formatar código
 
 Após executar o seed:
 
-| Perfil       | E-mail                   | Senha              |
-| ------------ | ------------------------ | ------------------ |
-| Super Admin  | admin@pedidolocal.com.br | (definido no seed) |
-| Proprietário | dono@demo.com            | SenhaDemo123!      |
+| Perfil       | E-mail                   | Senha                  |
+| ------------ | ------------------------ | ---------------------- |
+| Super Admin  | `SEED_SUPER_ADMIN_EMAIL` | (definida no ambiente) |
+| Proprietário | dono@demo.com            | SenhaDemo123!          |
 
 > ⚠️ **Nunca use estas credenciais em produção.**
 

@@ -27,6 +27,27 @@ export async function findStoreById(id: string, tenantId: string) {
   });
 }
 
+/**
+ * Confirma o escopo tenant/loja sem carregar configurações operacionais.
+ * Usado por operações de plataforma que recebem os dois IDs explicitamente.
+ */
+export async function findStoreScopeById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      name: true,
+      slug: true,
+      status: true,
+      isActive: true,
+      tenant: {
+        select: { id: true, name: true, status: true },
+      },
+    },
+  });
+}
+
 export async function findStoreBySlug(slug: string) {
   return getDb().store.findUnique({
     where: { slug },

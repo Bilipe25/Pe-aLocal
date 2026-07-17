@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthorizationError, TenantAccessError } from '@/server/errors';
-import { requireStoreAccess, requireSuperAdmin } from '@/server/auth';
+import { requireStoreAccess, requireSuperAdmin, requireSuperAdminStoreAccess } from '@/server/auth';
 
 const mocks = vi.hoisted(() => ({
   validateCurrentSession: vi.fn(),
   findStoreById: vi.fn(),
+  findStoreScopeById: vi.fn(),
 }));
 
 vi.mock('@/server/services/auth.service', () => ({
@@ -13,6 +14,7 @@ vi.mock('@/server/services/auth.service', () => ({
 }));
 vi.mock('@/server/repositories/store.repository', () => ({
   findStoreById: mocks.findStoreById,
+  findStoreScopeById: mocks.findStoreScopeById,
 }));
 
 const baseSession = {
@@ -49,6 +51,12 @@ describe('autorização de plataforma e isolamento de tenant', () => {
     await expect(requireSuperAdmin()).rejects.toBeInstanceOf(AuthorizationError);
   });
 
+  it.each(['MANAGER', 'ATTENDANT'] as const)('nega /admin a %s', async (tenantRole) => {
+    mocks.validateCurrentSession.mockResolvedValue({ ...baseSession, tenantRole });
+
+    await expect(requireSuperAdmin()).rejects.toBeInstanceOf(AuthorizationError);
+  });
+
   it('usuário sem membership não vira administrador', async () => {
     mocks.validateCurrentSession.mockResolvedValue({
       ...baseSession,
@@ -67,5 +75,57 @@ describe('autorização de plataforma e isolamento de tenant', () => {
       TenantAccessError,
     );
     expect(mocks.findStoreById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
+  });
+
+  it('SUPER_ADMIN acessa uma loja sem depender de tenant na sessão', async () => {
+    const superAdmin = {
+      ...baseSession,
+      email: 'platform-admin@example.test',
+      platformRole: 'SUPER_ADMIN',
+      tenantRole: null,
+      tenantId: null,
+      storeId: null,
+    };
+    const store = {
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      name: 'Loja A',
+      slug: 'loja-a',
+      status: 'ACTIVE',
+      isActive: true,
+      tenant: { id: 'tenant-a', name: 'Tenant A', status: 'ACTIVE' },
+    };
+    mocks.validateCurrentSession.mockResolvedValue(superAdmin);
+    mocks.findStoreScopeById.mockResolvedValue(store);
+
+    await expect(requireSuperAdminStoreAccess('tenant-a', 'store-a')).resolves.toEqual({
+      session: superAdmin,
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      store,
+    });
+    expect(mocks.findStoreScopeById).toHaveBeenCalledWith('store-a', 'tenant-a');
+  });
+
+  it('não aceita uma loja associada a outro tenant na área de plataforma', async () => {
+    mocks.validateCurrentSession.mockResolvedValue({
+      ...baseSession,
+      platformRole: 'SUPER_ADMIN',
+      tenantRole: null,
+      tenantId: null,
+      storeId: null,
+    });
+    mocks.findStoreScopeById.mockResolvedValue(null);
+
+    await expect(
+      requireSuperAdminStoreAccess('tenant-a', 'store-from-tenant-b'),
+    ).rejects.toBeInstanceOf(TenantAccessError);
+  });
+
+  it('nega OWNER antes de consultar o escopo da loja administrativa', async () => {
+    await expect(requireSuperAdminStoreAccess('tenant-a', 'store-a')).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+    expect(mocks.findStoreScopeById).not.toHaveBeenCalled();
   });
 });

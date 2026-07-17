@@ -64,8 +64,18 @@ export default async function AdminPage() {
 
       <section className="border-border bg-surface overflow-hidden rounded-xl border shadow-sm">
         <div className="border-border border-b px-5 py-4">
-          <h2 className="text-text-primary text-lg font-semibold">Tenants</h2>
-          <p className="text-text-secondary text-sm">Até 100 cadastros mais recentes.</p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-text-primary text-lg font-semibold">Tenants</h2>
+              <p className="text-text-secondary text-sm">Até 100 cadastros mais recentes.</p>
+            </div>
+            <Link
+              href="/admin/tenants"
+              className="text-brand-500 text-sm font-medium hover:underline"
+            >
+              Ver todos
+            </Link>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">

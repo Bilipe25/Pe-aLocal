@@ -118,7 +118,7 @@ describe('AuthService com Supabase Auth', () => {
   it('SUPER_ADMIN não depende de tenant e segue para /admin', async () => {
     mocks.findUserByAuthUserId.mockResolvedValue({
       ...profile,
-      email: 'admin@pedidolocal.com.br',
+      email: 'platform-admin@example.test',
       platformRole: 'SUPER_ADMIN',
     });
     await expect(
@@ -129,6 +129,29 @@ describe('AuthService com Supabase Auth', () => {
       tenantId: null,
       destination: '/admin',
     });
+    expect(mocks.findFirstActiveMembership).not.toHaveBeenCalled();
+  });
+
+  it('sessão SUPER_ADMIN ignora memberships e mantém contexto de tenant vazio', async () => {
+    mocks.findUserByAuthUserId.mockResolvedValue({
+      ...profile,
+      email: 'another-admin@example.test',
+      platformRole: 'SUPER_ADMIN',
+    });
+    mocks.findFirstActiveMembership.mockResolvedValue({
+      tenantId: 'tenant-indevido',
+      role: 'OWNER',
+      tenant: { stores: [{ id: 'store-indevida' }] },
+    });
+
+    await expect(validateCurrentSession()).resolves.toMatchObject({
+      email: 'another-admin@example.test',
+      platformRole: 'SUPER_ADMIN',
+      tenantRole: null,
+      tenantId: null,
+      storeId: null,
+    });
+    expect(mocks.findFirstActiveMembership).not.toHaveBeenCalled();
   });
 
   it('monta os papéis independentemente a partir do perfil e membership', async () => {

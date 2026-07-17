@@ -1,21 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { changeTenantStatus } from '@/server/services/admin.service';
+import {
+  changeTenantStatus,
+  getAdminStoreContext,
+  getAdminTenantsData,
+} from '@/server/services/admin.service';
 
 const mocks = vi.hoisted(() => ({
   requireSuperAdmin: vi.fn(),
+  requireSuperAdminStoreAccess: vi.fn(),
   getDb: vi.fn(),
   getPlatformOverview: vi.fn(),
   getTenantSupportDetails: vi.fn(),
+  listTenantsForAdmin: vi.fn(),
   tenantFindUnique: vi.fn(),
   tenantUpdate: vi.fn(),
   auditCreate: vi.fn(),
 }));
 
-vi.mock('@/server/auth', () => ({ requireSuperAdmin: mocks.requireSuperAdmin }));
+vi.mock('@/server/auth', () => ({
+  requireSuperAdmin: mocks.requireSuperAdmin,
+  requireSuperAdminStoreAccess: mocks.requireSuperAdminStoreAccess,
+}));
 vi.mock('@/server/repositories/admin.repository', () => ({
   getPlatformOverview: mocks.getPlatformOverview,
   getTenantSupportDetails: mocks.getTenantSupportDetails,
+  listTenantsForAdmin: mocks.listTenantsForAdmin,
 }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 
@@ -66,5 +76,21 @@ describe('AdminService', () => {
         metadata: { previousStatus: 'ACTIVE', nextStatus: 'SUSPENDED' },
       }),
     });
+  });
+
+  it('protege a listagem dedicada de tenants', async () => {
+    const data = { total: 1, tenants: [{ id: 'tenant-1' }] };
+    mocks.listTenantsForAdmin.mockResolvedValue(data);
+
+    await expect(getAdminTenantsData()).resolves.toEqual(data);
+    expect(mocks.requireSuperAdmin).toHaveBeenCalledOnce();
+  });
+
+  it('obtém a loja pelo contexto administrativo validado', async () => {
+    const store = { id: 'store-1', tenantId: 'tenant-1', name: 'Loja' };
+    mocks.requireSuperAdminStoreAccess.mockResolvedValue({ store });
+
+    await expect(getAdminStoreContext('tenant-1', 'store-1')).resolves.toEqual(store);
+    expect(mocks.requireSuperAdminStoreAccess).toHaveBeenCalledWith('tenant-1', 'store-1');
   });
 });

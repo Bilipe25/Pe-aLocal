@@ -60,13 +60,10 @@ async function main() {
 
   console.log('🌱 Iniciando seed...\n');
 
-  // 1. Super Admin
-  const superAdminEmail = 'admin@pedidolocal.com.br';
-  if (
-    process.env.SUPER_ADMIN_EMAIL &&
-    process.env.SUPER_ADMIN_EMAIL.toLowerCase() !== superAdminEmail
-  ) {
-    throw new Error(`SUPER_ADMIN_EMAIL deve ser ${superAdminEmail} no seed.`);
+  // 1. Super Admin — bootstrap explícito, nunca usado pela autorização em runtime.
+  const superAdminEmail = requiredEnv('SEED_SUPER_ADMIN_EMAIL').toLowerCase().trim();
+  if (!superAdminEmail.includes('@')) {
+    throw new Error('SEED_SUPER_ADMIN_EMAIL deve conter um e-mail válido.');
   }
 
   const existingSuperAdmin = await prisma.user.findUnique({
@@ -89,7 +86,7 @@ async function main() {
     },
     create: {
       email: superAdminEmail,
-      name: 'Administrador',
+      name: process.env.SEED_SUPER_ADMIN_NAME?.trim() || 'Administrador da plataforma',
       authUserId: superAdminAuth.id,
       platformRole: 'SUPER_ADMIN',
       isActive: true,
