@@ -69,6 +69,19 @@ async function resolveProfile(authUser: {
   return profile;
 }
 
+async function resolveTenantContext(profile: { id: string; platformRole: PlatformRole }) {
+  if (profile.platformRole === PlatformRole.SUPER_ADMIN) {
+    return { tenantRole: null, tenantId: null, storeId: null };
+  }
+
+  const membership = await memberRepo.findFirstActiveMembership(profile.id);
+  return {
+    tenantRole: membership?.role ?? null,
+    tenantId: membership?.tenantId ?? null,
+    storeId: membership?.tenant?.stores?.[0]?.id ?? null,
+  };
+}
+
 export async function login(
   input: LoginInput,
   meta?: { ipAddress?: string; userAgent?: string; redirectTo?: string | null },
@@ -129,10 +142,7 @@ export async function login(
   }
 
   await rateLimiter.reset(identifier);
-  const membership = await memberRepo.findFirstActiveMembership(profile.id);
-  const tenantId = membership?.tenantId ?? null;
-  const tenantRole = membership?.role ?? null;
-  const storeId = membership?.tenant?.stores?.[0]?.id ?? null;
+  const { tenantId, tenantRole, storeId } = await resolveTenantContext(profile);
 
   await auditRepo.createAuditLog({
     tenantId,
@@ -187,7 +197,7 @@ export async function validateCurrentSession(): Promise<SessionContext | null> {
   const profile = await userRepo.findUserByAuthUserId(authUserId);
   if (!profile?.isActive) return null;
 
-  const membership = await memberRepo.findFirstActiveMembership(profile.id);
+  const { tenantId, tenantRole, storeId } = await resolveTenantContext(profile);
 
   return {
     userId: profile.id,
@@ -195,8 +205,8 @@ export async function validateCurrentSession(): Promise<SessionContext | null> {
     email: profile.email,
     name: profile.name,
     platformRole: profile.platformRole,
-    tenantRole: membership?.role ?? null,
-    tenantId: membership?.tenantId ?? null,
-    storeId: membership?.tenant?.stores?.[0]?.id ?? null,
+    tenantRole,
+    tenantId,
+    storeId,
   };
 }

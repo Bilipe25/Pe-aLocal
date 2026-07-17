@@ -123,7 +123,7 @@ export default function CartPage() {
           </div>
           <Link href={`/${params.storeSlug}/checkout`} className="block w-full">
             <Button
-              className="w-full bg-pimenta text-white hover:bg-pimenta/90 font-body font-medium shadow-sm"
+              className="storefront-primary-action w-full font-body font-medium shadow-sm"
             >
               Ir para o Checkout
             </Button>

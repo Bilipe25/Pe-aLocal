@@ -13,6 +13,13 @@ export function storeCacheTag(storeId: string): string {
 }
 
 /**
+ * Tag pública resolvida antes de conhecermos o ID interno da loja.
+ */
+export function storeSlugCacheTag(slug: string): string {
+  return `store-slug:${slug}`;
+}
+
+/**
  * Tag de cache para catálogo (categorias + produtos + adicionais).
  */
 export function catalogCacheTag(storeId: string): string {
@@ -40,6 +47,26 @@ export function paymentMethodsCacheTag(storeId: string): string {
   return `payment-methods:${storeId}`;
 }
 
+export function customizationCacheTag(storeId: string): string {
+  return `customization:${storeId}`;
+}
+
+export function assetsCacheTag(storeId: string): string {
+  return `assets:${storeId}`;
+}
+
+export function assetCacheTag(assetId: string): string {
+  return `asset:${assetId}`;
+}
+
+export function bannersCacheTag(storeId: string): string {
+  return `banners:${storeId}`;
+}
+
+export function domainsCacheTag(storeId: string): string {
+  return `domains:${storeId}`;
+}
+
 /**
  * Retorna todas as tags de cache de uma loja.
  * Útil para invalidar tudo quando a loja é suspensa.
@@ -51,6 +78,10 @@ export function allStoreCacheTags(storeId: string): string[] {
     deliveryCacheTag(storeId),
     openingHoursCacheTag(storeId),
     paymentMethodsCacheTag(storeId),
+    customizationCacheTag(storeId),
+    assetsCacheTag(storeId),
+    bannersCacheTag(storeId),
+    domainsCacheTag(storeId),
   ];
 }
 
@@ -59,9 +90,15 @@ export function allStoreCacheTags(storeId: string): string[] {
  */
 export const CACHE_TAGS = {
   store: storeCacheTag,
+  storeSlug: storeSlugCacheTag,
   catalog: catalogCacheTag,
   delivery: deliveryCacheTag,
   hours: openingHoursCacheTag,
   paymentMethods: paymentMethodsCacheTag,
+  customization: customizationCacheTag,
+  assets: assetsCacheTag,
+  asset: assetCacheTag,
+  banners: bannersCacheTag,
+  domains: domainsCacheTag,
   all: allStoreCacheTags,
 } as const;

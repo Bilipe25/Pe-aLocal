@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+
+import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
-import { CartFab } from '@/components/storefront/cart-fab';
+import { StoreBanners, type PublicStoreBanner } from '@/components/storefront/store-banners';
+import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 
 interface Option {
@@ -48,28 +52,55 @@ interface CatalogViewProps {
   storeId: string;
   storeSlug: string;
   storeOpen: boolean;
+  customization: StoreCustomizationConfig;
+  banners: PublicStoreBanner[];
 }
 
-export function CatalogView({ categories, storeId, storeSlug, storeOpen }: CatalogViewProps) {
-  const setStore = useCartStore((s) => s.setStore);
+export function CatalogView({
+  categories,
+  storeId,
+  storeSlug,
+  storeOpen,
+  customization,
+  banners,
+}: CatalogViewProps) {
+  const setStore = useCartStore((state) => state.setStore);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     categories[0]?.id ?? null,
   );
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    setStore(storeId, storeSlug);
-  }, [storeId, storeSlug, setStore]);
+  useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
+
+  const visibleCategories = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+    if (!term) return categories;
+
+    return categories
+      .map((category) => ({
+        ...category,
+        products: category.products.filter((product) =>
+          `${product.name} ${product.description ?? ''}`.toLocaleLowerCase('pt-BR').includes(term),
+        ),
+      }))
+      .filter((category) => category.products.length > 0);
+  }, [categories, search]);
+
+  const featuredProducts = useMemo(
+    () => visibleCategories.flatMap((category) => category.products).filter((product) => product.isFeatured),
+    [visibleCategories],
+  );
 
   function handleCategoryClick(id: string) {
+    if (!id) return;
     setActiveCategoryId(id);
-    const element = document.getElementById(`category-${id}`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    document.getElementById(`category-${id}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
   }
 
-  // Intersection Observer para atualizar categoria ativa
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -84,50 +115,119 @@ export function CatalogView({ categories, storeId, storeSlug, storeOpen }: Catal
     );
 
     const sections = document.querySelectorAll('[data-category-id]');
-    sections.forEach((s) => observer.observe(s));
-
+    sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, [categories]);
+  }, [visibleCategories]);
+
+  const productCard = (product: Product, withAnchor = false) => (
+    <ProductCard
+      key={product.id}
+      id={withAnchor ? `product-${product.id}` : undefined}
+      name={product.name}
+      description={product.description}
+      basePrice={product.basePrice}
+      isFeatured={product.isFeatured}
+      isSoldOut={product.isSoldOut}
+      imageUrl={product.imageUrl}
+      onClick={() => setSelectedProduct(product)}
+      disabled={!storeOpen}
+      showImage={customization.layout.showProductImages}
+      showBadges={customization.layout.showProductBadges}
+      presentation={customization.layout.productPresentation}
+    />
+  );
+
+  function renderSection(section: StoreSection) {
+    if (section === 'CATEGORIES' && visibleCategories.length > 0) {
+      return (
+        <CategoryNav
+          key={section}
+          categories={visibleCategories.map((category) => ({ id: category.id, name: category.name }))}
+          activeCategoryId={activeCategoryId}
+          onCategoryClick={handleCategoryClick}
+          variant={customization.layout.categoryNavigation}
+        />
+      );
+    }
+
+    if (section === 'BANNERS') {
+      return <StoreBanners key={section} banners={banners} />;
+    }
+
+    if (
+      section === 'FEATURED' &&
+      customization.layout.showFeaturedProducts &&
+      featuredProducts.length > 0
+    ) {
+      return (
+        <section key={section} className="storefront-featured-section">
+          <h2 className="storefront-section-title">Destaques</h2>
+          <div className="storefront-product-grid">
+            {featuredProducts.map((product) => productCard(product))}
+          </div>
+        </section>
+      );
+    }
+
+    if (section === 'CATALOG') {
+      return (
+        <main key={section} className="storefront-catalog">
+          {visibleCategories.length === 0 ? (
+            <div className="storefront-empty">Nenhum produto encontrado.</div>
+          ) : (
+            visibleCategories.map((category) => (
+              <section
+                key={category.id}
+                id={`category-${category.id}`}
+                data-category-id={category.id}
+                className="storefront-category-section"
+              >
+                <h2 className="storefront-section-title">{category.name}</h2>
+                {customization.layout.showCategoryDescription && category.description && (
+                  <p className="storefront-category-description">{category.description}</p>
+                )}
+                <div className="storefront-product-grid">
+                  {category.products.map((product) => productCard(product, true))}
+                </div>
+              </section>
+            ))
+          )}
+        </main>
+      );
+    }
+
+    if (section === 'STORE_INFO' && customization.identity.aboutText) {
+      return (
+        <section key={section} className="storefront-store-info">
+          <h2 className="storefront-section-title">Sobre a loja</h2>
+          <p>{customization.identity.aboutText}</p>
+        </section>
+      );
+    }
+
+    return null;
+  }
 
   return (
     <>
-      <CategoryNav
-        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-        activeCategoryId={activeCategoryId}
-        onCategoryClick={handleCategoryClick}
-      />
+      {customization.layout.showSearch && (
+        <div className="storefront-search-wrap">
+          <Search className="h-4 w-4" aria-hidden="true" />
+          <label htmlFor="storefront-search" className="sr-only">
+            Buscar no cardápio
+          </label>
+          <input
+            id="storefront-search"
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar no cardápio"
+          />
+        </div>
+      )}
 
-      <main className="mx-auto max-w-2xl px-4 pb-24 pt-4">
-        {categories.map((category) => (
-          <section
-            key={category.id}
-            id={`category-${category.id}`}
-            data-category-id={category.id}
-            className="mb-6 scroll-mt-16"
-          >
-            <h2 className="mb-3 font-display text-lg font-bold text-tinta">
-              {category.name}
-            </h2>
-            <div className="space-y-2">
-              {category.products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  name={product.name}
-                  description={product.description}
-                  basePrice={product.basePrice}
-                  isFeatured={product.isFeatured}
-                  isSoldOut={product.isSoldOut}
-                  imageUrl={product.imageUrl}
-                  onClick={() => setSelectedProduct(product)}
-                  disabled={!storeOpen}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </main>
+      {customization.layout.sectionOrder.map(renderSection)}
 
-      {/* Modal de produto */}
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
@@ -136,7 +236,6 @@ export function CatalogView({ categories, storeId, storeSlug, storeOpen }: Catal
         />
       )}
 
-      {/* FAB do carrinho */}
       <CartFab />
     </>
   );

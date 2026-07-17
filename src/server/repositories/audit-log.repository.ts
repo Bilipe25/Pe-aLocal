@@ -11,6 +11,7 @@ import type { AuditAction, Prisma } from '@prisma/client';
  */
 export async function createAuditLog(data: {
   tenantId?: string | null;
+  storeId?: string | null;
   userId?: string | null;
   action: AuditAction;
   entity: string;
@@ -22,6 +23,7 @@ export async function createAuditLog(data: {
   return getDb().auditLog.create({
     data: {
       tenantId: data.tenantId ?? undefined,
+      storeId: data.storeId ?? undefined,
       userId: data.userId ?? undefined,
       action: data.action,
       entity: data.entity,

@@ -11,5 +11,6 @@ export async function changeTenantStatusAction(
 ): Promise<void> {
   await changeTenantStatus(tenantId, nextStatus);
   revalidatePath('/admin');
+  revalidatePath('/admin/tenants');
   revalidatePath(`/admin/tenants/${tenantId}`);
 }

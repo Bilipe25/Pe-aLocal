@@ -32,6 +32,22 @@ export async function getPlatformOverview() {
   };
 }
 
+export async function listTenantsForAdmin() {
+  const db = getDb();
+  const [total, tenants] = await Promise.all([
+    db.tenant.count(),
+    db.tenant.findMany({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+      include: {
+        _count: { select: { members: true, stores: true } },
+      },
+    }),
+  ]);
+
+  return { total, tenants };
+}
+
 export async function getTenantSupportDetails(tenantId: string) {
   return getDb().tenant.findUnique({
     where: { id: tenantId },

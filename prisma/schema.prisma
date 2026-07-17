@@ -107,6 +107,67 @@ enum AuditAction {
   PAYMENT_CONFIRMED
   TENANT_SUSPENDED
   TENANT_ACTIVATED
+  CUSTOMIZATION_DRAFT_SAVED
+  CUSTOMIZATION_DRAFT_DISCARDED
+  CUSTOMIZATION_PUBLISHED
+  CUSTOMIZATION_REVISION_RESTORED
+  CUSTOMIZATION_DEFAULT_RESTORED
+  ASSET_UPLOADED
+  ASSET_REPLACED
+  ASSET_DELETED
+  BANNER_CREATED
+  BANNER_UPDATED
+  BANNER_DELETED
+  DOMAIN_REQUESTED
+  DOMAIN_STATUS_CHANGED
+  ENTITLEMENT_UPDATED
+  BRANDING_VISIBILITY_CHANGED
+}
+
+enum CustomizationRevisionAction {
+  PUBLISHED
+}
+
+enum CustomizationRevisionOrigin {
+  SUPER_ADMIN_UI
+  RESTORE
+  MIGRATION
+  SYSTEM_DEFAULT
+}
+
+enum StoreAssetType {
+  LOGO
+  LOGO_DARK
+  COVER
+  FAVICON
+  SOCIAL_IMAGE
+  BANNER
+}
+
+enum StoreAssetStatus {
+  ACTIVE
+  DELETED
+}
+
+enum BannerDestinationType {
+  NONE
+  CATEGORY
+  PRODUCT
+  COUPON
+  INTERNAL_PATH
+}
+
+enum StoreDomainType {
+  SUBDOMAIN
+  CUSTOM
+}
+
+enum StoreDomainStatus {
+  PENDING
+  VERIFYING
+  ACTIVE
+  FAILED
+  DISABLED
 }
 
 // =============================================================================
@@ -125,9 +186,13 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  sessions      Session[]
-  tenantMembers TenantMember[]
-  auditLogs     AuditLog[]
+  sessions                Session[]
+  tenantMembers           TenantMember[]
+  auditLogs               AuditLog[]
+  customizationsPublished StoreCustomization[]         @relation("CustomizationPublishedBy")
+  customizationsUpdated   StoreCustomization[]         @relation("CustomizationUpdatedBy")
+  customizationRevisions  StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
+  storeAssetsCreated      StoreAsset[]                   @relation("StoreAssetCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -220,7 +285,14 @@ model Store {
   products      Product[]
   deliveryZones DeliveryZone[]
   orders        Order[]
+  customization StoreCustomization?
+  auditLogs     AuditLog[]
+  assets        StoreAsset[]
+  banners       StoreBanner[]
+  domains       StoreDomain[]
+  entitlement   StoreEntitlement?
 
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([slug])
   @@index([status])
@@ -260,6 +332,164 @@ model StoreSettings {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("store_settings")
+}
+
+model StoreCustomization {
+  id                    String                       @id @default(uuid())
+  tenantId              String
+  storeId               String                       @unique
+  schemaVersion         Int                          @default(1)
+  publishedConfig       Json
+  draftConfig           Json?
+  draftVersion          Int                          @default(0)
+  publishedVersion      Int                          @default(0)
+  publishedAt           DateTime?
+  publishedById         String?
+  updatedById           String?
+  draftOrigin           CustomizationRevisionOrigin?
+  draftSourceRevisionId String?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  store       Store                        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  publishedBy User?                        @relation("CustomizationPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  updatedBy   User?                        @relation("CustomizationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  revisions   StoreCustomizationRevision[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, tenantId])
+  @@index([tenantId])
+  @@index([publishedById])
+  @@index([updatedById])
+  @@index([draftSourceRevisionId])
+  @@map("store_customizations")
+}
+
+model StoreCustomizationRevision {
+  id              String                      @id @default(uuid())
+  customizationId String
+  tenantId        String
+  storeId         String
+  version         Int
+  schemaVersion   Int                         @default(1)
+  snapshot        Json
+  actorUserId     String?
+  action          CustomizationRevisionAction @default(PUBLISHED)
+  reason          String
+  origin          CustomizationRevisionOrigin
+  createdAt       DateTime                    @default(now())
+  publishedAt     DateTime
+
+  customization StoreCustomization @relation(fields: [customizationId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  actor         User?              @relation("CustomizationRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, version])
+  @@index([customizationId])
+  @@index([tenantId, storeId])
+  @@index([actorUserId])
+  @@index([storeId, createdAt, id])
+  @@map("store_customization_revisions")
+}
+
+model StoreAsset {
+  id          String           @id @default(uuid())
+  tenantId    String
+  storeId     String
+  assetType   StoreAssetType
+  objectKey   String           @unique
+  mimeType    String
+  width       Int
+  height      Int
+  sizeBytes   Int
+  altText     String
+  status      StoreAssetStatus @default(ACTIVE)
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  store     Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User? @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  banners   StoreBanner[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status, createdAt])
+  @@index([storeId, assetType, status])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("store_assets")
+}
+
+model StoreBanner {
+  id               String                @id @default(uuid())
+  tenantId         String
+  storeId          String
+  assetId          String?
+  title            String
+  subtitle         String?
+  buttonText       String?
+  destinationType  BannerDestinationType @default(NONE)
+  destinationValue String?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  isActive         Boolean               @default(false)
+  priority         Int                   @default(0)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  store Store       @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  asset StoreAsset? @relation(fields: [assetId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, isActive, priority])
+  @@index([storeId, startsAt, endsAt])
+  @@index([assetId])
+  @@map("store_banners")
+}
+
+model StoreDomain {
+  id                String            @id @default(uuid())
+  tenantId          String
+  storeId           String
+  hostname          String            @unique
+  domainType        StoreDomainType
+  status            StoreDomainStatus @default(PENDING)
+  verificationToken String            @unique
+  isPrimary         Boolean           @default(false)
+  verifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  store Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status])
+  @@index([storeId, isPrimary])
+  @@map("store_domains")
+}
+
+model StoreEntitlement {
+  id                             String   @id @default(uuid())
+  tenantId                       String
+  storeId                        String   @unique
+  maxAssetCount                  Int      @default(25)
+  maxAssetStorageBytes           Int      @default(52428800)
+  maxBanners                     Int      @default(5)
+  allowedLayoutTemplates         String[] @default(["CLASSIC_LIST", "MODERN_GRID", "EDITORIAL_HERO"])
+  allowedVisualPresets           String[] @default(["CLASSIC", "MODERN", "MINIMALIST", "BURGER", "PIZZA", "ACAI_DESSERT", "EXECUTIVE_RESTAURANT", "DARK_PREMIUM"])
+  advancedTypographyEnabled      Boolean  @default(true)
+  customDomainEnabled            Boolean  @default(false)
+  platformBrandingRemovalEnabled Boolean  @default(false)
+  scheduledBannersEnabled        Boolean  @default(false)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+
+  store Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, tenantId])
+  @@index([tenantId, storeId])
+  @@map("store_entitlements")
 }
 
 model StoreAddress {
@@ -644,6 +874,7 @@ model CouponUsage {
 model AuditLog {
   id        String      @id @default(uuid())
   tenantId  String?
+  storeId   String?
   userId    String?
   action    AuditAction
   entity    String // Ex: "Product", "Order", "Store"
@@ -654,9 +885,11 @@ model AuditLog {
   createdAt DateTime    @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  store  Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([storeId])
   @@index([userId])
   @@index([action])
   @@index([entity])

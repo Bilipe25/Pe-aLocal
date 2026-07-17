@@ -17,7 +17,6 @@ const envSchema = z.object({
   STORAGE_PROVIDER: z.enum(['local', 'vercel-blob', 'supabase', 's3', 'r2']).default('local'),
   STORAGE_TOKEN: z.string().optional().default(''),
 
-  SUPER_ADMIN_EMAIL: z.string().email(),
   SEED_OWNER_EMAIL: z.string().email().optional(),
 });
 

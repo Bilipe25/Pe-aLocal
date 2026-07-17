@@ -57,3 +57,36 @@ tests/
 2. Painel autenticado: login, filtro, atualização de status e confirmação de pagamento.
 3. Auditoria WCAG automatizada nas rotas críticas.
 4. Orçamento de performance baseado em Core Web Vitals no build de produção.
+
+## White-label e acessibilidade
+
+A suíte `tests/e2e/white-label.spec.ts` usa o fluxo real do Supabase Auth e a
+autorização final de `public.users.platformRole`. Ela não possui bypass de teste.
+Configure em `.env.local`, ou no ambiente do processo Playwright:
+
+```text
+E2E_SUPER_ADMIN_EMAIL=
+E2E_SUPER_ADMIN_PASSWORD=
+E2E_OWNER_EMAIL=
+E2E_OWNER_PASSWORD=
+E2E_TENANT_ID=
+E2E_STORE_ID=
+E2E_STORE_SLUG=
+E2E_ALLOW_MUTATIONS=false
+```
+
+Sem essas variáveis, os cenários dependentes de autenticação ou banco são
+marcados como ignorados com uma justificativa explícita. A jornada de publicação
+só executa quando `E2E_ALLOW_MUTATIONS=true`; use essa opção exclusivamente em
+uma loja descartável de teste. A própria jornada volta ao layout publicado
+original e descarta o draft criado pela validação de restauração.
+
+```bash
+pnpm test:e2e
+pnpm test:e2e:a11y
+pnpm test:workerd
+```
+
+A auditoria com axe bloqueia violações WCAG 2 A/AA de impacto `critical` ou
+`serious` na home, login, cardápio e editor. As credenciais nunca devem ser
+versionadas, impressas ou reutilizadas de produção.

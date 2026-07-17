@@ -17,7 +17,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'corepack pnpm preview',
+    command: 'pnpm preview',
     url: 'http://127.0.0.1:8787/api/health',
     reuseExistingServer: false,
     timeout: 6 * 60 * 1000,

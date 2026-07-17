@@ -1,6 +1,6 @@
 import type { TenantStatus } from '@prisma/client';
 
-import { requireSuperAdmin } from '@/server/auth';
+import { requireSuperAdmin, requireSuperAdminStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import { NotFoundError, ValidationError } from '@/server/errors';
 import * as adminRepo from '@/server/repositories/admin.repository';
@@ -14,6 +14,16 @@ export async function getAdminTenantDetails(tenantId: string) {
   await requireSuperAdmin();
   if (!tenantId) throw new ValidationError('Tenant inválido.');
   return adminRepo.getTenantSupportDetails(tenantId);
+}
+
+export async function getAdminTenantsData() {
+  await requireSuperAdmin();
+  return adminRepo.listTenantsForAdmin();
+}
+
+export async function getAdminStoreContext(tenantId: string, storeId: string) {
+  const { store } = await requireSuperAdminStoreAccess(tenantId, storeId);
+  return store;
 }
 
 export async function changeTenantStatus(

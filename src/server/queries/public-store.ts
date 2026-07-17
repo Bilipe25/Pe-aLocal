@@ -1,11 +1,15 @@
 import 'server-only';
 
 import { unstable_cache } from 'next/cache';
-import { getDb } from '@/server/database/client';
 
-// =============================================================================
-// Queries Públicas da Loja (com cache)
-// =============================================================================
+import { resolvePublicCustomization } from '@/features/customization/public';
+import { storeAssetUrl } from '@/features/assets/urls';
+import { CACHE_TAGS } from '@/server/cache';
+import { getDb } from '@/server/database/client';
+import * as bannerRepo from '@/server/repositories/store-banner.repository';
+import * as domainRepo from '@/server/repositories/store-domain.repository';
+
+const PUBLIC_CACHE_SECONDS = 60;
 
 async function getStoreFromDb(slug: string) {
   const store = await getDb().store.findUnique({
@@ -25,6 +29,8 @@ async function getStoreFromDb(slug: string) {
       settings: {
         select: {
           primaryColor: true,
+          secondaryColor: true,
+          fontFamily: true,
           minOrderValue: true,
           estimatedTime: true,
           deliveryEnabled: true,
@@ -32,6 +38,14 @@ async function getStoreFromDb(slug: string) {
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
+        },
+      },
+      customization: {
+        // Contrato público intencionalmente não seleciona draftConfig nem revisões.
+        select: {
+          publishedConfig: true,
+          publishedVersion: true,
+          publishedAt: true,
         },
       },
       address: {
@@ -54,18 +68,88 @@ async function getStoreFromDb(slug: string) {
   });
 
   if (!store || !store.isActive) return null;
-  return store;
+
+  const { customization, ...publicStore } = store;
+  const resolvedCustomization = resolvePublicCustomization({
+    publishedConfig: customization?.publishedConfig,
+    publishedVersion: customization?.publishedVersion,
+    publishedAt: customization?.publishedAt,
+    legacy: {
+      primaryColor: store.settings?.primaryColor,
+      secondaryColor: store.settings?.secondaryColor,
+      fontFamily: store.settings?.fontFamily,
+    },
+  });
+  const identityAssetIds = [
+    resolvedCustomization.config.identity.logoAssetId,
+    resolvedCustomization.config.identity.logoDarkAssetId,
+    resolvedCustomization.config.identity.coverAssetId,
+    resolvedCustomization.config.identity.faviconAssetId,
+    resolvedCustomization.config.identity.socialImageAssetId,
+  ].filter((id): id is string => Boolean(id));
+  const [assets, banners, primaryDomain] = await Promise.all([
+    identityAssetIds.length > 0
+      ? getDb().storeAsset.findMany({
+          where: {
+            id: { in: identityAssetIds },
+            tenantId: store.tenantId,
+            storeId: store.id,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+          select: { id: true, assetType: true, altText: true },
+        })
+      : Promise.resolve([]),
+    bannerRepo.listPublicStoreBanners(store.tenantId, store.id, new Date()),
+    domainRepo.findActivePrimaryStoreDomain(store.tenantId, store.id),
+  ]);
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  const resolveAsset = (id: string | null, width?: number) => {
+    if (!id) return null;
+    const asset = assetById.get(id);
+    return asset ? { id: asset.id, altText: asset.altText, url: storeAssetUrl(asset.id, width) } : null;
+  };
+  const resolveBannerHref = (type: string, value: string | null) => {
+    if (!value || type === 'NONE') return null;
+    if (type === 'CATEGORY') return `#category-${value}`;
+    if (type === 'PRODUCT') return `#product-${value}`;
+    if (type === 'COUPON') return `/${store.slug}?coupon=${encodeURIComponent(value)}`;
+    return value;
+  };
+
+  return {
+    ...publicStore,
+    customization: {
+      ...resolvedCustomization,
+      assets: {
+        logo: resolveAsset(resolvedCustomization.config.identity.logoAssetId, 384),
+        logoDark: resolveAsset(resolvedCustomization.config.identity.logoDarkAssetId, 384),
+        cover: resolveAsset(resolvedCustomization.config.identity.coverAssetId, 1280),
+        favicon: resolveAsset(resolvedCustomization.config.identity.faviconAssetId, 96),
+        socialImage: resolveAsset(resolvedCustomization.config.identity.socialImageAssetId, 1280),
+      },
+      banners: banners.map((banner) => ({
+        id: banner.id,
+        title: banner.title,
+        subtitle: banner.subtitle,
+        buttonText: banner.buttonText,
+        href: resolveBannerHref(banner.destinationType, banner.destinationValue),
+        priority: banner.priority,
+        imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
+        imageAlt: banner.asset?.altText ?? banner.title,
+      })),
+      primaryDomain,
+    },
+  };
 }
 
-/**
- * Busca uma loja pública pelo slug, com todas as informações necessárias
- * para renderizar a storefront. Usando cache do Next.js.
- */
-export const getPublicStoreBySlug = unstable_cache(
-  async (slug: string) => getStoreFromDb(slug),
-  ['public-store'], // cache key
-  { revalidate: 60, tags: ['store'] }, // revalidate a cada 60s ou quando tag for invalidada
-);
+/** Busca os dados públicos da loja e somente sua personalização publicada. */
+export async function getPublicStoreBySlug(slug: string) {
+  return unstable_cache(() => getStoreFromDb(slug), ['public-store', slug], {
+    revalidate: PUBLIC_CACHE_SECONDS,
+    tags: [CACHE_TAGS.storeSlug(slug)],
+  })();
+}
 
 async function getCatalogFromDb(storeId: string, tenantId: string) {
   const categories = await getDb().category.findMany({
@@ -114,19 +198,19 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
     },
   });
 
-  // Filtrar categorias sem produtos disponíveis
-  return categories.filter((c) => c.products.length > 0);
+  return categories.filter((category) => category.products.length > 0);
 }
 
-/**
- * Busca o catálogo público (categorias + produtos + adicionais)
- * de uma loja ativa. Usando cache do Next.js.
- */
-export const getPublicCatalog = unstable_cache(
-  async (storeId: string, tenantId: string) => getCatalogFromDb(storeId, tenantId),
-  ['public-catalog'],
-  { revalidate: 60, tags: ['catalog'] },
-);
+export async function getPublicCatalog(storeId: string, tenantId: string) {
+  return unstable_cache(
+    () => getCatalogFromDb(storeId, tenantId),
+    ['public-catalog', storeId, tenantId],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.catalog(storeId)],
+    },
+  )();
+}
 
 async function getDeliveryZonesFromDb(storeId: string) {
   return getDb().deliveryZone.findMany({
@@ -142,11 +226,9 @@ async function getDeliveryZonesFromDb(storeId: string) {
   });
 }
 
-/**
- * Busca zonas de entrega ativas de uma loja. Usando cache do Next.js.
- */
-export const getPublicDeliveryZones = unstable_cache(
-  async (storeId: string) => getDeliveryZonesFromDb(storeId),
-  ['public-delivery-zones'],
-  { revalidate: 60, tags: ['store', 'delivery-zones'] },
-);
+export async function getPublicDeliveryZones(storeId: string) {
+  return unstable_cache(() => getDeliveryZonesFromDb(storeId), ['public-delivery-zones', storeId], {
+    revalidate: PUBLIC_CACHE_SECONDS,
+    tags: [CACHE_TAGS.delivery(storeId)],
+  })();
+}

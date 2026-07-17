@@ -159,7 +159,7 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
             <Button
               onClick={handleAdd}
               disabled={!storeOpen || missingRequired}
-              className="flex-1 bg-pimenta text-white hover:bg-pimenta/90 font-body font-medium shadow-sm disabled:opacity-50"
+              className="storefront-primary-action flex-1 font-body font-medium shadow-sm disabled:opacity-50"
             >
               Adicionar · {formatCurrency(totalPrice)}
             </Button>

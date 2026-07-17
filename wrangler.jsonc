@@ -39,6 +39,10 @@
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
       "bucket_name": "pedidolocal-staging-opennext-cache",
     },
+    {
+      "binding": "STORE_ASSETS_R2",
+      "bucket_name": "pedidolocal-staging-store-assets",
+    },
   ],
   "hyperdrive": [
     {
@@ -78,6 +82,10 @@
           "binding": "NEXT_INC_CACHE_R2_BUCKET",
           "bucket_name": "pedidolocal-staging-opennext-cache",
         },
+        {
+          "binding": "STORE_ASSETS_R2",
+          "bucket_name": "pedidolocal-staging-store-assets",
+        },
       ],
       "hyperdrive": [
         {
@@ -116,6 +124,10 @@
         {
           "binding": "NEXT_INC_CACHE_R2_BUCKET",
           "bucket_name": "pedidolocal-production-opennext-cache",
+        },
+        {
+          "binding": "STORE_ASSETS_R2",
+          "bucket_name": "pedidolocal-production-store-assets",
         },
       ],
       "hyperdrive": [

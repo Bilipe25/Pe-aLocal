@@ -1,5 +1,5 @@
 import type { TenantStatus } from '@prisma/client';
-import { ArrowLeft, Building2, Store, Users } from 'lucide-react';
+import { ArrowLeft, Building2, Palette, Store, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -20,10 +20,10 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
   return (
     <div className="space-y-6">
       <Link
-        href="/admin"
+        href="/admin/tenants"
         className="text-text-secondary hover:text-brand-500 inline-flex items-center gap-1 text-sm"
       >
-        <ArrowLeft className="h-4 w-4" /> Voltar para administração
+        <ArrowLeft className="h-4 w-4" /> Voltar para tenants
       </Link>
 
       <section className="border-border bg-surface flex flex-col justify-between gap-4 rounded-xl border p-6 shadow-sm sm:flex-row sm:items-center">
@@ -92,7 +92,15 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
                     <p className="text-text-primary font-medium">{store.name}</p>
                     <p className="text-text-secondary text-sm">/{store.slug}</p>
                   </div>
-                  <span className="text-text-muted text-xs">{store.status}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-text-muted text-xs">{store.status}</span>
+                    <Link
+                      href={`/admin/tenants/${tenant.id}/stores/${store.id}/customization`}
+                      className="border-border text-text-secondary hover:bg-surface-secondary inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+                    >
+                      <Palette className="h-3.5 w-3.5" /> Personalização
+                    </Link>
+                  </div>
                 </div>
               </li>
             ))}

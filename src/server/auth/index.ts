@@ -38,6 +38,13 @@ export interface TenantContext extends Omit<SessionContext, 'tenantRole' | 'tena
   tenantId: string;
 }
 
+export interface SuperAdminStoreContext {
+  session: SessionContext;
+  tenantId: string;
+  storeId: string;
+  store: NonNullable<Awaited<ReturnType<typeof storeRepo.findStoreScopeById>>>;
+}
+
 // =============================================================================
 // Funções de autenticação
 // =============================================================================
@@ -72,6 +79,29 @@ export async function requireSuperAdmin(): Promise<SessionContext> {
   }
 
   return session;
+}
+
+/**
+ * Autoriza uma operação de plataforma para uma loja explicitamente selecionada.
+ * Os IDs enviados pela rota não são evidência de autorização: a relação entre
+ * tenant e loja é sempre confirmada no banco depois da validação do papel.
+ */
+export async function requireSuperAdminStoreAccess(
+  tenantId: string,
+  storeId: string,
+): Promise<SuperAdminStoreContext> {
+  const session = await requireSuperAdmin();
+
+  if (!tenantId || !storeId) {
+    throw new TenantAccessError('Tenant e loja são obrigatórios para esta operação.');
+  }
+
+  const store = await storeRepo.findStoreScopeById(storeId, tenantId);
+  if (!store) {
+    throw new TenantAccessError('A loja não pertence ao tenant informado.');
+  }
+
+  return { session, tenantId, storeId, store };
 }
 
 /**

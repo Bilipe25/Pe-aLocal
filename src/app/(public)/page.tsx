@@ -13,7 +13,7 @@ export default function HomePage() {
           </div>
           <Link
             href="/login"
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
           >
             Entrar
           </Link>
@@ -34,7 +34,7 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href="/login"
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-base font-semibold text-white shadow-md transition-all hover:bg-brand-600 hover:shadow-lg"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-md transition-all hover:bg-brand-700 hover:shadow-lg"
             >
               Começar agora
               <ArrowRight className="h-4 w-4" />
@@ -89,7 +89,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-surface py-8">
-        <div className="mx-auto max-w-6xl px-4 text-center text-sm text-text-muted">
+        <div className="mx-auto max-w-6xl px-4 text-center text-sm text-text-secondary">
           &copy; {new Date().getFullYear()} PedidoLocal. Todos os direitos reservados.
         </div>
       </footer>
