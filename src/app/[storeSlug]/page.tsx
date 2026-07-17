@@ -23,6 +23,7 @@ export default async function StorePage({ params }: StorePageProps) {
       storeSlug={store.slug}
       storeOpen={store.status === 'OPEN'}
       customization={store.customization.config}
+      banners={store.customization.banners}
     />
   );
 }

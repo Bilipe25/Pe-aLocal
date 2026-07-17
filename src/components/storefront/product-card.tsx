@@ -3,6 +3,7 @@ import { Ban, Star } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 interface ProductCardProps {
+  id?: string;
   name: string;
   description: string | null;
   basePrice: number;
@@ -17,6 +18,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({
+  id,
   name,
   description,
   basePrice,
@@ -33,6 +35,7 @@ export function ProductCard({
 
   return (
     <button
+      id={id}
       type="button"
       onClick={onClick}
       disabled={isDisabled}

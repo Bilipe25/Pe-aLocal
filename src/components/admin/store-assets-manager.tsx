@@ -2,6 +2,7 @@
 
 import { ImageIcon, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { deleteStoreAssetAction } from '@/features/assets/actions';
 import type { StoreAssetTypeValue } from '@/schemas/store-asset';
@@ -25,8 +26,8 @@ export interface AdminStoreAssetItem {
 }
 
 const ASSET_OPTIONS: {
-  type: Exclude<StoreAssetTypeValue, 'BANNER'>;
-  field: IdentityAssetField;
+  type: StoreAssetTypeValue;
+  field: IdentityAssetField | null;
   label: string;
   hint: string;
 }[] = [
@@ -50,6 +51,12 @@ const ASSET_OPTIONS: {
     label: 'Compartilhamento',
     hint: 'Mínimo 300×200 · até 3 MB',
   },
+  {
+    type: 'BANNER',
+    field: null,
+    label: 'Banner',
+    hint: 'Mínimo 600×180 · até 5 MB',
+  },
 ];
 
 export function StoreAssetsManager({
@@ -65,6 +72,7 @@ export function StoreAssetsManager({
   initialAssets: AdminStoreAssetItem[];
   onAssign: (field: IdentityAssetField, assetId: string | null) => void;
 }) {
+  const router = useRouter();
   const [assets, setAssets] = useState(initialAssets);
   const [selectedType, setSelectedType] = useState<(typeof ASSET_OPTIONS)[number]['type']>('LOGO');
   const [file, setFile] = useState<File | null>(null);
@@ -72,7 +80,7 @@ export function StoreAssetsManager({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const option = ASSET_OPTIONS.find((item) => item.type === selectedType)!;
-  const currentAssetId = identity[option.field];
+  const currentAssetId = option.field ? identity[option.field] : null;
   const grouped = useMemo(
     () =>
       ASSET_OPTIONS.map((item) => ({
@@ -107,10 +115,15 @@ export function StoreAssetsManager({
       return;
     }
     setAssets((current) => [body.asset!, ...current]);
-    onAssign(option.field, body.asset.id);
+    if (option.field) onAssign(option.field, body.asset.id);
     setFile(null);
     setAltText('');
-    setFeedback('Upload concluído. Salve o rascunho para associar a imagem.');
+    setFeedback(
+      option.field
+        ? 'Upload concluído. Salve o rascunho para associar a imagem.'
+        : 'Upload concluído. O asset já pode ser usado em um banner.',
+    );
+    router.refresh();
   }
 
   function removeAsset(asset: AdminStoreAssetItem) {
@@ -128,7 +141,10 @@ export function StoreAssetsManager({
       }
       setAssets((current) => current.filter((item) => item.id !== asset.id));
       const deletedOption = ASSET_OPTIONS.find((item) => item.type === asset.assetType);
-      if (deletedOption && identity[deletedOption.field] === asset.id) {
+      if (
+        deletedOption?.field &&
+        identity[deletedOption.field] === asset.id
+      ) {
         onAssign(deletedOption.field, null);
       }
       setFeedback('Asset marcado para exclusão segura.');
@@ -201,7 +217,7 @@ export function StoreAssetsManager({
             <h3 className="text-text-primary text-sm font-semibold">{group.label}</h3>
             <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.assets.map((asset) => {
-                const selected = identity[group.field] === asset.id;
+                const selected = group.field ? identity[group.field] === asset.id : false;
                 return (
                   <article
                     key={asset.id}
@@ -221,10 +237,11 @@ export function StoreAssetsManager({
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => onAssign(group.field, asset.id)}
+                          onClick={() => group.field && onAssign(group.field, asset.id)}
+                          disabled={!group.field}
                           className="border-border flex-1 rounded-md border px-2 py-1.5 text-xs"
                         >
-                          {selected ? 'Em uso' : 'Usar'}
+                          {group.field ? (selected ? 'Em uso' : 'Usar') : 'Disponível para banners'}
                         </button>
                         <button
                           type="button"

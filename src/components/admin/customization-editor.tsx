@@ -7,6 +7,18 @@ import {
   StoreAssetsManager,
   type AdminStoreAssetItem,
 } from '@/components/admin/store-assets-manager';
+import {
+  StoreBannersManager,
+  type AdminStoreBannerItem,
+} from '@/components/admin/store-banners-manager';
+import {
+  StoreDomainsManager,
+  type AdminStoreDomainItem,
+} from '@/components/admin/store-domains-manager';
+import {
+  StoreEntitlementsForm,
+  type AdminStoreEntitlementItem,
+} from '@/components/admin/store-entitlements-form';
 
 import {
   discardCustomizationDraftAction,
@@ -44,6 +56,15 @@ interface CustomizationEditorProps {
   publishedAt: string | null;
   revisions: RevisionItem[];
   initialAssets: AdminStoreAssetItem[];
+  initialBanners: AdminStoreBannerItem[];
+  initialDomains: AdminStoreDomainItem[];
+  initialEntitlement: AdminStoreEntitlementItem;
+  destinations: {
+    categories: { id: string; name: string }[];
+    products: { id: string; name: string }[];
+    coupons: { id: string; code: string }[];
+  };
+  storeSlug: string;
 }
 
 type Feedback = { tone: 'success' | 'error'; message: string } | null;
@@ -83,6 +104,11 @@ export function CustomizationEditor({
   publishedAt,
   revisions,
   initialAssets,
+  initialBanners,
+  initialDomains,
+  initialEntitlement,
+  destinations,
+  storeSlug,
 }: CustomizationEditorProps) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
@@ -370,6 +396,7 @@ export function CustomizationEditor({
             <label className="text-text-secondary grid gap-1.5 text-sm">
               Fonte dos títulos
               <select
+                disabled={!initialEntitlement.advancedTypographyEnabled}
                 value={config.typography.headingFontKey}
                 onChange={(event) =>
                   updateSection('typography', {
@@ -386,6 +413,7 @@ export function CustomizationEditor({
             <label className="text-text-secondary grid gap-1.5 text-sm">
               Fonte do texto
               <select
+                disabled={!initialEntitlement.advancedTypographyEnabled}
                 value={config.typography.bodyFontKey}
                 onChange={(event) =>
                   updateSection('typography', {
@@ -412,7 +440,9 @@ export function CustomizationEditor({
                 }
                 className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
               >
-                {LAYOUT_TEMPLATES.map((layout) => (
+                {LAYOUT_TEMPLATES.filter((layout) =>
+                  initialEntitlement.allowedLayoutTemplates.includes(layout),
+                ).map((layout) => (
                   <option key={layout} value={layout}>
                     {LAYOUT_LABELS[layout]}
                   </option>
@@ -430,7 +460,9 @@ export function CustomizationEditor({
                   onChange={(event) => setSelectedPreset(event.target.value as VisualPreset)}
                   className="border-border bg-surface text-text-primary min-w-0 flex-1 rounded-md border px-3 py-2"
                 >
-                  {VISUAL_PRESETS.map((preset) => (
+                  {VISUAL_PRESETS.filter((preset) =>
+                    initialEntitlement.allowedVisualPresets.includes(preset),
+                  ).map((preset) => (
                     <option key={preset}>{preset}</option>
                   ))}
                 </select>
@@ -471,6 +503,7 @@ export function CustomizationEditor({
         </section>
 
         <StoreAssetsManager
+          key={initialAssets.map((asset) => asset.id).join(':')}
           tenantId={tenantId}
           storeId={storeId}
           identity={config.identity}
@@ -480,8 +513,18 @@ export function CustomizationEditor({
           }
         />
 
+        <StoreBannersManager
+          tenantId={tenantId}
+          storeId={storeId}
+          initialBanners={initialBanners}
+          assets={initialAssets}
+          destinations={destinations}
+          maxBanners={initialEntitlement.maxBanners}
+          scheduledEnabled={initialEntitlement.scheduledBannersEnabled}
+        />
+
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">5. SEO e marca</h2>
+          <h2 className="text-text-primary text-lg font-semibold">6. SEO e marca</h2>
           <div className="mt-5 grid gap-4">
             <label className="text-text-secondary grid gap-1.5 text-sm">
               Título SEO
@@ -532,21 +575,39 @@ export function CustomizationEditor({
               <input
                 type="checkbox"
                 checked={config.platformBranding.showPedidoLocalBranding}
-                disabled
-                readOnly
+                disabled={!initialEntitlement.platformBrandingRemovalEnabled}
+                onChange={(event) =>
+                  updateSection('platformBranding', {
+                    showPedidoLocalBranding: event.target.checked,
+                  })
+                }
               />
               Exibir “Tecnologia por PedidoLocal”
             </label>
             <p className="text-text-muted text-xs">
-              A remoção permanece bloqueada no servidor até a configuração de entitlement.
+              A remoção só é aceita pelo servidor quando o entitlement estiver habilitado.
             </p>
           </div>
         </section>
 
+        <StoreDomainsManager
+          tenantId={tenantId}
+          storeId={storeId}
+          storeSlug={storeSlug}
+          initialDomains={initialDomains}
+          customDomainEnabled={initialEntitlement.customDomainEnabled}
+        />
+
+        <StoreEntitlementsForm
+          tenantId={tenantId}
+          storeId={storeId}
+          initialEntitlement={initialEntitlement}
+        />
+
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <History className="text-brand-500 h-5 w-5" />
-            <h2 className="text-text-primary text-lg font-semibold">Histórico publicado</h2>
+            <h2 className="text-text-primary text-lg font-semibold">9. Histórico publicado</h2>
           </div>
           <ul className="divide-border mt-4 divide-y">
             {revisions.map((revision) => (

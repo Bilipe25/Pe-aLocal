@@ -7,6 +7,7 @@ import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
+import { StoreBanners, type PublicStoreBanner } from '@/components/storefront/store-banners';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 
@@ -52,6 +53,7 @@ interface CatalogViewProps {
   storeSlug: string;
   storeOpen: boolean;
   customization: StoreCustomizationConfig;
+  banners: PublicStoreBanner[];
 }
 
 export function CatalogView({
@@ -60,6 +62,7 @@ export function CatalogView({
   storeSlug,
   storeOpen,
   customization,
+  banners,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
@@ -116,9 +119,10 @@ export function CatalogView({
     return () => observer.disconnect();
   }, [visibleCategories]);
 
-  const productCard = (product: Product) => (
+  const productCard = (product: Product, withAnchor = false) => (
     <ProductCard
       key={product.id}
+      id={withAnchor ? `product-${product.id}` : undefined}
       name={product.name}
       description={product.description}
       basePrice={product.basePrice}
@@ -146,6 +150,10 @@ export function CatalogView({
       );
     }
 
+    if (section === 'BANNERS') {
+      return <StoreBanners key={section} banners={banners} />;
+    }
+
     if (
       section === 'FEATURED' &&
       customization.layout.showFeaturedProducts &&
@@ -154,7 +162,9 @@ export function CatalogView({
       return (
         <section key={section} className="storefront-featured-section">
           <h2 className="storefront-section-title">Destaques</h2>
-          <div className="storefront-product-grid">{featuredProducts.map(productCard)}</div>
+          <div className="storefront-product-grid">
+            {featuredProducts.map((product) => productCard(product))}
+          </div>
         </section>
       );
     }
@@ -176,7 +186,9 @@ export function CatalogView({
                 {customization.layout.showCategoryDescription && category.description && (
                   <p className="storefront-category-description">{category.description}</p>
                 )}
-                <div className="storefront-product-grid">{category.products.map(productCard)}</div>
+                <div className="storefront-product-grid">
+                  {category.products.map((product) => productCard(product, true))}
+                </div>
               </section>
             ))
           )}

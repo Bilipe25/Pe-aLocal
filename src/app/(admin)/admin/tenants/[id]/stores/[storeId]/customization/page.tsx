@@ -23,7 +23,16 @@ export default async function AdminStoreCustomizationPage({
     throw error;
   }
 
-  const { store, customization, revisions, assets } = data;
+  const {
+    store,
+    customization,
+    revisions,
+    assets,
+    banners,
+    domains,
+    entitlement,
+    destinations,
+  } = data;
 
   return (
     <div className="space-y-6">
@@ -58,6 +67,7 @@ export default async function AdminStoreCustomizationPage({
         key={`${customization.draftVersion}-${customization.publishedVersion}`}
         tenantId={tenantId}
         storeId={storeId}
+        storeSlug={store.slug}
         initialConfig={customization.effectiveConfig}
         initialPublishedConfig={customization.publishedConfig}
         initialDraftVersion={customization.draftVersion}
@@ -77,6 +87,21 @@ export default async function AdminStoreCustomizationPage({
           createdAt: asset.createdAt.toISOString(),
           deletedAt: asset.deletedAt?.toISOString() ?? null,
         }))}
+        initialBanners={banners.map((banner) => ({
+          ...banner,
+          startsAt: banner.startsAt?.toISOString() ?? null,
+          endsAt: banner.endsAt?.toISOString() ?? null,
+          createdAt: banner.createdAt.toISOString(),
+          updatedAt: banner.updatedAt.toISOString(),
+        }))}
+        initialDomains={domains.map((domain) => ({
+          ...domain,
+          verifiedAt: domain.verifiedAt?.toISOString() ?? null,
+          createdAt: domain.createdAt.toISOString(),
+          updatedAt: domain.updatedAt.toISOString(),
+        }))}
+        initialEntitlement={entitlement}
+        destinations={destinations}
       />
     </div>
   );

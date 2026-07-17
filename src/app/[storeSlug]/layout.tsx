@@ -33,7 +33,11 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     store.coverUrl ??
     store.customization.assets.logo?.url ??
     store.logoUrl;
-  let canonical = config.seo.canonicalUrl ?? undefined;
+  let canonical =
+    config.seo.canonicalUrl ??
+    (store.customization.primaryDomain
+      ? `https://${store.customization.primaryDomain.hostname}/`
+      : undefined);
   if (!canonical && process.env.APP_URL) {
     try {
       canonical = new URL(`/${store.slug}`, process.env.APP_URL).toString();
