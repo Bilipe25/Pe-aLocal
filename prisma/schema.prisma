@@ -112,6 +112,9 @@ enum AuditAction {
   CUSTOMIZATION_PUBLISHED
   CUSTOMIZATION_REVISION_RESTORED
   CUSTOMIZATION_DEFAULT_RESTORED
+  ASSET_UPLOADED
+  ASSET_REPLACED
+  ASSET_DELETED
 }
 
 enum CustomizationRevisionAction {
@@ -123,6 +126,20 @@ enum CustomizationRevisionOrigin {
   RESTORE
   MIGRATION
   SYSTEM_DEFAULT
+}
+
+enum StoreAssetType {
+  LOGO
+  LOGO_DARK
+  COVER
+  FAVICON
+  SOCIAL_IMAGE
+  BANNER
+}
+
+enum StoreAssetStatus {
+  ACTIVE
+  DELETED
 }
 
 // =============================================================================
@@ -147,6 +164,7 @@ model User {
   customizationsPublished StoreCustomization[]         @relation("CustomizationPublishedBy")
   customizationsUpdated   StoreCustomization[]         @relation("CustomizationUpdatedBy")
   customizationRevisions  StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
+  storeAssetsCreated      StoreAsset[]                   @relation("StoreAssetCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -241,6 +259,7 @@ model Store {
   orders        Order[]
   customization StoreCustomization?
   auditLogs     AuditLog[]
+  assets        StoreAsset[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -339,6 +358,34 @@ model StoreCustomizationRevision {
   @@index([actorUserId])
   @@index([storeId, createdAt, id])
   @@map("store_customization_revisions")
+}
+
+model StoreAsset {
+  id          String           @id @default(uuid())
+  tenantId    String
+  storeId     String
+  assetType   StoreAssetType
+  objectKey   String           @unique
+  mimeType    String
+  width       Int
+  height      Int
+  sizeBytes   Int
+  altText     String
+  status      StoreAssetStatus @default(ACTIVE)
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  store     Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User? @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status, createdAt])
+  @@index([storeId, assetType, status])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("store_assets")
 }
 
 model StoreAddress {
