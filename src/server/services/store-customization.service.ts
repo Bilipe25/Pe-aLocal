@@ -4,18 +4,23 @@ import {
   createDefaultCustomization,
   evaluateCustomizationContrast,
 } from '@/features/customization/domain';
+import { assertCustomizationEntitlement } from '@/features/customization/entitlements';
 import {
   customizationPublishSchema,
   customizationVersionSchema,
   storeCustomizationConfigSchema,
   type StoreCustomizationConfig,
 } from '@/schemas/customization';
+import { storeEntitlementInputSchema } from '@/schemas/store-entitlement';
 import { requireSuperAdminStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import { ConflictError, NotFoundError, ValidationError } from '@/server/errors';
 import { storeAssetUrl } from '@/features/assets/urls';
 import * as customizationRepo from '@/server/repositories/store-customization.repository';
 import * as assetRepo from '@/server/repositories/store-asset.repository';
+import * as bannerRepo from '@/server/repositories/store-banner.repository';
+import * as domainRepo from '@/server/repositories/store-domain.repository';
+import { ensureStoreEntitlement } from '@/server/repositories/store-entitlement.repository';
 
 function parseConfig(value: unknown): StoreCustomizationConfig {
   const parsed = storeCustomizationConfigSchema.safeParse(value);
@@ -60,10 +65,45 @@ function changedSections(before: StoreCustomizationConfig, after: StoreCustomiza
   );
 }
 
-function assertBrandingPolicy(config: StoreCustomizationConfig) {
-  if (!config.platformBranding.showPedidoLocalBranding) {
+async function assertCustomizationPolicy(
+  tenantId: string,
+  storeId: string,
+  storeSlug: string,
+  config: StoreCustomizationConfig,
+) {
+  const entitlement = await ensureStoreEntitlement(tenantId, storeId);
+  assertCustomizationEntitlement(config, entitlement);
+
+  if (!config.seo.canonicalUrl) return;
+  const canonical = new URL(config.seo.canonicalUrl);
+  if (canonical.protocol !== 'https:') {
+    throw new ValidationError('A URL canônica deve usar HTTPS.');
+  }
+  const activeDomain = await domainRepo.findActiveStoreDomainByHostname(
+    tenantId,
+    storeId,
+    canonical.hostname.toLowerCase(),
+  );
+  if (
+    activeDomain &&
+    ['/', `/${storeSlug}`, `/${storeSlug}/`].includes(canonical.pathname) &&
+    !canonical.search &&
+    !canonical.hash
+  ) {
+    return;
+  }
+
+  const appUrl = process.env.APP_URL ? new URL(process.env.APP_URL) : null;
+  const expectedPath = `/${storeSlug}`;
+  if (
+    !appUrl ||
+    canonical.hostname.toLowerCase() !== appUrl.hostname.toLowerCase() ||
+    ![expectedPath, `${expectedPath}/`].includes(canonical.pathname) ||
+    Boolean(canonical.search) ||
+    Boolean(canonical.hash)
+  ) {
     throw new ValidationError(
-      'A remoção da marca PedidoLocal ainda não está habilitada para esta loja.',
+      'A URL canônica deve usar a rota oficial da loja ou um domínio ativo associado a ela.',
     );
   }
 }
@@ -123,10 +163,29 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const publishedConfig = parseConfig(customization.publishedConfig);
   const draftConfig = customization.draftConfig ? parseConfig(customization.draftConfig) : null;
-  const [revisions, assets] = await Promise.all([
+  const [revisions, assets, banners, domains, entitlement, categories, products, coupons] =
+    await Promise.all([
     customizationRepo.listRevisions(tenantId, storeId),
     assetRepo.listActiveStoreAssets(tenantId, storeId),
-  ]);
+      bannerRepo.listAdminStoreBanners(tenantId, storeId),
+      domainRepo.listAdminStoreDomains(tenantId, storeId),
+      ensureStoreEntitlement(tenantId, storeId),
+      getDb().category.findMany({
+        where: { tenantId, storeId, isActive: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+      getDb().product.findMany({
+        where: { tenantId, storeId, isAvailable: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+      getDb().coupon.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { code: 'asc' },
+        select: { id: true, code: true },
+      }),
+    ]);
   const effectiveConfig = draftConfig ?? publishedConfig;
 
   return {
@@ -149,6 +208,13 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
       url: storeAssetUrl(asset.id),
       previewUrl: storeAssetUrl(asset.id, 384),
     })),
+    banners: banners.map((banner) => ({
+      ...banner,
+      imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
+    })),
+    domains,
+    entitlement: storeEntitlementInputSchema.parse(entitlement),
+    destinations: { categories, products, coupons },
   };
 }
 
@@ -159,7 +225,7 @@ export async function saveCustomizationDraft(
 ) {
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const config = parseConfig(input.config);
-  assertBrandingPolicy(config);
+  await assertCustomizationPolicy(tenantId, storeId, context.store.slug, config);
   await assertAssetReferences(tenantId, storeId, config);
   const version = parseVersion(input.expectedDraftVersion);
   assertExpectedVersion(customization.draftVersion, version.expectedDraftVersion);
@@ -265,7 +331,7 @@ export async function publishCustomization(
   }
 
   const config = parseConfig(customization.draftConfig);
-  assertBrandingPolicy(config);
+  await assertCustomizationPolicy(tenantId, storeId, context.store.slug, config);
   await assertAssetReferences(tenantId, storeId, config);
   const contrastIssues = evaluateCustomizationContrast(config);
   const criticalIssues = contrastIssues.filter((item) => item.severity === 'error');
@@ -348,6 +414,26 @@ export async function publishCustomization(
         },
       },
     });
+    if (
+      previousPublished.platformBranding.showPedidoLocalBranding !==
+      config.platformBranding.showPedidoLocalBranding
+    ) {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          storeId,
+          userId: context.session.userId,
+          action: 'BRANDING_VISIBILITY_CHANGED',
+          entity: 'StoreCustomization',
+          entityId: customization.id,
+          metadata: {
+            previousVisible: previousPublished.platformBranding.showPedidoLocalBranding,
+            nextVisible: config.platformBranding.showPedidoLocalBranding,
+            publishedVersion: nextPublishedVersion,
+          },
+        },
+      });
+    }
   });
 
   return {
@@ -369,7 +455,7 @@ async function replaceDraft(
 ) {
   const { context, customization } = await ensureScopedCustomization(tenantId, storeId);
   const parsedInput = parsePublishInput(input);
-  assertBrandingPolicy(config);
+  await assertCustomizationPolicy(tenantId, storeId, context.store.slug, config);
   await assertAssetReferences(tenantId, storeId, config);
   assertExpectedVersion(customization.draftVersion, parsedInput.expectedDraftVersion);
   const nextDraftVersion = customization.draftVersion + 1;

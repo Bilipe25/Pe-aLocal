@@ -6,6 +6,8 @@ import { resolvePublicCustomization } from '@/features/customization/public';
 import { storeAssetUrl } from '@/features/assets/urls';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
+import * as bannerRepo from '@/server/repositories/store-banner.repository';
+import * as domainRepo from '@/server/repositories/store-domain.repository';
 
 const PUBLIC_CACHE_SECONDS = 60;
 
@@ -85,9 +87,9 @@ async function getStoreFromDb(slug: string) {
     resolvedCustomization.config.identity.faviconAssetId,
     resolvedCustomization.config.identity.socialImageAssetId,
   ].filter((id): id is string => Boolean(id));
-  const assets =
+  const [assets, banners, primaryDomain] = await Promise.all([
     identityAssetIds.length > 0
-      ? await getDb().storeAsset.findMany({
+      ? getDb().storeAsset.findMany({
           where: {
             id: { in: identityAssetIds },
             tenantId: store.tenantId,
@@ -97,12 +99,22 @@ async function getStoreFromDb(slug: string) {
           },
           select: { id: true, assetType: true, altText: true },
         })
-      : [];
+      : Promise.resolve([]),
+    bannerRepo.listPublicStoreBanners(store.tenantId, store.id, new Date()),
+    domainRepo.findActivePrimaryStoreDomain(store.tenantId, store.id),
+  ]);
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
   const resolveAsset = (id: string | null, width?: number) => {
     if (!id) return null;
     const asset = assetById.get(id);
     return asset ? { id: asset.id, altText: asset.altText, url: storeAssetUrl(asset.id, width) } : null;
+  };
+  const resolveBannerHref = (type: string, value: string | null) => {
+    if (!value || type === 'NONE') return null;
+    if (type === 'CATEGORY') return `#category-${value}`;
+    if (type === 'PRODUCT') return `#product-${value}`;
+    if (type === 'COUPON') return `/${store.slug}?coupon=${encodeURIComponent(value)}`;
+    return value;
   };
 
   return {
@@ -116,6 +128,17 @@ async function getStoreFromDb(slug: string) {
         favicon: resolveAsset(resolvedCustomization.config.identity.faviconAssetId, 96),
         socialImage: resolveAsset(resolvedCustomization.config.identity.socialImageAssetId, 1280),
       },
+      banners: banners.map((banner) => ({
+        id: banner.id,
+        title: banner.title,
+        subtitle: banner.subtitle,
+        buttonText: banner.buttonText,
+        href: resolveBannerHref(banner.destinationType, banner.destinationValue),
+        priority: banner.priority,
+        imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
+        imageAlt: banner.asset?.altText ?? banner.title,
+      })),
+      primaryDomain,
     },
   };
 }

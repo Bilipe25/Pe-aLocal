@@ -75,6 +75,12 @@ export async function isStoreAssetReferenced(
       WHERE revision."tenantId" = ${tenantId}
         AND revision."storeId" = ${storeId}
         AND revision."snapshot"::text LIKE ${pattern}
+      UNION ALL
+      SELECT 1
+      FROM "store_banners" banner
+      WHERE banner."tenantId" = ${tenantId}
+        AND banner."storeId" = ${storeId}
+        AND banner."assetId" = ${assetId}
     ) AS "referenced"
   `);
   return rows[0]?.referenced ?? false;

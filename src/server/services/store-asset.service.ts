@@ -10,6 +10,10 @@ import { getDb } from '@/server/database/client';
 import { ConflictError, NotFoundError, ValidationError } from '@/server/errors';
 import * as assetRepo from '@/server/repositories/store-asset.repository';
 import {
+  ensureStoreEntitlement,
+  lockStoreEntitlement,
+} from '@/server/repositories/store-entitlement.repository';
+import {
   buildStoreAssetObjectKey,
   getStoreAssetRuntime,
   inspectStoreAssetFile,
@@ -76,7 +80,23 @@ export async function uploadStoreAsset(
   });
 
   try {
+    await ensureStoreEntitlement(tenantId, storeId);
     const asset = await getDb().$transaction(async (tx) => {
+      const entitlement = await lockStoreEntitlement(tx, tenantId, storeId);
+      if (!entitlement) throw new ConflictError('Os limites da loja não estão disponíveis.');
+      const usage = await tx.storeAsset.aggregate({
+        where: { tenantId, storeId, status: 'ACTIVE', deletedAt: null },
+        _count: { id: true },
+        _sum: { sizeBytes: true },
+      });
+      if (usage._count.id >= entitlement.maxAssetCount) {
+        throw new ConflictError(
+          `Esta loja pode manter no máximo ${entitlement.maxAssetCount} assets ativos.`,
+        );
+      }
+      if ((usage._sum.sizeBytes ?? 0) + inspected.sizeBytes > entitlement.maxAssetStorageBytes) {
+        throw new ConflictError('O limite de armazenamento de assets desta loja foi atingido.');
+      }
       const created = await tx.storeAsset.create({
         data: {
           id: assetId,
