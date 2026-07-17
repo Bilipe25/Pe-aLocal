@@ -1,14 +1,15 @@
 import { Prisma, type CustomizationRevisionOrigin } from '@prisma/client';
+import { z } from 'zod';
 
 import {
   createDefaultCustomization,
   evaluateCustomizationContrast,
+  migrateCustomizationToCurrentVersion,
 } from '@/features/customization/domain';
 import { assertCustomizationEntitlement } from '@/features/customization/entitlements';
 import {
   customizationPublishSchema,
   customizationVersionSchema,
-  storeCustomizationConfigSchema,
   type StoreCustomizationConfig,
 } from '@/schemas/customization';
 import { storeEntitlementInputSchema } from '@/schemas/store-entitlement';
@@ -23,17 +24,18 @@ import * as domainRepo from '@/server/repositories/store-domain.repository';
 import { ensureStoreEntitlement } from '@/server/repositories/store-entitlement.repository';
 
 function parseConfig(value: unknown): StoreCustomizationConfig {
-  const parsed = storeCustomizationConfigSchema.safeParse(value);
-  if (!parsed.success) {
+  try {
+    return migrateCustomizationToCurrentVersion(value);
+  } catch (error) {
+    const issues = error instanceof z.ZodError ? error.issues : [];
     throw new ValidationError(
       'A configuração de personalização é inválida.',
-      parsed.error.issues.map((item) => ({
+      issues.map((item) => ({
         field: item.path.join('.'),
         message: item.message,
       })),
     );
   }
-  return parsed.data;
 }
 
 function validationError(message: string, issues: { path: PropertyKey[]; message: string }[]) {

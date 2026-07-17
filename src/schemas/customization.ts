@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CUSTOMIZATION_SCHEMA_VERSION = 1 as const;
+export const CUSTOMIZATION_SCHEMA_VERSION = 2 as const;
 export const CUSTOMIZATION_MAX_BYTES = 64 * 1024;
 
 export const LAYOUT_TEMPLATES = ['CLASSIC_LIST', 'MODERN_GRID', 'EDITORIAL_HERO'] as const;
@@ -87,37 +87,45 @@ const themeSchema = z
   })
   .strict();
 
-const layoutSchema = z
-  .object({
-    showCover: z.boolean(),
-    showSlogan: z.boolean(),
-    showSearch: z.boolean(),
-    showFeaturedProducts: z.boolean(),
-    showCategoryDescription: z.boolean(),
-    showProductImages: z.boolean(),
-    showProductBadges: z.boolean(),
-    categoryNavigation: z.enum(['HORIZONTAL_STICKY', 'VERTICAL', 'DROPDOWN']),
-    productPresentation: z.enum(['LIST', 'GRID']),
-    cartPresentation: z.enum(['FLOATING', 'STICKY']),
-    sectionOrder: z.array(z.enum(STORE_SECTIONS)).min(1).max(STORE_SECTIONS.length),
-  })
+const layoutShape = {
+  showCover: z.boolean(),
+  showSlogan: z.boolean(),
+  showSearch: z.boolean(),
+  showFeaturedProducts: z.boolean(),
+  showCategoryDescription: z.boolean(),
+  showProductImages: z.boolean(),
+  showProductBadges: z.boolean(),
+  categoryNavigation: z.enum(['HORIZONTAL_STICKY', 'VERTICAL', 'DROPDOWN']),
+  productPresentation: z.enum(['LIST', 'GRID']),
+  cartPresentation: z.enum(['FLOATING', 'STICKY']),
+  sectionOrder: z.array(z.enum(STORE_SECTIONS)).min(1).max(STORE_SECTIONS.length),
+} as const;
+
+function refineLayout(
+  layout: { sectionOrder: readonly (typeof STORE_SECTIONS)[number][] },
+  context: z.RefinementCtx,
+) {
+  if (new Set(layout.sectionOrder).size !== layout.sectionOrder.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['sectionOrder'],
+      message: 'A ordem das seções não pode conter itens repetidos.',
+    });
+  }
+  if (!layout.sectionOrder.includes('CATALOG')) {
+    context.addIssue({
+      code: 'custom',
+      path: ['sectionOrder'],
+      message: 'A seção de catálogo é obrigatória.',
+    });
+  }
+}
+
+const layoutV1Schema = z.object(layoutShape).strict().superRefine(refineLayout);
+const layoutV2Schema = z
+  .object({ ...layoutShape, showCategoryImages: z.boolean() })
   .strict()
-  .superRefine((layout, context) => {
-    if (new Set(layout.sectionOrder).size !== layout.sectionOrder.length) {
-      context.addIssue({
-        code: 'custom',
-        path: ['sectionOrder'],
-        message: 'A ordem das seções não pode conter itens repetidos.',
-      });
-    }
-    if (!layout.sectionOrder.includes('CATALOG')) {
-      context.addIssue({
-        code: 'custom',
-        path: ['sectionOrder'],
-        message: 'A seção de catálogo é obrigatória.',
-      });
-    }
-  });
+  .superRefine(refineLayout);
 
 const seoSchema = z
   .object({
@@ -129,32 +137,73 @@ const seoSchema = z
   .strict();
 
 const platformBrandingSchema = z
+  .object({ showPedidoLocalBranding: z.boolean() })
+  .strict();
+
+const configShape = {
+  identity: identitySchema,
+  palette: paletteSchema,
+  typography: typographySchema,
+  theme: themeSchema,
+  seo: seoSchema,
+  platformBranding: platformBrandingSchema,
+} as const;
+
+function refineConfigSize(config: unknown, context: z.RefinementCtx) {
+  const byteLength = new TextEncoder().encode(JSON.stringify(config)).byteLength;
+  if (byteLength > CUSTOMIZATION_MAX_BYTES) {
+    context.addIssue({
+      code: 'custom',
+      message: `A personalização não pode ultrapassar ${CUSTOMIZATION_MAX_BYTES} bytes.`,
+    });
+  }
+}
+
+export const categoryImageAssociationSchema = z
   .object({
-    showPedidoLocalBranding: z.boolean(),
+    categoryId: z.uuid(),
+    assetId: z.uuid(),
   })
   .strict();
 
-export const storeCustomizationConfigSchema = z
+const categoryImagesSchema = z
+  .array(categoryImageAssociationSchema)
+  .max(100, 'A personalização pode associar imagens a no máximo 100 categorias.')
+  .superRefine((associations, context) => {
+    const seenCategoryIds = new Set<string>();
+    associations.forEach((association, index) => {
+      if (seenCategoryIds.has(association.categoryId)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'categoryId'],
+          message: 'Cada categoria pode possuir somente uma imagem associada.',
+        });
+      }
+      seenCategoryIds.add(association.categoryId);
+    });
+  });
+
+export const storeCustomizationConfigV1Schema = z
   .object({
-    schemaVersion: z.literal(CUSTOMIZATION_SCHEMA_VERSION),
-    identity: identitySchema,
-    palette: paletteSchema,
-    typography: typographySchema,
-    theme: themeSchema,
-    layout: layoutSchema,
-    seo: seoSchema,
-    platformBranding: platformBrandingSchema,
+    schemaVersion: z.literal(1),
+    ...configShape,
+    layout: layoutV1Schema,
   })
   .strict()
-  .superRefine((config, context) => {
-    const byteLength = new TextEncoder().encode(JSON.stringify(config)).byteLength;
-    if (byteLength > CUSTOMIZATION_MAX_BYTES) {
-      context.addIssue({
-        code: 'custom',
-        message: `A personalização não pode ultrapassar ${CUSTOMIZATION_MAX_BYTES} bytes.`,
-      });
-    }
-  });
+  .superRefine(refineConfigSize);
+
+export const storeCustomizationConfigV2Schema = z
+  .object({
+    schemaVersion: z.literal(CUSTOMIZATION_SCHEMA_VERSION),
+    ...configShape,
+    layout: layoutV2Schema,
+    categoryImages: categoryImagesSchema,
+  })
+  .strict()
+  .superRefine(refineConfigSize);
+
+/** Schema corrente usado para todo novo draft e publicação. */
+export const storeCustomizationConfigSchema = storeCustomizationConfigV2Schema;
 
 export const customizationPublishSchema = z
   .object({
@@ -168,6 +217,7 @@ export const customizationVersionSchema = z
   .strict();
 
 export type StoreCustomizationConfig = z.infer<typeof storeCustomizationConfigSchema>;
+export type StoreCustomizationConfigV1 = z.infer<typeof storeCustomizationConfigV1Schema>;
 export type LayoutTemplate = (typeof LAYOUT_TEMPLATES)[number];
 export type VisualPreset = (typeof VISUAL_PRESETS)[number];
 export type StoreSection = (typeof STORE_SECTIONS)[number];

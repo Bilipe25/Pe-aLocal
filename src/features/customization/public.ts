@@ -1,9 +1,9 @@
 import 'server-only';
 
 import type { StoreCustomizationConfig } from '@/schemas/customization';
-import { storeCustomizationConfigSchema } from '@/schemas/customization';
 
 import { createCustomizationFromLegacy } from './domain/defaults';
+import { migrateCustomizationToCurrentVersion } from './domain/migrations';
 
 interface LegacyCustomizationInput {
   primaryColor?: string | null;
@@ -28,21 +28,20 @@ export function resolvePublicCustomization(input: {
   publishedAt?: Date | null;
   legacy: LegacyCustomizationInput;
 }): PublicCustomization {
-  const published = storeCustomizationConfigSchema.safeParse(input.publishedConfig);
-
-  if (published.success) {
+  try {
+    const published = migrateCustomizationToCurrentVersion(input.publishedConfig);
     return {
-      config: published.data,
+      config: published,
       publishedVersion: input.publishedVersion ?? 0,
       publishedAt: input.publishedAt ?? null,
       source: 'published',
     };
+  } catch {
+    return {
+      config: createCustomizationFromLegacy(input.legacy),
+      publishedVersion: 0,
+      publishedAt: null,
+      source: 'legacy',
+    };
   }
-
-  return {
-    config: createCustomizationFromLegacy(input.legacy),
-    publishedVersion: 0,
-    publishedAt: null,
-    source: 'legacy',
-  };
 }

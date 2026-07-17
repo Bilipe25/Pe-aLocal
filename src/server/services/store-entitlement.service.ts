@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { assertCustomizationEntitlement } from '@/features/customization/entitlements';
-import { storeCustomizationConfigSchema } from '@/schemas/customization';
+import { migrateCustomizationToCurrentVersion } from '@/features/customization/domain/migrations';
 import {
   storeEntitlementInputSchema,
   type StoreEntitlementInput,
@@ -22,13 +22,13 @@ export async function getAdminStoreEntitlement(tenantId: string, storeId: string
 
 function parseCustomization(value: Prisma.JsonValue | null) {
   if (value === null) return null;
-  const parsed = storeCustomizationConfigSchema.safeParse(value);
-  if (!parsed.success) {
+  try {
+    return migrateCustomizationToCurrentVersion(value);
+  } catch {
     throw new ValidationError(
       'A configuração atual da loja precisa ser corrigida antes dos limites.',
     );
   }
-  return parsed.data;
 }
 
 export async function updateStoreEntitlement(

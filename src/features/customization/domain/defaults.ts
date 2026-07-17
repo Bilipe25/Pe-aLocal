@@ -4,7 +4,7 @@ import {
 } from '@/schemas/customization';
 
 export const DEFAULT_CUSTOMIZATION = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   identity: {
     slogan: '',
     shortDescription: '',
@@ -47,6 +47,7 @@ export const DEFAULT_CUSTOMIZATION = {
     showCategoryDescription: false,
     showProductImages: true,
     showProductBadges: true,
+    showCategoryImages: false,
     categoryNavigation: 'HORIZONTAL_STICKY',
     productPresentation: 'LIST',
     cartPresentation: 'FLOATING',
@@ -61,6 +62,7 @@ export const DEFAULT_CUSTOMIZATION = {
   platformBranding: {
     showPedidoLocalBranding: true,
   },
+  categoryImages: [],
 } satisfies StoreCustomizationConfig;
 
 export function createDefaultCustomization(): StoreCustomizationConfig {
