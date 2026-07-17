@@ -1,9 +1,10 @@
-import { ArrowLeft, ExternalLink, Palette } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { TenantAccessError } from '@/server/errors';
-import { getAdminStoreContext } from '@/server/services/admin.service';
+import { CustomizationEditor } from '@/components/admin/customization-editor';
+import { getAdminCustomizationData } from '@/server/services/store-customization.service';
 
 export const metadata = { title: 'Personalização da loja' };
 
@@ -14,13 +15,15 @@ export default async function AdminStoreCustomizationPage({
 }) {
   const { id: tenantId, storeId } = await params;
 
-  let store;
+  let data;
   try {
-    store = await getAdminStoreContext(tenantId, storeId);
+    data = await getAdminCustomizationData(tenantId, storeId);
   } catch (error) {
     if (error instanceof TenantAccessError) notFound();
     throw error;
   }
+
+  const { store, customization, revisions } = data;
 
   return (
     <div className="space-y-6">
@@ -51,14 +54,25 @@ export default async function AdminStoreCustomizationPage({
         </div>
       </header>
 
-      <section className="border-info/30 bg-info-light text-info rounded-xl border p-6">
-        <Palette className="h-6 w-6" />
-        <h2 className="mt-3 text-lg font-semibold">Acesso seguro configurado</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6">
-          Esta rota já exige SUPER_ADMIN e confirma no servidor que a loja pertence ao tenant da
-          URL. O editor de rascunho, publicação e histórico será adicionado na próxima fase.
-        </p>
-      </section>
+      <CustomizationEditor
+        key={`${customization.draftVersion}-${customization.publishedVersion}`}
+        tenantId={tenantId}
+        storeId={storeId}
+        initialConfig={customization.effectiveConfig}
+        initialPublishedConfig={customization.publishedConfig}
+        initialDraftVersion={customization.draftVersion}
+        initialPublishedVersion={customization.publishedVersion}
+        initialHasDraft={customization.hasDraft}
+        publishedAt={customization.publishedAt?.toISOString() ?? null}
+        revisions={revisions.map((revision) => ({
+          id: revision.id,
+          version: revision.version,
+          reason: revision.reason,
+          origin: revision.origin,
+          publishedAt: revision.publishedAt.toISOString(),
+          actor: revision.actor ? { name: revision.actor.name, email: revision.actor.email } : null,
+        }))}
+      />
     </div>
   );
 }
