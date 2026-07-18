@@ -14,7 +14,11 @@ export default async function StorePage({ params }: StorePageProps) {
     notFound();
   }
 
-  const categories = await getPublicCatalog(store.id, store.tenantId);
+  const categories = await getPublicCatalog(
+    store.id,
+    store.tenantId,
+    store.customization.categoryImages,
+  );
 
   return (
     <CatalogView

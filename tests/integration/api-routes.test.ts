@@ -208,4 +208,35 @@ describe('API routes', () => {
     expect(formDataSpy).not.toHaveBeenCalled();
     expect(mocks.uploadStoreAsset).not.toHaveBeenCalled();
   });
+
+  it('aceita upload CATEGORY_IMAGE somente após autorização administrativa', async () => {
+    const asset = {
+      id: 'asset-category',
+      assetType: 'CATEGORY_IMAGE',
+      altText: 'Hambúrguer artesanal',
+    };
+    mocks.requireSuperAdminStoreAccess.mockResolvedValue({ session: { userId: 'admin-1' } });
+    mocks.uploadStoreAsset.mockResolvedValue(asset);
+    const file = new File(['png'], 'categoria.png', { type: 'image/png' });
+    const request = new Request('http://localhost/api/admin/assets', { method: 'POST' });
+    vi.spyOn(request, 'formData').mockResolvedValue({
+      get: (key: string) =>
+        ({
+          file,
+          assetType: 'CATEGORY_IMAGE',
+          altText: 'Hambúrguer artesanal',
+        })[key] ?? null,
+    } as FormData);
+
+    const response = await postStoreAsset(request, {
+      params: Promise.resolve({ tenantId: 'tenant-1', storeId: 'store-1' }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.uploadStoreAsset).toHaveBeenCalledWith('tenant-1', 'store-1', file, {
+      assetType: 'CATEGORY_IMAGE',
+      altText: 'Hambúrguer artesanal',
+    });
+    await expect(response.json()).resolves.toEqual({ asset });
+  });
 });

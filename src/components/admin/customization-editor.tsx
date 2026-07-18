@@ -8,6 +8,10 @@ import {
   type AdminStoreAssetItem,
 } from '@/components/admin/store-assets-manager';
 import {
+  StoreCategoryImagesManager,
+  type AdminStoreCategoryItem,
+} from '@/components/admin/store-category-images-manager';
+import {
   StoreBannersManager,
   type AdminStoreBannerItem,
 } from '@/components/admin/store-banners-manager';
@@ -61,7 +65,7 @@ interface CustomizationEditorProps {
   initialDomains: AdminStoreDomainItem[];
   initialEntitlement: AdminStoreEntitlementItem;
   destinations: {
-    categories: { id: string; name: string }[];
+    categories: AdminStoreCategoryItem[];
     products: { id: string; name: string }[];
     coupons: { id: string; code: string }[];
   };
@@ -117,6 +121,7 @@ export function CustomizationEditor({
 }: CustomizationEditorProps) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
+  const [assets, setAssets] = useState(initialAssets);
   const [publishedConfig, setPublishedConfig] = useState(initialPublishedConfig);
   const [draftVersion, setDraftVersion] = useState(initialDraftVersion);
   const [publishedVersion, setPublishedVersion] = useState(initialPublishedVersion);
@@ -131,9 +136,8 @@ export function CustomizationEditor({
   const contrastIssues = useMemo(() => evaluateCustomizationContrast(config), [config]);
   const criticalContrast = contrastIssues.filter((item) => item.severity === 'error');
   const logoUrl =
-    initialAssets.find((asset) => asset.id === config.identity.logoAssetId)?.previewUrl ?? null;
-  const coverUrl =
-    initialAssets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
+    assets.find((asset) => asset.id === config.identity.logoAssetId)?.previewUrl ?? null;
+  const coverUrl = assets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
 
   useEffect(() => {
     const preventExit = (event: BeforeUnloadEvent) => {
@@ -155,6 +159,31 @@ export function CustomizationEditor({
     value: StoreCustomizationConfig[K],
   ) {
     change({ ...config, [section]: value });
+  }
+
+  function addAsset(asset: AdminStoreAssetItem) {
+    setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+  }
+
+  function removeAsset(assetId: string) {
+    setAssets((current) => current.filter((item) => item.id !== assetId));
+    const identity = { ...config.identity };
+    let referenced = false;
+    for (const field of [
+      'logoAssetId',
+      'logoDarkAssetId',
+      'coverAssetId',
+      'faviconAssetId',
+      'socialImageAssetId',
+    ] as const) {
+      if (identity[field] === assetId) {
+        identity[field] = null;
+        referenced = true;
+      }
+    }
+    const categoryImages = config.categoryImages.filter((item) => item.assetId !== assetId);
+    if (categoryImages.length !== config.categoryImages.length) referenced = true;
+    if (referenced) change({ ...config, identity, categoryImages });
   }
 
   function requireReason(): boolean {
@@ -512,21 +541,36 @@ export function CustomizationEditor({
         </section>
 
         <StoreAssetsManager
-          key={initialAssets.map((asset) => asset.id).join(':')}
           tenantId={tenantId}
           storeId={storeId}
           identity={config.identity}
-          initialAssets={initialAssets}
+          assets={assets}
+          onAssetUploaded={addAsset}
+          onAssetDeleted={removeAsset}
           onAssign={(field, assetId) =>
             updateSection('identity', { ...config.identity, [field]: assetId })
           }
+        />
+
+        <StoreCategoryImagesManager
+          tenantId={tenantId}
+          storeId={storeId}
+          categories={destinations.categories}
+          assets={assets}
+          showImages={config.layout.showCategoryImages}
+          associations={config.categoryImages}
+          onShowImagesChange={(showCategoryImages) =>
+            updateSection('layout', { ...config.layout, showCategoryImages })
+          }
+          onAssociationsChange={(categoryImages) => change({ ...config, categoryImages })}
+          onAssetUploaded={addAsset}
         />
 
         <StoreBannersManager
           tenantId={tenantId}
           storeId={storeId}
           initialBanners={initialBanners}
-          assets={initialAssets}
+          assets={assets}
           destinations={destinations}
           maxBanners={initialEntitlement.maxBanners}
           scheduledEnabled={initialEntitlement.scheduledBannersEnabled}
@@ -658,6 +702,8 @@ export function CustomizationEditor({
           storeStatus={storeStatus}
           logoUrl={logoUrl}
           coverUrl={coverUrl}
+          categories={destinations.categories}
+          assets={assets}
         />
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">

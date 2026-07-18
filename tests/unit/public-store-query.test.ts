@@ -66,9 +66,7 @@ function publicStore() {
 describe('queries públicas da loja', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.unstableCache.mockImplementation(
-      (callback: () => Promise<unknown>) => callback,
-    );
+    mocks.unstableCache.mockImplementation((callback: () => Promise<unknown>) => callback);
     mocks.storeFindUnique.mockResolvedValue(publicStore());
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
@@ -104,13 +102,84 @@ describe('queries públicas da loja', () => {
         status: 'ACTIVE',
         deletedAt: null,
       },
-      select: { id: true, assetType: true, altText: true },
+      select: {
+        id: true,
+        assetType: true,
+        altText: true,
+        width: true,
+        height: true,
+      },
     });
     expect(result?.customization.assets.logo).toEqual({
       id: assetId,
       altText: 'Logo da loja',
       url: `/api/store-assets/${assetId}?width=384`,
     });
+  });
+
+  it('resolve imagens de categoria publicadas em lote e ignora tipos incorretos', async () => {
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    const ignoredAssetId = '6c5a2835-c3c9-4b70-9ba5-8ccf748b31fd';
+    const store = publicStore();
+    const config = createDefaultCustomization();
+    config.layout.showCategoryImages = true;
+    config.categoryImages = [
+      { categoryId, assetId },
+      { categoryId: '0564f47e-2cc0-457a-8858-0242e770e854', assetId: ignoredAssetId },
+    ];
+    store.customization.publishedConfig = config;
+    mocks.storeFindUnique.mockResolvedValue(store);
+    mocks.storeAssetFindMany.mockResolvedValue([
+      {
+        id: assetId,
+        assetType: 'CATEGORY_IMAGE',
+        altText: 'Hambúrgueres',
+        width: 800,
+        height: 800,
+      },
+      {
+        id: ignoredAssetId,
+        assetType: 'LOGO',
+        altText: 'Tipo incorreto',
+        width: 800,
+        height: 800,
+      },
+    ]);
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(mocks.storeAssetFindMany).toHaveBeenCalledTimes(1);
+    expect(result?.customization.categoryImages).toEqual([
+      {
+        categoryId,
+        image: {
+          id: assetId,
+          url: `/api/store-assets/${assetId}?width=384`,
+          altText: 'Hambúrgueres',
+          width: 800,
+          height: 800,
+        },
+      },
+    ]);
+  });
+
+  it('não consulta imagens de categoria quando a exibição publicada está desligada', async () => {
+    const store = publicStore();
+    const config = createDefaultCustomization();
+    config.categoryImages = [
+      {
+        categoryId: '4da03571-bffd-45ef-8c44-20686c487838',
+        assetId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
+      },
+    ];
+    store.customization.publishedConfig = config;
+    mocks.storeFindUnique.mockResolvedValue(store);
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(mocks.storeAssetFindMany).not.toHaveBeenCalled();
+    expect(result?.customization.categoryImages).toEqual([]);
   });
 
   it('seleciona publishedConfig sem carregar draft ou histórico', async () => {
@@ -162,6 +231,36 @@ describe('queries públicas da loja', () => {
       }),
     ]);
     expect(result?.customization.primaryDomain?.hostname).toBe('cardapio.exemplo.com.br');
+  });
+
+  it('associa imagens ao catálogo em memória e ignora categorias removidas', async () => {
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    mocks.categoryFindMany.mockResolvedValue([
+      {
+        id: categoryId,
+        name: 'Hambúrgueres',
+        description: null,
+        products: [{ id: 'product-1' }],
+      },
+    ]);
+    const image = {
+      id: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
+      url: '/api/store-assets/image?width=384',
+      altText: 'Hambúrgueres',
+      width: 800,
+      height: 800,
+    };
+
+    const result = await getPublicCatalog('store-1', 'tenant-1', [
+      { categoryId, image },
+      {
+        categoryId: '0564f47e-2cc0-457a-8858-0242e770e854',
+        image: { ...image, id: 'orphan' },
+      },
+    ]);
+
+    expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([expect.objectContaining({ id: categoryId, image })]);
   });
 
   it('isola as tags de store, catálogo e entrega', async () => {

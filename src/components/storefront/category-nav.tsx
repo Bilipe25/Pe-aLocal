@@ -5,10 +5,16 @@ import { useEffect, useRef } from 'react';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
 interface CategoryNavProps {
-  categories: { id: string; name: string }[];
+  categories: {
+    id: string;
+    name: string;
+    imageUrl: string | null;
+    imageAlt: string | null;
+  }[];
   activeCategoryId: string | null;
   onCategoryClick: (id: string) => void;
   variant: StoreCustomizationConfig['layout']['categoryNavigation'];
+  showImages: boolean;
 }
 
 export function CategoryNav({
@@ -16,6 +22,7 @@ export function CategoryNav({
   activeCategoryId,
   onCategoryClick,
   variant,
+  showImages,
 }: CategoryNavProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -67,8 +74,22 @@ export function CategoryNav({
               ref={isActive ? activeRef : undefined}
               onClick={() => onCategoryClick(category.id)}
               aria-current={isActive ? 'true' : undefined}
-              className={`storefront-category-button ${isActive ? 'is-active' : ''}`}
+              className={`storefront-category-button ${showImages && category.imageUrl ? 'has-image' : ''} ${isActive ? 'is-active' : ''}`}
             >
+              {showImages && category.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={category.imageUrl}
+                  alt=""
+                  width={52}
+                  height={52}
+                  loading="lazy"
+                  onError={(event) => {
+                    event.currentTarget.hidden = true;
+                  }}
+                  className="storefront-category-thumbnail"
+                />
+              )}
               {category.name}
             </button>
           );

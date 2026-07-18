@@ -2,11 +2,11 @@
 
 import { ImageIcon, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 
+import { uploadAdminStoreAsset } from '@/components/admin/store-asset-upload';
 import { deleteStoreAssetAction } from '@/features/assets/actions';
-import type { StoreAssetTypeValue } from '@/schemas/store-asset';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
+import type { StoreAssetTypeValue } from '@/schemas/store-asset';
 
 type IdentityAssetField =
   'logoAssetId' | 'logoDarkAssetId' | 'coverAssetId' | 'faviconAssetId' | 'socialImageAssetId';
@@ -30,6 +30,7 @@ const ASSET_OPTIONS: {
   field: IdentityAssetField | null;
   label: string;
   hint: string;
+  usageLabel?: string;
 }[] = [
   { type: 'LOGO', field: 'logoAssetId', label: 'Logo', hint: 'PNG, JPEG, WebP ou AVIF · até 2 MB' },
   {
@@ -56,6 +57,14 @@ const ASSET_OPTIONS: {
     field: null,
     label: 'Banner',
     hint: 'Mínimo 600×180 · até 5 MB',
+    usageLabel: 'Disponível para banners',
+  },
+  {
+    type: 'CATEGORY_IMAGE',
+    field: null,
+    label: 'Imagem de categoria',
+    hint: 'Sugerido 800×800 · mínimo 320×320 · até 2 MB',
+    usageLabel: 'Disponível para categorias',
   },
 ];
 
@@ -63,18 +72,20 @@ export function StoreAssetsManager({
   tenantId,
   storeId,
   identity,
-  initialAssets,
+  assets,
   onAssign,
+  onAssetUploaded,
+  onAssetDeleted,
 }: {
   tenantId: string;
   storeId: string;
   identity: StoreCustomizationConfig['identity'];
-  initialAssets: AdminStoreAssetItem[];
+  assets: AdminStoreAssetItem[];
   onAssign: (field: IdentityAssetField, assetId: string | null) => void;
+  onAssetUploaded: (asset: AdminStoreAssetItem) => void;
+  onAssetDeleted: (assetId: string) => void;
 }) {
-  const router = useRouter();
-  const [assets, setAssets] = useState(initialAssets);
-  const [selectedType, setSelectedType] = useState<(typeof ASSET_OPTIONS)[number]['type']>('LOGO');
+  const [selectedType, setSelectedType] = useState<StoreAssetTypeValue>('LOGO');
   const [file, setFile] = useState<File | null>(null);
   const [altText, setAltText] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -95,35 +106,28 @@ export function StoreAssetsManager({
       setFeedback('Selecione uma imagem.');
       return;
     }
-    const formData = new FormData();
-    formData.set('file', file);
-    formData.set('assetType', selectedType);
-    formData.set('altText', altText);
-    if (currentAssetId) formData.set('replaceAssetId', currentAssetId);
-
     setFeedback(null);
-    const response = await fetch(
-      `/api/admin/tenants/${encodeURIComponent(tenantId)}/stores/${encodeURIComponent(storeId)}/assets`,
-      { method: 'POST', body: formData },
-    );
-    const body = (await response.json()) as {
-      asset?: AdminStoreAssetItem;
-      message?: string;
-    };
-    if (!response.ok || !body.asset) {
-      setFeedback(body.message ?? 'Não foi possível enviar a imagem.');
-      return;
+    try {
+      const uploaded = await uploadAdminStoreAsset({
+        tenantId,
+        storeId,
+        file,
+        assetType: selectedType,
+        altText,
+        replaceAssetId: currentAssetId,
+      });
+      onAssetUploaded(uploaded);
+      if (option.field) onAssign(option.field, uploaded.id);
+      setFile(null);
+      setAltText('');
+      setFeedback(
+        option.field
+          ? 'Upload concluído. Salve o rascunho para associar a imagem.'
+          : `Upload concluído. ${option.usageLabel ?? 'O asset está disponível.'}`,
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível enviar a imagem.');
     }
-    setAssets((current) => [body.asset!, ...current]);
-    if (option.field) onAssign(option.field, body.asset.id);
-    setFile(null);
-    setAltText('');
-    setFeedback(
-      option.field
-        ? 'Upload concluído. Salve o rascunho para associar a imagem.'
-        : 'Upload concluído. O asset já pode ser usado em um banner.',
-    );
-    router.refresh();
   }
 
   function removeAsset(asset: AdminStoreAssetItem) {
@@ -131,22 +135,16 @@ export function StoreAssetsManager({
       !window.confirm(
         'Excluir este asset? Referências publicadas ou históricas impedirão a exclusão.',
       )
-    )
+    ) {
       return;
+    }
     startTransition(async () => {
       const result = await deleteStoreAssetAction(tenantId, storeId, asset.id);
       if (!result.success) {
         setFeedback(result.error.message);
         return;
       }
-      setAssets((current) => current.filter((item) => item.id !== asset.id));
-      const deletedOption = ASSET_OPTIONS.find((item) => item.type === asset.assetType);
-      if (
-        deletedOption?.field &&
-        identity[deletedOption.field] === asset.id
-      ) {
-        onAssign(deletedOption.field, null);
-      }
+      onAssetDeleted(asset.id);
       setFeedback('Asset marcado para exclusão segura.');
     });
   }
@@ -166,7 +164,7 @@ export function StoreAssetsManager({
           Tipo
           <select
             value={selectedType}
-            onChange={(event) => setSelectedType(event.target.value as typeof selectedType)}
+            onChange={(event) => setSelectedType(event.target.value as StoreAssetTypeValue)}
             className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
           >
             {ASSET_OPTIONS.map((item) => (
@@ -241,7 +239,7 @@ export function StoreAssetsManager({
                           disabled={!group.field}
                           className="border-border flex-1 rounded-md border px-2 py-1.5 text-xs"
                         >
-                          {group.field ? (selected ? 'Em uso' : 'Usar') : 'Disponível para banners'}
+                          {group.field ? (selected ? 'Em uso' : 'Usar') : group.usageLabel}
                         </button>
                         <button
                           type="button"

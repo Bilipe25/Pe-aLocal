@@ -238,6 +238,64 @@ describe('StoreCustomizationService', () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
+  it('valida imagens de categoria em duas consultas escopadas e sem N+1', async () => {
+    const draft = createDefaultCustomization();
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'CATEGORY_IMAGE' }]);
+
+    await saveCustomizationDraft('tenant-1', 'store-1', {
+      config: draft,
+      expectedDraftVersion: 2,
+    });
+
+    expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
+    expect(mocks.categoryFindMany).toHaveBeenCalledWith({
+      where: { id: { in: [categoryId] }, tenantId: 'tenant-1', storeId: 'store-1' },
+      select: { id: true },
+    });
+    expect(mocks.assetFindMany).toHaveBeenCalledTimes(1);
+    expect(mocks.assetFindMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [assetId] },
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, assetType: true },
+    });
+  });
+
+  it('rejeita referências de categoria ou asset fora do escopo e tipos incorretos', async () => {
+    const draft = createDefaultCustomization();
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([]);
+
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toThrow(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
+    );
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'LOGO' }]);
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it('preserva a origem de restauração ao editar o draft restaurado', async () => {
     mocks.ensureCustomization.mockResolvedValue(
       customization({
@@ -379,6 +437,33 @@ describe('StoreCustomizationService', () => {
     });
   });
 
+  it('publica associações de categoria na revisão imutável', async () => {
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    const draft = createDefaultCustomization();
+    draft.layout.showCategoryImages = true;
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'CATEGORY_IMAGE' }]);
+    mocks.ensureCustomization.mockResolvedValue(
+      customization({ draftConfig: draft, draftVersion: 4, publishedVersion: 2 }),
+    );
+
+    await publishCustomization('tenant-1', 'store-1', {
+      expectedDraftVersion: 4,
+      reason: 'Publicar imagens das categorias',
+    });
+
+    expect(mocks.revisionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        schemaVersion: 2,
+        snapshot: expect.objectContaining({
+          categoryImages: [{ categoryId, assetId }],
+        }),
+      }),
+    });
+  });
+
   it('restaura uma revisão escopada somente como novo draft', async () => {
     const snapshot = createDefaultCustomization();
     snapshot.identity.slogan = 'Versão anterior';
@@ -407,6 +492,42 @@ describe('StoreCustomizationService', () => {
       }),
     );
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
+  });
+
+  it('migra revisão v1 para v2 antes de restaurá-la como draft', async () => {
+    const current = createDefaultCustomization();
+    const { categoryImages: _categoryImages, ...withoutAssociations } = current;
+    const { showCategoryImages: _showCategoryImages, ...legacyLayout } = current.layout;
+    expect(_categoryImages).toEqual([]);
+    expect(_showCategoryImages).toBe(false);
+    mocks.findRevision.mockResolvedValue({
+      id: 'revision-v1',
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      version: 1,
+      snapshot: {
+        ...withoutAssociations,
+        schemaVersion: 1,
+        layout: legacyLayout,
+      },
+    });
+
+    await restoreCustomizationRevision('tenant-1', 'store-1', 'revision-v1', {
+      expectedDraftVersion: 2,
+      reason: 'Restaurar versão histórica',
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          draftConfig: expect.objectContaining({
+            schemaVersion: 2,
+            categoryImages: [],
+            layout: expect.objectContaining({ showCategoryImages: false }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('não restaura revisão inexistente ou pertencente a outra loja', async () => {

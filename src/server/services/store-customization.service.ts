@@ -1,14 +1,15 @@
 import { Prisma, type CustomizationRevisionOrigin } from '@prisma/client';
+import { z } from 'zod';
 
 import {
   createDefaultCustomization,
   evaluateCustomizationContrast,
+  migrateCustomizationToCurrentVersion,
 } from '@/features/customization/domain';
 import { assertCustomizationEntitlement } from '@/features/customization/entitlements';
 import {
   customizationPublishSchema,
   customizationVersionSchema,
-  storeCustomizationConfigSchema,
   type StoreCustomizationConfig,
 } from '@/schemas/customization';
 import { storeEntitlementInputSchema } from '@/schemas/store-entitlement';
@@ -23,17 +24,18 @@ import * as domainRepo from '@/server/repositories/store-domain.repository';
 import { ensureStoreEntitlement } from '@/server/repositories/store-entitlement.repository';
 
 function parseConfig(value: unknown): StoreCustomizationConfig {
-  const parsed = storeCustomizationConfigSchema.safeParse(value);
-  if (!parsed.success) {
+  try {
+    return migrateCustomizationToCurrentVersion(value);
+  } catch (error) {
+    const issues = error instanceof z.ZodError ? error.issues : [];
     throw new ValidationError(
       'A configuração de personalização é inválida.',
-      parsed.error.issues.map((item) => ({
+      issues.map((item) => ({
         field: item.path.join('.'),
         message: item.message,
       })),
     );
   }
-  return parsed.data;
 }
 
 function validationError(message: string, issues: { path: PropertyKey[]; message: string }[]) {
@@ -65,9 +67,7 @@ function changedSections(before: StoreCustomizationConfig, after: StoreCustomiza
   );
 }
 
-function parseEntitlementConfig(
-  entitlement: Awaited<ReturnType<typeof ensureStoreEntitlement>>,
-) {
+function parseEntitlementConfig(entitlement: Awaited<ReturnType<typeof ensureStoreEntitlement>>) {
   return storeEntitlementInputSchema.parse({
     maxAssetCount: entitlement.maxAssetCount,
     maxAssetStorageBytes: entitlement.maxAssetStorageBytes,
@@ -129,30 +129,57 @@ async function assertAssetReferences(
   storeId: string,
   config: StoreCustomizationConfig,
 ) {
-  const references = [
+  const identityReferences = [
     { id: config.identity.logoAssetId, type: 'LOGO' },
     { id: config.identity.logoDarkAssetId, type: 'LOGO_DARK' },
     { id: config.identity.coverAssetId, type: 'COVER' },
     { id: config.identity.faviconAssetId, type: 'FAVICON' },
     { id: config.identity.socialImageAssetId, type: 'SOCIAL_IMAGE' },
   ].filter((item): item is { id: string; type: typeof item.type } => Boolean(item.id));
-  if (references.length === 0) return;
+  const categoryIds = [...new Set(config.categoryImages.map((item) => item.categoryId))];
+  const categoryAssetIds = [...new Set(config.categoryImages.map((item) => item.assetId))];
+  const assetIds = [
+    ...new Set([...identityReferences.map((item) => item.id), ...categoryAssetIds]),
+  ];
+  if (assetIds.length === 0 && categoryIds.length === 0) return;
 
-  const assets = await getDb().storeAsset.findMany({
-    where: {
-      id: { in: references.map((item) => item.id) },
-      tenantId,
-      storeId,
-      status: 'ACTIVE',
-      deletedAt: null,
-    },
-    select: { id: true, assetType: true },
-  });
+  const [categories, assets] = await Promise.all([
+    categoryIds.length > 0
+      ? getDb().category.findMany({
+          where: { id: { in: categoryIds }, tenantId, storeId },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    assetIds.length > 0
+      ? getDb().storeAsset.findMany({
+          where: {
+            id: { in: assetIds },
+            tenantId,
+            storeId,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+          select: { id: true, assetType: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  if (categories.length !== categoryIds.length) {
+    throw new ValidationError(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
+    );
+  }
   const typeById = new Map(assets.map((asset) => [asset.id, asset.assetType]));
-  const invalid = references.find((reference) => typeById.get(reference.id) !== reference.type);
+  const invalid = identityReferences.find(
+    (reference) => typeById.get(reference.id) !== reference.type,
+  );
   if (invalid) {
     throw new ValidationError(
       'A personalização referencia um asset ausente, de outro estabelecimento ou do tipo incorreto.',
+    );
+  }
+  if (categoryAssetIds.some((assetId) => typeById.get(assetId) !== 'CATEGORY_IMAGE')) {
+    throw new ValidationError(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
     );
   }
 }
@@ -181,15 +208,15 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
   const draftConfig = customization.draftConfig ? parseConfig(customization.draftConfig) : null;
   const [revisions, assets, banners, domains, entitlement, categories, products, coupons] =
     await Promise.all([
-    customizationRepo.listRevisions(tenantId, storeId),
-    assetRepo.listActiveStoreAssets(tenantId, storeId),
+      customizationRepo.listRevisions(tenantId, storeId),
+      assetRepo.listActiveStoreAssets(tenantId, storeId),
       bannerRepo.listAdminStoreBanners(tenantId, storeId),
       domainRepo.listAdminStoreDomains(tenantId, storeId),
       ensureStoreEntitlement(tenantId, storeId),
       getDb().category.findMany({
-        where: { tenantId, storeId, isActive: true },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+        where: { tenantId, storeId },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, description: true, sortOrder: true, isActive: true },
       }),
       getDb().product.findMany({
         where: { tenantId, storeId, isAvailable: true },
