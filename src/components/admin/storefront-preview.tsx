@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { StoreHeader } from '@/components/storefront/store-header';
+import type { AdminStoreAssetItem } from '@/components/admin/store-assets-manager';
+import type { AdminStoreCategoryItem } from '@/components/admin/store-category-images-manager';
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
@@ -37,6 +39,8 @@ interface StorefrontPreviewProps {
   storeStatus: 'OPEN' | 'CLOSED' | 'PAUSED';
   logoUrl: string | null;
   coverUrl: string | null;
+  categories: AdminStoreCategoryItem[];
+  assets: AdminStoreAssetItem[];
 }
 
 export function StorefrontPreview({
@@ -45,8 +49,28 @@ export function StorefrontPreview({
   storeStatus,
   logoUrl,
   coverUrl,
+  categories,
+  assets,
 }: StorefrontPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('mobile');
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  const associationByCategoryId = new Map(
+    config.categoryImages.map((association) => [association.categoryId, association.assetId]),
+  );
+  const previewCategories = categories
+    .filter((category) => category.isActive)
+    .slice(0, 4)
+    .map((category) => {
+      const asset = assetById.get(associationByCategoryId.get(category.id) ?? '');
+      return {
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        imageUrl: asset?.assetType === 'CATEGORY_IMAGE' ? asset.previewUrl : null,
+        imageAlt: asset?.assetType === 'CATEGORY_IMAGE' ? asset.altText : null,
+      };
+    });
+  const firstCategory = previewCategories[0] ?? null;
 
   return (
     <section className="border-border bg-surface rounded-xl border p-4 shadow-sm">
@@ -103,18 +127,32 @@ export function StorefrontPreview({
           />
 
           <CategoryNav
-            categories={[
-              { id: 'preview-featured', name: 'Destaques' },
-              { id: 'preview-menu', name: 'Cardápio' },
-            ]}
-            activeCategoryId="preview-featured"
+            categories={previewCategories}
+            activeCategoryId={firstCategory?.id ?? null}
             onCategoryClick={() => undefined}
             variant={config.layout.categoryNavigation}
+            showImages={config.layout.showCategoryImages}
           />
 
           <main className="storefront-catalog" aria-label="Produtos de exemplo">
             <section className="storefront-category-section">
-              <h3 className="storefront-section-title">Produtos de exemplo</h3>
+              <div className="storefront-category-heading">
+                {config.layout.showCategoryImages &&
+                  config.layout.categoryNavigation === 'DROPDOWN' &&
+                  firstCategory?.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={firstCategory.imageUrl}
+                      alt={firstCategory.imageAlt ?? firstCategory.name}
+                      width={72}
+                      height={72}
+                      className="storefront-category-heading-image"
+                    />
+                  )}
+                <h3 className="storefront-section-title">
+                  {firstCategory?.name ?? 'Produtos de exemplo'}
+                </h3>
+              </div>
               <div className="storefront-product-grid">
                 {PREVIEW_PRODUCTS.map((product) => (
                   <ProductCard

@@ -8,6 +8,7 @@ import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
 import { StoreBanners, type PublicStoreBanner } from '@/components/storefront/store-banners';
+import { storeAssetUrl } from '@/features/assets/urls';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 
@@ -44,6 +45,13 @@ interface Category {
   id: string;
   name: string;
   description: string | null;
+  image: {
+    id: string;
+    url: string;
+    altText: string;
+    width: number;
+    height: number;
+  } | null;
   products: Product[];
 }
 
@@ -142,10 +150,16 @@ export function CatalogView({
       return (
         <CategoryNav
           key={section}
-          categories={visibleCategories.map((category) => ({ id: category.id, name: category.name }))}
+          categories={visibleCategories.map((category) => ({
+            id: category.id,
+            name: category.name,
+            imageUrl: category.image ? storeAssetUrl(category.image.id, 96) : null,
+            imageAlt: category.image?.altText ?? null,
+          }))}
           activeCategoryId={activeCategoryId}
           onCategoryClick={handleCategoryClick}
           variant={customization.layout.categoryNavigation}
+          showImages={customization.layout.showCategoryImages}
         />
       );
     }
@@ -182,7 +196,25 @@ export function CatalogView({
                 data-category-id={category.id}
                 className="storefront-category-section"
               >
-                <h2 className="storefront-section-title">{category.name}</h2>
+                <div className="storefront-category-heading">
+                  {customization.layout.showCategoryImages &&
+                    customization.layout.categoryNavigation === 'DROPDOWN' &&
+                    category.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={category.image.url}
+                        alt={category.image.altText}
+                        width={96}
+                        height={96}
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.hidden = true;
+                        }}
+                        className="storefront-category-heading-image"
+                      />
+                    )}
+                  <h2 className="storefront-section-title">{category.name}</h2>
+                </div>
                 {customization.layout.showCategoryDescription && category.description && (
                   <p className="storefront-category-description">{category.description}</p>
                 )}

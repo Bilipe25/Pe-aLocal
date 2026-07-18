@@ -87,27 +87,44 @@ async function getStoreFromDb(slug: string) {
     resolvedCustomization.config.identity.faviconAssetId,
     resolvedCustomization.config.identity.socialImageAssetId,
   ].filter((id): id is string => Boolean(id));
+  const categoryImageAssociations = resolvedCustomization.config.layout.showCategoryImages
+    ? resolvedCustomization.config.categoryImages
+    : [];
+  const referencedAssetIds = [
+    ...new Set([
+      ...identityAssetIds,
+      ...categoryImageAssociations.map((association) => association.assetId),
+    ]),
+  ];
   const [assets, banners, primaryDomain] = await Promise.all([
-    identityAssetIds.length > 0
+    referencedAssetIds.length > 0
       ? getDb().storeAsset.findMany({
           where: {
-            id: { in: identityAssetIds },
+            id: { in: referencedAssetIds },
             tenantId: store.tenantId,
             storeId: store.id,
             status: 'ACTIVE',
             deletedAt: null,
           },
-          select: { id: true, assetType: true, altText: true },
+          select: {
+            id: true,
+            assetType: true,
+            altText: true,
+            width: true,
+            height: true,
+          },
         })
       : Promise.resolve([]),
     bannerRepo.listPublicStoreBanners(store.tenantId, store.id, new Date()),
     domainRepo.findActivePrimaryStoreDomain(store.tenantId, store.id),
   ]);
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
-  const resolveAsset = (id: string | null, width?: number) => {
+  const resolveAsset = (id: string | null, type: string, width?: number) => {
     if (!id) return null;
     const asset = assetById.get(id);
-    return asset ? { id: asset.id, altText: asset.altText, url: storeAssetUrl(asset.id, width) } : null;
+    return asset?.assetType === type
+      ? { id: asset.id, altText: asset.altText, url: storeAssetUrl(asset.id, width) }
+      : null;
   };
   const resolveBannerHref = (type: string, value: string | null) => {
     if (!value || type === 'NONE') return null;
@@ -122,12 +139,40 @@ async function getStoreFromDb(slug: string) {
     customization: {
       ...resolvedCustomization,
       assets: {
-        logo: resolveAsset(resolvedCustomization.config.identity.logoAssetId, 384),
-        logoDark: resolveAsset(resolvedCustomization.config.identity.logoDarkAssetId, 384),
-        cover: resolveAsset(resolvedCustomization.config.identity.coverAssetId, 1280),
-        favicon: resolveAsset(resolvedCustomization.config.identity.faviconAssetId, 96),
-        socialImage: resolveAsset(resolvedCustomization.config.identity.socialImageAssetId, 1280),
+        logo: resolveAsset(resolvedCustomization.config.identity.logoAssetId, 'LOGO', 384),
+        logoDark: resolveAsset(
+          resolvedCustomization.config.identity.logoDarkAssetId,
+          'LOGO_DARK',
+          384,
+        ),
+        cover: resolveAsset(resolvedCustomization.config.identity.coverAssetId, 'COVER', 1280),
+        favicon: resolveAsset(
+          resolvedCustomization.config.identity.faviconAssetId,
+          'FAVICON',
+          96,
+        ),
+        socialImage: resolveAsset(
+          resolvedCustomization.config.identity.socialImageAssetId,
+          'SOCIAL_IMAGE',
+          1280,
+        ),
       },
+      categoryImages: categoryImageAssociations.flatMap((association) => {
+        const asset = assetById.get(association.assetId);
+        if (asset?.assetType !== 'CATEGORY_IMAGE') return [];
+        return [
+          {
+            categoryId: association.categoryId,
+            image: {
+              id: asset.id,
+              url: storeAssetUrl(asset.id, 384),
+              altText: asset.altText,
+              width: asset.width,
+              height: asset.height,
+            },
+          },
+        ];
+      }),
       banners: banners.map((banner) => ({
         id: banner.id,
         title: banner.title,
@@ -201,8 +246,21 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
   return categories.filter((category) => category.products.length > 0);
 }
 
-export async function getPublicCatalog(storeId: string, tenantId: string) {
-  return unstable_cache(
+export async function getPublicCatalog(
+  storeId: string,
+  tenantId: string,
+  categoryImages: {
+    categoryId: string;
+    image: {
+      id: string;
+      url: string;
+      altText: string;
+      width: number;
+      height: number;
+    };
+  }[] = [],
+) {
+  const catalog = await unstable_cache(
     () => getCatalogFromDb(storeId, tenantId),
     ['public-catalog', storeId, tenantId],
     {
@@ -210,6 +268,13 @@ export async function getPublicCatalog(storeId: string, tenantId: string) {
       tags: [CACHE_TAGS.catalog(storeId)],
     },
   )();
+  const imageByCategoryId = new Map(
+    categoryImages.map((association) => [association.categoryId, association.image]),
+  );
+  return catalog.map((category) => ({
+    ...category,
+    image: imageByCategoryId.get(category.id) ?? null,
+  }));
 }
 
 async function getDeliveryZonesFromDb(storeId: string) {

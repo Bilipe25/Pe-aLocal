@@ -395,6 +395,10 @@ body {
 }
 
 .storefront-category-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   flex: none;
   border-radius: 9999px;
   padding: 0.4rem 1rem;
@@ -402,6 +406,43 @@ body {
   font-size: 0.875rem;
   font-weight: 600;
   transition: color 150ms, background 150ms;
+}
+
+.storefront-category-thumbnail {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--store-border) 70%, transparent);
+  border-radius: calc(var(--store-radius) * 0.8);
+  object-fit: cover;
+}
+
+.storefront-category-button.is-active .storefront-category-thumbnail {
+  border-color: color-mix(in srgb, var(--store-button-text) 55%, transparent);
+}
+
+.storefront-category-nav-vertical {
+  position: relative;
+  border-block: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.storefront-category-nav-vertical .storefront-category-list {
+  flex-direction: column;
+  overflow: visible;
+}
+
+.storefront-category-nav-vertical .storefront-category-button {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: var(--store-radius);
+  text-align: left;
+}
+
+.storefront-category-nav-vertical .storefront-category-thumbnail {
+  width: 3.25rem;
+  height: 3.25rem;
 }
 
 .storefront-category-button:hover {
@@ -447,6 +488,26 @@ body {
 .storefront-category-section {
   margin-bottom: 1.5rem;
   scroll-margin-top: 5rem;
+}
+
+.storefront-category-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.storefront-category-heading .storefront-section-title {
+  margin-bottom: 0;
+}
+
+.storefront-category-heading-image {
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: none;
+  border: 1px solid var(--store-border);
+  border-radius: var(--store-radius);
+  object-fit: cover;
 }
 
 .storefront-section-title {
@@ -645,20 +706,6 @@ body {
 .storefront-layout-editorial-hero .storefront-category-list,
 .storefront-layout-editorial-hero .storefront-category-dropdown {
   width: min(100%, 64rem);
-}
-
-@media (min-width: 768px) {
-  .storefront-category-nav-vertical {
-    position: relative;
-    border-block: 0;
-    background: transparent;
-    backdrop-filter: none;
-  }
-
-  .storefront-category-nav-vertical .storefront-category-list {
-    flex-wrap: wrap;
-    overflow: visible;
-  }
 }
 
 @media (max-width: 767px) {
