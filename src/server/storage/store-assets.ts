@@ -63,6 +63,8 @@ function assertDimensions(type: StoreAssetTypeValue, width: number, height: numb
   const valid =
     type === 'FAVICON'
       ? width >= 16 && height >= 16 && ratio >= 0.8 && ratio <= 1.25
+      : type === 'CATEGORY_IMAGE'
+        ? width >= 320 && height >= 320 && ratio >= 0.8 && ratio <= 1.25
       : type === 'COVER' || type === 'BANNER'
         ? width >= 600 && height >= 180 && ratio >= 1.2 && ratio <= 5
         : type === 'SOCIAL_IMAGE'

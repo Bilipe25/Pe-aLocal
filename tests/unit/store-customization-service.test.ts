@@ -238,6 +238,64 @@ describe('StoreCustomizationService', () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
+  it('valida imagens de categoria em duas consultas escopadas e sem N+1', async () => {
+    const draft = createDefaultCustomization();
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'CATEGORY_IMAGE' }]);
+
+    await saveCustomizationDraft('tenant-1', 'store-1', {
+      config: draft,
+      expectedDraftVersion: 2,
+    });
+
+    expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
+    expect(mocks.categoryFindMany).toHaveBeenCalledWith({
+      where: { id: { in: [categoryId] }, tenantId: 'tenant-1', storeId: 'store-1' },
+      select: { id: true },
+    });
+    expect(mocks.assetFindMany).toHaveBeenCalledTimes(1);
+    expect(mocks.assetFindMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [assetId] },
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, assetType: true },
+    });
+  });
+
+  it('rejeita referências de categoria ou asset fora do escopo e tipos incorretos', async () => {
+    const draft = createDefaultCustomization();
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([]);
+
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toThrow(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
+    );
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'LOGO' }]);
+    await expect(
+      saveCustomizationDraft('tenant-1', 'store-1', {
+        config: draft,
+        expectedDraftVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it('preserva a origem de restauração ao editar o draft restaurado', async () => {
     mocks.ensureCustomization.mockResolvedValue(
       customization({

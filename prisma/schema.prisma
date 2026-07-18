@@ -142,6 +142,7 @@ enum StoreAssetType {
   FAVICON
   SOCIAL_IMAGE
   BANNER
+  CATEGORY_IMAGE
 }
 
 enum StoreAssetStatus {
@@ -338,7 +339,7 @@ model StoreCustomization {
   id                    String                       @id @default(uuid())
   tenantId              String
   storeId               String                       @unique
-  schemaVersion         Int                          @default(1)
+  schemaVersion         Int                          @default(2)
   publishedConfig       Json
   draftConfig           Json?
   draftVersion          Int                          @default(0)
@@ -371,7 +372,7 @@ model StoreCustomizationRevision {
   tenantId        String
   storeId         String
   version         Int
-  schemaVersion   Int                         @default(1)
+  schemaVersion   Int                         @default(2)
   snapshot        Json
   actorUserId     String?
   action          CustomizationRevisionAction @default(PUBLISHED)

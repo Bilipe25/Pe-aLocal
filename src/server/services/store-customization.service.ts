@@ -131,30 +131,57 @@ async function assertAssetReferences(
   storeId: string,
   config: StoreCustomizationConfig,
 ) {
-  const references = [
+  const identityReferences = [
     { id: config.identity.logoAssetId, type: 'LOGO' },
     { id: config.identity.logoDarkAssetId, type: 'LOGO_DARK' },
     { id: config.identity.coverAssetId, type: 'COVER' },
     { id: config.identity.faviconAssetId, type: 'FAVICON' },
     { id: config.identity.socialImageAssetId, type: 'SOCIAL_IMAGE' },
   ].filter((item): item is { id: string; type: typeof item.type } => Boolean(item.id));
-  if (references.length === 0) return;
+  const categoryIds = [...new Set(config.categoryImages.map((item) => item.categoryId))];
+  const categoryAssetIds = [...new Set(config.categoryImages.map((item) => item.assetId))];
+  const assetIds = [
+    ...new Set([...identityReferences.map((item) => item.id), ...categoryAssetIds]),
+  ];
+  if (assetIds.length === 0 && categoryIds.length === 0) return;
 
-  const assets = await getDb().storeAsset.findMany({
-    where: {
-      id: { in: references.map((item) => item.id) },
-      tenantId,
-      storeId,
-      status: 'ACTIVE',
-      deletedAt: null,
-    },
-    select: { id: true, assetType: true },
-  });
+  const [categories, assets] = await Promise.all([
+    categoryIds.length > 0
+      ? getDb().category.findMany({
+          where: { id: { in: categoryIds }, tenantId, storeId },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    assetIds.length > 0
+      ? getDb().storeAsset.findMany({
+          where: {
+            id: { in: assetIds },
+            tenantId,
+            storeId,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+          select: { id: true, assetType: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  if (categories.length !== categoryIds.length) {
+    throw new ValidationError(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
+    );
+  }
   const typeById = new Map(assets.map((asset) => [asset.id, asset.assetType]));
-  const invalid = references.find((reference) => typeById.get(reference.id) !== reference.type);
+  const invalid = identityReferences.find(
+    (reference) => typeById.get(reference.id) !== reference.type,
+  );
   if (invalid) {
     throw new ValidationError(
       'A personalização referencia um asset ausente, de outro estabelecimento ou do tipo incorreto.',
+    );
+  }
+  if (categoryAssetIds.some((assetId) => typeById.get(assetId) !== 'CATEGORY_IMAGE')) {
+    throw new ValidationError(
+      'A personalização possui uma imagem de categoria inválida ou pertencente a outro estabelecimento.',
     );
   }
 }
@@ -189,9 +216,9 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
       domainRepo.listAdminStoreDomains(tenantId, storeId),
       ensureStoreEntitlement(tenantId, storeId),
       getDb().category.findMany({
-        where: { tenantId, storeId, isActive: true },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+        where: { tenantId, storeId },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, description: true, sortOrder: true, isActive: true },
       }),
       getDb().product.findMany({
         where: { tenantId, storeId, isAvailable: true },
