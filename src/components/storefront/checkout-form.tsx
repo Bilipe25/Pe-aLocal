@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,11 @@ export function CheckoutForm({
   const [changeFor, setChangeFor] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   // Calculations
   const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
@@ -108,7 +113,7 @@ export function CheckoutForm({
         <h2 className="font-display text-base font-bold text-tinta">Seus dados</h2>
         <div className="mt-2 space-y-3">
           <div>
-            <label htmlFor="name" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="name" className="text-sm font-medium text-text-muted">
               Nome
             </label>
             <Input
@@ -119,11 +124,11 @@ export function CheckoutForm({
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Seu nome"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
           <div>
-            <label htmlFor="phone" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="phone" className="text-sm font-medium text-text-muted">
               Telefone / WhatsApp
             </label>
             <Input
@@ -133,7 +138,7 @@ export function CheckoutForm({
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
               placeholder="(11) 99999-9999"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
         </div>
@@ -147,10 +152,11 @@ export function CheckoutForm({
             <button
               type="button"
               onClick={() => setModality('DELIVERY')}
-              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+              aria-pressed={modality === 'DELIVERY'}
+              className={`min-h-11 flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                 modality === 'DELIVERY'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               🛵 Entrega
@@ -160,10 +166,11 @@ export function CheckoutForm({
             <button
               type="button"
               onClick={() => setModality('PICKUP')}
-              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+              aria-pressed={modality === 'PICKUP'}
+              className={`min-h-11 flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                 modality === 'PICKUP'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               🏪 Retirada
@@ -174,7 +181,7 @@ export function CheckoutForm({
         {modality === 'DELIVERY' && (
           <div className="mt-3 space-y-3">
             <div>
-              <label htmlFor="zone" className="text-sm font-medium text-tinta/70">
+              <label htmlFor="zone" className="text-sm font-medium text-text-muted">
                 Zona de entrega
               </label>
               <select
@@ -182,7 +189,7 @@ export function CheckoutForm({
                 required
                 value={deliveryZoneId}
                 onChange={(e) => setDeliveryZoneId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-tinta/15 bg-papel px-3 py-2 text-sm text-tinta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pimenta"
+                className="mt-1 min-h-11 w-full rounded-md border border-tinta/15 bg-papel px-3 py-2 text-sm text-tinta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pimenta"
               >
                 <option value="">Selecione sua região</option>
                 {deliveryZones.map((z) => (
@@ -194,7 +201,7 @@ export function CheckoutForm({
               </select>
             </div>
             <div>
-              <label htmlFor="address" className="text-sm font-medium text-tinta/70">
+              <label htmlFor="address" className="text-sm font-medium text-text-muted">
                 Endereço de entrega
               </label>
               <Textarea
@@ -204,7 +211,7 @@ export function CheckoutForm({
                 onChange={(e) => setDeliveryAddress(e.target.value)}
                 placeholder="Rua, número, complemento, bairro"
                 rows={2}
-                className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+                className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
               />
             </div>
           </div>
@@ -217,10 +224,10 @@ export function CheckoutForm({
         <div className="mt-2 space-y-1.5">
           {acceptsPix && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'PIX'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -235,10 +242,10 @@ export function CheckoutForm({
           )}
           {acceptsCash && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'CASH'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -253,10 +260,10 @@ export function CheckoutForm({
           )}
           {acceptsCardOnDelivery && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'CARD_ON_DELIVERY'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -273,7 +280,7 @@ export function CheckoutForm({
 
         {paymentMethod === 'CASH' && (
           <div className="mt-3">
-            <label htmlFor="change" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="change" className="text-sm font-medium text-text-muted">
               Troco para (opcional)
             </label>
             <Input
@@ -285,7 +292,7 @@ export function CheckoutForm({
               value={changeFor}
               onChange={(e) => setChangeFor(e.target.value)}
               placeholder="Ex: 50.00"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
         )}
@@ -299,7 +306,7 @@ export function CheckoutForm({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Alguma observação para o estabelecimento?"
           rows={2}
-          className="mt-2 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+          className="mt-2 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
         />
       </section>
 
@@ -313,7 +320,14 @@ export function CheckoutForm({
 
       {/* Erro */}
       {error && (
-        <div className="rounded-lg border border-error/20 bg-error-light px-4 py-2 text-sm text-error">
+        <div
+          id="checkout-error"
+          ref={errorRef}
+          role="alert"
+          aria-live="assertive"
+          tabIndex={-1}
+          className="rounded-lg border border-error/20 bg-error-light px-4 py-2 text-sm text-tinta outline-none"
+        >
           {error}
         </div>
       )}
@@ -322,6 +336,7 @@ export function CheckoutForm({
       <Button
         type="submit"
         disabled={isPending || items.length === 0}
+        aria-describedby={error ? 'checkout-error' : undefined}
         className="storefront-primary-action w-full font-body font-medium shadow-sm disabled:opacity-50"
       >
         {isPending ? (

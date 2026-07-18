@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Bricolage_Grotesque, Inter, Space_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import './globals.css';
@@ -37,6 +37,12 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     siteName: 'PedidoLocal',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

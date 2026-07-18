@@ -1,7 +1,8 @@
 'use client';
 
+import { Check, Copy, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
-import { Copy, Check, MessageCircle } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 
 interface PixPaymentInfoProps {
@@ -31,15 +32,14 @@ export function PixPaymentInfo({
 
   if (!pixKey) {
     return (
-      <div className="rounded-xl border border-pimenta/20 bg-pimenta/5 p-4 text-sm text-tinta/70">
+      <div className="rounded-xl border border-pimenta/20 bg-pimenta/5 p-4 text-sm text-tinta">
         Chave Pix não configurada. Entre em contato com a loja.
       </div>
     );
   }
 
   async function handleCopy() {
-    if (!pixKey) return;
-    await navigator.clipboard.writeText(pixKey);
+    await navigator.clipboard.writeText(pixKey!);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   }
@@ -63,67 +63,66 @@ export function PixPaymentInfo({
 
       <div className="mt-3 space-y-2 text-sm">
         {pixKeyType && (
-          <div className="flex justify-between">
-            <span className="text-tinta/60">Tipo de chave</span>
-            <span className="text-tinta">{pixKeyType}</span>
+          <div className="flex justify-between gap-3">
+            <span className="text-text-muted">Tipo de chave</span>
+            <span className="break-words text-right text-tinta">{pixKeyType}</span>
           </div>
         )}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-tinta/60">Chave Pix</span>
-          <div className="flex items-center gap-1">
-            <code className="rounded bg-kraft/50 px-2 py-0.5 font-mono text-xs font-bold text-tinta">
+          <span className="shrink-0 text-text-muted">Chave Pix</span>
+          <div className="flex min-w-0 items-center gap-1">
+            <code className="min-w-0 break-all rounded bg-kraft/50 px-2 py-1 font-mono text-sm font-bold text-tinta">
               {pixKey}
             </code>
             <button
+              type="button"
               onClick={handleCopy}
-              className="rounded-md p-1 text-tinta/50 hover:bg-tinta/5 hover:text-tinta"
-              title="Copiar chave"
+              aria-label={copied ? 'Chave Pix copiada' : 'Copiar chave Pix'}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-tinta/5 hover:text-tinta"
             >
               {copied ? (
-                <Check className="h-3.5 w-3.5 text-erva" />
+                <Check className="h-4 w-4 text-erva" aria-hidden="true" />
               ) : (
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="h-4 w-4" aria-hidden="true" />
               )}
             </button>
+            <span className="sr-only" role="status" aria-live="polite">
+              {copied ? 'Chave Pix copiada para a área de transferência.' : ''}
+            </span>
           </div>
         </div>
         {pixRecipient && (
-          <div className="flex justify-between">
-            <span className="text-tinta/60">Beneficiário</span>
-            <span className="text-tinta">{pixRecipient}</span>
+          <div className="flex justify-between gap-3">
+            <span className="text-text-muted">Beneficiário</span>
+            <span className="break-words text-right text-tinta">{pixRecipient}</span>
           </div>
         )}
         {pixBank && (
-          <div className="flex justify-between">
-            <span className="text-tinta/60">Banco</span>
-            <span className="text-tinta">{pixBank}</span>
+          <div className="flex justify-between gap-3">
+            <span className="text-text-muted">Banco</span>
+            <span className="break-words text-right text-tinta">{pixBank}</span>
           </div>
         )}
-        <div className="flex justify-between font-semibold">
+        <div className="flex justify-between gap-3 font-semibold">
           <span className="text-tinta">Valor</span>
-          <span className="font-mono font-bold text-pimenta">{totalFormatted}</span>
+          <span className="storefront-action-text font-mono font-bold">{totalFormatted}</span>
         </div>
       </div>
 
       {pixInstructions && (
-        <p className="mt-3 text-xs text-tinta/50 italic">{pixInstructions}</p>
+        <p className="mt-3 break-words text-sm text-text-muted italic">{pixInstructions}</p>
       )}
 
       {whatsappUrl && (
-        <a
-          href={whatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 block"
+        <Button
+          asChild
+          className="mt-3 w-full bg-erva font-body font-medium text-white hover:bg-erva/90"
         >
-          <Button
-            type="button"
-            className="w-full bg-erva text-white hover:bg-erva/90 font-body font-medium"
-          >
-            <MessageCircle className="mr-2 h-4 w-4" />
+          <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+            <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
             Enviar comprovante via WhatsApp
-          </Button>
-        </a>
+          </a>
+        </Button>
       )}
     </div>
   );

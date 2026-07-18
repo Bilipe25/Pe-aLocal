@@ -201,7 +201,7 @@ body {
 .storefront-banner-action {
   margin-top: 0.5rem;
   border-radius: var(--store-radius);
-  background: var(--store-button-bg);
+  background: var(--store-button-background);
   color: var(--store-button-text);
   padding: 0.6rem 1rem;
   font-size: 0.875rem;
@@ -244,7 +244,12 @@ body {
 }
 
 .storefront-theme :focus-visible {
-  outline-color: var(--store-primary);
+  outline-color: var(--store-button-background);
+}
+
+.storefront-action-text,
+.storefront-link {
+  color: var(--store-button-background);
 }
 
 .storefront-header {
@@ -304,7 +309,7 @@ body {
 
 .storefront-slogan {
   margin-top: 0.3rem;
-  color: var(--store-primary);
+  color: var(--store-button-background);
   font-weight: 600;
 }
 
@@ -327,14 +332,14 @@ body {
   gap: 1rem;
   margin-top: 0.75rem;
   color: var(--store-muted-text);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .storefront-status {
   flex: none;
   border-radius: 9999px;
   padding: 0.3rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -344,13 +349,13 @@ body {
 }
 
 .storefront-status-closed {
-  color: var(--store-muted-text);
-  background: color-mix(in srgb, var(--store-muted-text) 12%, transparent);
+  color: var(--store-text);
+  background: color-mix(in srgb, var(--store-muted-text) 18%, var(--store-surface));
 }
 
 .storefront-status-paused {
-  color: var(--store-primary);
-  background: color-mix(in srgb, var(--store-primary) 14%, transparent);
+  color: var(--store-text);
+  background: color-mix(in srgb, var(--store-primary) 18%, var(--store-surface));
 }
 
 .storefront-search-wrap {
@@ -363,6 +368,7 @@ body {
   border: 1px solid var(--store-border);
   border-radius: var(--store-radius);
   background: var(--store-surface);
+  min-height: 2.75rem;
 }
 
 .storefront-search-wrap input {
@@ -400,6 +406,7 @@ body {
   justify-content: center;
   gap: 0.4rem;
   flex: none;
+  min-height: 2.75rem;
   border-radius: 9999px;
   padding: 0.4rem 1rem;
   color: var(--store-muted-text);
@@ -463,6 +470,7 @@ body {
 
 .storefront-category-dropdown select {
   width: 100%;
+  min-height: 2.75rem;
   border: 1px solid var(--store-border);
   border-radius: var(--store-radius);
   padding: 0.6rem 0.8rem;
@@ -519,7 +527,7 @@ body {
 
 .storefront-category-description {
   margin: -0.4rem 0 0.8rem;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 
 .storefront-product-grid {
@@ -543,7 +551,7 @@ body {
   color: var(--store-text);
   background: var(--store-surface);
   text-align: left;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  box-shadow: var(--shadow-sm);
   transition:
     border-color 150ms,
     box-shadow 150ms,
@@ -552,7 +560,7 @@ body {
 
 .storefront-product-card:not(.is-disabled):hover {
   border-color: var(--store-primary);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.08);
+  box-shadow: var(--shadow-md);
 }
 
 .storefront-product-card:not(.is-disabled):active {
@@ -601,14 +609,14 @@ body {
   display: -webkit-box;
   margin-top: 0.2rem;
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .storefront-product-price {
   margin-top: 0.45rem;
-  color: var(--store-primary);
+  color: var(--store-button-background);
   font-family: var(--font-space-mono), ui-monospace, monospace;
   font-size: 0.875rem;
   font-weight: 700;
@@ -625,9 +633,9 @@ body {
   gap: 0.2rem;
   border-radius: 9999px;
   padding: 0.15rem 0.4rem;
-  color: var(--store-muted-text);
-  background: color-mix(in srgb, var(--store-muted-text) 12%, transparent);
-  font-size: 0.625rem;
+  color: var(--store-text);
+  background: color-mix(in srgb, var(--store-muted-text) 18%, var(--store-surface));
+  font-size: 0.875rem;
 }
 
 .storefront-empty {
@@ -640,9 +648,49 @@ body {
 }
 
 .storefront-primary-action {
+  min-height: 2.75rem;
   color: var(--store-button-text) !important;
   background: var(--store-button-background) !important;
   border-radius: var(--store-radius) !important;
+}
+
+.storefront-selection-row,
+.storefront-selection-badge {
+  background: color-mix(in srgb, var(--store-button-background) 12%, var(--store-surface));
+}
+
+.storefront-selection-badge {
+  color: var(--store-text);
+}
+
+.storefront-selection-indicator {
+  border-color: var(--store-button-background);
+  background: var(--store-button-background);
+}
+
+.storefront-selection-control {
+  border-color: var(--store-button-background);
+}
+
+.storefront-selection-mark {
+  background: var(--store-button-text);
+}
+
+.storefront-cart-count {
+  color: var(--store-button-background);
+  background: var(--store-button-text);
+}
+
+.storefront-safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.storefront-page-bottom-safe {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+.storefront-fixed-bottom-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
 .storefront-button-outline .storefront-primary-action {
@@ -691,9 +739,22 @@ body {
 }
 
 .storefront-layout-editorial-hero .storefront-title,
+.storefront-layout-editorial-hero .storefront-slogan,
 .storefront-layout-editorial-hero .storefront-header .storefront-description,
 .storefront-layout-editorial-hero .storefront-header .storefront-quick-info {
   color: var(--store-button-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storefront-theme,
+  .storefront-theme *,
+  .storefront-theme *::before,
+  .storefront-theme *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .storefront-layout-editorial-hero .storefront-title {

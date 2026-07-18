@@ -48,7 +48,15 @@ export function ProductCard({
           {imageUrl ? (
             // A origem das imagens será normalizada pelo pipeline de assets na Fase 3.
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="storefront-product-image" src={imageUrl} alt={name} loading="lazy" />
+            <img
+              className="storefront-product-image"
+              src={imageUrl}
+              alt={name}
+              width={384}
+              height={384}
+              loading="lazy"
+              decoding="async"
+            />
           ) : (
             <div className="storefront-product-image-placeholder" aria-hidden="true" />
           )}

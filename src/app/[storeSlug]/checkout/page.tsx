@@ -35,10 +35,10 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
   if (!store.settings) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p className="text-center text-tinta/60">
+        <p className="text-center text-text-muted">
           Loja ainda não configurou as opções de pedido.
         </p>
-        <Link href={`/${storeSlug}`} className="mt-4 text-pimenta hover:underline">
+        <Link href={`/${storeSlug}`} className="storefront-link mt-4 inline-flex min-h-11 items-center hover:underline">
           Voltar para a loja
         </Link>
       </div>
@@ -51,19 +51,20 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
     : [];
 
   return (
-    <div className="min-h-screen bg-papel pb-24">
+    <div className="storefront-page-bottom-safe min-h-screen bg-papel">
       {/* Header Fixo */}
       <header className="sticky top-0 z-40 border-b border-tinta/10 bg-papel/80 px-4 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <Link
             href={`/${storeSlug}/cart`}
-            className="rounded-full p-2 text-tinta hover:bg-tinta/5 transition-colors"
+            aria-label="Voltar para a sacola"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-tinta transition-colors hover:bg-tinta/5"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
           </Link>
           <div className="flex-1">
             <h1 className="font-display text-lg font-bold text-tinta">Finalizar Pedido</h1>
-            <p className="text-xs text-tinta/60">{store.name}</p>
+            <p className="break-words text-sm text-text-muted">{store.name}</p>
           </div>
         </div>
       </header>
@@ -89,12 +90,12 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
           />
         ) : (
           <div className="mt-8 text-center">
-            <p className="text-sm text-tinta/60 mb-4">
+            <p className="mb-4 text-sm text-text-muted">
               Não é possível fazer pedidos no momento pois a loja está fechada.
             </p>
             <Link
               href={`/${storeSlug}`}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-pimenta px-4 py-2 font-medium text-white hover:bg-pimenta/90"
+              className="storefront-primary-action inline-flex min-h-11 items-center justify-center px-4 py-2 font-medium"
             >
               Voltar ao cardápio
             </Link>

@@ -34,9 +34,26 @@ test.describe('acessibilidade WCAG', () => {
     const storeSlug = process.env.E2E_STORE_SLUG;
     test.skip(!storeSlug, 'E2E_STORE_SLUG não foi configurado.');
 
+    await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`/${storeSlug}`);
     await expect(page.locator('.storefront-theme')).toBeVisible();
     await expectNoHighImpactViolations(page);
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+
+    const productCard = page.locator('.storefront-product-card:not(:disabled)').first();
+    test.skip((await productCard.count()) === 0, 'A loja E2E não possui produto disponível.');
+
+    await productCard.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Fechar detalhes de/i })).toBeVisible();
+    await expectNoHighImpactViolations(page);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(productCard).toBeFocused();
   });
 
   test('editor administrativo não possui violações críticas ou sérias', async ({ page }) => {

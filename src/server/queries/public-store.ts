@@ -176,6 +176,7 @@ async function getStoreFromDb(slug: string) {
         buttonText: banner.buttonText,
         href: resolveBannerHref(banner.destinationType, banner.destinationValue),
         priority: banner.priority,
+        imageAssetId: banner.asset?.id ?? null,
         imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
         imageAlt: banner.asset?.altText ?? banner.title,
       })),

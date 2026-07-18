@@ -1,14 +1,14 @@
 'use client';
 
 import { Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
 import { StoreBanners, type PublicStoreBanner } from '@/components/storefront/store-banners';
-import { storeAssetUrl } from '@/features/assets/urls';
+import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 
@@ -78,6 +78,7 @@ export function CatalogView({
   );
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
+  const lastFocusedProductRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
 
@@ -107,9 +108,20 @@ export function CatalogView({
     if (!id) return;
     setActiveCategoryId(id);
     document.getElementById(`category-${id}`)?.scrollIntoView({
-      behavior: 'smooth',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'start',
     });
+  }
+
+  function openProduct(product: Product) {
+    lastFocusedProductRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedProduct(product);
+  }
+
+  function closeProduct() {
+    setSelectedProduct(null);
+    requestAnimationFrame(() => lastFocusedProductRef.current?.focus());
   }
 
   useEffect(() => {
@@ -140,7 +152,7 @@ export function CatalogView({
       isFeatured={product.isFeatured}
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
-      onClick={() => setSelectedProduct(product)}
+      onClick={() => openProduct(product)}
       disabled={!storeOpen}
       showImage={customization.layout.showProductImages}
       showBadges={customization.layout.showProductBadges}
@@ -156,6 +168,7 @@ export function CatalogView({
           categories={visibleCategories.map((category) => ({
             id: category.id,
             name: category.name,
+            imageAssetId: category.image?.id ?? null,
             imageUrl: category.image ? storeAssetUrl(category.image.id, 96) : null,
             imageAlt: category.image?.altText ?? null,
           }))}
@@ -205,11 +218,14 @@ export function CatalogView({
                     category.image && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={category.image.url}
+                        src={storeAssetUrl(category.image.id, 192)}
+                        srcSet={storeAssetSrcSet(category.image.id, [96, 192, 384])}
+                        sizes="72px"
                         alt={category.image.altText}
                         width={96}
                         height={96}
                         loading="lazy"
+                        decoding="async"
                         onError={(event) => {
                           event.currentTarget.hidden = true;
                         }}
@@ -266,7 +282,7 @@ export function CatalogView({
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
+          onClose={closeProduct}
           storeOpen={storeOpen}
         />
       )}

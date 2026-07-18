@@ -1,5 +1,6 @@
 import { Clock, MapPin } from 'lucide-react';
 
+import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
 interface StoreHeaderProps {
@@ -10,7 +11,9 @@ interface StoreHeaderProps {
   neighborhood?: string;
   city?: string;
   logoUrl: string | null;
+  logoAssetId?: string | null;
   coverUrl: string | null;
+  coverAssetId?: string | null;
   config: StoreCustomizationConfig;
 }
 
@@ -28,7 +31,9 @@ export function StoreHeader({
   neighborhood,
   city,
   logoUrl,
+  logoAssetId,
   coverUrl,
+  coverAssetId,
   config,
 }: StoreHeaderProps) {
   const statusInfo = STATUS_CONFIG[status];
@@ -40,14 +45,33 @@ export function StoreHeader({
       {showCover && (
         // A origem das imagens será normalizada pelo pipeline de assets na Fase 3.
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="storefront-cover" src={coverUrl!} alt="" fetchPriority="high" />
+        <img
+          className="storefront-cover"
+          src={coverUrl!}
+          srcSet={coverAssetId ? storeAssetSrcSet(coverAssetId, [384, 768, 1280]) : undefined}
+          sizes="100vw"
+          alt=""
+          width={1280}
+          height={640}
+          fetchPriority="high"
+          decoding="async"
+        />
       )}
 
       <div className="storefront-header-content">
         <div className="storefront-identity">
           {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="storefront-logo" src={logoUrl} alt={`Logo de ${name}`} />
+            <img
+              className="storefront-logo"
+              src={logoUrl}
+              srcSet={logoAssetId ? storeAssetSrcSet(logoAssetId, [96, 192, 384]) : undefined}
+              sizes="72px"
+              alt={`Logo de ${name}`}
+              width={384}
+              height={384}
+              decoding="async"
+            />
           )}
 
           <div className="min-w-0 flex-1">

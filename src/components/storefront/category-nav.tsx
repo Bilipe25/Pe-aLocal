@@ -2,12 +2,14 @@
 
 import { useEffect, useRef } from 'react';
 
+import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
 interface CategoryNavProps {
   categories: {
     id: string;
     name: string;
+    imageAssetId?: string | null;
     imageUrl: string | null;
     imageAlt: string | null;
   }[];
@@ -33,7 +35,8 @@ export function CategoryNav({
       const active = activeRef.current;
       const left = active.offsetLeft - container.offsetWidth / 2 + active.offsetWidth / 2;
       if (typeof container.scrollTo === 'function') {
-        container.scrollTo({ left, behavior: 'smooth' });
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        container.scrollTo({ left, behavior: reduceMotion ? 'auto' : 'smooth' });
       }
     }
   }, [activeCategoryId, variant]);
@@ -80,10 +83,17 @@ export function CategoryNav({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={category.imageUrl}
+                  srcSet={
+                    category.imageAssetId
+                      ? storeAssetSrcSet(category.imageAssetId, [96, 192])
+                      : undefined
+                  }
+                  sizes="52px"
                   alt=""
                   width={52}
                   height={52}
                   loading="lazy"
+                  decoding="async"
                   onError={(event) => {
                     event.currentTarget.hidden = true;
                   }}

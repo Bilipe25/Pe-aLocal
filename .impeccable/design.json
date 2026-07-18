@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-18T03:24:49.284Z",
+  "title": "Design System: PedidoLocal",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Pimenta",
+        "canonical": "#d9480f",
+        "tonalRamp": [
+          "#5c2108",
+          "#7c2d12",
+          "#9a3412",
+          "#c2410c",
+          "#d9480f",
+          "#fb923c",
+          "#fed7aa",
+          "#fff7ed"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Papel",
+        "canonical": "#fffdf9",
+        "tonalRamp": [
+          "#241c15",
+          "#5c4f42",
+          "#8a7e72",
+          "#b8ad9f",
+          "#d6cec4",
+          "#efe0c3",
+          "#f5f0e8",
+          "#fffdf9"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "#241c15",
+        "tonalRamp": [
+          "#241c15",
+          "#3c3128",
+          "#5c4f42",
+          "#75695d",
+          "#8a7e72",
+          "#a89c90",
+          "#d6cec4",
+          "#f5f0e8"
+        ]
+      },
+      "surface-highlight": {
+        "role": "tertiary",
+        "displayName": "Kraft",
+        "canonical": "#efe0c3",
+        "tonalRamp": [
+          "#3c3020",
+          "#5e4b31",
+          "#806747",
+          "#a68761",
+          "#c5a984",
+          "#ddc9a8",
+          "#efe0c3",
+          "#faf4e8"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Erva",
+        "canonical": "#3f7d58",
+        "tonalRamp": [
+          "#142b1d",
+          "#21452f",
+          "#2e6042",
+          "#3f7d58",
+          "#609b75",
+          "#8bbba0",
+          "#bddbc8",
+          "#e6f3ec"
+        ]
+      },
+      "info": {
+        "role": "secondary",
+        "displayName": "Azulejo",
+        "canonical": "#3b6e8f",
+        "tonalRamp": [
+          "#122737",
+          "#1d4058",
+          "#2a5875",
+          "#3b6e8f",
+          "#6090ad",
+          "#8fb3c8",
+          "#bad2df",
+          "#e3eef5"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Âmbar",
+        "canonical": "#e89b0c",
+        "tonalRamp": [
+          "#3d2700",
+          "#634000",
+          "#8d5b00",
+          "#b97900",
+          "#e89b0c",
+          "#f2bb52",
+          "#f8d993",
+          "#fef3c7"
+        ]
+      },
+      "error": {
+        "role": "tertiary",
+        "displayName": "Vermelho de erro",
+        "canonical": "#d63b3b",
+        "tonalRamp": [
+          "#3c0c0c",
+          "#641616",
+          "#8d2424",
+          "#b42f2f",
+          "#d63b3b",
+          "#e77474",
+          "#f1aaaa",
+          "#fde8e8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Marca, hero e nome da loja." },
+      "headline": { "displayName": "Headline", "purpose": "Título principal de página." },
+      "title": { "displayName": "Title", "purpose": "Seções, modais e agrupamentos." },
+      "body": { "displayName": "Body", "purpose": "Leitura principal e descrições." },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Formulários, botões, navegação e dados funcionais."
+      },
+      "mono": { "displayName": "Mono", "purpose": "Preços, números de pedido e códigos." }
+    },
+    "shadows": [
+      {
+        "name": "contato",
+        "value": "0 1px 2px 0 rgb(36 28 21 / 0.06)",
+        "purpose": "Separação mínima de cards e controles."
+      },
+      {
+        "name": "elevacao-media",
+        "value": "0 4px 6px -1px rgb(36 28 21 / 0.08), 0 2px 4px -2px rgb(36 28 21 / 0.06)",
+        "purpose": "Dropdowns, hover estrutural e superfícies temporárias."
+      },
+      {
+        "name": "sobreposicao",
+        "value": "0 10px 15px -3px rgb(36 28 21 / 0.08), 0 4px 6px -4px rgb(36 28 21 / 0.06)",
+        "purpose": "Diálogos e camadas sobre o fluxo principal."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fast",
+        "value": "150ms ease-out",
+        "purpose": "Hover, foco, seleção e feedback imediato."
+      },
+      {
+        "name": "state-standard",
+        "value": "250ms ease-out",
+        "purpose": "Mudanças de estado com deslocamento ou sobreposição."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0ms",
+        "purpose": "Alternativa obrigatória para prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ação principal familiar, tátil e direta.",
+      "html": "<button class=\"ds-btn-primary\">Salvar alterações</button>",
+      "css": ".ds-btn-primary { min-height: 40px; padding: 8px 16px; border: 0; border-radius: var(--radius-lg, 12px); background: var(--color-pimenta, #d9480f); color: #fff; font: 500 14px/1.4 var(--font-body, Inter, sans-serif); transition: background 150ms ease-out, transform 150ms ease-out; } .ds-btn-primary:hover { background: var(--color-brand-600, #c2410c); } .ds-btn-primary:active { transform: scale(0.985); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-pimenta, #d9480f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Ação secundária com hierarquia contida.",
+      "html": "<button class=\"ds-btn-outline\">Visualizar</button>",
+      "css": ".ds-btn-outline { min-height: 40px; padding: 8px 16px; border: 1px solid var(--color-border, #d6cec4); border-radius: var(--radius-lg, 12px); background: var(--color-papel, #fffdf9); color: var(--color-tinta, #241c15); font: 500 14px/1.4 var(--font-body, Inter, sans-serif); transition: background 150ms ease-out, border-color 150ms ease-out; } .ds-btn-outline:hover { border-color: var(--color-border-hover, #b8ad9f); background: var(--color-surface-secondary, #f5f0e8); } .ds-btn-outline:focus-visible { outline: 2px solid var(--color-pimenta, #d9480f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo claro com foco de alta visibilidade.",
+      "html": "<label class=\"ds-field\"><span>Nome do produto</span><input class=\"ds-input\" placeholder=\"Ex.: X-Burger\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: var(--color-tinta, #241c15); font: 500 14px/1.4 var(--font-body, Inter, sans-serif); } .ds-input { min-height: 40px; padding: 8px 12px; border: 1px solid var(--color-border, #d6cec4); border-radius: var(--radius-lg, 12px); background: var(--color-papel, #fffdf9); color: var(--color-tinta, #241c15); font: 400 14px/1.4 var(--font-body, Inter, sans-serif); } .ds-input::placeholder { color: var(--color-text-muted, #8a7e72); } .ds-input:hover { border-color: var(--color-border-hover, #b8ad9f); } .ds-input:focus-visible { outline: 2px solid var(--color-pimenta, #d9480f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-primary",
+      "description": "Status compacto com significado semântico constante.",
+      "html": "<span class=\"ds-badge-success\">Aberta agora</span>",
+      "css": ".ds-badge-success { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 10px; border-radius: 9999px; background: var(--color-success-light, #e6f3ec); color: var(--color-success, #3f7d58); font: 600 12px/1.4 var(--font-body, Inter, sans-serif); }"
+    },
+    {
+      "name": "Standard Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Agrupamento estrutural sobre Papel, sem decoração excessiva.",
+      "html": "<article class=\"ds-card\"><h3>Pedidos</h3><p>Gerencie os pedidos em tempo real.</p></article>",
+      "css": ".ds-card { max-width: 320px; padding: 24px; border: 1px solid var(--color-border, #d6cec4); border-radius: var(--radius-xl, 16px); background: var(--color-papel, #fffdf9); color: var(--color-tinta, #241c15); box-shadow: var(--shadow-sm, 0 1px 2px rgb(36 28 21 / 0.06)); } .ds-card h3 { margin: 0; font: 700 20px/1.25 var(--font-display, 'Bricolage Grotesque', serif); } .ds-card p { margin: 8px 0 0; color: var(--color-text-secondary, #5c4f42); font: 400 14px/1.5 var(--font-body, Inter, sans-serif); }"
+    },
+    {
+      "name": "App Navigation",
+      "kind": "nav",
+      "refersTo": "button-outline",
+      "description": "Navegação operacional contida e previsível.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-active\" href=\"#\">Visão geral</a><a class=\"ds-nav-item\" href=\"#\">Tenants</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 4px; padding: 4px; background: var(--color-papel, #fffdf9); } .ds-nav-item { padding: 8px 12px; border-radius: var(--radius-md, 8px); color: var(--color-text-secondary, #5c4f42); text-decoration: none; font: 500 14px/1.4 var(--font-body, Inter, sans-serif); transition: color 150ms ease-out, background 150ms ease-out; } .ds-nav-item:hover, .ds-nav-item.ds-active { background: var(--color-surface-secondary, #f5f0e8); color: var(--color-tinta, #241c15); } .ds-nav-item:focus-visible { outline: 2px solid var(--color-pimenta, #d9480f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Storefront Product Card",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Produto acionável com preço imediatamente reconhecível.",
+      "html": "<button class=\"ds-product-card\"><span class=\"ds-product-image\"></span><span class=\"ds-product-copy\"><strong>X-Burger da Casa</strong><small>Pão, carne, queijo e molho especial</small><b>R$ 24,90</b></span></button>",
+      "css": ".ds-product-card { display: flex; width: 100%; max-width: 380px; gap: 12px; padding: 12px; border: 1px solid var(--store-border, #d6cec4); border-radius: var(--store-radius, 12px); background: var(--store-surface, #fffdf9); color: var(--store-text, #241c15); text-align: left; transition: border-color 150ms ease-out, transform 150ms ease-out; } .ds-product-card:hover { border-color: var(--store-primary, #d9480f); } .ds-product-card:active { transform: scale(0.985); } .ds-product-card:focus-visible { outline: 2px solid var(--store-primary, #d9480f); outline-offset: 2px; } .ds-product-image { width: 64px; height: 64px; flex: none; border-radius: 9px; background: color-mix(in srgb, var(--store-border, #d6cec4) 45%, var(--store-surface, #fffdf9)); } .ds-product-copy { display: grid; min-width: 0; gap: 3px; font-family: var(--store-body-font, Inter, sans-serif); } .ds-product-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; } .ds-product-copy small { color: var(--store-muted-text, #8a7e72); font-size: 12px; } .ds-product-copy b { margin-top: 3px; color: var(--store-primary, #d9480f); font: 700 14px/1.4 var(--font-space-mono, 'Space Mono', monospace); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "O Balcão Digital do Bairro",
+    "overview": "O PedidoLocal combina a proximidade humana de um negócio conhecido com a precisão de uma operação bem organizada. A interface deve ser acolhedora sem ficar informal demais, autêntica sem sacrificar familiaridade e ágil sem comprimir informações importantes. O sistema serve com igual cuidado quem compra e quem vende. A plataforma é web responsiva, com jornadas do consumidor mobile-first e painéis estruturalmente responsivos. O sistema rejeita aparência corporativa fria, SaaS genérico e interfaces carregadas para pessoas pouco técnicas.",
+    "keyCharacteristics": [
+      "Próximo e autêntico, com vocabulário visual ligado ao comércio local.",
+      "Acolhedor e preciso, sem decoração que dispute atenção com a tarefa.",
+      "Mobile-first para consumidores e estruturalmente responsivo nos painéis.",
+      "Familiar, tátil e direto nas ações.",
+      "Acessível por padrão, em conformidade com WCAG 2.2 AA."
+    ],
+    "rules": [
+      {
+        "name": "The Pimenta Means Action Rule",
+        "body": "Pimenta identifica ação primária, foco ou seleção. É proibido usá-la como preenchimento decorativo sem significado.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Color Rule",
+        "body": "Erva, Azulejo, Âmbar e Vermelho mantêm o mesmo significado em todas as superfícies. Nunca reutilize uma cor de estado para ornamentação.",
+        "section": "colors"
+      },
+      {
+        "name": "The White-label Boundary Rule",
+        "body": "Tokens da vitrine pertencem ao wrapper da loja e nunca alteram login, dashboard ou administração da plataforma. Toda combinação publicada deve preservar contraste WCAG 2.2 AA.",
+        "section": "colors"
+      },
+      {
+        "name": "The Task Typography Rule",
+        "body": "Inter governa rótulos, formulários, tabelas e botões. Bricolage nunca aparece em controles operacionais.",
+        "section": "typography"
+      },
+      {
+        "name": "The Numbers Have a Voice Rule",
+        "body": "Valores monetários e identificadores operacionais usam Space Mono para leitura rápida e alinhamento visual.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mobile Reading Rule",
+        "body": "Texto essencial nunca fica abaixo de 0.875rem; títulos precisam quebrar sem transbordar e conteúdo acionável deve permanecer legível sem zoom.",
+        "section": "typography"
+      },
+      {
+        "name": "The Structural Elevation Rule",
+        "body": "Sombra comunica nível ou interação; nunca serve como decoração. Não combine borda de 1px com sombra difusa de blur maior ou igual a 16px.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Flat-at-Rest Rule",
+        "body": "Se cor de superfície e borda já explicam o agrupamento, nenhuma sombra adicional é permitida.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usar Pimenta para a ação principal e reservar sua raridade para decisões reais.",
+      "Do projetar primeiro a jornada do consumidor em larguras móveis e validar painéis do celular ao desktop.",
+      "Do manter alvos de toque com pelo menos 44 × 44px nas jornadas do consumidor.",
+      "Do usar Inter para trabalho, Bricolage para identidade e Space Mono para preços e códigos.",
+      "Do explicar estados com texto, ícone ou estrutura além da cor e cumprir WCAG 2.2 AA.",
+      "Do preservar a fronteira white-label: personalização da loja nunca invade as superfícies da plataforma."
+    ],
+    "donts": [
+      "Don't criar uma aparência corporativa fria; a precisão deve continuar humana e próxima.",
+      "Don't produzir um SaaS genérico sem identidade; use o vocabulário Papel, Tinta, Pimenta, Erva, Azulejo e Kraft com intenção.",
+      "Don't construir interfaces carregadas que dificultem o uso por pessoas pouco técnicas; remova decisões e agrupamentos sem função.",
+      "Don't usar Pimenta, Erva, Azulejo, Âmbar ou Vermelho como decoração sem significado.",
+      "Don't combinar borda de 1px e sombra ampla de blur maior ou igual a 16px no mesmo card.",
+      "Don't usar gradiente em texto, glassmorphism decorativo, listras diagonais, fundos de grade ou bordas laterais coloridas como acento.",
+      "Don't usar cards com raio superior a 1rem nem repetir grades de cards idênticos quando uma lista ou hierarquia simples resolve melhor.",
+      "Don't animar layout ou esconder conteúdo atrás de animação; respeite prefers-reduced-motion."
+    ]
+  }
+}

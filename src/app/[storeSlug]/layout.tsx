@@ -87,7 +87,9 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         neighborhood={store.address?.neighborhood}
         city={store.address?.city}
         logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+        logoAssetId={store.customization.assets.logo?.id}
         coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
+        coverAssetId={store.customization.assets.cover?.id}
         config={config}
       />
 
@@ -96,7 +98,7 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
       {children}
 
       {config.platformBranding.showPedidoLocalBranding && (
-        <footer className="storefront-branding px-4 py-8 text-center text-xs">
+        <footer className="storefront-branding px-4 py-8 text-center text-sm">
           Tecnologia por PedidoLocal
         </footer>
       )}
