@@ -58,7 +58,6 @@ export async function isStoreAssetReferenced(
   storeId: string,
   assetId: string,
 ): Promise<boolean> {
-  const pattern = `%${assetId}%`;
   const rows = await getDb().$queryRaw<{ referenced: boolean }[]>(Prisma.sql`
     SELECT EXISTS (
       SELECT 1
@@ -66,15 +65,38 @@ export async function isStoreAssetReferenced(
       WHERE customization."tenantId" = ${tenantId}
         AND customization."storeId" = ${storeId}
         AND (
-          customization."publishedConfig"::text LIKE ${pattern}
-          OR customization."draftConfig"::text LIKE ${pattern}
+          customization."publishedConfig"->'identity'->>'logoAssetId' = ${assetId}
+          OR customization."publishedConfig"->'identity'->>'logoDarkAssetId' = ${assetId}
+          OR customization."publishedConfig"->'identity'->>'coverAssetId' = ${assetId}
+          OR customization."publishedConfig"->'identity'->>'faviconAssetId' = ${assetId}
+          OR customization."publishedConfig"->'identity'->>'socialImageAssetId' = ${assetId}
+          OR customization."publishedConfig" @> jsonb_build_object(
+            'categoryImages', jsonb_build_array(jsonb_build_object('assetId', ${assetId}))
+          )
+          OR customization."draftConfig"->'identity'->>'logoAssetId' = ${assetId}
+          OR customization."draftConfig"->'identity'->>'logoDarkAssetId' = ${assetId}
+          OR customization."draftConfig"->'identity'->>'coverAssetId' = ${assetId}
+          OR customization."draftConfig"->'identity'->>'faviconAssetId' = ${assetId}
+          OR customization."draftConfig"->'identity'->>'socialImageAssetId' = ${assetId}
+          OR customization."draftConfig" @> jsonb_build_object(
+            'categoryImages', jsonb_build_array(jsonb_build_object('assetId', ${assetId}))
+          )
         )
       UNION ALL
       SELECT 1
       FROM "store_customization_revisions" revision
       WHERE revision."tenantId" = ${tenantId}
         AND revision."storeId" = ${storeId}
-        AND revision."snapshot"::text LIKE ${pattern}
+        AND (
+          revision."snapshot"->'identity'->>'logoAssetId' = ${assetId}
+          OR revision."snapshot"->'identity'->>'logoDarkAssetId' = ${assetId}
+          OR revision."snapshot"->'identity'->>'coverAssetId' = ${assetId}
+          OR revision."snapshot"->'identity'->>'faviconAssetId' = ${assetId}
+          OR revision."snapshot"->'identity'->>'socialImageAssetId' = ${assetId}
+          OR revision."snapshot" @> jsonb_build_object(
+            'categoryImages', jsonb_build_array(jsonb_build_object('assetId', ${assetId}))
+          )
+        )
       UNION ALL
       SELECT 1
       FROM "store_banners" banner

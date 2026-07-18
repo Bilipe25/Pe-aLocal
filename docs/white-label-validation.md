@@ -17,7 +17,7 @@ deploy. O cardápio público continua lendo somente `publishedConfig`.
    seed recusa produção e não cria membership para o `SUPER_ADMIN`.
 5. Execute os gates locais e o dry-run descritos abaixo.
 6. Em uma loja descartável, valide draft, prévia, publicação, histórico,
-   restauração, asset, banner e canonical manual.
+   restauração, asset, imagem de categoria, banner e canonical manual.
 7. Promova para staging somente após revisão do diff e dos logs de auditoria.
 
 ## Gates
@@ -34,6 +34,11 @@ pnpm cf:build
 pnpm exec wrangler deploy --dry-run --env staging
 pnpm test:workerd
 ```
+
+O E2E de imagens de categoria requer também `E2E_CATEGORY_NAME` e
+`E2E_CATEGORY_IMAGE_PATH`, apontando para uma imagem válida de pelo menos
+320×320. Ele só executa mutações quando `E2E_ALLOW_MUTATIONS=true` e deve usar
+uma loja descartável.
 
 O último teste depende de preview workerd funcional, navegador Chromium e
 variáveis de teste. `wrangler deploy --dry-run` não publica o Worker.
@@ -60,13 +65,13 @@ variáveis de teste. `wrangler deploy --dry-run` não publica o Worker.
 
 ### Maiores módulos da linha de base
 
-| Módulo | Tamanho bruto |
-| --- | ---: |
-| `server-functions/default/handler.mjs` | 10304,34 KiB |
-| Prisma `query_compiler_fast_bg.wasm` | 3591,53 KiB |
-| `middleware/handler.mjs` | 683,32 KiB |
-| `cloudflare/images.js` | 20,50 KiB |
-| `middleware/open-next.config.mjs` | 13,20 KiB |
+| Módulo                                 | Tamanho bruto |
+| -------------------------------------- | ------------: |
+| `server-functions/default/handler.mjs` |  10304,34 KiB |
+| Prisma `query_compiler_fast_bg.wasm`   |   3591,53 KiB |
+| `middleware/handler.mjs`               |    683,32 KiB |
+| `cloudflare/images.js`                 |     20,50 KiB |
+| `middleware/open-next.config.mjs`      |     13,20 KiB |
 
 O query compiler entra porque o Prisma Client 7 usa o compilador WASM no
 runtime. O middleware é um entrypoint separado do OpenNext para atualização da
@@ -79,11 +84,13 @@ de desenvolvimento e não aparece no build da aplicação.
 2. Reverta primeiro o código para a versão anterior validada.
 3. Reative `showPedidoLocalBranding`, desative banners e remova domínios
    primários antes de retirar suporte às novas tabelas.
-4. Exporte customizações, revisões, assets, banners, domínios e entitlements.
-5. Preserve objetos R2 referenciados por histórico; não apague o bucket.
-6. Execute manualmente os blocos de rollback documentados nas migrations apenas
+4. Para imagens de categoria, desligue `showCategoryImages` antes de reverter a
+   renderização; preserve as associações e os objetos R2.
+5. Exporte customizações, revisões, assets, banners, domínios e entitlements.
+6. Preserve objetos R2 referenciados por histórico; não apague o bucket.
+7. Execute manualmente os blocos de rollback documentados nas migrations apenas
    após confirmar que a versão antiga não lê mais essas tabelas/colunas.
-7. Não remova valores antigos de enums de auditoria enquanto houver logs que os
+8. Não remova valores antigos de enums de auditoria enquanto houver logs que os
    referenciem.
 
 Rollback de Worker, banco e recursos Cloudflare são decisões independentes. Não

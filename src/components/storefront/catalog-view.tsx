@@ -96,7 +96,10 @@ export function CatalogView({
   }, [categories, search]);
 
   const featuredProducts = useMemo(
-    () => visibleCategories.flatMap((category) => category.products).filter((product) => product.isFeatured),
+    () =>
+      visibleCategories
+        .flatMap((category) => category.products)
+        .filter((product) => product.isFeatured),
     [visibleCategories],
   );
 

@@ -137,8 +137,7 @@ export function CustomizationEditor({
   const criticalContrast = contrastIssues.filter((item) => item.severity === 'error');
   const logoUrl =
     assets.find((asset) => asset.id === config.identity.logoAssetId)?.previewUrl ?? null;
-  const coverUrl =
-    assets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
+  const coverUrl = assets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
 
   useEffect(() => {
     const preventExit = (event: BeforeUnloadEvent) => {

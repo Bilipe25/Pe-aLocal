@@ -66,9 +66,7 @@ function publicStore() {
 describe('queries públicas da loja', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.unstableCache.mockImplementation(
-      (callback: () => Promise<unknown>) => callback,
-    );
+    mocks.unstableCache.mockImplementation((callback: () => Promise<unknown>) => callback);
     mocks.storeFindUnique.mockResolvedValue(publicStore());
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);

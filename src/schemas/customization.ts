@@ -136,9 +136,7 @@ const seoSchema = z
   })
   .strict();
 
-const platformBrandingSchema = z
-  .object({ showPedidoLocalBranding: z.boolean() })
-  .strict();
+const platformBrandingSchema = z.object({ showPedidoLocalBranding: z.boolean() }).strict();
 
 const configShape = {
   identity: identitySchema,

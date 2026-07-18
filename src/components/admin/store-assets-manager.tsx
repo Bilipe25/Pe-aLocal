@@ -9,11 +9,7 @@ import type { StoreCustomizationConfig } from '@/schemas/customization';
 import type { StoreAssetTypeValue } from '@/schemas/store-asset';
 
 type IdentityAssetField =
-  | 'logoAssetId'
-  | 'logoDarkAssetId'
-  | 'coverAssetId'
-  | 'faviconAssetId'
-  | 'socialImageAssetId';
+  'logoAssetId' | 'logoDarkAssetId' | 'coverAssetId' | 'faviconAssetId' | 'socialImageAssetId';
 
 export interface AdminStoreAssetItem {
   id: string;
@@ -172,7 +168,9 @@ export function StoreAssetsManager({
             className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
           >
             {ASSET_OPTIONS.map((item) => (
-              <option key={item.type} value={item.type}>{item.label}</option>
+              <option key={item.type} value={item.type}>
+                {item.label}
+              </option>
             ))}
           </select>
           <span className="text-text-muted text-xs">{option.hint}</span>
@@ -205,7 +203,11 @@ export function StoreAssetsManager({
         </button>
       </div>
 
-      {feedback && <p role="status" className="bg-info-light text-info mt-4 rounded-lg p-3 text-sm">{feedback}</p>}
+      {feedback && (
+        <p role="status" className="bg-info-light text-info mt-4 rounded-lg p-3 text-sm">
+          {feedback}
+        </p>
+      )}
 
       <div className="mt-5 space-y-5">
         {grouped.map((group) => (
@@ -215,11 +217,21 @@ export function StoreAssetsManager({
               {group.assets.map((asset) => {
                 const selected = group.field ? identity[group.field] === asset.id : false;
                 return (
-                  <article key={asset.id} className={`overflow-hidden rounded-lg border ${selected ? 'border-brand-500' : 'border-border'}`}>
+                  <article
+                    key={asset.id}
+                    className={`overflow-hidden rounded-lg border ${selected ? 'border-brand-500' : 'border-border'}`}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={asset.previewUrl} alt={asset.altText} className="bg-surface-secondary h-28 w-full object-contain" loading="lazy" />
+                    <img
+                      src={asset.previewUrl}
+                      alt={asset.altText}
+                      className="bg-surface-secondary h-28 w-full object-contain"
+                      loading="lazy"
+                    />
                     <div className="space-y-2 p-3">
-                      <p className="text-text-muted text-xs">{asset.width}×{asset.height} · {Math.ceil(asset.sizeBytes / 1024)} KB</p>
+                      <p className="text-text-muted text-xs">
+                        {asset.width}×{asset.height} · {Math.ceil(asset.sizeBytes / 1024)} KB
+                      </p>
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -243,7 +255,9 @@ export function StoreAssetsManager({
                   </article>
                 );
               })}
-              {group.assets.length === 0 && <p className="text-text-muted text-xs">Nenhum arquivo enviado.</p>}
+              {group.assets.length === 0 && (
+                <p className="text-text-muted text-xs">Nenhum arquivo enviado.</p>
+              )}
             </div>
           </div>
         ))}

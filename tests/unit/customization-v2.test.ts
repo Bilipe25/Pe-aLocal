@@ -14,6 +14,8 @@ describe('schema v2 da personalização', () => {
     const current = createDefaultCustomization();
     const { categoryImages: _categoryImages, ...withoutAssociations } = current;
     const { showCategoryImages: _showCategoryImages, ...legacyLayout } = current.layout;
+    expect(_categoryImages).toEqual([]);
+    expect(_showCategoryImages).toBe(false);
     const legacy = {
       ...withoutAssociations,
       schemaVersion: 1 as const,

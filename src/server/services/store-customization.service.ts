@@ -67,9 +67,7 @@ function changedSections(before: StoreCustomizationConfig, after: StoreCustomiza
   );
 }
 
-function parseEntitlementConfig(
-  entitlement: Awaited<ReturnType<typeof ensureStoreEntitlement>>,
-) {
+function parseEntitlementConfig(entitlement: Awaited<ReturnType<typeof ensureStoreEntitlement>>) {
   return storeEntitlementInputSchema.parse({
     maxAssetCount: entitlement.maxAssetCount,
     maxAssetStorageBytes: entitlement.maxAssetStorageBytes,
@@ -210,8 +208,8 @@ export async function getAdminCustomizationData(tenantId: string, storeId: strin
   const draftConfig = customization.draftConfig ? parseConfig(customization.draftConfig) : null;
   const [revisions, assets, banners, domains, entitlement, categories, products, coupons] =
     await Promise.all([
-    customizationRepo.listRevisions(tenantId, storeId),
-    assetRepo.listActiveStoreAssets(tenantId, storeId),
+      customizationRepo.listRevisions(tenantId, storeId),
+      assetRepo.listActiveStoreAssets(tenantId, storeId),
       bannerRepo.listAdminStoreBanners(tenantId, storeId),
       domainRepo.listAdminStoreDomains(tenantId, storeId),
       ensureStoreEntitlement(tenantId, storeId),

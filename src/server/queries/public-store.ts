@@ -146,11 +146,7 @@ async function getStoreFromDb(slug: string) {
           384,
         ),
         cover: resolveAsset(resolvedCustomization.config.identity.coverAssetId, 'COVER', 1280),
-        favicon: resolveAsset(
-          resolvedCustomization.config.identity.faviconAssetId,
-          'FAVICON',
-          96,
-        ),
+        favicon: resolveAsset(resolvedCustomization.config.identity.faviconAssetId, 'FAVICON', 96),
         socialImage: resolveAsset(
           resolvedCustomization.config.identity.socialImageAssetId,
           'SOCIAL_IMAGE',

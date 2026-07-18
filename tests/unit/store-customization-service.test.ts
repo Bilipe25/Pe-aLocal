@@ -437,6 +437,33 @@ describe('StoreCustomizationService', () => {
     });
   });
 
+  it('publica associações de categoria na revisão imutável', async () => {
+    const categoryId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    const draft = createDefaultCustomization();
+    draft.layout.showCategoryImages = true;
+    draft.categoryImages = [{ categoryId, assetId }];
+    mocks.categoryFindMany.mockResolvedValue([{ id: categoryId }]);
+    mocks.assetFindMany.mockResolvedValue([{ id: assetId, assetType: 'CATEGORY_IMAGE' }]);
+    mocks.ensureCustomization.mockResolvedValue(
+      customization({ draftConfig: draft, draftVersion: 4, publishedVersion: 2 }),
+    );
+
+    await publishCustomization('tenant-1', 'store-1', {
+      expectedDraftVersion: 4,
+      reason: 'Publicar imagens das categorias',
+    });
+
+    expect(mocks.revisionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        schemaVersion: 2,
+        snapshot: expect.objectContaining({
+          categoryImages: [{ categoryId, assetId }],
+        }),
+      }),
+    });
+  });
+
   it('restaura uma revisão escopada somente como novo draft', async () => {
     const snapshot = createDefaultCustomization();
     snapshot.identity.slogan = 'Versão anterior';
@@ -465,6 +492,42 @@ describe('StoreCustomizationService', () => {
       }),
     );
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
+  });
+
+  it('migra revisão v1 para v2 antes de restaurá-la como draft', async () => {
+    const current = createDefaultCustomization();
+    const { categoryImages: _categoryImages, ...withoutAssociations } = current;
+    const { showCategoryImages: _showCategoryImages, ...legacyLayout } = current.layout;
+    expect(_categoryImages).toEqual([]);
+    expect(_showCategoryImages).toBe(false);
+    mocks.findRevision.mockResolvedValue({
+      id: 'revision-v1',
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      version: 1,
+      snapshot: {
+        ...withoutAssociations,
+        schemaVersion: 1,
+        layout: legacyLayout,
+      },
+    });
+
+    await restoreCustomizationRevision('tenant-1', 'store-1', 'revision-v1', {
+      expectedDraftVersion: 2,
+      reason: 'Restaurar versão histórica',
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          draftConfig: expect.objectContaining({
+            schemaVersion: 2,
+            categoryImages: [],
+            layout: expect.objectContaining({ showCategoryImages: false }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('não restaura revisão inexistente ou pertencente a outra loja', async () => {

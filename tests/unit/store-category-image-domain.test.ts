@@ -4,10 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { STORE_ASSET_MAX_BYTES, storeAssetUploadMetadataSchema } from '@/schemas/store-asset';
 import { ValidationError } from '@/server/errors';
-import {
-  inspectStoreAssetFile,
-  type StoreAssetRuntime,
-} from '@/server/storage/store-assets';
+import { inspectStoreAssetFile, type StoreAssetRuntime } from '@/server/storage/store-assets';
 
 function runtimeWithInfo(width: number, height: number) {
   return {
@@ -40,7 +37,8 @@ describe('asset de imagem de categoria', () => {
 
   it('exige texto alternativo seguro', () => {
     expect(
-      storeAssetUploadMetadataSchema.safeParse({ assetType: 'CATEGORY_IMAGE', altText: '' }).success,
+      storeAssetUploadMetadataSchema.safeParse({ assetType: 'CATEGORY_IMAGE', altText: '' })
+        .success,
     ).toBe(false);
     expect(
       storeAssetUploadMetadataSchema.safeParse({

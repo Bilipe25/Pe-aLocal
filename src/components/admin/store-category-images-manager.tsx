@@ -161,7 +161,11 @@ function CategoryImageRow({
             <Trash2 className="h-4 w-4" /> Remover associação
           </button>
         </div>
-        {feedback && <p role="status" className="bg-info-light text-info rounded-md p-2 text-xs">{feedback}</p>}
+        {feedback && (
+          <p role="status" className="bg-info-light text-info rounded-md p-2 text-xs">
+            {feedback}
+          </p>
+        )}
       </div>
     </article>
   );
@@ -197,7 +201,10 @@ export function StoreCategoryImagesManager({
     () => new Map(associations.map((item) => [item.categoryId, item.assetId])),
     [associations],
   );
-  const categoryIds = useMemo(() => new Set(categories.map((category) => category.id)), [categories]);
+  const categoryIds = useMemo(
+    () => new Set(categories.map((category) => category.id)),
+    [categories],
+  );
   const orphanAssociations = associations.filter((item) => !categoryIds.has(item.categoryId));
   const visibleCategories = categories.filter((category) =>
     `${category.name} ${category.description ?? ''}`
@@ -271,7 +278,10 @@ export function StoreCategoryImagesManager({
           </p>
           <ul className="mt-3 space-y-2">
             {orphanAssociations.map((association) => (
-              <li key={association.categoryId} className="flex items-center justify-between gap-3 text-xs">
+              <li
+                key={association.categoryId}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
                 <span className="text-warning">Categoria removida</span>
                 <button
                   type="button"

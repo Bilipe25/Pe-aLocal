@@ -91,9 +91,7 @@ describe('StoreCategoryImagesManager', () => {
     expect(onAssociationsChange).toHaveBeenCalledWith([
       { categoryId: category.id, assetId: asset.id },
     ]);
-    expect(
-      screen.getByText(/Imagem enviada e associada ao rascunho/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Imagem enviada e associada ao rascunho/)).toBeInTheDocument();
   });
 
   it('indica e limpa associação órfã sem procurar outra loja', () => {
