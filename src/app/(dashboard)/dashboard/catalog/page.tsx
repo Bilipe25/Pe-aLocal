@@ -6,33 +6,30 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { listCategoriesAction, listProductsAction } from '@/features/catalog/actions';
 import { formatCurrency } from '@/lib/utils';
+import { CatalogOrderControls } from '@/features/catalog/components/catalog-order-controls';
 
 export const metadata = { title: 'Catálogo' };
 
 export default async function CatalogPage() {
-  const [categories, products] = await Promise.all([
-    listCategoriesAction(),
-    listProductsAction(),
-  ]);
+  const [categories, products] = await Promise.all([listCategoriesAction(), listProductsAction()]);
 
   return (
     <div>
       <PageHeader
         title="Catálogo"
         description="Gerencie categorias e produtos do cardápio."
-        backHref="/dashboard"
         actions={
-          <div className="flex gap-2">
-            <Link href="/dashboard/catalog/categories/new">
-              <Button variant="outline" size="sm">
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/catalog/categories/new">
                 <Plus className="h-4 w-4" /> Categoria
-              </Button>
-            </Link>
-            <Link href="/dashboard/catalog/products/new">
-              <Button size="sm">
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/dashboard/catalog/products/new">
                 <Plus className="h-4 w-4" /> Produto
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         }
       />
@@ -47,53 +44,80 @@ export default async function CatalogPage() {
         />
       ) : (
         <div className="space-y-6">
-          {categories.map((category) => {
+          {categories.map((category, categoryIndex) => {
             const categoryProducts = products.filter((p) => p.category.id === category.id);
 
             return (
-              <div key={category.id} className="rounded-xl border border-border bg-surface">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-text-primary">{category.name}</h2>
+              <div key={category.id} className="border-border bg-surface rounded-xl border">
+                <div className="border-border flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2 className="text-text-primary font-semibold">{category.name}</h2>
                     <Badge variant={category.isActive ? 'success' : 'secondary'}>
                       {category.isActive ? 'Ativa' : 'Inativa'}
                     </Badge>
-                    <span className="text-xs text-text-tertiary">
-                      {category._count.products} {category._count.products === 1 ? 'produto' : 'produtos'}
+                    <span className="text-text-secondary text-sm">
+                      {category._count.products}{' '}
+                      {category._count.products === 1 ? 'produto' : 'produtos'}
                     </span>
                   </div>
-                  <Link href={`/dashboard/catalog/categories/${category.id}/edit`}>
-                    <Button variant="ghost" size="sm">Editar</Button>
-                  </Link>
+                  <div className="flex items-center gap-1 self-start sm:self-auto">
+                    <CatalogOrderControls
+                      id={category.id}
+                      kind="category"
+                      label={`categoria ${category.name}`}
+                      canMoveUp={categoryIndex > 0}
+                      canMoveDown={categoryIndex < categories.length - 1}
+                    />
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={`/dashboard/catalog/categories/${category.id}/edit`}>
+                        Editar categoria
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
 
                 {categoryProducts.length > 0 ? (
-                  <div className="divide-y divide-border">
-                    {categoryProducts.map((product) => (
-                      <Link
+                  <div className="divide-border divide-y">
+                    {categoryProducts.map((product, productIndex) => (
+                      <div
                         key={product.id}
-                        href={`/dashboard/catalog/products/${product.id}/edit`}
-                        className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-surface-secondary"
+                        className="hover:bg-surface-secondary flex min-h-16 flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center"
                       >
-                        <div>
-                          <p className="font-medium text-text-primary">{product.name}</p>
-                          <p className="text-sm text-text-secondary">
-                            {product._count.optionGroups > 0 && `${product._count.optionGroups} grupo(s) de adicionais`}
+                        <Link
+                          href={`/dashboard/catalog/products/${product.id}/edit`}
+                          className="focus-visible:ring-brand-500 flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg py-1 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        >
+                          <p className="text-text-primary font-medium">{product.name}</p>
+                          <p className="text-text-secondary text-sm">
+                            {product._count.optionGroups > 0 &&
+                              `${product._count.optionGroups} ${product._count.optionGroups === 1 ? 'grupo de adicionais' : 'grupos de adicionais'}`}
                           </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-text-primary">
+                        </Link>
+                        <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
+                          <span className="text-text-primary font-mono font-semibold">
                             {formatCurrency(product.basePrice)}
                           </span>
                           {!product.isAvailable && (
                             <Badge variant="destructive">Indisponível</Badge>
                           )}
+                          <CatalogOrderControls
+                            id={product.id}
+                            kind="product"
+                            label={`produto ${product.name}`}
+                            canMoveUp={productIndex > 0}
+                            canMoveDown={productIndex < categoryProducts.length - 1}
+                          />
                         </div>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="px-4 py-4 text-sm text-text-tertiary">Nenhum produto nesta categoria.</p>
+                  <div className="text-text-secondary flex flex-col gap-2 px-4 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <span>Nenhum produto nesta categoria.</span>
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href="/dashboard/catalog/products/new">Adicionar produto</Link>
+                    </Button>
+                  </div>
                 )}
               </div>
             );

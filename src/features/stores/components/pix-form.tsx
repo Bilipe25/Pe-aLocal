@@ -2,11 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { updatePixConfigAction } from '@/features/stores/actions';
+import { FormMessage } from '@/components/shared/form-message';
+import { FormSubmitButton } from '@/components/shared/form-submit-button';
+import { useState } from 'react';
 
 const PIX_KEY_TYPES = [
   { value: 'CPF', label: 'CPF' },
@@ -28,26 +30,30 @@ interface PixFormProps {
 
 export function PixForm({ settings }: PixFormProps) {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
+    setError(null);
     const result = await updatePixConfigAction(formData);
     if (result.success) {
       toast.success('Configuração de Pix atualizada!');
       router.refresh();
     } else {
+      setError(result.error.message);
       toast.error(result.error.message);
     }
   }
 
   return (
     <form action={handleSubmit} className="space-y-4">
+      <FormMessage message={error} />
       <div className="space-y-2">
         <Label htmlFor="pixKeyType">Tipo de chave</Label>
         <select
           id="pixKeyType"
           name="pixKeyType"
           defaultValue={settings?.pixKeyType ?? ''}
-          className="flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          className="flex h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
         >
           <option value="">Selecione...</option>
           {PIX_KEY_TYPES.map((t) => (
@@ -77,7 +83,7 @@ export function PixForm({ settings }: PixFormProps) {
       </div>
 
       <div className="flex justify-end pt-2">
-        <Button type="submit">Salvar configuração Pix</Button>
+        <FormSubmitButton>Salvar configuração Pix</FormSubmitButton>
       </div>
     </form>
   );

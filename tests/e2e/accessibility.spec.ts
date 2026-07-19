@@ -93,4 +93,41 @@ test.describe('acessibilidade WCAG', () => {
     await expect(page.getByRole('heading', { name: 'Prévia responsiva' })).toBeVisible();
     await expectNoHighImpactViolations(page);
   });
+
+  test('painel do tenant permanece acessível e responsivo', async ({ page }) => {
+    const credentials = credentialsFromEnv('OWNER');
+    test.skip(!credentials, 'Credenciais E2E de OWNER não foram configuradas.');
+
+    await page.setViewportSize({ width: 320, height: 700 });
+    await loginAs(page, credentials!);
+
+    for (const route of [
+      '/dashboard',
+      '/dashboard/orders',
+      '/dashboard/catalog',
+      '/dashboard/catalog/products/new',
+      '/dashboard/delivery',
+      '/dashboard/store',
+      '/dashboard/store/hours',
+      '/dashboard/store/settings',
+    ]) {
+      await page.goto(route);
+      await expect(page.locator('main')).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await expectNoHighImpactViolations(page);
+    }
+
+    await page.goto('/dashboard/catalog');
+    const productLinks = page.locator('a[href*="/dashboard/catalog/products/"][href$="/edit"]');
+    for (let index = 0; index < (await productLinks.count()); index += 1) {
+      const box = await productLinks.nth(index).boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+
+    await page.goto('/dashboard');
+    await page.getByRole('button', { name: 'Abrir menu do painel' }).click();
+    await expect(page.getByRole('dialog', { name: 'Menu do painel' })).toBeVisible();
+  });
 });

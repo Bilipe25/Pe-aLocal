@@ -1,5 +1,4 @@
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStoreForDashboard } from '@/features/stores/actions';
 import { AddressForm } from '@/features/stores/components/address-form';
 
@@ -12,17 +11,12 @@ export default async function StoreAddressPage() {
     <div>
       <PageHeader
         title="Endereço"
-        description="Endereço do seu estabelecimento."
+        description="Informe o local usado como referência para retirada e cálculo das entregas."
         backHref="/dashboard/store"
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Endereço</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="max-w-3xl rounded-xl border border-border bg-surface p-4 sm:p-6" aria-label="Dados do endereço">
           <AddressForm address={store.address} />
-        </CardContent>
-      </Card>
+      </section>
     </div>
   );
 }

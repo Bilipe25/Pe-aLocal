@@ -2,11 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { updateStoreSettingsAction } from '@/features/stores/actions';
+import { PriceInput } from '@/components/shared/price-input';
+import { FormMessage } from '@/components/shared/form-message';
+import { FormSubmitButton } from '@/components/shared/form-submit-button';
+import { useState } from 'react';
 
 interface StoreSettingsFormProps {
   settings: {
@@ -22,66 +25,106 @@ interface StoreSettingsFormProps {
 
 export function StoreSettingsForm({ settings }: StoreSettingsFormProps) {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
+    setError(null);
     const result = await updateStoreSettingsAction(formData);
     if (result.success) {
       toast.success('Configurações atualizadas!');
       router.refresh();
     } else {
+      setError(result.error.message);
       toast.error(result.error.message);
     }
   }
 
   return (
     <form action={handleSubmit} className="space-y-6">
+      <FormMessage message={error} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="minOrderValue">Pedido mínimo (centavos)</Label>
-          <Input id="minOrderValue" name="minOrderValue" type="number" defaultValue={settings?.minOrderValue ?? 0} min={0} />
-          <p className="text-xs text-text-tertiary">Valor em centavos. Ex: 2000 = R$ 20,00</p>
+          <Label htmlFor="minOrderValue">Pedido mínimo</Label>
+          <PriceInput
+            id="minOrderValue"
+            name="minOrderValue"
+            defaultPrice={(settings?.minOrderValue ?? 0) / 100}
+          />
+          <p className="text-text-secondary text-sm">
+            Valor mínimo do carrinho antes da entrega ou retirada.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="estimatedTime">Tempo estimado</Label>
-          <Input id="estimatedTime" name="estimatedTime" defaultValue={settings?.estimatedTime ?? '30-50 min'} placeholder="30-50 min" />
+          <Input
+            id="estimatedTime"
+            name="estimatedTime"
+            defaultValue={settings?.estimatedTime ?? '30-50 min'}
+            placeholder="30-50 min"
+          />
         </div>
       </div>
 
       <div className="space-y-4">
-        <h3 className="font-semibold text-text-primary">Modalidades</h3>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <h2 className="text-text-primary font-semibold">Modalidades</h2>
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <Label htmlFor="deliveryEnabled">Entrega habilitada</Label>
           <input type="hidden" name="deliveryEnabled" value="false" />
-          <Switch id="deliveryEnabled" name="deliveryEnabled" defaultChecked={settings?.deliveryEnabled ?? true} value="true" />
+          <Switch
+            id="deliveryEnabled"
+            name="deliveryEnabled"
+            defaultChecked={settings?.deliveryEnabled ?? true}
+            value="true"
+          />
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <Label htmlFor="pickupEnabled">Retirada habilitada</Label>
           <input type="hidden" name="pickupEnabled" value="false" />
-          <Switch id="pickupEnabled" name="pickupEnabled" defaultChecked={settings?.pickupEnabled ?? true} value="true" />
+          <Switch
+            id="pickupEnabled"
+            name="pickupEnabled"
+            defaultChecked={settings?.pickupEnabled ?? true}
+            value="true"
+          />
         </div>
       </div>
 
       <div className="space-y-4">
-        <h3 className="font-semibold text-text-primary">Formas de Pagamento</h3>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <h2 className="text-text-primary font-semibold">Formas de pagamento</h2>
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <Label htmlFor="acceptsPix">Aceita Pix</Label>
           <input type="hidden" name="acceptsPix" value="false" />
-          <Switch id="acceptsPix" name="acceptsPix" defaultChecked={settings?.acceptsPix ?? true} value="true" />
+          <Switch
+            id="acceptsPix"
+            name="acceptsPix"
+            defaultChecked={settings?.acceptsPix ?? true}
+            value="true"
+          />
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
-          <Label htmlFor="acceptsCash">Aceita Dinheiro</Label>
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
+          <Label htmlFor="acceptsCash">Aceita dinheiro</Label>
           <input type="hidden" name="acceptsCash" value="false" />
-          <Switch id="acceptsCash" name="acceptsCash" defaultChecked={settings?.acceptsCash ?? true} value="true" />
+          <Switch
+            id="acceptsCash"
+            name="acceptsCash"
+            defaultChecked={settings?.acceptsCash ?? true}
+            value="true"
+          />
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
-          <Label htmlFor="acceptsCardOnDelivery">Aceita Cartão na Entrega</Label>
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
+          <Label htmlFor="acceptsCardOnDelivery">Aceita cartão na entrega</Label>
           <input type="hidden" name="acceptsCardOnDelivery" value="false" />
-          <Switch id="acceptsCardOnDelivery" name="acceptsCardOnDelivery" defaultChecked={settings?.acceptsCardOnDelivery ?? true} value="true" />
+          <Switch
+            id="acceptsCardOnDelivery"
+            name="acceptsCardOnDelivery"
+            defaultChecked={settings?.acceptsCardOnDelivery ?? true}
+            value="true"
+          />
         </div>
       </div>
 
       <div className="flex justify-end pt-2">
-        <Button type="submit">Salvar configurações</Button>
+        <FormSubmitButton>Salvar configurações</FormSubmitButton>
       </div>
     </form>
   );

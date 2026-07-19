@@ -13,9 +13,11 @@ import type { OrderStatus, PaymentStatus } from '@prisma/client';
 
 export interface GetOrdersParams {
   status?: OrderStatus;
+  statuses?: OrderStatus[];
   paymentStatus?: PaymentStatus;
   dateFrom?: Date;
   dateTo?: Date;
+  query?: string;
 }
 
 /**
@@ -40,16 +42,26 @@ export async function getOrdersAction(params?: GetOrdersParams) {
       }
     }
 
+    const query = params?.query?.trim();
+    const orderNumber = query && /^#?\d+$/.test(query) ? Number(query.replace('#', '')) : null;
+
     const orders = await getDb().order.findMany({
       where: {
         tenantId: session.tenantId,
         storeId,
-        status: params?.status,
+        status: params?.statuses?.length ? { in: params.statuses } : params?.status,
         paymentStatus: params?.paymentStatus,
         createdAt: {
           gte: params?.dateFrom,
           lte: params?.dateTo,
         },
+        OR: query
+          ? [
+              { customerName: { contains: query, mode: 'insensitive' } },
+              { customerPhone: { contains: query } },
+              ...(orderNumber === null ? [] : [{ orderNumber }]),
+            ]
+          : undefined,
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -59,10 +71,74 @@ export async function getOrdersAction(params?: GetOrdersParams) {
           },
         },
         payment: true,
+        statusHistory: {
+          orderBy: { createdAt: 'desc' },
+          take: 8,
+        },
       },
     });
 
     return actionSuccess(orders);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+/**
+ * Desfaz somente a transição mais recente feita pelo próprio usuário e dentro
+ * de uma janela curta. Isso oferece recuperação sem liberar saltos arbitrários
+ * entre estados do pedido.
+ */
+export async function undoOrderStatusAction(
+  orderId: string,
+  expectedCurrentStatus: OrderStatus,
+  previousStatus: OrderStatus,
+): Promise<ActionResult> {
+  try {
+    const session = await requirePermission(Permission.UPDATE_ORDER_STATUS);
+    const order = await getDb().order.findUnique({
+      where: { id: orderId, tenantId: session.tenantId },
+      select: {
+        id: true,
+        storeId: true,
+        status: true,
+        statusHistory: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    const latestChange = order?.statusHistory[0];
+    const undoWindowMs = 2 * 60 * 1000;
+    const isRecent = latestChange
+      ? Date.now() - latestChange.createdAt.getTime() <= undoWindowMs
+      : false;
+
+    if (
+      !order ||
+      order.status !== expectedCurrentStatus ||
+      !latestChange ||
+      latestChange.toStatus !== expectedCurrentStatus ||
+      latestChange.fromStatus !== previousStatus ||
+      latestChange.changedBy !== session.userId ||
+      !isRecent
+    ) {
+      throw new BusinessRuleError('Esta alteração não pode mais ser desfeita. Atualize a fila e revise o pedido.');
+    }
+
+    await getDb().$transaction(async (tx) => {
+      await tx.order.update({ where: { id: orderId }, data: { status: previousStatus } });
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          fromStatus: expectedCurrentStatus,
+          toStatus: previousStatus,
+          changedBy: session.userId,
+          note: 'Alteração desfeita pelo painel',
+        },
+      });
+    });
+
+    await triggerOrderUpdated(order.storeId, orderId, previousStatus);
+    return actionSuccess();
   } catch (error) {
     return actionError(error);
   }

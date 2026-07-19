@@ -17,6 +17,9 @@ import * as categoryRepo from '@/server/repositories/category.repository';
 import * as productRepo from '@/server/repositories/product.repository';
 import * as optionGroupRepo from '@/server/repositories/option-group.repository';
 import * as storeRepo from '@/server/repositories/store.repository';
+import { getDb } from '@/server/database/client';
+
+type MoveDirection = 'up' | 'down';
 
 // =============================================================================
 // Category Actions
@@ -89,6 +92,29 @@ export async function deleteCategoryAction(id: string): Promise<ActionResult> {
     await categoryRepo.deleteCategory(id, ctx.tenantId);
     updateTag(CACHE_TAGS.catalog(category.storeId));
     return actionSuccess(undefined);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function moveCategoryAction(id: string, direction: MoveDirection): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const category = await categoryRepo.findCategoryById(id, ctx.tenantId);
+    if (!category) return actionError(new NotFoundError('Categoria'));
+    const categories = await getDb().category.findMany({
+      where: { tenantId: ctx.tenantId, storeId: category.storeId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    const index = categories.findIndex((item) => item.id === id);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= categories.length) return actionSuccess();
+    const reordered = [...categories];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    await getDb().$transaction(reordered.map((item, sortOrder) => getDb().category.update({ where: { id: item.id }, data: { sortOrder } })));
+    updateTag(CACHE_TAGS.catalog(category.storeId));
+    return actionSuccess();
   } catch (error) {
     return actionError(error);
   }
@@ -176,6 +202,29 @@ export async function deleteProductAction(id: string): Promise<ActionResult> {
   }
 }
 
+export async function moveProductAction(id: string, direction: MoveDirection): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const product = await productRepo.findProductById(id, ctx.tenantId);
+    if (!product) return actionError(new NotFoundError('Produto'));
+    const products = await getDb().product.findMany({
+      where: { tenantId: ctx.tenantId, categoryId: product.categoryId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    const index = products.findIndex((item) => item.id === id);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= products.length) return actionSuccess();
+    const reordered = [...products];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    await getDb().$transaction(reordered.map((item, sortOrder) => getDb().product.update({ where: { id: item.id }, data: { sortOrder } })));
+    updateTag(CACHE_TAGS.catalog(product.storeId));
+    return actionSuccess();
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 // =============================================================================
 // Option Group & Option Actions
 // =============================================================================
@@ -187,9 +236,16 @@ export async function createOptionGroupAction(
     const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
+    if (raw.isMultiple !== 'true') {
+      raw.minSelections = raw.isRequired === 'true' ? '1' : '0';
+      raw.maxSelections = '1';
+    }
     const parsed = createOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
+    }
+    if (parsed.data.minSelections > parsed.data.maxSelections) {
+      return actionError(new Error('O mínimo de escolhas não pode ser maior que o máximo.'));
     }
 
     const product = await productRepo.findProductById(parsed.data.productId, ctx.tenantId);
@@ -211,9 +267,16 @@ export async function updateOptionGroupAction(
     const ctx = await requirePermission(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
+    if (raw.isMultiple !== 'true') {
+      raw.minSelections = raw.isRequired === 'true' ? '1' : '0';
+      raw.maxSelections = '1';
+    }
     const parsed = updateOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
       return actionError(new Error(parsed.error.issues[0].message));
+    }
+    if (parsed.data.minSelections > parsed.data.maxSelections) {
+      return actionError(new Error('O mínimo de escolhas não pode ser maior que o máximo.'));
     }
 
     const group = await optionGroupRepo.findOptionGroupById(id);
@@ -239,6 +302,29 @@ export async function deleteOptionGroupAction(id: string): Promise<ActionResult>
     await optionGroupRepo.deleteOptionGroup(id);
     updateTag(CACHE_TAGS.catalog(group.product.storeId));
     return actionSuccess(undefined);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function moveOptionGroupAction(id: string, direction: MoveDirection): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const group = await optionGroupRepo.findOptionGroupById(id);
+    if (!group || group.product.tenantId !== ctx.tenantId) return actionError(new NotFoundError('Grupo de opções'));
+    const groups = await getDb().productOptionGroup.findMany({
+      where: { productId: group.productId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    const index = groups.findIndex((item) => item.id === id);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= groups.length) return actionSuccess();
+    const reordered = [...groups];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    await getDb().$transaction(reordered.map((item, sortOrder) => getDb().productOptionGroup.update({ where: { id: item.id }, data: { sortOrder } })));
+    updateTag(CACHE_TAGS.catalog(group.product.storeId));
+    return actionSuccess();
   } catch (error) {
     return actionError(error);
   }
@@ -308,6 +394,29 @@ export async function deleteOptionAction(id: string): Promise<ActionResult> {
     await optionGroupRepo.deleteOption(id);
     updateTag(CACHE_TAGS.catalog(option.group.product.storeId));
     return actionSuccess(undefined);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function moveOptionAction(id: string, direction: MoveDirection): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission(Permission.MANAGE_CATALOG);
+    const option = await optionGroupRepo.findOptionById(id);
+    if (!option || option.group.product.tenantId !== ctx.tenantId) return actionError(new NotFoundError('Opção'));
+    const options = await getDb().productOption.findMany({
+      where: { groupId: option.groupId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    const index = options.findIndex((item) => item.id === id);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= options.length) return actionSuccess();
+    const reordered = [...options];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    await getDb().$transaction(reordered.map((item, sortOrder) => getDb().productOption.update({ where: { id: item.id }, data: { sortOrder } })));
+    updateTag(CACHE_TAGS.catalog(option.group.product.storeId));
+    return actionSuccess();
   } catch (error) {
     return actionError(error);
   }

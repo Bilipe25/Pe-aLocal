@@ -94,6 +94,7 @@ export async function findOptionById(id: string) {
     where: { id },
     select: {
       id: true,
+      groupId: true,
       group: {
         select: {
           product: { select: { tenantId: true, storeId: true } },

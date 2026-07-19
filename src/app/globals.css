@@ -49,21 +49,21 @@
 
   --color-text-primary: #241c15;
   --color-text-secondary: #5c4f42;
-  --color-text-muted: #8a7e72;
-  --color-text-tertiary: #a89c90;
+  --color-text-muted: #786c61;
+  --color-text-tertiary: #7f7368;
   --color-text-inverse: #fffdf9;
 
   --color-border: #d6cec4;
   --color-border-hover: #b8ad9f;
 
   /* ── Status ── */
-  --color-success: #3f7d58;
+  --color-success: #2f6848;
   --color-success-light: #e6f3ec;
-  --color-warning: #e89b0c;
+  --color-warning: #a65b00;
   --color-warning-light: #fef3c7;
-  --color-error: #d63b3b;
+  --color-error: #b42318;
   --color-error-light: #fde8e8;
-  --color-info: #3b6e8f;
+  --color-info: #2c5f7d;
   --color-info-light: #e3eef5;
 
   /* ── Tipografia ── */
@@ -112,30 +112,6 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-pimenta);
   outline-offset: 2px;
-}
-
-/*
- * =============================================================================
- * Scrollbar sutil
- * =============================================================================
- */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-text-muted);
-  border-radius: var(--radius-full);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
 }
 
 /*
@@ -974,6 +950,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .dashboard-shell,
+  .dashboard-shell *,
+  .dashboard-shell *::before,
+  .dashboard-shell *::after,
   .storefront-theme,
   .storefront-theme *,
   .storefront-theme *::before,

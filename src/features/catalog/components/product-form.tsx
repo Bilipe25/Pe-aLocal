@@ -8,6 +8,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { createProductAction, updateProductAction, deleteProductAction } from '@/features/catalog/actions';
+import { FormMessage } from '@/components/shared/form-message';
+import { FormSubmitButton } from '@/components/shared/form-submit-button';
+import { PriceInput } from '@/components/shared/price-input';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useState } from 'react';
 
 interface Category {
   id: string;
@@ -32,35 +37,44 @@ interface ProductFormProps {
 export function ProductForm({ categories, product }: ProductFormProps) {
   const router = useRouter();
   const isEditing = !!product;
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
+    setError(null);
     const result = isEditing
       ? await updateProductAction(product.id, formData)
       : await createProductAction(formData);
 
     if (result.success) {
       toast.success(isEditing ? 'Produto atualizado!' : 'Produto criado!');
-      router.push('/dashboard/catalog');
+      const createdProduct = typeof result.data === 'object' && result.data !== null && 'id' in result.data
+        ? result.data
+        : null;
+      router.push(createdProduct ? `/dashboard/catalog/products/${createdProduct.id}/edit` : '/dashboard/catalog');
       router.refresh();
     } else {
+      setError(result.error.message);
       toast.error(result.error.message);
     }
   }
 
   async function handleDelete() {
-    if (!product || !confirm('Tem certeza que deseja excluir este produto?')) return;
+    if (!product) return false;
     const result = await deleteProductAction(product.id);
     if (result.success) {
       toast.success('Produto excluído!');
       router.push('/dashboard/catalog');
       router.refresh();
+      return true;
     } else {
       toast.error(result.error.message);
+      return false;
     }
   }
 
   return (
     <form action={handleSubmit} className="space-y-4">
+      <FormMessage message={error} />
       <div className="space-y-2">
         <Label htmlFor="categoryId">Categoria</Label>
         <select
@@ -68,7 +82,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
           name="categoryId"
           defaultValue={product?.categoryId ?? ''}
           required
-          className="flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          className="flex h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
         >
           <option value="">Selecione...</option>
           {categories.map((c) => (
@@ -87,16 +101,10 @@ export function ProductForm({ categories, product }: ProductFormProps) {
         <Textarea id="description" name="description" defaultValue={product?.description ?? ''} rows={2} placeholder="Ingredientes, detalhes..." />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="basePrice">Preço (R$)</Label>
-          <Input id="basePrice" name="basePrice" type="number" step="0.01" min="0" defaultValue={product ? (product.basePrice / 100).toFixed(2) : ''} required placeholder="24.90" />
-          <p className="text-xs text-text-tertiary">Valor em reais. Ex: 24.90</p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="sortOrder">Ordem</Label>
-          <Input id="sortOrder" name="sortOrder" type="number" defaultValue={product?.sortOrder ?? 0} min={0} />
-        </div>
+      <input type="hidden" name="sortOrder" value={product?.sortOrder ?? 0} />
+      <div className="max-w-xs space-y-2">
+          <Label htmlFor="basePrice">Preço</Label>
+          <PriceInput id="basePrice" name="basePrice" defaultPrice={(product?.basePrice ?? 0) / 100} required />
       </div>
 
       <div className="space-y-3">
@@ -119,13 +127,18 @@ export function ProductForm({ categories, product }: ProductFormProps) {
 
       <div className="flex items-center justify-between pt-4">
         {isEditing ? (
-          <Button type="button" variant="outline" onClick={handleDelete} className="text-error hover:bg-error-light">
-            Excluir
-          </Button>
+          <ConfirmDialog
+            title={`Excluir “${product.name}”?`}
+            description="O produto e seus adicionais deixarão de aparecer no cardápio. Pedidos anteriores não serão alterados."
+            confirmLabel="Excluir produto"
+            destructive
+            onConfirm={handleDelete}
+            trigger={<Button type="button" variant="ghost" className="text-error hover:bg-error-light hover:text-error">Excluir</Button>}
+          />
         ) : (
           <div />
         )}
-        <Button type="submit">{isEditing ? 'Salvar' : 'Criar produto'}</Button>
+        <FormSubmitButton>{isEditing ? 'Salvar produto' : 'Criar produto'}</FormSubmitButton>
       </div>
     </form>
   );
