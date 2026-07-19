@@ -16,9 +16,24 @@ export async function getAdminTenantDetails(tenantId: string) {
   return adminRepo.getTenantSupportDetails(tenantId);
 }
 
-export async function getAdminTenantsData() {
+export interface AdminTenantFilters {
+  query?: string;
+  status?: string;
+  sort?: string;
+  page?: string | number;
+}
+
+export async function getAdminTenantsData(filters: AdminTenantFilters = {}) {
   await requireSuperAdmin();
-  return adminRepo.listTenantsForAdmin();
+  const query = filters.query?.trim().slice(0, 120) || undefined;
+  const status = ['ACTIVE', 'SUSPENDED', 'PENDING'].includes(filters.status ?? '')
+    ? (filters.status as TenantStatus)
+    : undefined;
+  const sort = filters.sort === 'name' ? 'name' : 'newest';
+  const parsedPage = Number(filters.page);
+  const page = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+
+  return adminRepo.listTenantsForAdmin({ query, status, sort, page, pageSize: 20 });
 }
 
 export async function getAdminStoreContext(tenantId: string, storeId: string) {

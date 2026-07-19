@@ -1,4 +1,14 @@
+import type { Prisma, TenantStatus } from '@prisma/client';
+
 import { getDb } from '@/server/database/client';
+
+export interface AdminTenantListParams {
+  query?: string;
+  status?: TenantStatus;
+  sort: 'newest' | 'name';
+  page: number;
+  pageSize: number;
+}
 
 export async function getPlatformOverview() {
   const db = getDb();
@@ -10,7 +20,7 @@ export async function getPlatformOverview() {
       db.user.count(),
       db.tenant.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 100,
+        take: 10,
         include: {
           _count: { select: { members: true, stores: true } },
         },
@@ -32,20 +42,43 @@ export async function getPlatformOverview() {
   };
 }
 
-export async function listTenantsForAdmin() {
+export async function listTenantsForAdmin(params: AdminTenantListParams) {
   const db = getDb();
+  const where: Prisma.TenantWhereInput = {
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.query
+      ? {
+          OR: [
+            { name: { contains: params.query, mode: 'insensitive' } },
+            { stores: { some: { name: { contains: params.query, mode: 'insensitive' } } } },
+            { stores: { some: { slug: { contains: params.query, mode: 'insensitive' } } } },
+          ],
+        }
+      : {}),
+  };
+  const orderBy: Prisma.TenantOrderByWithRelationInput[] =
+    params.sort === 'name'
+      ? [{ name: 'asc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }];
   const [total, tenants] = await Promise.all([
-    db.tenant.count(),
+    db.tenant.count({ where }),
     db.tenant.findMany({
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 100,
+      where,
+      orderBy,
+      skip: (params.page - 1) * params.pageSize,
+      take: params.pageSize,
       include: {
         _count: { select: { members: true, stores: true } },
       },
     }),
   ]);
-
-  return { total, tenants };
+  return {
+    total,
+    tenants,
+    page: params.page,
+    pageSize: params.pageSize,
+    pageCount: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
 }
 
 export async function getTenantSupportDetails(tenantId: string) {

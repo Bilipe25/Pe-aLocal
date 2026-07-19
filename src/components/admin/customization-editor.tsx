@@ -1,8 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ReactNode,
+} from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, History, RotateCcw, Save, Send } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, History, RotateCcw, Save, Send } from 'lucide-react';
 import {
   StoreAssetsManager,
   type AdminStoreAssetItem,
@@ -24,6 +31,7 @@ import {
   type AdminStoreEntitlementItem,
 } from '@/components/admin/store-entitlements-form';
 import { StorefrontPreview } from '@/components/admin/storefront-preview';
+import { cn } from '@/lib/utils';
 
 import {
   discardCustomizationDraftAction,
@@ -75,6 +83,42 @@ interface CustomizationEditorProps {
 }
 
 type Feedback = { tone: 'success' | 'error'; message: string } | null;
+
+function CustomizationGroup({
+  title,
+  description,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <details
+      className="group border-border border-b pb-6"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="focus-visible:ring-brand-500 flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-md py-2 focus-visible:ring-2 focus-visible:outline-none">
+        <span className="min-w-0">
+          <h2 className="text-text-primary text-lg font-semibold text-balance">{title}</h2>
+          <span className="text-text-secondary mt-0.5 block text-sm text-pretty">
+            {description}
+          </span>
+        </span>
+        <ChevronDown
+          className="text-text-muted h-5 w-5 shrink-0 transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-4 space-y-6">{children}</div>
+    </details>
+  );
+}
 
 const PALETTE_LABELS: Record<keyof StoreCustomizationConfig['palette'], string> = {
   primary: 'Primária',
@@ -133,11 +177,13 @@ export function CustomizationEditor({
   const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [isPending, startTransition] = useTransition();
+  const deferredConfig = useDeferredValue(config);
   const contrastIssues = useMemo(() => evaluateCustomizationContrast(config), [config]);
   const criticalContrast = contrastIssues.filter((item) => item.severity === 'error');
   const logoUrl =
-    assets.find((asset) => asset.id === config.identity.logoAssetId)?.previewUrl ?? null;
-  const coverUrl = assets.find((asset) => asset.id === config.identity.coverAssetId)?.url ?? null;
+    assets.find((asset) => asset.id === deferredConfig.identity.logoAssetId)?.previewUrl ?? null;
+  const coverUrl =
+    assets.find((asset) => asset.id === deferredConfig.identity.coverAssetId)?.url ?? null;
 
   useEffect(() => {
     const preventExit = (event: BeforeUnloadEvent) => {
@@ -303,8 +349,8 @@ export function CustomizationEditor({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-      <div className="space-y-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6 pb-24 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] xl:pb-0">
+      <div className="order-2 min-w-0 space-y-6 xl:order-1">
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -342,362 +388,432 @@ export function CustomizationEditor({
           )}
         </section>
 
-        <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">1. Identidade</h2>
-          <p className="text-text-secondary mt-1 text-sm">O nome oficial continua vindo da loja.</p>
-          <div className="mt-5 grid gap-4">
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Slogan
-              <input
-                value={config.identity.slogan}
-                maxLength={120}
-                onChange={(event) =>
-                  updateSection('identity', { ...config.identity, slogan: event.target.value })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Descrição curta
-              <textarea
-                value={config.identity.shortDescription}
-                maxLength={240}
-                rows={2}
-                onChange={(event) =>
-                  updateSection('identity', {
-                    ...config.identity,
-                    shortDescription: event.target.value,
-                  })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Sobre a loja
-              <textarea
-                value={config.identity.aboutText}
-                maxLength={2000}
-                rows={5}
-                onChange={(event) =>
-                  updateSection('identity', { ...config.identity, aboutText: event.target.value })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
+        <section className="border-border bg-surface rounded-xl border p-5">
+          <h2 className="text-text-primary font-semibold">Publicação e recuperação</h2>
+          <p className="text-text-secondary mt-1 text-sm">
+            Registre o motivo antes de publicar ou restaurar uma versão. O histórico ficará
+            disponível para auditoria.
+          </p>
+          <label className="text-text-secondary mt-4 grid gap-1.5 text-sm">
+            Motivo da alteração
+            <textarea
+              value={reason}
+              maxLength={500}
+              rows={3}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Ex.: atualização da campanha de inverno"
+              className="border-border bg-surface text-text-primary placeholder:text-text-muted min-h-24 rounded-md border px-3 py-2.5"
+            />
+          </label>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <button
+              type="button"
+              disabled={isPending || !hasDraft}
+              onClick={discardDraft}
+              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" /> Descartar rascunho
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={restoreDefault}
+              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" /> Restaurar configuração padrão
+            </button>
           </div>
         </section>
 
-        <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">2. Cores</h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {(Object.keys(PALETTE_LABELS) as (keyof typeof PALETTE_LABELS)[]).map((key) => (
-              <label key={key} className="text-text-secondary grid gap-1.5 text-sm">
-                {PALETTE_LABELS[key]}
-                <span className="flex gap-2">
-                  <input
-                    type="color"
-                    value={config.palette[key]}
-                    onChange={(event) =>
-                      updateSection('palette', { ...config.palette, [key]: event.target.value })
-                    }
-                    className="border-border h-10 w-12 rounded-md border p-1"
-                  />
-                  <input
-                    value={config.palette[key]}
-                    maxLength={7}
-                    onChange={(event) =>
-                      updateSection('palette', { ...config.palette, [key]: event.target.value })
-                    }
-                    className="border-border bg-surface text-text-primary min-w-0 flex-1 rounded-md border px-3 py-2 font-mono uppercase"
-                  />
-                </span>
+        <CustomizationGroup
+          title="Identidade e aparência"
+          description="Defina textos, cores, tipografia e a estrutura visual do cardápio."
+          defaultOpen
+        >
+          <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+            <h3 className="text-text-primary text-lg font-semibold">Identidade</h3>
+            <p className="text-text-secondary mt-1 text-sm">
+              O nome oficial continua vindo da loja.
+            </p>
+            <div className="mt-5 grid gap-4">
+              <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm">
+                Slogan
+                <input
+                  value={config.identity.slogan}
+                  maxLength={120}
+                  onChange={(event) =>
+                    updateSection('identity', { ...config.identity, slogan: event.target.value })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 w-full min-w-0 rounded-md border px-3 py-2"
+                />
               </label>
-            ))}
-          </div>
-          {contrastIssues.length > 0 && (
-            <div className="bg-warning-light text-warning mt-5 rounded-lg p-4 text-sm">
-              <div className="flex items-center gap-2 font-medium">
-                <AlertTriangle className="h-4 w-4" /> Revisão de contraste
-              </div>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {contrastIssues.map((item) => (
-                  <li key={item.pair}>{item.message}</li>
-                ))}
-              </ul>
+              <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm">
+                Descrição curta
+                <textarea
+                  value={config.identity.shortDescription}
+                  maxLength={240}
+                  rows={2}
+                  onChange={(event) =>
+                    updateSection('identity', {
+                      ...config.identity,
+                      shortDescription: event.target.value,
+                    })
+                  }
+                  className="border-border bg-surface text-text-primary w-full min-w-0 rounded-md border px-3 py-2"
+                />
+              </label>
+              <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm">
+                Sobre a loja
+                <textarea
+                  value={config.identity.aboutText}
+                  maxLength={2000}
+                  rows={5}
+                  onChange={(event) =>
+                    updateSection('identity', { ...config.identity, aboutText: event.target.value })
+                  }
+                  className="border-border bg-surface text-text-primary w-full min-w-0 rounded-md border px-3 py-2"
+                />
+              </label>
             </div>
-          )}
-        </section>
+          </section>
 
-        <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">3. Tipografia, tema e layout</h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Fonte dos títulos
-              <select
-                disabled={!initialEntitlement.advancedTypographyEnabled}
-                value={config.typography.headingFontKey}
-                onChange={(event) =>
-                  updateSection('typography', {
-                    ...config.typography,
-                    headingFontKey: event.target.value as 'inter' | 'bricolage',
-                  })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              >
-                <option value="bricolage">Bricolage Grotesque</option>
-                <option value="inter">Inter</option>
-              </select>
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Fonte do texto
-              <select
-                disabled={!initialEntitlement.advancedTypographyEnabled}
-                value={config.typography.bodyFontKey}
-                onChange={(event) =>
-                  updateSection('typography', {
-                    ...config.typography,
-                    bodyFontKey: event.target.value as 'inter' | 'bricolage',
-                  })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              >
-                <option value="inter">Inter</option>
-                <option value="bricolage">Bricolage Grotesque</option>
-              </select>
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Estrutura
-              <select
-                value={config.theme.layoutTemplate}
-                onChange={(event) =>
-                  updateSection('theme', {
-                    ...config.theme,
-                    layoutTemplate: event.target
-                      .value as StoreCustomizationConfig['theme']['layoutTemplate'],
-                  })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              >
-                {LAYOUT_TEMPLATES.filter((layout) =>
-                  initialEntitlement.allowedLayoutTemplates.includes(layout),
-                ).map((layout) => (
-                  <option key={layout} value={layout}>
-                    {LAYOUT_LABELS[layout]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid gap-1.5">
-              <label htmlFor="visual-preset" className="text-text-secondary text-sm">
-                Preset visual
-              </label>
-              <div className="flex gap-2">
+          <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+            <h3 className="text-text-primary text-lg font-semibold">Cores</h3>
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {(Object.keys(PALETTE_LABELS) as (keyof typeof PALETTE_LABELS)[]).map((key) => (
+                <label key={key} className="text-text-secondary grid gap-1.5 text-sm">
+                  {PALETTE_LABELS[key]}
+                  <span className="flex gap-2">
+                    <input
+                      type="color"
+                      value={config.palette[key]}
+                      onChange={(event) =>
+                        updateSection('palette', { ...config.palette, [key]: event.target.value })
+                      }
+                      className="border-border h-11 w-12 rounded-md border p-1"
+                    />
+                    <input
+                      value={config.palette[key]}
+                      maxLength={7}
+                      onChange={(event) =>
+                        updateSection('palette', { ...config.palette, [key]: event.target.value })
+                      }
+                      className="border-border bg-surface text-text-primary min-h-11 min-w-0 flex-1 rounded-md border px-3 py-2 font-mono uppercase"
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
+            {contrastIssues.length > 0 && (
+              <div className="bg-warning-light text-warning mt-5 rounded-lg p-4 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <AlertTriangle className="h-4 w-4" /> Revisão de contraste
+                </div>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {contrastIssues.map((item) => (
+                    <li key={item.pair}>{item.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+            <h3 className="text-text-primary text-lg font-semibold">Tipografia, tema e layout</h3>
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                Fonte dos títulos
                 <select
-                  id="visual-preset"
-                  value={selectedPreset}
-                  onChange={(event) => setSelectedPreset(event.target.value as VisualPreset)}
-                  className="border-border bg-surface text-text-primary min-w-0 flex-1 rounded-md border px-3 py-2"
+                  disabled={!initialEntitlement.advancedTypographyEnabled}
+                  value={config.typography.headingFontKey}
+                  onChange={(event) =>
+                    updateSection('typography', {
+                      ...config.typography,
+                      headingFontKey: event.target.value as 'inter' | 'bricolage',
+                    })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
                 >
-                  {VISUAL_PRESETS.filter((preset) =>
-                    initialEntitlement.allowedVisualPresets.includes(preset),
-                  ).map((preset) => (
-                    <option key={preset}>{preset}</option>
+                  <option value="bricolage">Bricolage Grotesque</option>
+                  <option value="inter">Inter</option>
+                </select>
+              </label>
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                Fonte do texto
+                <select
+                  disabled={!initialEntitlement.advancedTypographyEnabled}
+                  value={config.typography.bodyFontKey}
+                  onChange={(event) =>
+                    updateSection('typography', {
+                      ...config.typography,
+                      bodyFontKey: event.target.value as 'inter' | 'bricolage',
+                    })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
+                >
+                  <option value="inter">Inter</option>
+                  <option value="bricolage">Bricolage Grotesque</option>
+                </select>
+              </label>
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                Estrutura
+                <select
+                  value={config.theme.layoutTemplate}
+                  onChange={(event) =>
+                    updateSection('theme', {
+                      ...config.theme,
+                      layoutTemplate: event.target
+                        .value as StoreCustomizationConfig['theme']['layoutTemplate'],
+                    })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
+                >
+                  {LAYOUT_TEMPLATES.filter((layout) =>
+                    initialEntitlement.allowedLayoutTemplates.includes(layout),
+                  ).map((layout) => (
+                    <option key={layout} value={layout}>
+                      {LAYOUT_LABELS[layout]}
+                    </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={applyPresetProposal}
-                  className="border-border rounded-md border px-3 py-2 text-sm"
-                >
-                  Aplicar
-                </button>
+              </label>
+              <div className="grid min-w-0 gap-1.5">
+                <label htmlFor="visual-preset" className="text-text-secondary text-sm">
+                  Preset visual
+                </label>
+                <div className="flex min-w-0 gap-2">
+                  <select
+                    id="visual-preset"
+                    value={selectedPreset}
+                    onChange={(event) => setSelectedPreset(event.target.value as VisualPreset)}
+                    className="border-border bg-surface text-text-primary min-h-11 min-w-0 flex-1 rounded-md border px-3 py-2"
+                  >
+                    {VISUAL_PRESETS.filter((preset) =>
+                      initialEntitlement.allowedVisualPresets.includes(preset),
+                    ).map((preset) => (
+                      <option key={preset}>{preset}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={applyPresetProposal}
+                    className="border-border hover:bg-surface-secondary min-h-11 rounded-md border px-3 text-sm"
+                  >
+                    Aplicar
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                ['showCover', 'Exibir capa'],
-                ['showSlogan', 'Exibir slogan'],
-                ['showSearch', 'Exibir busca'],
-                ['showFeaturedProducts', 'Exibir destaques'],
-                ['showCategoryDescription', 'Exibir descrição das categorias'],
-                ['showProductImages', 'Exibir imagens dos produtos'],
-                ['showProductBadges', 'Exibir indicadores dos produtos'],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="text-text-secondary flex items-center gap-2 text-sm">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ['showCover', 'Exibir capa'],
+                  ['showSlogan', 'Exibir slogan'],
+                  ['showSearch', 'Exibir busca'],
+                  ['showFeaturedProducts', 'Exibir destaques'],
+                  ['showCategoryDescription', 'Exibir descrição das categorias'],
+                  ['showProductImages', 'Exibir imagens dos produtos'],
+                  ['showProductBadges', 'Exibir indicadores dos produtos'],
+                ] as const
+              ).map(([key, label]) => (
+                <label
+                  key={key}
+                  className="text-text-secondary flex min-h-11 items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={config.layout[key]}
+                    onChange={(event) =>
+                      updateSection('layout', { ...config.layout, [key]: event.target.checked })
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </section>
+        </CustomizationGroup>
+
+        <CustomizationGroup
+          title="Conteúdo visual"
+          description="Organize imagens da marca, categorias e banners promocionais."
+          defaultOpen
+        >
+          <StoreAssetsManager
+            tenantId={tenantId}
+            storeId={storeId}
+            identity={config.identity}
+            assets={assets}
+            onAssetUploaded={addAsset}
+            onAssetDeleted={removeAsset}
+            onAssign={(field, assetId) =>
+              updateSection('identity', { ...config.identity, [field]: assetId })
+            }
+          />
+
+          <StoreCategoryImagesManager
+            tenantId={tenantId}
+            storeId={storeId}
+            categories={destinations.categories}
+            assets={assets}
+            showImages={config.layout.showCategoryImages}
+            associations={config.categoryImages}
+            onShowImagesChange={(showCategoryImages) =>
+              updateSection('layout', { ...config.layout, showCategoryImages })
+            }
+            onAssociationsChange={(categoryImages) => change({ ...config, categoryImages })}
+            onAssetUploaded={addAsset}
+          />
+
+          <StoreBannersManager
+            tenantId={tenantId}
+            storeId={storeId}
+            initialBanners={initialBanners}
+            assets={assets}
+            destinations={destinations}
+            maxBanners={initialEntitlement.maxBanners}
+            scheduledEnabled={initialEntitlement.scheduledBannersEnabled}
+          />
+        </CustomizationGroup>
+
+        <CustomizationGroup
+          title="Endereço e descoberta"
+          description="Configure como a loja aparece em buscadores e quais endereços públicos utiliza."
+        >
+          <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+            <h3 className="text-text-primary text-lg font-semibold">Busca e marca</h3>
+            <div className="mt-5 grid gap-4">
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                Título SEO
+                <input
+                  value={config.seo.title}
+                  maxLength={70}
+                  onChange={(event) =>
+                    updateSection('seo', { ...config.seo, title: event.target.value })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
+                />
+              </label>
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                Descrição SEO
+                <textarea
+                  value={config.seo.description}
+                  maxLength={160}
+                  rows={3}
+                  onChange={(event) =>
+                    updateSection('seo', { ...config.seo, description: event.target.value })
+                  }
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
+                />
+              </label>
+              <label className="text-text-secondary grid gap-1.5 text-sm">
+                URL canônica
+                <input
+                  type="url"
+                  value={config.seo.canonicalUrl ?? ''}
+                  onChange={(event) =>
+                    updateSection('seo', {
+                      ...config.seo,
+                      canonicalUrl: event.target.value || null,
+                    })
+                  }
+                  placeholder="https://exemplo.com/cardapio"
+                  className="border-border bg-surface text-text-primary min-h-11 rounded-md border px-3 py-2"
+                />
+              </label>
+              <label className="text-text-secondary flex min-h-11 items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={config.layout[key]}
+                  className="h-5 w-5"
+                  checked={config.seo.indexable}
                   onChange={(event) =>
-                    updateSection('layout', { ...config.layout, [key]: event.target.checked })
+                    updateSection('seo', { ...config.seo, indexable: event.target.checked })
                   }
                 />
-                {label}
+                Permitir indexação por buscadores
               </label>
-            ))}
-          </div>
-        </section>
+              <label className="text-text-secondary flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  checked={config.platformBranding.showPedidoLocalBranding}
+                  disabled={!initialEntitlement.platformBrandingRemovalEnabled}
+                  onChange={(event) =>
+                    updateSection('platformBranding', {
+                      showPedidoLocalBranding: event.target.checked,
+                    })
+                  }
+                />
+                Exibir “Tecnologia por PedidoLocal”
+              </label>
+              <p className="text-text-muted text-xs">
+                A remoção só é aceita pelo servidor quando o entitlement estiver habilitado.
+              </p>
+            </div>
+          </section>
 
-        <StoreAssetsManager
-          tenantId={tenantId}
-          storeId={storeId}
-          identity={config.identity}
-          assets={assets}
-          onAssetUploaded={addAsset}
-          onAssetDeleted={removeAsset}
-          onAssign={(field, assetId) =>
-            updateSection('identity', { ...config.identity, [field]: assetId })
-          }
-        />
+          <StoreDomainsManager
+            tenantId={tenantId}
+            storeId={storeId}
+            storeSlug={storeSlug}
+            initialDomains={initialDomains}
+            customDomainEnabled={initialEntitlement.customDomainEnabled}
+          />
+        </CustomizationGroup>
 
-        <StoreCategoryImagesManager
-          tenantId={tenantId}
-          storeId={storeId}
-          categories={destinations.categories}
-          assets={assets}
-          showImages={config.layout.showCategoryImages}
-          associations={config.categoryImages}
-          onShowImagesChange={(showCategoryImages) =>
-            updateSection('layout', { ...config.layout, showCategoryImages })
-          }
-          onAssociationsChange={(categoryImages) => change({ ...config, categoryImages })}
-          onAssetUploaded={addAsset}
-        />
+        <CustomizationGroup
+          title="Plano, recursos e histórico"
+          description="Consulte limites, libere recursos e recupere versões publicadas."
+        >
+          <StoreEntitlementsForm
+            tenantId={tenantId}
+            storeId={storeId}
+            initialEntitlement={initialEntitlement}
+          />
 
-        <StoreBannersManager
-          tenantId={tenantId}
-          storeId={storeId}
-          initialBanners={initialBanners}
-          assets={assets}
-          destinations={destinations}
-          maxBanners={initialEntitlement.maxBanners}
-          scheduledEnabled={initialEntitlement.scheduledBannersEnabled}
-        />
-
-        <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <h2 className="text-text-primary text-lg font-semibold">6. SEO e marca</h2>
-          <div className="mt-5 grid gap-4">
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Título SEO
-              <input
-                value={config.seo.title}
-                maxLength={70}
-                onChange={(event) =>
-                  updateSection('seo', { ...config.seo, title: event.target.value })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              Descrição SEO
-              <textarea
-                value={config.seo.description}
-                maxLength={160}
-                rows={3}
-                onChange={(event) =>
-                  updateSection('seo', { ...config.seo, description: event.target.value })
-                }
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="text-text-secondary grid gap-1.5 text-sm">
-              URL canônica
-              <input
-                type="url"
-                value={config.seo.canonicalUrl ?? ''}
-                onChange={(event) =>
-                  updateSection('seo', { ...config.seo, canonicalUrl: event.target.value || null })
-                }
-                placeholder="https://exemplo.com/cardapio"
-                className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="text-text-secondary flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={config.seo.indexable}
-                onChange={(event) =>
-                  updateSection('seo', { ...config.seo, indexable: event.target.checked })
-                }
-              />
-              Permitir indexação por buscadores
-            </label>
-            <label className="text-text-secondary flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={config.platformBranding.showPedidoLocalBranding}
-                disabled={!initialEntitlement.platformBrandingRemovalEnabled}
-                onChange={(event) =>
-                  updateSection('platformBranding', {
-                    showPedidoLocalBranding: event.target.checked,
-                  })
-                }
-              />
-              Exibir “Tecnologia por PedidoLocal”
-            </label>
-            <p className="text-text-muted text-xs">
-              A remoção só é aceita pelo servidor quando o entitlement estiver habilitado.
-            </p>
-          </div>
-        </section>
-
-        <StoreDomainsManager
-          tenantId={tenantId}
-          storeId={storeId}
-          storeSlug={storeSlug}
-          initialDomains={initialDomains}
-          customDomainEnabled={initialEntitlement.customDomainEnabled}
-        />
-
-        <StoreEntitlementsForm
-          tenantId={tenantId}
-          storeId={storeId}
-          initialEntitlement={initialEntitlement}
-        />
-
-        <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <History className="text-brand-500 h-5 w-5" />
-            <h2 className="text-text-primary text-lg font-semibold">9. Histórico publicado</h2>
-          </div>
-          <ul className="divide-border mt-4 divide-y">
-            {revisions.map((revision) => (
-              <li
-                key={revision.id}
-                className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"
-              >
-                <div>
-                  <p className="text-text-primary text-sm font-medium">
-                    Versão {revision.version} · {revision.origin}
-                  </p>
-                  <p className="text-text-secondary mt-1 text-sm">{revision.reason}</p>
-                  <p className="text-text-muted mt-1 text-xs">
-                    {new Date(revision.publishedAt).toLocaleString('pt-BR')} ·{' '}
-                    {revision.actor?.email ?? 'Sistema'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => restoreRevision(revision)}
-                  className="border-border text-text-secondary hover:bg-surface-secondary rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <History className="text-brand-600 h-5 w-5" aria-hidden="true" />
+              <h3 className="text-text-primary text-lg font-semibold">Histórico publicado</h3>
+            </div>
+            <ul className="divide-border mt-4 divide-y">
+              {revisions.map((revision) => (
+                <li
+                  key={revision.id}
+                  className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"
                 >
-                  Restaurar como rascunho
-                </button>
-              </li>
-            ))}
-            {revisions.length === 0 && (
-              <li className="text-text-muted py-6 text-sm">Nenhuma publicação registrada.</li>
-            )}
-          </ul>
-        </section>
+                  <div>
+                    <p className="text-text-primary text-sm font-medium">
+                      Versão {revision.version} · {revision.origin}
+                    </p>
+                    <p className="text-text-secondary mt-1 text-sm">{revision.reason}</p>
+                    <p className="text-text-muted mt-1 text-xs">
+                      {new Date(revision.publishedAt).toLocaleString('pt-BR')} ·{' '}
+                      {revision.actor?.email ?? 'Sistema'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => restoreRevision(revision)}
+                    className="border-border text-text-secondary hover:bg-surface-secondary min-h-11 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                  >
+                    Restaurar como rascunho
+                  </button>
+                </li>
+              ))}
+              {revisions.length === 0 && (
+                <li className="text-text-muted py-6 text-sm">Nenhuma publicação registrada.</li>
+              )}
+            </ul>
+          </section>
+        </CustomizationGroup>
       </div>
 
-      <aside className="space-y-5 xl:sticky xl:top-6 xl:self-start">
+      <aside className="order-1 min-w-0 space-y-5 xl:sticky xl:top-6 xl:order-2 xl:self-start">
         <StorefrontPreview
-          config={config}
+          config={deferredConfig}
           storeName={storeName}
           storeStatus={storeStatus}
           logoUrl={logoUrl}
@@ -707,48 +823,36 @@ export function CustomizationEditor({
         />
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
-          <label className="text-text-secondary grid gap-1.5 text-sm">
-            Motivo da publicação ou restauração
-            <textarea
-              value={reason}
-              maxLength={500}
-              rows={3}
-              onChange={(event) => setReason(event.target.value)}
-              className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
-            />
-          </label>
+          <h2 className="text-text-primary font-semibold">Aplicar alterações</h2>
+          <p className="text-text-secondary mt-1 text-sm">
+            Salve o rascunho antes de publicar a nova versão.
+          </p>
           <div className="mt-4 grid gap-2">
             <button
               type="button"
               disabled={isPending || !dirty}
               onClick={saveDraft}
-              className="bg-brand-500 hover:bg-brand-600 inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className={cn(
+                'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium disabled:opacity-50',
+                dirty
+                  ? 'border-brand-600 bg-brand-600 hover:bg-brand-700 text-white'
+                  : 'border-border text-text-secondary',
+              )}
             >
               <Save className="h-4 w-4" /> Salvar rascunho
             </button>
             <button
               type="button"
-              disabled={isPending || !hasDraft || criticalContrast.length > 0}
+              disabled={isPending || dirty || !hasDraft || criticalContrast.length > 0}
               onClick={publish}
-              className="bg-success inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className={cn(
+                'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium disabled:opacity-50',
+                hasDraft && !dirty && criticalContrast.length === 0
+                  ? 'border-brand-600 bg-brand-600 hover:bg-brand-700 text-white'
+                  : 'border-border text-text-secondary',
+              )}
             >
               <Send className="h-4 w-4" /> Publicar
-            </button>
-            <button
-              type="button"
-              disabled={isPending || !hasDraft}
-              onClick={discardDraft}
-              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <RotateCcw className="h-4 w-4" /> Descartar rascunho
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={restoreDefault}
-              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <RotateCcw className="h-4 w-4" /> Restaurar padrão
             </button>
           </div>
           {criticalContrast.length === 0 ? (
@@ -762,6 +866,37 @@ export function CustomizationEditor({
           )}
         </section>
       </aside>
+
+      <div className="border-border bg-surface fixed inset-x-0 bottom-0 z-30 border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_8px_rgba(0,0,0,0.08)] xl:hidden">
+        <div className="mx-auto grid max-w-xl grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={isPending || !dirty}
+            onClick={saveDraft}
+            className={cn(
+              'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50',
+              dirty
+                ? 'border-brand-600 bg-brand-600 text-white'
+                : 'border-border text-text-secondary',
+            )}
+          >
+            <Save className="h-4 w-4" /> Salvar
+          </button>
+          <button
+            type="button"
+            disabled={isPending || dirty || !hasDraft || criticalContrast.length > 0}
+            onClick={publish}
+            className={cn(
+              'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50',
+              hasDraft && !dirty && criticalContrast.length === 0
+                ? 'border-brand-600 bg-brand-600 text-white'
+                : 'border-border text-text-secondary',
+            )}
+          >
+            <Send className="h-4 w-4" /> Publicar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

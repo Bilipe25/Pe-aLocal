@@ -22,11 +22,14 @@ async function expectNoHighImpactViolations(page: Page) {
 }
 
 test.describe('acessibilidade WCAG', () => {
-  test('home e login não possuem violações críticas ou sérias', async ({ page }) => {
+  test('home e autenticação não possuem violações críticas ou sérias', async ({ page }) => {
     await page.goto('/');
     await expectNoHighImpactViolations(page);
 
     await page.goto('/login');
+    await expectNoHighImpactViolations(page);
+
+    await page.goto('/access-help');
     await expectNoHighImpactViolations(page);
   });
 
@@ -82,16 +85,43 @@ test.describe('acessibilidade WCAG', () => {
     await expect(page.getByText('Ver sacola')).toBeHidden();
   });
 
-  test('editor administrativo não possui violações críticas ou sérias', async ({ page }) => {
+  test('administração geral permanece acessível e responsiva', async ({ page }) => {
     const credentials = credentialsFromEnv('SUPER_ADMIN');
     const tenantId = process.env.E2E_TENANT_ID;
     const storeId = process.env.E2E_STORE_ID;
     test.skip(!credentials || !tenantId || !storeId, 'Ambiente E2E administrativo incompleto.');
 
+    await page.setViewportSize({ width: 320, height: 700 });
     await loginAs(page, credentials!);
-    await page.goto(`/admin/tenants/${tenantId}/stores/${storeId}/customization`);
+
+    for (const route of [
+      '/admin',
+      '/admin/tenants',
+      `/admin/tenants/${tenantId}`,
+      `/admin/tenants/${tenantId}/stores/${storeId}/customization`,
+    ]) {
+      await page.goto(route);
+      await expect(page.locator('main')).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await expectNoHighImpactViolations(page);
+    }
+
     await expect(page.getByRole('heading', { name: 'Prévia responsiva' })).toBeVisible();
-    await expectNoHighImpactViolations(page);
+    await expect(page.getByLabel('Tipo de domínio')).toBeVisible();
+
+    await page.goto('/admin');
+    await expect(page.getByRole('link', { name: 'Visão geral' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    const statusAction = page.getByRole('button', { name: /Suspender|Ativar/ }).first();
+    if (await statusAction.count()) {
+      await statusAction.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancelar' }).click();
+    }
   });
 
   test('painel do tenant permanece acessível e responsivo', async ({ page }) => {

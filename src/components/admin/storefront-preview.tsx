@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
@@ -43,7 +44,7 @@ interface StorefrontPreviewProps {
   assets: AdminStoreAssetItem[];
 }
 
-export function StorefrontPreview({
+export const StorefrontPreview = memo(function StorefrontPreview({
   config,
   storeName,
   storeStatus,
@@ -53,27 +54,30 @@ export function StorefrontPreview({
   assets,
 }: StorefrontPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('mobile');
-  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
-  const associationByCategoryId = new Map(
-    config.categoryImages.map((association) => [association.categoryId, association.assetId]),
-  );
-  const previewCategories = categories
-    .filter((category) => category.isActive)
-    .slice(0, 4)
-    .map((category) => {
-      const asset = assetById.get(associationByCategoryId.get(category.id) ?? '');
-      return {
-        id: category.id,
-        name: category.name,
-        description: category.description,
-        imageUrl: asset?.assetType === 'CATEGORY_IMAGE' ? asset.previewUrl : null,
-        imageAlt: asset?.assetType === 'CATEGORY_IMAGE' ? asset.altText : null,
-      };
-    });
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const previewCategories = useMemo(() => {
+    const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+    const associationByCategoryId = new Map(
+      config.categoryImages.map((association) => [association.categoryId, association.assetId]),
+    );
+    return categories
+      .filter((category) => category.isActive)
+      .slice(0, 4)
+      .map((category) => {
+        const asset = assetById.get(associationByCategoryId.get(category.id) ?? '');
+        return {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          imageUrl: asset?.assetType === 'CATEGORY_IMAGE' ? asset.previewUrl : null,
+          imageAlt: asset?.assetType === 'CATEGORY_IMAGE' ? asset.altText : null,
+        };
+      });
+  }, [assets, categories, config.categoryImages]);
   const firstCategory = previewCategories[0] ?? null;
 
   return (
-    <section className="border-border bg-surface rounded-xl border p-4 shadow-sm">
+    <section className="border-border bg-surface max-w-full min-w-0 rounded-xl border p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-text-primary font-semibold">Prévia responsiva</h2>
@@ -81,8 +85,21 @@ export function StorefrontPreview({
             Usa o rascunho em memória, sem publicar.
           </p>
         </div>
+        <button
+          type="button"
+          aria-expanded={mobileOpen}
+          aria-controls="storefront-preview-canvas"
+          onClick={() => setMobileOpen((current) => !current)}
+          className="border-border text-text-secondary inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm xl:hidden"
+        >
+          {mobileOpen ? 'Fechar prévia' : 'Abrir prévia'}
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${mobileOpen ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </button>
         <div
-          className="border-border flex rounded-lg border p-1"
+          className={`border-border rounded-lg border p-1 ${mobileOpen ? 'flex' : 'hidden'} xl:flex`}
           role="group"
           aria-label="Tamanho da prévia"
         >
@@ -94,7 +111,7 @@ export function StorefrontPreview({
               type="button"
               aria-pressed={mode === key}
               onClick={() => setMode(key)}
-              className={`rounded-md px-2 py-1 text-xs ${
+              className={`min-h-11 rounded-md px-2 text-xs ${
                 mode === key ? 'bg-brand-600 text-white' : 'text-text-secondary'
               }`}
             >
@@ -105,7 +122,10 @@ export function StorefrontPreview({
       </div>
 
       <div
-        className="border-border bg-surface-secondary mt-4 max-h-[42rem] overflow-auto rounded-lg border p-2"
+        id="storefront-preview-canvas"
+        className={`border-border bg-surface-secondary mt-4 max-h-[42rem] max-w-full min-w-0 overflow-auto rounded-lg border p-2 [contain:inline-size] ${mobileOpen ? 'block' : 'hidden'} xl:block`}
+        role="region"
+        tabIndex={0}
         aria-label={`Prévia do cardápio em modo ${PREVIEW_MODES[mode].label.toLowerCase()}`}
       >
         <div
@@ -113,6 +133,8 @@ export function StorefrontPreview({
           style={{ ...getStorefrontThemeStyle(config), width: PREVIEW_MODES[mode].width }}
           data-preview-mode={mode}
           data-preview-layout={config.theme.layoutTemplate}
+          aria-hidden="true"
+          inert
         >
           <StoreHeader
             name={storeName}
@@ -134,7 +156,7 @@ export function StorefrontPreview({
             showImages={config.layout.showCategoryImages}
           />
 
-          <main className="storefront-catalog" aria-label="Produtos de exemplo">
+          <div className="storefront-catalog">
             <section className="storefront-category-section">
               <div className="storefront-category-heading">
                 {config.layout.showCategoryImages &&
@@ -168,7 +190,7 @@ export function StorefrontPreview({
                 ))}
               </div>
             </section>
-          </main>
+          </div>
 
           {config.platformBranding.showPedidoLocalBranding && (
             <footer className="storefront-branding px-4 py-8 text-center text-xs">
@@ -179,4 +201,4 @@ export function StorefrontPreview({
       </div>
     </section>
   );
-}
+});

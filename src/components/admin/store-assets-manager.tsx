@@ -150,22 +150,22 @@ export function StoreAssetsManager({
   }
 
   return (
-    <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
+    <section className="border-border bg-surface min-w-0 rounded-xl border p-5 shadow-sm">
       <div className="flex items-center gap-2">
-        <ImageIcon className="text-brand-500 h-5 w-5" />
-        <h2 className="text-text-primary text-lg font-semibold">4. Imagens</h2>
+        <ImageIcon className="text-brand-600 h-5 w-5" aria-hidden="true" />
+        <h3 className="text-text-primary text-lg font-semibold">Imagens da marca</h3>
       </div>
       <p className="text-text-secondary mt-1 text-sm">
         O upload não publica sozinho: associe a imagem, salve o rascunho e publique explicitamente.
       </p>
 
-      <div className="border-border mt-5 grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
-        <label className="text-text-secondary grid gap-1.5 text-sm">
+      <div className="border-border mt-5 grid grid-cols-1 gap-4 rounded-lg border p-4 sm:grid-cols-2">
+        <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm">
           Tipo
           <select
             value={selectedType}
             onChange={(event) => setSelectedType(event.target.value as StoreAssetTypeValue)}
-            className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
+            className="border-border bg-surface text-text-primary min-h-11 w-full min-w-0 rounded-md border px-3 py-2"
           >
             {ASSET_OPTIONS.map((item) => (
               <option key={item.type} value={item.type}>
@@ -175,29 +175,29 @@ export function StoreAssetsManager({
           </select>
           <span className="text-text-muted text-xs">{option.hint}</span>
         </label>
-        <label className="text-text-secondary grid gap-1.5 text-sm">
+        <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm">
           Arquivo
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/avif"
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            className="border-border rounded-md border px-3 py-2 text-sm"
+            className="border-border min-h-11 w-full max-w-full min-w-0 rounded-md border px-3 py-2 text-sm"
           />
         </label>
-        <label className="text-text-secondary grid gap-1.5 text-sm sm:col-span-2">
+        <label className="text-text-secondary grid min-w-0 gap-1.5 text-sm sm:col-span-2">
           Texto alternativo {selectedType === 'FAVICON' ? '(opcional)' : ''}
           <input
             value={altText}
             maxLength={300}
             onChange={(event) => setAltText(event.target.value)}
-            className="border-border bg-surface text-text-primary rounded-md border px-3 py-2"
+            className="border-border bg-surface text-text-primary min-h-11 w-full min-w-0 rounded-md border px-3 py-2"
           />
         </label>
         <button
           type="button"
           disabled={isPending || !file}
           onClick={() => startTransition(uploadAsset)}
-          className="bg-brand-500 inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 sm:col-span-2"
+          className="bg-brand-600 hover:bg-brand-700 inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 sm:col-span-2"
         >
           <Upload className="h-4 w-4" /> Enviar e usar no rascunho
         </button>
@@ -213,7 +213,7 @@ export function StoreAssetsManager({
         {grouped.map((group) => (
           <div key={group.type}>
             <h3 className="text-text-primary text-sm font-semibold">{group.label}</h3>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.assets.map((asset) => {
                 const selected = group.field ? identity[group.field] === asset.id : false;
                 return (

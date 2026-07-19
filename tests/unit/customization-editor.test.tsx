@@ -63,13 +63,16 @@ describe('CustomizationEditor', () => {
   it('expõe controles amigáveis sem editor manual de JSON', () => {
     renderEditor();
 
-    expect(screen.getByRole('heading', { name: '1. Identidade' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '2. Cores' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Identidade e aparência' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Conteúdo visual' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Endereço e descoberta' })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: '3. Tipografia, tema e layout' }),
+      screen.getByRole('heading', { name: 'Plano, recursos e histórico' }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/json/i)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Prévia responsiva' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tipo de domínio')).toBeInTheDocument();
+    expect(screen.getByLabelText('Endereço do domínio')).toBeInTheDocument();
   });
 
   it('marca alterações locais e habilita o salvamento de draft', () => {
