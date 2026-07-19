@@ -16,17 +16,17 @@ export function OrderSummary({ items, subtotal, deliveryFee, total }: OrderSumma
       <div className="mt-3 space-y-2">
         {items.map((item) => (
           <div key={item.id} className="flex items-start justify-between text-sm">
-            <div className="flex-1 min-w-0">
-              <span className="text-tinta">
+            <div className="min-w-0 flex-1">
+              <span className="break-words text-tinta">
                 {item.quantity}x {item.productName}
               </span>
               {item.selectedOptions.length > 0 && (
-                <p className="text-xs text-tinta/50">
+                <p className="break-words text-sm text-text-muted">
                   {item.selectedOptions.map((o) => o.name).join(', ')}
                 </p>
               )}
             </div>
-            <span className="shrink-0 font-mono text-xs font-bold text-tinta">
+            <span className="shrink-0 font-mono text-sm font-bold text-tinta">
               {formatCurrency(item.unitPrice * item.quantity)}
             </span>
           </div>
@@ -35,18 +35,18 @@ export function OrderSummary({ items, subtotal, deliveryFee, total }: OrderSumma
 
       <div className="mt-3 space-y-1 border-t border-tinta/5 pt-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-tinta/60">Subtotal</span>
-          <span className="font-mono text-xs text-tinta/60">{formatCurrency(subtotal)}</span>
+          <span className="text-text-muted">Subtotal</span>
+          <span className="font-mono text-sm text-text-muted">{formatCurrency(subtotal)}</span>
         </div>
         {deliveryFee > 0 && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-tinta/60">Taxa de entrega</span>
-            <span className="font-mono text-xs text-tinta/60">{formatCurrency(deliveryFee)}</span>
+            <span className="text-text-muted">Taxa de entrega</span>
+            <span className="font-mono text-sm text-text-muted">{formatCurrency(deliveryFee)}</span>
           </div>
         )}
         <div className="flex items-center justify-between text-sm font-semibold">
           <span className="text-tinta">Total</span>
-          <span className="font-mono text-base font-bold text-pimenta">{formatCurrency(total)}</span>
+          <span className="storefront-action-text font-mono text-base font-bold">{formatCurrency(total)}</span>
         </div>
       </div>
     </div>

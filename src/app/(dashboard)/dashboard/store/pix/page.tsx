@@ -1,9 +1,8 @@
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStoreForDashboard } from '@/features/stores/actions';
 import { PixForm } from '@/features/stores/components/pix-form';
 
-export const metadata = { title: 'Configuração de Pix' };
+export const metadata = { title: 'Pagamento por Pix' };
 
 export default async function StorePixPage() {
   const store = await getStoreForDashboard();
@@ -11,18 +10,13 @@ export default async function StorePixPage() {
   return (
     <div>
       <PageHeader
-        title="Configuração de Pix"
-        description="Configure sua chave Pix para receber pagamentos."
+        title="Pagamento por Pix"
+        description="Informe a chave exibida ao cliente e usada na conferência do pagamento."
         backHref="/dashboard/store"
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Dados do Pix</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="max-w-3xl rounded-xl border border-border bg-surface p-4 sm:p-6" aria-label="Dados do Pix">
           <PixForm settings={store.settings} />
-        </CardContent>
-      </Card>
+      </section>
     </div>
   );
 }

@@ -8,6 +8,10 @@ import PusherClient from 'pusher-js';
 
 let pusherClientInstance: PusherClient | null = null;
 
+export function isPusherConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_PUSHER_KEY && process.env.NEXT_PUBLIC_PUSHER_CLUSTER);
+}
+
 export function getPusherClient(): PusherClient {
   if (!pusherClientInstance) {
     const key = process.env.NEXT_PUBLIC_PUSHER_KEY;

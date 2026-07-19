@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,10 +16,12 @@ interface DeliveryZone {
   name: string;
   fee: number;
   estimatedTime: string | null;
+  minOrderValue: number | null;
 }
 
 interface CheckoutFormProps {
   storeSlug: string;
+  minOrderValue: number;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   acceptsPix: boolean;
@@ -30,6 +32,7 @@ interface CheckoutFormProps {
 
 export function CheckoutForm({
   storeSlug,
+  minOrderValue,
   deliveryEnabled,
   pickupEnabled,
   acceptsPix,
@@ -41,12 +44,15 @@ export function CheckoutForm({
   const items = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clearCart);
   const [isPending, startTransition] = useTransition();
+  const canDeliver = deliveryEnabled && deliveryZones.length > 0;
+  const hasFulfillmentMethod = canDeliver || pickupEnabled;
+  const hasPaymentMethod = acceptsPix || acceptsCash || acceptsCardOnDelivery;
 
   // Form state
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [modality, setModality] = useState<'DELIVERY' | 'PICKUP'>(
-    deliveryEnabled ? 'DELIVERY' : 'PICKUP',
+    canDeliver ? 'DELIVERY' : 'PICKUP',
   );
   const [deliveryZoneId, setDeliveryZoneId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -56,12 +62,22 @@ export function CheckoutForm({
   const [changeFor, setChangeFor] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   // Calculations
   const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
   const selectedZone = deliveryZones.find((z) => z.id === deliveryZoneId);
   const deliveryFee = modality === 'DELIVERY' && selectedZone ? selectedZone.fee : 0;
   const total = subtotal + deliveryFee;
+  const effectiveMinOrderValue = Math.max(
+    minOrderValue,
+    modality === 'DELIVERY' ? (selectedZone?.minOrderValue ?? 0) : 0,
+  );
+  const missingForMinimum = Math.max(0, effectiveMinOrderValue - subtotal);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,32 +124,35 @@ export function CheckoutForm({
         <h2 className="font-display text-base font-bold text-tinta">Seus dados</h2>
         <div className="mt-2 space-y-3">
           <div>
-            <label htmlFor="name" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="name" className="text-sm font-medium text-text-muted">
               Nome
             </label>
             <Input
               id="name"
               type="text"
+              autoComplete="name"
               required
               minLength={2}
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Seu nome"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
           <div>
-            <label htmlFor="phone" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="phone" className="text-sm font-medium text-text-muted">
               Telefone / WhatsApp
             </label>
             <Input
               id="phone"
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               required
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
               placeholder="(11) 99999-9999"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
         </div>
@@ -143,14 +162,15 @@ export function CheckoutForm({
       <section>
         <h2 className="font-display text-base font-bold text-tinta">Como quer receber?</h2>
         <div className="mt-2 flex gap-2">
-          {deliveryEnabled && (
+          {canDeliver && (
             <button
               type="button"
               onClick={() => setModality('DELIVERY')}
-              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+              aria-pressed={modality === 'DELIVERY'}
+              className={`min-h-11 flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                 modality === 'DELIVERY'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               🛵 Entrega
@@ -160,10 +180,11 @@ export function CheckoutForm({
             <button
               type="button"
               onClick={() => setModality('PICKUP')}
-              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+              aria-pressed={modality === 'PICKUP'}
+              className={`min-h-11 flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
                 modality === 'PICKUP'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               🏪 Retirada
@@ -171,10 +192,21 @@ export function CheckoutForm({
           )}
         </div>
 
+        {deliveryEnabled && !canDeliver && (
+          <p className="mt-2 text-sm text-text-muted">
+            A entrega está temporariamente indisponível porque não há regiões ativas.
+          </p>
+        )}
+        {!hasFulfillmentMethod && (
+          <p className="mt-2 rounded-lg border border-error/20 bg-error-light px-3 py-2 text-sm text-tinta">
+            A loja não possui entrega ou retirada disponível agora.
+          </p>
+        )}
+
         {modality === 'DELIVERY' && (
           <div className="mt-3 space-y-3">
             <div>
-              <label htmlFor="zone" className="text-sm font-medium text-tinta/70">
+              <label htmlFor="zone" className="text-sm font-medium text-text-muted">
                 Zona de entrega
               </label>
               <select
@@ -182,7 +214,7 @@ export function CheckoutForm({
                 required
                 value={deliveryZoneId}
                 onChange={(e) => setDeliveryZoneId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-tinta/15 bg-papel px-3 py-2 text-sm text-tinta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pimenta"
+                className="mt-1 min-h-11 w-full rounded-md border border-tinta/15 bg-papel px-3 py-2 text-sm text-tinta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pimenta"
               >
                 <option value="">Selecione sua região</option>
                 {deliveryZones.map((z) => (
@@ -194,17 +226,18 @@ export function CheckoutForm({
               </select>
             </div>
             <div>
-              <label htmlFor="address" className="text-sm font-medium text-tinta/70">
+              <label htmlFor="address" className="text-sm font-medium text-text-muted">
                 Endereço de entrega
               </label>
               <Textarea
                 id="address"
+                autoComplete="street-address"
                 required
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
                 placeholder="Rua, número, complemento, bairro"
                 rows={2}
-                className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+                className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
               />
             </div>
           </div>
@@ -217,10 +250,10 @@ export function CheckoutForm({
         <div className="mt-2 space-y-1.5">
           {acceptsPix && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'PIX'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -235,10 +268,10 @@ export function CheckoutForm({
           )}
           {acceptsCash && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'CASH'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -253,10 +286,10 @@ export function CheckoutForm({
           )}
           {acceptsCardOnDelivery && (
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
                 paymentMethod === 'CARD_ON_DELIVERY'
-                  ? 'border-pimenta bg-pimenta/10 text-pimenta'
-                  : 'border-tinta/15 text-tinta/60 hover:border-tinta/30'
+                  ? 'storefront-selection-control storefront-selection-row text-tinta'
+                  : 'border-tinta/15 text-text-muted hover:border-tinta/30'
               }`}
             >
               <input
@@ -271,9 +304,15 @@ export function CheckoutForm({
           )}
         </div>
 
+        {!hasPaymentMethod && (
+          <p className="mt-2 rounded-lg border border-error/20 bg-error-light px-3 py-2 text-sm text-tinta">
+            A loja não possui uma forma de pagamento disponível agora.
+          </p>
+        )}
+
         {paymentMethod === 'CASH' && (
           <div className="mt-3">
-            <label htmlFor="change" className="text-sm font-medium text-tinta/70">
+            <label htmlFor="change" className="text-sm font-medium text-text-muted">
               Troco para (opcional)
             </label>
             <Input
@@ -285,7 +324,7 @@ export function CheckoutForm({
               value={changeFor}
               onChange={(e) => setChangeFor(e.target.value)}
               placeholder="Ex: 50.00"
-              className="mt-1 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+              className="mt-1 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
             />
           </div>
         )}
@@ -299,7 +338,7 @@ export function CheckoutForm({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Alguma observação para o estabelecimento?"
           rows={2}
-          className="mt-2 bg-papel border-tinta/15 text-tinta placeholder:text-tinta/40 focus-visible:ring-pimenta"
+          className="mt-2 min-h-11 border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta"
         />
       </section>
 
@@ -311,9 +350,27 @@ export function CheckoutForm({
         total={total}
       />
 
+      {missingForMinimum > 0 && (
+        <div
+          id="minimum-order-message"
+          role="status"
+          className="rounded-lg border border-warning/30 bg-warning-light px-4 py-3 text-sm text-tinta"
+        >
+          Adicione mais {formatCurrency(missingForMinimum)} para atingir o pedido mínimo de{' '}
+          {formatCurrency(effectiveMinOrderValue)}.
+        </div>
+      )}
+
       {/* Erro */}
       {error && (
-        <div className="rounded-lg border border-error/20 bg-error-light px-4 py-2 text-sm text-error">
+        <div
+          id="checkout-error"
+          ref={errorRef}
+          role="alert"
+          aria-live="assertive"
+          tabIndex={-1}
+          className="rounded-lg border border-error/20 bg-error-light px-4 py-2 text-sm text-tinta outline-none"
+        >
           {error}
         </div>
       )}
@@ -321,7 +378,16 @@ export function CheckoutForm({
       {/* Submit */}
       <Button
         type="submit"
-        disabled={isPending || items.length === 0}
+        disabled={
+          isPending ||
+          items.length === 0 ||
+          missingForMinimum > 0 ||
+          !hasFulfillmentMethod ||
+          !hasPaymentMethod
+        }
+        aria-describedby={
+          error ? 'checkout-error' : missingForMinimum > 0 ? 'minimum-order-message' : undefined
+        }
         className="storefront-primary-action w-full font-body font-medium shadow-sm disabled:opacity-50"
       >
         {isPending ? (
@@ -330,7 +396,7 @@ export function CheckoutForm({
             Processando...
           </>
         ) : (
-          `Fazer Pedido · ${formatCurrency(total)}`
+          `Confirmar pedido · ${formatCurrency(total)}`
         )}
       </Button>
     </form>

@@ -1,0 +1,84 @@
+'use client';
+
+import { useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { CirclePause, LockKeyhole, Store } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { toggleStoreStatusAction } from '@/features/stores/actions';
+
+type StoreStatus = 'OPEN' | 'CLOSED' | 'PAUSED';
+
+export function StoreStatusControl({ status }: { status: StoreStatus }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  async function changeStatus(nextStatus: StoreStatus) {
+    const result = await toggleStoreStatusAction(nextStatus);
+    if (!result.success) {
+      toast.error(result.error.message);
+      return false;
+    }
+
+    toast.success(
+      nextStatus === 'OPEN'
+        ? 'Loja aberta para novos pedidos.'
+        : nextStatus === 'PAUSED'
+          ? 'Pedidos pausados temporariamente.'
+          : 'Loja fechada para novos pedidos.',
+    );
+    router.refresh();
+    return true;
+  }
+
+  function openStore() {
+    startTransition(async () => {
+      await changeStatus('OPEN');
+    });
+  }
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-text-primary">Recebimento de pedidos</h2>
+      <p className="mt-1 text-sm text-text-secondary">
+        O status é aplicado imediatamente ao cardápio público.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Status da loja">
+        <Button
+          type="button"
+          variant={status === 'OPEN' ? 'default' : 'outline'}
+          disabled={pending || status === 'OPEN'}
+          onClick={openStore}
+        >
+          <Store aria-hidden="true" /> {status === 'OPEN' ? 'Loja aberta' : 'Abrir loja'}
+        </Button>
+
+        <ConfirmDialog
+          title="Pausar novos pedidos?"
+          description="O cardápio continuará disponível para consulta, mas os clientes não poderão adicionar produtos enquanto a loja estiver pausada."
+          confirmLabel="Pausar pedidos"
+          onConfirm={() => changeStatus('PAUSED')}
+          trigger={
+            <Button type="button" variant={status === 'PAUSED' ? 'secondary' : 'outline'} disabled={status === 'PAUSED'}>
+              <CirclePause aria-hidden="true" /> {status === 'PAUSED' ? 'Pedidos pausados' : 'Pausar'}
+            </Button>
+          }
+        />
+
+        <ConfirmDialog
+          title="Fechar a loja agora?"
+          description="Novos pedidos serão bloqueados. Os pedidos já recebidos continuam disponíveis no painel."
+          confirmLabel="Fechar loja"
+          onConfirm={() => changeStatus('CLOSED')}
+          trigger={
+            <Button type="button" variant={status === 'CLOSED' ? 'secondary' : 'outline'} disabled={status === 'CLOSED'}>
+              <LockKeyhole aria-hidden="true" /> {status === 'CLOSED' ? 'Loja fechada' : 'Fechar'}
+            </Button>
+          }
+        />
+      </div>
+    </div>
+  );
+}

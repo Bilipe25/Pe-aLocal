@@ -16,7 +16,7 @@ interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'onChange'
 export function PriceInput({ defaultPrice = 0, name, ...props }: PriceInputProps) {
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-tertiary">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary" aria-hidden="true">
         R$
       </span>
       <Input

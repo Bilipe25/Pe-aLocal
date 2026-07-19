@@ -57,9 +57,13 @@ export function evaluateCustomizationContrast(config: StoreCustomizationConfig):
     issue('Texto sobre fundo', palette.text, palette.background, 4.5, 'error'),
     issue('Texto sobre cartão', palette.text, palette.surface, 4.5, 'error'),
     issue('Texto do botão', palette.buttonText, palette.buttonBackground, 4.5, 'error'),
+    issue('Texto secundário sobre fundo', palette.mutedText, palette.background, 4.5, 'error'),
+    issue('Texto secundário sobre cartão', palette.mutedText, palette.surface, 4.5, 'error'),
+    issue('Ação outline sobre fundo', palette.buttonBackground, palette.background, 4.5, 'error'),
+    issue('Ação outline sobre cartão', palette.buttonBackground, palette.surface, 4.5, 'error'),
+    issue('Texto sobre fundo editorial', palette.buttonText, palette.secondary, 4.5, 'error'),
     issue('Links sobre fundo', palette.primary, palette.background, 4.5, 'warning'),
     issue('Elemento selecionado', palette.primary, palette.surface, 3, 'warning'),
-    issue('Texto secundário', palette.mutedText, palette.background, 4.5, 'warning'),
     issue('Borda sobre cartão', palette.border, palette.surface, 3, 'warning'),
   ].filter((value): value is ContrastIssue => value !== null);
 }

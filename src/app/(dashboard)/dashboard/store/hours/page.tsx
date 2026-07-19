@@ -1,9 +1,8 @@
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStoreForDashboard } from '@/features/stores/actions';
 import { HoursForm } from '@/features/stores/components/hours-form';
 
-export const metadata = { title: 'Horários de Funcionamento' };
+export const metadata = { title: 'Horários de funcionamento' };
 
 export default async function StoreHoursPage() {
   const store = await getStoreForDashboard();
@@ -11,18 +10,13 @@ export default async function StoreHoursPage() {
   return (
     <div>
       <PageHeader
-        title="Horários de Funcionamento"
+        title="Horários de funcionamento"
         description="Configure os dias e horários em que sua loja aceita pedidos."
         backHref="/dashboard/store"
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Horários</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="max-w-4xl rounded-xl border border-border bg-surface p-4 sm:p-6" aria-label="Horários da loja">
           <HoursForm hours={store.openingHours} />
-        </CardContent>
-      </Card>
+      </section>
     </div>
   );
 }

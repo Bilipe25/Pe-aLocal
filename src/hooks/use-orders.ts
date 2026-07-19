@@ -4,8 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getOrdersAction, type GetOrdersParams } from '@/features/orders/admin-actions';
 import { usePusherChannel } from '@/hooks/use-pusher-channel';
 
-export function useOrders(storeId: string | null, params?: GetOrdersParams) {
+export function useOrders(
+  storeId: string | null,
+  params?: GetOrdersParams,
+  options: { subscribe?: boolean } = {},
+) {
   const queryClient = useQueryClient();
+  const subscribe = options.subscribe ?? true;
 
   // Query principal
   const query = useQuery({
@@ -21,7 +26,7 @@ export function useOrders(storeId: string | null, params?: GetOrdersParams) {
   });
 
   // Escutar eventos do Pusher
-  const channelName = storeId ? `store-${storeId}` : null;
+  const channelName = subscribe && storeId ? `store-${storeId}` : null;
 
   usePusherChannel<{ orderId: string; orderNumber: number }>(channelName, 'new-order', () => {
     // Quando chega um pedido novo, invalidamos a query para forçar o fetch

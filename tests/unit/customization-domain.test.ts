@@ -73,6 +73,23 @@ describe('domínio de personalização', () => {
     );
   });
 
+  it('bloqueia texto secundário e ações outline sem contraste suficiente', () => {
+    const config = createDefaultCustomization();
+    config.palette.mutedText = config.palette.background;
+    config.palette.buttonBackground = config.palette.surface;
+
+    const criticalPairs = evaluateCustomizationContrast(config)
+      .filter((issue) => issue.severity === 'error')
+      .map((issue) => issue.pair);
+
+    expect(criticalPairs).toEqual(
+      expect.arrayContaining([
+        'Texto secundário sobre fundo',
+        'Ação outline sobre cartão',
+      ]),
+    );
+  });
+
   it.each(VISUAL_PRESETS)('mantém o preset %s válido e sem contraste crítico', (preset) => {
     const config = applyVisualPreset(createDefaultCustomization(), preset, true);
 

@@ -21,82 +21,90 @@ interface OptionGroupSelectorProps {
 }
 
 export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSelectorProps) {
-  const selectedIds = new Set(selected.map((o) => o.id));
+  const selectedIds = new Set(selected.map((option) => option.id));
+  const titleId = `option-group-${group.id}-title`;
+  const helpId = `option-group-${group.id}-help`;
 
   function handleToggle(option: { id: string; name: string; price: number }) {
     if (group.isMultiple) {
-      // Checkbox behavior
       if (selectedIds.has(option.id)) {
-        onChange(selected.filter((o) => o.id !== option.id));
+        onChange(selected.filter((selectedOption) => selectedOption.id !== option.id));
       } else if (selected.length < group.maxSelections) {
         onChange([...selected, option]);
       }
-    } else {
-      // Radio behavior
-      if (selectedIds.has(option.id)) {
-        onChange([]);
-      } else {
-        onChange([option]);
-      }
+      return;
     }
+
+    onChange(selectedIds.has(option.id) ? [] : [option]);
   }
 
   return (
-    <div className="py-3">
+    <section className="py-3" aria-labelledby={titleId}>
       <div className="mb-2 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-tinta">{group.title}</h3>
+        <div className="min-w-0 pr-2">
+          <h3 id={titleId} className="text-sm font-semibold text-tinta">
+            {group.title}
+          </h3>
           {group.description && (
-            <p className="text-xs text-tinta/50">{group.description}</p>
+            <p className="break-words text-sm text-text-muted">{group.description}</p>
           )}
         </div>
         {group.isRequired ? (
-          <span className="rounded-full bg-pimenta/10 px-2 py-0.5 text-[10px] font-semibold text-pimenta">
+          <span className="storefront-selection-badge shrink-0 rounded-full px-2 py-0.5 text-sm font-semibold">
             Obrigatório
           </span>
         ) : (
-          <span className="text-[10px] text-tinta/40">Opcional</span>
+          <span className="shrink-0 text-sm text-text-muted">Opcional</span>
         )}
       </div>
 
       {group.isMultiple && (
-        <p className="mb-1.5 text-[10px] text-tinta/40">
+        <p id={helpId} className="mb-1.5 text-sm text-text-muted">
           Escolha até {group.maxSelections}
           {group.minSelections > 0 && ` (mín. ${group.minSelections})`}
         </p>
       )}
 
-      <div className="space-y-1">
+      <div
+        className="space-y-1"
+        role={group.isMultiple ? 'group' : 'radiogroup'}
+        aria-labelledby={titleId}
+        aria-describedby={group.isMultiple ? helpId : undefined}
+      >
         {group.options.map((option) => {
           const isSelected = selectedIds.has(option.id);
+          const reachedLimit =
+            group.isMultiple && !isSelected && selected.length >= group.maxSelections;
+
           return (
             <button
               key={option.id}
               type="button"
+              role={group.isMultiple ? 'checkbox' : 'radio'}
+              aria-checked={isSelected}
+              disabled={reachedLimit}
               onClick={() => handleToggle(option)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                isSelected
-                  ? 'bg-pimenta/10 text-tinta'
-                  : 'text-tinta/80 hover:bg-tinta/5'
+              className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                isSelected ? 'storefront-selection-row text-tinta' : 'text-tinta hover:bg-tinta/5'
               }`}
             >
-              <div className="flex items-center gap-2">
-                {/* Indicador radio/checkbox */}
-                <div
-                  className={`flex h-4 w-4 items-center justify-center rounded-${group.isMultiple ? 'sm' : 'full'} border ${
-                    isSelected
-                      ? 'border-pimenta bg-pimenta'
-                      : 'border-tinta/25'
-                  }`}
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center border ${
+                    group.isMultiple ? 'rounded-sm' : 'rounded-full'
+                  } ${isSelected ? 'storefront-selection-indicator' : 'border-tinta/25'}`}
                 >
                   {isSelected && (
-                    <div className={`h-2 w-2 rounded-${group.isMultiple ? 'px' : 'full'} bg-white`} />
+                    <span
+                      className={`storefront-selection-mark h-2 w-2 ${group.isMultiple ? 'rounded-sm' : 'rounded-full'}`}
+                    />
                   )}
-                </div>
-                <span>{option.name}</span>
-              </div>
+                </span>
+                <span className="break-words text-left">{option.name}</span>
+              </span>
               {option.price > 0 && (
-                <span className="font-mono text-xs font-bold text-tinta/60">
+                <span className="shrink-0 pl-2 font-mono text-sm font-bold text-text-muted">
                   +{formatCurrency(option.price)}
                 </span>
               )}
@@ -104,6 +112,6 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }

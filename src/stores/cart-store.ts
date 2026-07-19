@@ -31,10 +31,11 @@ interface CartState {
   items: CartItem[];
   /** Define a loja do carrinho. Limpa itens se mudar de loja. */
   setStore: (storeId: string, storeSlug: string) => void;
-  addItem: (item: Omit<CartItem, 'id'>) => void;
+  addItem: (item: Omit<CartItem, 'id'>) => string;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
+  restoreItems: (items: CartItem[]) => void;
   /** Total em centavos */
   getTotal: () => number;
   /** Quantidade total de itens */
@@ -60,9 +61,11 @@ export const useCartStore = create<CartState>()(
       },
 
       addItem: (item) => {
+        const id = generateId();
         set((state) => ({
-          items: [...state.items, { ...item, id: generateId() }],
+          items: [...state.items, { ...item, id }],
         }));
+        return id;
       },
 
       removeItem: (id) => {
@@ -82,6 +85,8 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => set({ items: [] }),
+
+      restoreItems: (items) => set({ items }),
 
       getTotal: () => {
         return get().items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);

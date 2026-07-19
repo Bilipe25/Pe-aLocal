@@ -68,7 +68,10 @@ export async function updateStoreSettingsAction(formData: FormData): Promise<Act
       return actionError(new Error(parsed.error.issues[0].message));
     }
 
-    await storeRepo.upsertStoreSettings(store.id, parsed.data);
+    await storeRepo.upsertStoreSettings(store.id, {
+      ...parsed.data,
+      minOrderValue: Math.round(parsed.data.minOrderValue * 100),
+    });
     updateTag(CACHE_TAGS.store(store.id));
     updateTag(CACHE_TAGS.storeSlug(store.slug));
     return actionSuccess(undefined);

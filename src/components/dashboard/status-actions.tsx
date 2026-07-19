@@ -1,19 +1,54 @@
 'use client';
 
 import { useState } from 'react';
-import { updateOrderStatusAction, confirmPaymentAction } from '@/features/orders/admin-actions';
+import { updateOrderStatusAction, confirmPaymentAction, undoOrderStatusAction } from '@/features/orders/admin-actions';
 import { Button } from '@/components/ui/button';
 import type { OrderStatus } from '@prisma/client';
 import { Check, CheckCircle2, Package, Truck, UtensilsCrossed } from 'lucide-react';
 import type { OrderWithDetails } from '@/types/order';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Loader2 } from 'lucide-react';
 
-export function StatusActions({ order }: { order: OrderWithDetails }) {
+export function StatusActions({ order, onOrderChanged }: { order: OrderWithDetails; onOrderChanged?: () => void }) {
   const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   async function handleStatusChange(newStatus: OrderStatus) {
+    const previousStatus = order.status;
     setLoading(true);
     try {
-      await updateOrderStatusAction(order.id, newStatus);
+      const result = await updateOrderStatusAction(order.id, newStatus);
+      if (!result.success) {
+        toast.error(result.error.message);
+        return false;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Status do pedido atualizado.', {
+        duration: 10_000,
+        action: {
+          label: 'Desfazer',
+          onClick: () => void handleUndo(newStatus, previousStatus),
+        },
+      });
+      onOrderChanged?.();
+      return true;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUndo(expectedCurrentStatus: OrderStatus, previousStatus: OrderStatus) {
+    setLoading(true);
+    try {
+      const result = await undoOrderStatusAction(order.id, expectedCurrentStatus, previousStatus);
+      if (!result.success) {
+        toast.error(result.error.message);
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Alteração desfeita.');
     } finally {
       setLoading(false);
     }
@@ -22,7 +57,14 @@ export function StatusActions({ order }: { order: OrderWithDetails }) {
   async function handleConfirmPayment() {
     setLoading(true);
     try {
-      await confirmPaymentAction(order.id);
+      const result = await confirmPaymentAction(order.id);
+      if (!result.success) {
+        toast.error(result.error.message);
+        return false;
+      }
+      toast.success('Pagamento confirmado.');
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      return true;
     } finally {
       setLoading(false);
     }
@@ -35,16 +77,13 @@ export function StatusActions({ order }: { order: OrderWithDetails }) {
       {/* Payment Action */}
       <div>
         {order.paymentStatus === 'PENDING' && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleConfirmPayment}
-            disabled={loading}
-            className="border-green-500 text-green-600 hover:bg-green-50"
-          >
-            <CheckCircle2 className="mr-2 h-4 w-4" />
-            Confirmar Pagamento
-          </Button>
+          <ConfirmDialog
+            title="Confirmar o pagamento?"
+            description="Use esta ação somente depois de verificar o recebimento. O pedido será marcado como pago."
+            confirmLabel="Confirmar pagamento"
+            onConfirm={handleConfirmPayment}
+            trigger={<Button type="button" variant="outline" className="border-success/40 text-success hover:bg-success-light"><CheckCircle2 aria-hidden="true" /> Confirmar pagamento</Button>}
+          />
         )}
       </div>
 
@@ -54,7 +93,7 @@ export function StatusActions({ order }: { order: OrderWithDetails }) {
           <Button 
             onClick={() => handleStatusChange('CONFIRMED')}
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-info text-white hover:bg-info/90"
           >
             <Check className="mr-2 h-4 w-4" />
             Aceitar Pedido
@@ -65,7 +104,7 @@ export function StatusActions({ order }: { order: OrderWithDetails }) {
           <Button 
             onClick={() => handleStatusChange('PREPARING')}
             disabled={loading}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-brand-700 text-white hover:bg-brand-800"
           >
             <UtensilsCrossed className="mr-2 h-4 w-4" />
             Iniciar Preparo
@@ -84,32 +123,33 @@ export function StatusActions({ order }: { order: OrderWithDetails }) {
         )}
 
         {(order.status === 'READY' || order.status === 'OUT_FOR_DELIVERY') && (
-          <Button 
-            onClick={() => handleStatusChange('DELIVERED')}
-            disabled={loading}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            <CheckCircle2 className="mr-2 h-4 w-4" />
-            Concluir Pedido
-          </Button>
+          <ConfirmDialog
+            title={`Concluir o pedido ${order.orderNumber}?`}
+            description="Confirme depois que o cliente receber o pedido ou concluir a retirada. Você poderá desfazer por alguns segundos."
+            confirmLabel="Concluir pedido"
+            onConfirm={() => handleStatusChange('DELIVERED')}
+            trigger={(
+              <Button type="button" disabled={loading} className="bg-success text-white hover:bg-success/90">
+                <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                Concluir pedido
+              </Button>
+            )}
+          />
         )}
 
         {/* Cancel button only if not delivered/cancelled */}
         {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (
-          <Button 
-            variant="ghost" 
-            onClick={() => {
-              if(window.confirm('Tem certeza que deseja cancelar este pedido?')) {
-                handleStatusChange('CANCELLED');
-              }
-            }}
-            disabled={loading}
-            className="text-error hover:bg-error/10 hover:text-error"
-          >
-            Cancelar
-          </Button>
+          <ConfirmDialog
+            title={`Cancelar o pedido ${order.orderNumber}?`}
+            description="O pedido será encerrado como cancelado. Confirme somente depois de alinhar com o cliente."
+            confirmLabel="Cancelar pedido"
+            destructive
+            onConfirm={() => handleStatusChange('CANCELLED')}
+            trigger={<Button type="button" variant="ghost" disabled={loading} className="text-error hover:bg-error-light hover:text-error">Cancelar pedido</Button>}
+          />
         )}
       </div>
+      {loading && <span role="status" className="inline-flex items-center gap-2 text-sm text-text-secondary"><Loader2 className="animate-spin" aria-hidden="true" /> Atualizando pedido…</span>}
     </div>
   );
 }

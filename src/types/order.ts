@@ -8,5 +8,6 @@ export type OrderWithDetails = Prisma.OrderGetPayload<{
       };
     };
     payment: true;
+    statusHistory: true;
   };
 }>;
