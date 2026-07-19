@@ -4,6 +4,7 @@ import { Globe2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { Button } from '@/components/ui/button';
 import {
   changeStoreDomainStatusAction,
   requestStoreDomainAction,
@@ -75,43 +76,49 @@ export function StoreDomainsManager({
   return (
     <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
       <div className="flex items-center gap-2">
-        <Globe2 className="text-brand-500 h-5 w-5" />
-        <h2 className="text-text-primary text-lg font-semibold">7. Domínios</h2>
+        <Globe2 className="text-brand-600 h-5 w-5" aria-hidden="true" />
+        <h3 className="text-text-primary text-lg font-semibold">Endereços personalizados</h3>
       </div>
       <p className="text-text-secondary mt-1 text-sm">
         Registro e verificação manuais. Cloudflare for SaaS, DNS e certificados não são
         automatizados.
       </p>
-      <div className="border-border mt-4 grid gap-3 rounded-lg border p-4 sm:grid-cols-[12rem_1fr_auto]">
-        <select
-          value={domainType}
-          onChange={(event) => {
-            const next = event.target.value as DomainType;
-            setDomainType(next);
-            setHostname(next === 'SUBDOMAIN' ? `${storeSlug}.pedidolocal.com.br` : '');
-          }}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        >
-          <option value="SUBDOMAIN">Subdomínio</option>
-          <option value="CUSTOM" disabled={!customDomainEnabled}>
-            Domínio personalizado
-          </option>
-        </select>
-        <input
-          value={hostname}
-          readOnly={domainType === 'SUBDOMAIN'}
-          onChange={(event) => setHostname(event.target.value)}
-          placeholder="cardapio.exemplo.com.br"
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-        <button
+      <div className="border-border mt-4 grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-[12rem_1fr_auto]">
+        <label className="text-text-secondary grid gap-1 text-sm">
+          Tipo de domínio
+          <select
+            value={domainType}
+            onChange={(event) => {
+              const next = event.target.value as DomainType;
+              setDomainType(next);
+              setHostname(next === 'SUBDOMAIN' ? `${storeSlug}.pedidolocal.com.br` : '');
+            }}
+            className="border-border text-text-primary min-h-11 rounded-md border px-3 text-sm"
+          >
+            <option value="SUBDOMAIN">Subdomínio</option>
+            <option value="CUSTOM" disabled={!customDomainEnabled}>
+              Domínio personalizado
+            </option>
+          </select>
+        </label>
+        <label className="text-text-secondary grid gap-1 text-sm">
+          Endereço do domínio
+          <input
+            value={hostname}
+            readOnly={domainType === 'SUBDOMAIN'}
+            onChange={(event) => setHostname(event.target.value)}
+            placeholder="cardapio.exemplo.com.br"
+            className="border-border text-text-primary min-h-11 rounded-md border px-3 text-sm"
+          />
+        </label>
+        <Button
           type="button"
           disabled={isPending || !hostname}
           onClick={requestDomain}
-          className="bg-brand-500 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="self-end"
         >
           Registrar
-        </button>
+        </Button>
       </div>
       {feedback && (
         <p className="bg-info-light text-info mt-3 rounded-md p-3 text-sm">{feedback}</p>
@@ -134,26 +141,28 @@ export function StoreDomainsManager({
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select
+                aria-label={`Status do domínio ${domain.hostname}`}
                 key={`${domain.id}-${domain.status}-${domain.isPrimary}`}
                 defaultValue={domain.status}
                 disabled={isPending}
                 onChange={(event) =>
                   updateDomain(domain.id, event.target.value as DomainStatus, false)
                 }
-                className="border-border rounded-md border px-2 py-1.5 text-sm"
+                className="border-border min-h-11 rounded-md border px-2 text-sm"
               >
                 {STORE_DOMAIN_STATUSES.map((status) => (
                   <option key={status}>{status}</option>
                 ))}
               </select>
               {domain.status === 'ACTIVE' && !domain.isPrimary && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => updateDomain(domain.id, 'ACTIVE', true)}
-                  className="border-border rounded-md border px-3 py-1.5 text-sm"
                 >
                   Tornar primário
-                </button>
+                </Button>
               )}
             </div>
           </article>

@@ -30,7 +30,7 @@ export default async function AdminStoreCustomizationPage({
     <div className="space-y-6">
       <Link
         href={`/admin/tenants/${tenantId}`}
-        className="text-text-secondary hover:text-brand-500 inline-flex items-center gap-1 text-sm"
+        className="text-text-secondary hover:text-brand-600 inline-flex min-h-11 items-center gap-1 text-sm"
       >
         <ArrowLeft className="h-4 w-4" /> Voltar para {store.tenant.name}
       </Link>
@@ -38,7 +38,7 @@ export default async function AdminStoreCustomizationPage({
       <header className="border-border bg-surface rounded-xl border p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div>
-            <p className="text-brand-500 text-sm font-medium">Personalização por loja</p>
+            <p className="text-brand-600 text-sm font-medium">Personalização por loja</p>
             <h1 className="text-text-primary mt-1 text-2xl font-bold">{store.name}</h1>
             <p className="text-text-secondary mt-1 text-sm">
               /{store.slug} · {store.status} · {store.isActive ? 'ativa' : 'inativa'}
@@ -48,7 +48,7 @@ export default async function AdminStoreCustomizationPage({
             href={`/${store.slug}`}
             target="_blank"
             rel="noreferrer"
-            className="border-border text-text-secondary hover:bg-surface-secondary inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm"
+            className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm"
           >
             Visualizar cardápio <ExternalLink className="h-4 w-4" />
           </Link>

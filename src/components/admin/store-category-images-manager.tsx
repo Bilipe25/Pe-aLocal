@@ -72,7 +72,7 @@ function CategoryImageRow({
   }
 
   return (
-    <article className="border-border grid gap-4 rounded-lg border p-4 md:grid-cols-[8rem_minmax(0,1fr)]">
+    <article className="border-border grid min-w-0 grid-cols-1 gap-4 rounded-lg border p-4 md:grid-cols-[8rem_minmax(0,1fr)]">
       <div className="bg-surface-secondary flex aspect-square items-center justify-center overflow-hidden rounded-lg">
         {selectedAsset ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -83,7 +83,7 @@ function CategoryImageRow({
             loading="lazy"
           />
         ) : (
-          <div className="text-text-muted grid justify-items-center gap-1 text-center text-xs">
+          <div className="text-text-secondary grid justify-items-center gap-1 text-center text-xs">
             <ImagePlus className="h-6 w-6" aria-hidden="true" />
             Sem imagem
           </div>
@@ -110,7 +110,7 @@ function CategoryImageRow({
           <select
             value={selectedAssetId ?? ''}
             onChange={(event) => onAssociate(event.target.value || null)}
-            className="border-border bg-surface text-text-primary min-w-0 rounded-md border px-3 py-2"
+            className="border-border bg-surface text-text-primary min-h-11 min-w-0 rounded-md border px-3 py-2"
           >
             <option value="">Sem imagem</option>
             {assets.map((asset) => (
@@ -121,7 +121,7 @@ function CategoryImageRow({
           </select>
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label htmlFor={inputId} className="text-text-secondary grid gap-1.5 text-sm">
             Enviar nova imagem
             <input
@@ -129,7 +129,7 @@ function CategoryImageRow({
               type="file"
               accept="image/png,image/jpeg,image/webp,image/avif"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className="border-border min-w-0 rounded-md border px-3 py-2 text-sm"
+              className="border-border min-h-11 min-w-0 rounded-md border px-3 py-2 text-sm"
             />
           </label>
           <label className="text-text-secondary grid gap-1.5 text-sm">
@@ -138,7 +138,7 @@ function CategoryImageRow({
               value={altText}
               maxLength={300}
               onChange={(event) => setAltText(event.target.value)}
-              className="border-border bg-surface text-text-primary min-w-0 rounded-md border px-3 py-2"
+              className="border-border bg-surface text-text-primary min-h-11 min-w-0 rounded-md border px-3 py-2"
             />
           </label>
         </div>
@@ -148,7 +148,7 @@ function CategoryImageRow({
             type="button"
             disabled={isPending || !file}
             onClick={() => startTransition(upload)}
-            className="bg-brand-500 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="bg-brand-600 hover:bg-brand-700 inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             <Upload className="h-4 w-4" /> Enviar e associar
           </button>
@@ -156,7 +156,7 @@ function CategoryImageRow({
             type="button"
             disabled={isPending || !selectedAssetId}
             onClick={removeAssociation}
-            className="border-border text-error inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="border-border text-error inline-flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" /> Remover associação
           </button>
@@ -220,8 +220,8 @@ export function StoreCategoryImagesManager({
   return (
     <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
       <div className="flex items-center gap-2">
-        <ImagePlus className="text-brand-500 h-5 w-5" />
-        <h2 className="text-text-primary text-lg font-semibold">5. Imagens das categorias</h2>
+        <ImagePlus className="text-brand-600 h-5 w-5" aria-hidden="true" />
+        <h3 className="text-text-primary text-lg font-semibold">Imagens das categorias</h3>
       </div>
       <p className="text-text-secondary mt-1 text-sm">
         As associações ficam no rascunho até serem salvas e publicadas explicitamente.
@@ -230,6 +230,7 @@ export function StoreCategoryImagesManager({
       <label className="border-border mt-5 flex items-center gap-3 rounded-lg border p-4 text-sm">
         <input
           type="checkbox"
+          className="h-5 w-5"
           checked={showImages}
           onChange={(event) => onShowImagesChange(event.target.checked)}
         />
@@ -247,7 +248,7 @@ export function StoreCategoryImagesManager({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar categorias"
-            className="border-border bg-surface text-text-primary w-full rounded-md border py-2 pr-3 pl-9"
+            className="border-border bg-surface text-text-primary min-h-11 w-full rounded-md border py-2 pr-3 pl-9"
           />
         </label>
       )}

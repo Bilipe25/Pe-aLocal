@@ -84,6 +84,32 @@ describe('AdminService', () => {
 
     await expect(getAdminTenantsData()).resolves.toEqual(data);
     expect(mocks.requireSuperAdmin).toHaveBeenCalledOnce();
+    expect(mocks.listTenantsForAdmin).toHaveBeenCalledWith({
+      query: undefined,
+      status: undefined,
+      sort: 'newest',
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
+  it('normaliza busca, filtro, ordenação e paginação de estabelecimentos', async () => {
+    mocks.listTenantsForAdmin.mockResolvedValue({ total: 0, tenants: [] });
+
+    await getAdminTenantsData({
+      query: '  Restaurante Local  ',
+      status: 'SUSPENDED',
+      sort: 'name',
+      page: '3',
+    });
+
+    expect(mocks.listTenantsForAdmin).toHaveBeenCalledWith({
+      query: 'Restaurante Local',
+      status: 'SUSPENDED',
+      sort: 'name',
+      page: 3,
+      pageSize: 20,
+    });
   });
 
   it('obtém a loja pelo contexto administrativo validado', async () => {

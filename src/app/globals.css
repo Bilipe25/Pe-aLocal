@@ -950,6 +950,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .auth-shell,
+  .auth-shell *,
+  .auth-shell *::before,
+  .auth-shell *::after,
   .dashboard-shell,
   .dashboard-shell *,
   .dashboard-shell *::before,

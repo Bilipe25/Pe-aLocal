@@ -140,21 +140,21 @@ export function StoreBannersManager({
   return (
     <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
       <div className="flex items-center gap-2">
-        <Megaphone className="text-brand-500 h-5 w-5" />
-        <h2 className="text-text-primary text-lg font-semibold">5. Banners</h2>
+        <Megaphone className="text-brand-600 h-5 w-5" aria-hidden="true" />
+        <h3 className="text-text-primary text-lg font-semibold">Banners</h3>
       </div>
       <p className="text-text-secondary mt-1 text-sm">
         Até {maxBanners} cadastrados e no máximo três ativos no mesmo período.
       </p>
 
-      <div className="border-border mt-5 grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
+      <div className="border-border mt-5 grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-2">
         <label className="text-text-secondary grid gap-1 text-sm sm:col-span-2">
           Título
           <input
             value={form.title}
             maxLength={120}
             onChange={(event) => setForm({ ...form, title: event.target.value })}
-            className="border-border rounded-md border px-3 py-2"
+            className="border-border min-h-11 rounded-md border px-3 py-2"
           />
         </label>
         <label className="text-text-secondary grid gap-1 text-sm sm:col-span-2">
@@ -163,7 +163,7 @@ export function StoreBannersManager({
             value={form.subtitle}
             maxLength={240}
             onChange={(event) => setForm({ ...form, subtitle: event.target.value })}
-            className="border-border rounded-md border px-3 py-2"
+            className="border-border min-h-11 rounded-md border px-3 py-2"
           />
         </label>
         <label className="text-text-secondary grid gap-1 text-sm">
@@ -171,7 +171,7 @@ export function StoreBannersManager({
           <select
             value={form.assetId}
             onChange={(event) => setForm({ ...form, assetId: event.target.value })}
-            className="border-border rounded-md border px-3 py-2"
+            className="border-border min-h-11 rounded-md border px-3 py-2"
           >
             <option value="">Sem imagem</option>
             {bannerAssets.map((asset) => (
@@ -189,7 +189,7 @@ export function StoreBannersManager({
             max={1000}
             value={form.priority}
             onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
-            className="border-border rounded-md border px-3 py-2"
+            className="border-border min-h-11 rounded-md border px-3 py-2"
           />
         </label>
         <label className="text-text-secondary grid gap-1 text-sm">
@@ -205,7 +205,7 @@ export function StoreBannersManager({
                 buttonText: destinationType === 'NONE' ? '' : form.buttonText,
               });
             }}
-            className="border-border rounded-md border px-3 py-2"
+            className="border-border min-h-11 rounded-md border px-3 py-2"
           >
             {BANNER_DESTINATION_TYPES.map((type) => (
               <option key={type}>{type}</option>
@@ -219,7 +219,7 @@ export function StoreBannersManager({
             disabled={form.destinationType === 'NONE'}
             maxLength={80}
             onChange={(event) => setForm({ ...form, buttonText: event.target.value })}
-            className="border-border rounded-md border px-3 py-2 disabled:opacity-50"
+            className="border-border min-h-11 rounded-md border px-3 py-2 disabled:opacity-50"
           />
         </label>
         {form.destinationType !== 'NONE' && form.destinationType !== 'INTERNAL_PATH' && (
@@ -228,7 +228,7 @@ export function StoreBannersManager({
             <select
               value={form.destinationValue}
               onChange={(event) => setForm({ ...form, destinationValue: event.target.value })}
-              className="border-border rounded-md border px-3 py-2"
+              className="border-border min-h-11 rounded-md border px-3 py-2"
             >
               <option value="">Selecione</option>
               {destinationOptions.map((item) => (
@@ -246,7 +246,7 @@ export function StoreBannersManager({
               value={form.destinationValue}
               placeholder="/slug-da-loja"
               onChange={(event) => setForm({ ...form, destinationValue: event.target.value })}
-              className="border-border rounded-md border px-3 py-2"
+              className="border-border min-h-11 rounded-md border px-3 py-2"
             />
           </label>
         )}
@@ -257,7 +257,7 @@ export function StoreBannersManager({
             value={form.startsAt}
             disabled={!scheduledEnabled}
             onChange={(event) => setForm({ ...form, startsAt: event.target.value })}
-            className="border-border rounded-md border px-3 py-2 disabled:opacity-50"
+            className="border-border min-h-11 rounded-md border px-3 py-2 disabled:opacity-50"
           />
         </label>
         <label className="text-text-secondary grid gap-1 text-sm">
@@ -267,12 +267,13 @@ export function StoreBannersManager({
             value={form.endsAt}
             disabled={!scheduledEnabled}
             onChange={(event) => setForm({ ...form, endsAt: event.target.value })}
-            className="border-border rounded-md border px-3 py-2 disabled:opacity-50"
+            className="border-border min-h-11 rounded-md border px-3 py-2 disabled:opacity-50"
           />
         </label>
-        <label className="text-text-secondary flex items-center gap-2 text-sm sm:col-span-2">
+        <label className="text-text-secondary flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
           <input
             type="checkbox"
+            className="h-5 w-5"
             checked={form.isActive}
             onChange={(event) => setForm({ ...form, isActive: event.target.checked })}
           />
@@ -283,7 +284,7 @@ export function StoreBannersManager({
             type="button"
             disabled={isPending}
             onClick={save}
-            className="bg-brand-500 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="bg-brand-600 hover:bg-brand-700 min-h-11 rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {form.id ? 'Atualizar banner' : 'Criar banner'}
           </button>

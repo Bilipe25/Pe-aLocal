@@ -1,16 +1,11 @@
-import type { TenantStatus } from '@prisma/client';
 import { ArrowLeft, Building2, Palette, Store, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { changeTenantStatusAction } from '@/features/admin/actions';
+import { TenantStatusAction } from '@/components/admin/tenant-status-action';
+import { TenantStatusBadge } from '@/components/admin/tenant-status-badge';
+import { buttonVariants } from '@/components/ui/button';
 import { getAdminTenantDetails } from '@/server/services/admin.service';
-
-const STATUS_LABEL: Record<TenantStatus, string> = {
-  ACTIVE: 'Ativo',
-  SUSPENDED: 'Suspenso',
-  PENDING: 'Pendente',
-};
 
 export default async function AdminTenantPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,39 +16,31 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
     <div className="space-y-6">
       <Link
         href="/admin/tenants"
-        className="text-text-secondary hover:text-brand-500 inline-flex items-center gap-1 text-sm"
+        className="text-text-secondary hover:text-brand-600 inline-flex min-h-11 items-center gap-1 text-sm"
       >
-        <ArrowLeft className="h-4 w-4" /> Voltar para tenants
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Voltar para estabelecimentos
       </Link>
 
       <section className="border-border bg-surface flex flex-col justify-between gap-4 rounded-xl border p-6 shadow-sm sm:flex-row sm:items-center">
         <div>
-          <p className="text-text-muted text-sm">Tenant {tenant.id}</p>
-          <h1 className="text-text-primary mt-1 text-2xl font-bold">{tenant.name}</h1>
-          <p className="text-text-secondary mt-1 text-sm">
-            Status atual: {STATUS_LABEL[tenant.status]}
+          <p className="text-text-muted max-w-full text-sm break-all">
+            ID do estabelecimento: {tenant.id}
           </p>
+          <h1 className="text-text-primary mt-1 text-2xl font-bold text-balance break-words">
+            {tenant.name}
+          </h1>
+          <div className="mt-2">
+            <TenantStatusBadge status={tenant.status} />
+          </div>
         </div>
-        {tenant.status === 'ACTIVE' ? (
-          <form action={changeTenantStatusAction.bind(null, tenant.id, 'SUSPENDED')}>
-            <button className="bg-error-light text-error rounded-md px-4 py-2 text-sm font-medium hover:opacity-80">
-              Suspender tenant
-            </button>
-          </form>
-        ) : (
-          <form action={changeTenantStatusAction.bind(null, tenant.id, 'ACTIVE')}>
-            <button className="bg-success-light text-success rounded-md px-4 py-2 text-sm font-medium hover:opacity-80">
-              Ativar tenant
-            </button>
-          </form>
-        )}
+        <TenantStatusAction tenantId={tenant.id} tenantName={tenant.name} status={tenant.status} />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="border-border bg-surface rounded-xl border shadow-sm">
           <div className="border-border flex items-center gap-2 border-b px-5 py-4">
-            <Users className="text-brand-500 h-5 w-5" />
-            <h2 className="text-text-primary font-semibold">Memberships (somente leitura)</h2>
+            <Users className="text-brand-600 h-5 w-5" aria-hidden="true" />
+            <h2 className="text-text-primary font-semibold">Acessos da equipe (somente leitura)</h2>
           </div>
           <ul className="divide-border divide-y">
             {tenant.members.map((member) => (
@@ -68,20 +55,25 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
                   </span>
                 </div>
                 <p className="text-text-muted mt-2 text-xs">
-                  Usuário {member.user.isActive ? 'ativo' : 'inativo'} · Membership{' '}
-                  {member.isActive ? 'ativa' : 'inativa'}
+                  Usuário {member.user.isActive ? 'ativo' : 'inativo'} · Acesso{' '}
+                  {member.isActive ? 'ativo' : 'inativo'}
                 </p>
               </li>
             ))}
             {tenant.members.length === 0 && (
-              <li className="text-text-muted px-5 py-8 text-center text-sm">Sem memberships.</li>
+              <li className="px-5 py-8 text-center">
+                <p className="text-text-primary text-sm font-medium">Nenhum acesso cadastrado</p>
+                <p className="text-text-secondary mt-1 text-xs">
+                  A equipe deste estabelecimento ainda não possui vínculos.
+                </p>
+              </li>
             )}
           </ul>
         </section>
 
         <section className="border-border bg-surface rounded-xl border shadow-sm">
           <div className="border-border flex items-center gap-2 border-b px-5 py-4">
-            <Store className="text-brand-500 h-5 w-5" />
+            <Store className="text-brand-600 h-5 w-5" aria-hidden="true" />
             <h2 className="text-text-primary font-semibold">Lojas (somente leitura)</h2>
           </div>
           <ul className="divide-border divide-y">
@@ -96,9 +88,9 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
                     <span className="text-text-muted text-xs">{store.status}</span>
                     <Link
                       href={`/admin/tenants/${tenant.id}/stores/${store.id}/customization`}
-                      className="border-border text-text-secondary hover:bg-surface-secondary inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+                      className={buttonVariants({ variant: 'outline', size: 'sm' })}
                     >
-                      <Palette className="h-3.5 w-3.5" /> Personalização
+                      <Palette aria-hidden="true" /> Personalização
                     </Link>
                   </div>
                 </div>
@@ -113,8 +105,8 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
 
       <aside className="border-info/30 bg-info-light text-info flex items-start gap-3 rounded-xl border p-4 text-sm">
         <Building2 className="mt-0.5 h-5 w-5 shrink-0" />
-        Esta visão não permite editar usuários, memberships, lojas ou dados comerciais. Somente
-        ativar e suspender o tenant gera alteração e auditoria.
+        Esta consulta não permite editar usuários, acessos, lojas ou dados comerciais. Somente
+        ativar e suspender o estabelecimento gera alteração e auditoria.
       </aside>
     </div>
   );

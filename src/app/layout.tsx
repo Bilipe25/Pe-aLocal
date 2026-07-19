@@ -21,6 +21,7 @@ const spaceMono = Space_Mono({
   variable: '--font-space-mono',
   weight: ['700'],
   display: 'swap',
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -51,11 +52,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="pt-BR"
-      className={`${bricolage.variable} ${inter.variable} ${spaceMono.variable}`}
-    >
-      <body className="min-h-screen bg-papel font-body text-tinta antialiased">
+    <html lang="pt-BR" className={`${bricolage.variable} ${inter.variable} ${spaceMono.variable}`}>
+      <body className="bg-papel font-body text-tinta min-h-screen antialiased">
         {children}
         <Toaster
           position="top-right"
