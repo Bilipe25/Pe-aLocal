@@ -16,10 +16,12 @@ interface DeliveryZone {
   name: string;
   fee: number;
   estimatedTime: string | null;
+  minOrderValue: number | null;
 }
 
 interface CheckoutFormProps {
   storeSlug: string;
+  minOrderValue: number;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   acceptsPix: boolean;
@@ -30,6 +32,7 @@ interface CheckoutFormProps {
 
 export function CheckoutForm({
   storeSlug,
+  minOrderValue,
   deliveryEnabled,
   pickupEnabled,
   acceptsPix,
@@ -41,12 +44,15 @@ export function CheckoutForm({
   const items = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clearCart);
   const [isPending, startTransition] = useTransition();
+  const canDeliver = deliveryEnabled && deliveryZones.length > 0;
+  const hasFulfillmentMethod = canDeliver || pickupEnabled;
+  const hasPaymentMethod = acceptsPix || acceptsCash || acceptsCardOnDelivery;
 
   // Form state
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [modality, setModality] = useState<'DELIVERY' | 'PICKUP'>(
-    deliveryEnabled ? 'DELIVERY' : 'PICKUP',
+    canDeliver ? 'DELIVERY' : 'PICKUP',
   );
   const [deliveryZoneId, setDeliveryZoneId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -67,6 +73,11 @@ export function CheckoutForm({
   const selectedZone = deliveryZones.find((z) => z.id === deliveryZoneId);
   const deliveryFee = modality === 'DELIVERY' && selectedZone ? selectedZone.fee : 0;
   const total = subtotal + deliveryFee;
+  const effectiveMinOrderValue = Math.max(
+    minOrderValue,
+    modality === 'DELIVERY' ? (selectedZone?.minOrderValue ?? 0) : 0,
+  );
+  const missingForMinimum = Math.max(0, effectiveMinOrderValue - subtotal);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -119,6 +130,7 @@ export function CheckoutForm({
             <Input
               id="name"
               type="text"
+              autoComplete="name"
               required
               minLength={2}
               value={customerName}
@@ -134,6 +146,8 @@ export function CheckoutForm({
             <Input
               id="phone"
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               required
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
@@ -148,7 +162,7 @@ export function CheckoutForm({
       <section>
         <h2 className="font-display text-base font-bold text-tinta">Como quer receber?</h2>
         <div className="mt-2 flex gap-2">
-          {deliveryEnabled && (
+          {canDeliver && (
             <button
               type="button"
               onClick={() => setModality('DELIVERY')}
@@ -178,6 +192,17 @@ export function CheckoutForm({
           )}
         </div>
 
+        {deliveryEnabled && !canDeliver && (
+          <p className="mt-2 text-sm text-text-muted">
+            A entrega está temporariamente indisponível porque não há regiões ativas.
+          </p>
+        )}
+        {!hasFulfillmentMethod && (
+          <p className="mt-2 rounded-lg border border-error/20 bg-error-light px-3 py-2 text-sm text-tinta">
+            A loja não possui entrega ou retirada disponível agora.
+          </p>
+        )}
+
         {modality === 'DELIVERY' && (
           <div className="mt-3 space-y-3">
             <div>
@@ -206,6 +231,7 @@ export function CheckoutForm({
               </label>
               <Textarea
                 id="address"
+                autoComplete="street-address"
                 required
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
@@ -278,6 +304,12 @@ export function CheckoutForm({
           )}
         </div>
 
+        {!hasPaymentMethod && (
+          <p className="mt-2 rounded-lg border border-error/20 bg-error-light px-3 py-2 text-sm text-tinta">
+            A loja não possui uma forma de pagamento disponível agora.
+          </p>
+        )}
+
         {paymentMethod === 'CASH' && (
           <div className="mt-3">
             <label htmlFor="change" className="text-sm font-medium text-text-muted">
@@ -318,6 +350,17 @@ export function CheckoutForm({
         total={total}
       />
 
+      {missingForMinimum > 0 && (
+        <div
+          id="minimum-order-message"
+          role="status"
+          className="rounded-lg border border-warning/30 bg-warning-light px-4 py-3 text-sm text-tinta"
+        >
+          Adicione mais {formatCurrency(missingForMinimum)} para atingir o pedido mínimo de{' '}
+          {formatCurrency(effectiveMinOrderValue)}.
+        </div>
+      )}
+
       {/* Erro */}
       {error && (
         <div
@@ -335,8 +378,16 @@ export function CheckoutForm({
       {/* Submit */}
       <Button
         type="submit"
-        disabled={isPending || items.length === 0}
-        aria-describedby={error ? 'checkout-error' : undefined}
+        disabled={
+          isPending ||
+          items.length === 0 ||
+          missingForMinimum > 0 ||
+          !hasFulfillmentMethod ||
+          !hasPaymentMethod
+        }
+        aria-describedby={
+          error ? 'checkout-error' : missingForMinimum > 0 ? 'minimum-order-message' : undefined
+        }
         className="storefront-primary-action w-full font-body font-medium shadow-sm disabled:opacity-50"
       >
         {isPending ? (
@@ -345,7 +396,7 @@ export function CheckoutForm({
             Processando...
           </>
         ) : (
-          `Fazer Pedido · ${formatCurrency(total)}`
+          `Confirmar pedido · ${formatCurrency(total)}`
         )}
       </Button>
     </form>

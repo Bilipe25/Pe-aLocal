@@ -11,8 +11,8 @@ export function StoreClosedBanner({ status }: StoreClosedBannerProps) {
         <AlertTriangle className="storefront-action-text h-4 w-4 shrink-0" aria-hidden="true" />
         <p className="text-tinta">
           {status === 'PAUSED'
-            ? 'A loja está temporariamente indisponível.'
-            : 'A loja está fechada no momento. Você pode ver o cardápio, mas não pode fazer pedidos.'}
+            ? 'Os pedidos estão pausados. Você ainda pode consultar produtos e adicionais.'
+            : 'A loja está fechada agora. Consulte o cardápio e volte quando os pedidos reabrirem.'}
         </p>
       </div>
     </div>

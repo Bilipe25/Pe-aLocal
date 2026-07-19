@@ -33,4 +33,26 @@ describe('carrinho por loja', () => {
       items: [],
     });
   });
+
+  it('retorna o id ao adicionar e restaura um snapshot limpo', () => {
+    const addedId = useCartStore.getState().addItem({
+      productId: item.productId,
+      productName: item.productName,
+      basePrice: item.basePrice,
+      quantity: item.quantity,
+      notes: item.notes,
+      selectedOptions: item.selectedOptions,
+      unitPrice: item.unitPrice,
+    });
+    const snapshot = useCartStore.getState().items;
+
+    expect(addedId).toEqual(expect.any(String));
+    expect(snapshot).toEqual([expect.objectContaining({ id: addedId, productId: 'product-1' })]);
+
+    useCartStore.getState().clearCart();
+    expect(useCartStore.getState().items).toEqual([]);
+
+    useCartStore.getState().restoreItems(snapshot);
+    expect(useCartStore.getState().items).toEqual(snapshot);
+  });
 });

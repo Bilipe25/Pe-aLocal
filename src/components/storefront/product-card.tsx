@@ -51,7 +51,7 @@ export function ProductCard({
             <img
               className="storefront-product-image"
               src={imageUrl}
-              alt={name}
+              alt=""
               width={384}
               height={384}
               loading="lazy"

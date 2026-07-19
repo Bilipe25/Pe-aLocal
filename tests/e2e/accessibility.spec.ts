@@ -36,12 +36,24 @@ test.describe('acessibilidade WCAG', () => {
 
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`/${storeSlug}`);
+    await page.evaluate(() => localStorage.removeItem('pedidolocal-cart'));
+    await page.reload();
     await expect(page.locator('.storefront-theme')).toBeVisible();
+    await expect(page.getByLabel('Informações para pedir')).toBeVisible();
     await expectNoHighImpactViolations(page);
+
+    expect((await page.title()).match(/PedidoLocal/g)?.length ?? 0).toBe(1);
 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+
+    const search = page.getByRole('searchbox', { name: 'Buscar no cardápio' });
+    await search.fill('produto que não existe');
+    await expect(page.getByText('Nenhum resultado para “produto que não existe”')).toBeVisible();
+    await page.getByRole('button', { name: 'Limpar busca' }).click();
+    await expect(search).toHaveValue('');
+    await expect(search).toBeFocused();
 
     const productCard = page.locator('.storefront-product-card:not(:disabled)').first();
     test.skip((await productCard.count()) === 0, 'A loja E2E não possui produto disponível.');
@@ -54,6 +66,20 @@ test.describe('acessibilidade WCAG', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toBeHidden();
     await expect(productCard).toBeFocused();
+
+    await productCard.click();
+    const dialog = page.getByRole('dialog');
+    const requiredGroups = dialog.locator('section').filter({ hasText: 'Obrigatório' });
+    for (let index = 0; index < (await requiredGroups.count()); index += 1) {
+      const group = requiredGroups.nth(index);
+      const firstOption = group.locator('[role="radio"], [role="checkbox"]').first();
+      if (await firstOption.count()) await firstOption.click();
+    }
+
+    await dialog.getByRole('button', { name: /Adicionar ·/ }).click();
+    await expect(page.getByText('Adicionado à sacola')).toBeVisible();
+    await page.getByRole('button', { name: 'Desfazer' }).click();
+    await expect(page.getByText('Ver sacola')).toBeHidden();
   });
 
   test('editor administrativo não possui violações críticas ou sérias', async ({ page }) => {

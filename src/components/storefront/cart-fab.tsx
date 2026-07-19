@@ -6,11 +6,11 @@ import { useCartStore } from '@/stores/cart-store';
 import { formatCurrency } from '@/lib/utils';
 
 export function CartFab() {
-  const getTotal = useCartStore((s) => s.getTotal);
-  const getItemCount = useCartStore((s) => s.getItemCount);
+  const items = useCartStore((state) => state.items);
   const storeSlug = useCartStore((s) => s.storeSlug);
 
-  const count = getItemCount();
+  const count = items.reduce((sum, item) => sum + item.quantity, 0);
+  const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   if (count === 0 || !storeSlug) return null;
 
   return (
@@ -29,7 +29,7 @@ export function CartFab() {
           <span className="font-body font-medium">Ver sacola</span>
         </div>
         <span className="font-mono font-bold">
-          {formatCurrency(getTotal())}
+          {formatCurrency(total)}
         </span>
       </Link>
     </div>

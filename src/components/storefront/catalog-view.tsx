@@ -1,6 +1,6 @@
 'use client';
 
-import { Search } from 'lucide-react';
+import { Search, SearchX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CartFab } from '@/components/storefront/cart-fab';
@@ -79,6 +79,7 @@ export function CatalogView({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
 
@@ -124,6 +125,11 @@ export function CatalogView({
     requestAnimationFrame(() => lastFocusedProductRef.current?.focus());
   }
 
+  function clearSearch() {
+    setSearch('');
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -153,7 +159,6 @@ export function CatalogView({
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
       onClick={() => openProduct(product)}
-      disabled={!storeOpen}
       showImage={customization.layout.showProductImages}
       showBadges={customization.layout.showProductBadges}
       presentation={customization.layout.productPresentation}
@@ -203,7 +208,24 @@ export function CatalogView({
       return (
         <main key={section} className="storefront-catalog">
           {visibleCategories.length === 0 ? (
-            <div className="storefront-empty">Nenhum produto encontrado.</div>
+            <section className="storefront-empty" role="status" aria-live="polite">
+              <SearchX className="storefront-empty-icon" aria-hidden="true" />
+              <h2 className="storefront-empty-title">
+                {search.trim()
+                  ? `Nenhum resultado para “${search.trim()}”`
+                  : 'Cardápio em atualização'}
+              </h2>
+              <p>
+                {search.trim()
+                  ? 'Tente outro nome ou limpe a busca para navegar pelas categorias.'
+                  : 'A loja ainda não publicou produtos disponíveis. Volte em breve.'}
+              </p>
+              {search.trim() && (
+                <button type="button" onClick={clearSearch} className="storefront-empty-action">
+                  Limpar busca
+                </button>
+              )}
+            </section>
           ) : (
             visibleCategories.map((category) => (
               <section
@@ -268,6 +290,7 @@ export function CatalogView({
             Buscar no cardápio
           </label>
           <input
+            ref={searchInputRef}
             id="storefront-search"
             type="search"
             value={search}

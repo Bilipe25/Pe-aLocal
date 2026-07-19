@@ -7,7 +7,7 @@ import {
   getStorefrontThemeStyle,
   storefrontLayoutClass,
 } from '@/features/customization/theme';
-import { getPublicStoreBySlug } from '@/server/queries/public-store';
+import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
 interface StoreLayoutProps {
   children: React.ReactNode;
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
   if (!store) return { title: 'Loja não encontrada', robots: { index: false, follow: false } };
 
   const config = store.customization.config;
-  const title = config.seo.title || `${store.name} | PedidoLocal`;
+  const title = config.seo.title || store.name;
   const description =
     config.seo.description ||
     config.identity.shortDescription ||
@@ -71,6 +71,11 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
 
   const config = store.customization.config;
   const storeOpen = store.status === 'OPEN';
+  const deliveryZones = store.settings?.deliveryEnabled
+    ? await getPublicDeliveryZones(store.id)
+    : [];
+  const minDeliveryFee =
+    deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
 
   return (
     <div
@@ -84,6 +89,11 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         description={store.description}
         status={store.status}
         estimatedTime={store.settings?.estimatedTime}
+        minOrderValue={store.settings?.minOrderValue}
+        deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
+        pickupEnabled={store.settings?.pickupEnabled}
+        minDeliveryFee={minDeliveryFee}
+        openingHours={store.openingHours}
         neighborhood={store.address?.neighborhood}
         city={store.address?.city}
         logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}

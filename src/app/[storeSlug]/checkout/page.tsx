@@ -63,7 +63,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
             <ArrowLeft className="h-5 w-5" aria-hidden="true" />
           </Link>
           <div className="flex-1">
-            <h1 className="font-display text-lg font-bold text-tinta">Finalizar Pedido</h1>
+            <h1 className="font-display text-lg font-bold text-tinta">Finalizar pedido</h1>
             <p className="break-words text-sm text-text-muted">{store.name}</p>
           </div>
         </div>
@@ -81,6 +81,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
         {store.status === 'OPEN' ? (
           <CheckoutForm
             storeSlug={storeSlug}
+            minOrderValue={store.settings.minOrderValue}
             deliveryEnabled={store.settings.deliveryEnabled}
             pickupEnabled={store.settings.pickupEnabled}
             acceptsPix={store.settings.acceptsPix}

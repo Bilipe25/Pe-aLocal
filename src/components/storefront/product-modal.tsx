@@ -3,6 +3,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Minus, Plus, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,6 +40,7 @@ interface ProductModalProps {
 
 export function ProductModal({ product, onClose, storeOpen }: ProductModalProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const removeItem = useCartStore((state) => state.removeItem);
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Map<string, SelectedOption[]>>(
@@ -67,7 +69,7 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
       : (document.querySelector<HTMLElement>('.storefront-theme') ?? undefined);
 
   function handleAdd() {
-    addItem({
+    const itemId = addItem({
       productId: product.id,
       productName: product.name,
       basePrice: product.basePrice,
@@ -75,6 +77,14 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
       notes,
       selectedOptions: allSelectedOptions,
       unitPrice,
+    });
+    toast.success('Adicionado à sacola', {
+      description: `${quantity} ${quantity === 1 ? 'unidade' : 'unidades'} de ${product.name}.`,
+      action: {
+        label: 'Desfazer',
+        onClick: () => removeItem(itemId),
+      },
+      duration: 6000,
     });
     onClose();
   }
@@ -140,7 +150,12 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
           )}
 
           <div className="storefront-safe-bottom sticky bottom-0 border-t border-tinta/10 bg-papel px-4 py-3">
-            {missingRequired && (
+            {!storeOpen && (
+              <p id="store-closed-product-message" role="status" className="mb-2 text-sm text-text-muted">
+                A loja está fechada agora. Consulte o produto e volte quando os pedidos reabrirem.
+              </p>
+            )}
+            {storeOpen && missingRequired && (
               <p id="required-options-message" role="status" className="mb-2 text-sm text-text-muted">
                 Selecione os complementos obrigatórios para continuar.
               </p>
@@ -172,10 +187,16 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
               <Button
                 onClick={handleAdd}
                 disabled={!storeOpen || missingRequired}
-                aria-describedby={missingRequired ? 'required-options-message' : undefined}
+                aria-describedby={
+                  !storeOpen
+                    ? 'store-closed-product-message'
+                    : missingRequired
+                      ? 'required-options-message'
+                      : undefined
+                }
                 className="storefront-primary-action flex-1 font-body font-medium shadow-sm disabled:opacity-50"
               >
-                Adicionar · {formatCurrency(totalPrice)}
+                {storeOpen ? `Adicionar · ${formatCurrency(totalPrice)}` : 'Loja fechada'}
               </Button>
             </div>
           </div>

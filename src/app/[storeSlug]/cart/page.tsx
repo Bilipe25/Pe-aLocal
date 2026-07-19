@@ -3,6 +3,7 @@
 import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
@@ -14,9 +15,37 @@ export default function CartPage() {
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const removeItem = useCartStore((state) => state.removeItem);
   const clearCart = useCartStore((state) => state.clearCart);
+  const restoreItems = useCartStore((state) => state.restoreItems);
   const getTotal = useCartStore((state) => state.getTotal);
 
   const total = getTotal();
+
+  function handleClearCart() {
+    const snapshot = items.map((item) => ({ ...item, selectedOptions: [...item.selectedOptions] }));
+    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    clearCart();
+    toast('Sacola limpa', {
+      description: `${itemCount} ${itemCount === 1 ? 'item foi removido' : 'itens foram removidos'}.`,
+      action: {
+        label: 'Desfazer',
+        onClick: () => restoreItems(snapshot),
+      },
+      duration: 6000,
+    });
+  }
+
+  function handleRemoveItem(itemId: string, productName: string) {
+    const snapshot = items.map((item) => ({ ...item, selectedOptions: [...item.selectedOptions] }));
+    removeItem(itemId);
+    toast(`${productName} removido`, {
+      description: 'O item saiu da sua sacola.',
+      action: {
+        label: 'Desfazer',
+        onClick: () => restoreItems(snapshot),
+      },
+      duration: 6000,
+    });
+  }
 
   if (items.length === 0) {
     return (
@@ -51,7 +80,7 @@ export default function CartPage() {
         </Link>
         <button
           type="button"
-          onClick={clearCart}
+          onClick={handleClearCart}
           className="storefront-link min-h-11 text-sm hover:underline"
         >
           Limpar sacola
@@ -82,7 +111,7 @@ export default function CartPage() {
               <button
                 type="button"
                 aria-label={`Remover ${item.productName} da sacola`}
-                onClick={() => removeItem(item.id)}
+                onClick={() => handleRemoveItem(item.id, item.productName)}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-text-muted hover:bg-tinta/5 hover:text-tinta"
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -95,6 +124,7 @@ export default function CartPage() {
                   type="button"
                   aria-label={`Diminuir quantidade de ${item.productName}`}
                   onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                  disabled={item.quantity <= 1}
                   className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-text-muted hover:bg-tinta/5"
                 >
                   <Minus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -127,7 +157,7 @@ export default function CartPage() {
             <span className="font-mono text-lg font-bold text-tinta">{formatCurrency(total)}</span>
           </div>
           <Button asChild className="storefront-primary-action w-full font-body font-medium shadow-sm">
-            <Link href={`/${params.storeSlug}/checkout`}>Ir para o Checkout</Link>
+            <Link href={`/${params.storeSlug}/checkout`}>Continuar pedido</Link>
           </Button>
         </div>
       </div>
