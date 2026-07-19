@@ -45,8 +45,25 @@ test.describe('experiência pública', () => {
     await expect(password).toHaveAttribute('aria-describedby', 'password-error');
     await expect(page.locator('#email-error')).toHaveRole('alert');
     await expect(page.locator('#password-error')).toHaveRole('alert');
+  });
 
-    await page.getByRole('button', { name: 'Preencher dados de demonstração' }).click();
+  test('oferece preenchimento demonstrativo somente no desenvolvimento', async ({
+    page,
+  }, testInfo) => {
+    await page.goto('/login');
+
+    const demoButton = page.getByRole('button', {
+      name: 'Preencher dados de demonstração',
+    });
+
+    if (testInfo.project.name === 'workerd-chromium') {
+      await expect(demoButton).toHaveCount(0);
+      return;
+    }
+
+    await demoButton.click();
+    const email = page.getByLabel('E-mail');
+    const password = page.getByLabel('Senha', { exact: true });
     await expect(email).toHaveValue('dono@demo.com');
     await expect(password).toHaveValue('SenhaDemo123!');
     await expect(page.locator('#email-error')).toHaveCount(0);
