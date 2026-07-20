@@ -41,6 +41,7 @@ export async function findStoreOverviewById(id: string, tenantId: string) {
       slug: true,
       status: true,
       isActive: true,
+      timeZone: true,
       configurationVersion: true,
       tenant: { select: { status: true } },
       address: { select: { id: true } },
@@ -93,6 +94,7 @@ export async function findStoreHoursSettingsById(id: string, tenantId: string) {
     where: { id, tenantId },
     select: {
       id: true,
+      timeZone: true,
       configurationVersion: true,
       openingHours: {
         orderBy: { dayOfWeek: 'asc' },
@@ -101,6 +103,18 @@ export async function findStoreHoursSettingsById(id: string, tenantId: string) {
           openTime: true,
           closeTime: true,
           isActive: true,
+        },
+      },
+      scheduleExceptions: {
+        orderBy: { date: 'asc' },
+        select: {
+          id: true,
+          date: true,
+          type: true,
+          openTime: true,
+          closeTime: true,
+          reason: true,
+          createdById: true,
         },
       },
     },
@@ -161,6 +175,7 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       slug: true,
       status: true,
       isActive: true,
+      timeZone: true,
       configurationVersion: true,
       tenant: {
         select: { id: true, name: true, status: true },
@@ -195,6 +210,7 @@ export async function findStoreReadinessById(
       coverUrl: true,
       status: true,
       isActive: true,
+      timeZone: true,
       configurationVersion: true,
       tenant: { select: { status: true } },
       settings: {
@@ -224,6 +240,15 @@ export async function findStoreReadinessById(
         orderBy: { dayOfWeek: 'asc' },
         select: {
           dayOfWeek: true,
+          openTime: true,
+          closeTime: true,
+        },
+      },
+      scheduleExceptions: {
+        orderBy: { date: 'asc' },
+        select: {
+          date: true,
+          type: true,
           openTime: true,
           closeTime: true,
         },

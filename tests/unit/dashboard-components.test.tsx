@@ -85,6 +85,9 @@ describe('componentes do painel do tenant', () => {
       <HoursForm
         storeId="00000000-0000-0000-0000-000000000001"
         expectedConfigurationVersion={0}
+        timeZone="America/Fortaleza"
+        canEditTimeZone
+        exceptions={[]}
         hours={[
           {
             dayOfWeek: 'MONDAY',

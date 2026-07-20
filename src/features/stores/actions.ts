@@ -7,6 +7,8 @@ import { CACHE_TAGS } from '@/server/cache';
 import { actionError, actionSuccess, type ActionResult } from '@/server/errors';
 import { rememberActiveStore } from '@/server/services/store-context.service';
 import {
+  removeStoreScheduleException,
+  saveStoreScheduleException,
   updateStoreAddressSettings,
   updateStoreGeneralSettings,
   updateStoreHoursSettings,
@@ -85,11 +87,38 @@ export async function updateHoursAction(
   storeId: string,
   expectedConfigurationVersion: number,
   data: {
+    timeZone: string;
     hours: { dayOfWeek: string; openTime: string; closeTime: string; isActive: boolean }[];
   },
 ) {
   return executeStoreMutation(() =>
     updateStoreHoursSettings(storeId, expectedConfigurationVersion, data),
+  );
+}
+
+export async function saveScheduleExceptionAction(
+  storeId: string,
+  expectedConfigurationVersion: number,
+  data: {
+    date: string;
+    type: 'CLOSED' | 'CUSTOM_HOURS';
+    openTime?: string;
+    closeTime?: string;
+    reason?: string;
+  },
+) {
+  return executeStoreMutation(() =>
+    saveStoreScheduleException(storeId, expectedConfigurationVersion, data),
+  );
+}
+
+export async function removeScheduleExceptionAction(
+  storeId: string,
+  expectedConfigurationVersion: number,
+  exceptionId: string,
+) {
+  return executeStoreMutation(() =>
+    removeStoreScheduleException(storeId, expectedConfigurationVersion, exceptionId),
   );
 }
 

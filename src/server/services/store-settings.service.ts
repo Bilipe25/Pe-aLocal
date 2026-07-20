@@ -4,6 +4,7 @@ import { Prisma, type StoreStatus } from '@prisma/client';
 import { z } from 'zod';
 
 import {
+  createScheduleExceptionSchema,
   expectedConfigurationVersionSchema,
   updateAddressSchema,
   updateHoursSchema,
@@ -14,6 +15,7 @@ import {
 import { requireTenantStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import {
+  AuthorizationError,
   BusinessRuleError,
   ConflictError,
   TenantAccessError,
@@ -22,10 +24,8 @@ import {
 import { hasTenantPermission, Permission, type TenantRole } from '@/server/permissions';
 import * as auditRepo from '@/server/repositories/audit-log.repository';
 import * as storeRepo from '@/server/repositories/store.repository';
-import {
-  getStoreReadinessForTenant,
-  getStoreReadinessStateForTenant,
-} from '@/server/services/store-readiness.service';
+import { getStoreAvailabilityStateForTenant } from '@/server/services/store-availability.service';
+import { getStoreReadinessStateForTenant } from '@/server/services/store-readiness.service';
 
 const CONFIGURATION_CONFLICT_MESSAGE =
   'As configurações foram alteradas em outra sessão. Recarregue a página antes de continuar.';
@@ -165,13 +165,18 @@ async function writeStoreAudit(
 
 export async function getStoreOverview(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_STORE_OVERVIEW);
-  const [store, readiness] = await Promise.all([
+  const [store, state] = await Promise.all([
     storeRepo.findStoreOverviewById(storeId, session.tenantId),
-    getStoreReadinessForTenant(session.tenantId, storeId),
+    getStoreAvailabilityStateForTenant(session.tenantId, storeId),
   ]);
   if (!store) missingStore();
 
-  return { store, readiness, capabilities: getStorePageCapabilities(session.tenantRole) };
+  return {
+    store,
+    readiness: state.readiness,
+    availability: state.availability,
+    capabilities: getStorePageCapabilities(session.tenantRole),
+  };
 }
 
 export async function getStoreGeneralSettings(storeId: string) {
@@ -204,6 +209,7 @@ export async function getStoreHoursSettings(storeId: string) {
   return {
     store,
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_STORE_HOURS),
+    canEditTimeZone: session.tenantRole === 'OWNER',
   };
 }
 
@@ -481,13 +487,24 @@ export async function updateStoreHoursSettings(
   const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
   const parsed = parseInput(updateHoursSchema, input, 'Os horários da loja são inválidos.');
 
+  if (parsed.timeZone !== store.timeZone && session.tenantRole !== 'OWNER') {
+    throw new AuthorizationError('Somente o proprietário pode alterar o fuso horário da loja.');
+  }
+  if (store.status === 'OPEN' && !parsed.hours.some((hour) => hour.isActive)) {
+    throw new BusinessRuleError(
+      'Mantenha ao menos um dia ativo enquanto o funcionamento automático estiver habilitado.',
+    );
+  }
+
   await getDb().$transaction(async (tx) => {
     const previous = await tx.openingHour.findMany({
       where: { storeId: store.id },
       orderBy: { dayOfWeek: 'asc' },
       select: { dayOfWeek: true, openTime: true, closeTime: true, isActive: true },
     });
-    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion, {
+      timeZone: parsed.timeZone,
+    });
     for (const hour of parsed.hours) {
       await tx.openingHour.upsert({
         where: { storeId_dayOfWeek: { storeId: store.id, dayOfWeek: hour.dayOfWeek } },
@@ -508,6 +525,8 @@ export async function updateStoreHoursSettings(
       metadata: {
         previousActiveDays: previous.filter((hour) => hour.isActive).map((hour) => hour.dayOfWeek),
         nextActiveDays: parsed.hours.filter((hour) => hour.isActive).map((hour) => hour.dayOfWeek),
+        previousTimeZone: store.timeZone,
+        nextTimeZone: parsed.timeZone,
         changedDays: parsed.hours
           .filter((hour) => {
             const old = previous.find((item) => item.dayOfWeek === hour.dayOfWeek);
@@ -516,6 +535,123 @@ export async function updateStoreHoursSettings(
           .map((hour) => hour.dayOfWeek),
       },
     });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function saveStoreScheduleException(
+  storeId: string,
+  expectedVersion: unknown,
+  input: unknown,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_HOURS);
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const parsed = parseInput(
+    createScheduleExceptionSchema,
+    input,
+    'A exceção de calendário é inválida.',
+  );
+  const date = new Date(`${parsed.date}T00:00:00.000Z`);
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeScheduleException.findUnique({
+      where: { storeId_date: { storeId: store.id, date } },
+      select: { id: true, type: true, openTime: true, closeTime: true, reason: true },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    const exception = await tx.storeScheduleException.upsert({
+      where: { storeId_date: { storeId: store.id, date } },
+      update: {
+        type: parsed.type,
+        openTime: parsed.type === 'CUSTOM_HOURS' ? parsed.openTime : null,
+        closeTime: parsed.type === 'CUSTOM_HOURS' ? parsed.closeTime : null,
+        reason: parsed.reason || null,
+      },
+      create: {
+        tenantId: session.tenantId,
+        storeId: store.id,
+        date,
+        type: parsed.type,
+        openTime: parsed.type === 'CUSTOM_HOURS' ? parsed.openTime : null,
+        closeTime: parsed.type === 'CUSTOM_HOURS' ? parsed.closeTime : null,
+        reason: parsed.reason || null,
+        createdById: session.userId,
+      },
+      select: { id: true },
+    });
+    await auditRepo.createAuditLog(
+      {
+        tenantId: session.tenantId,
+        storeId: store.id,
+        userId: session.userId,
+        action: previous ? 'UPDATE' : 'CREATE',
+        entity: 'StoreScheduleException',
+        entityId: exception.id,
+        metadata: {
+          section: 'schedule-exceptions',
+          date: parsed.date,
+          previous,
+          next: {
+            type: parsed.type,
+            openTime: parsed.type === 'CUSTOM_HOURS' ? parsed.openTime : null,
+            closeTime: parsed.type === 'CUSTOM_HOURS' ? parsed.closeTime : null,
+            reason: parsed.reason || null,
+          },
+          previousConfigurationVersion: configurationVersion,
+          nextConfigurationVersion: configurationVersion + 1,
+        },
+      },
+      tx,
+    );
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function removeStoreScheduleException(
+  storeId: string,
+  expectedVersion: unknown,
+  exceptionId: unknown,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_HOURS);
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const id = parseInput(z.string().uuid(), exceptionId, 'A exceção de calendário é inválida.');
+
+  await getDb().$transaction(async (tx) => {
+    const exception = await tx.storeScheduleException.findFirst({
+      where: { id, tenantId: session.tenantId, storeId: store.id },
+      select: { id: true, date: true, type: true, openTime: true, closeTime: true, reason: true },
+    });
+    if (!exception) missingStore();
+
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeScheduleException.delete({ where: { id: exception.id } });
+    await auditRepo.createAuditLog(
+      {
+        tenantId: session.tenantId,
+        storeId: store.id,
+        userId: session.userId,
+        action: 'DELETE',
+        entity: 'StoreScheduleException',
+        entityId: exception.id,
+        metadata: {
+          section: 'schedule-exceptions',
+          removed: { ...exception, date: exception.date.toISOString().slice(0, 10) },
+          previousConfigurationVersion: configurationVersion,
+          nextConfigurationVersion: configurationVersion + 1,
+        },
+      },
+      tx,
+    );
   });
 
   return {

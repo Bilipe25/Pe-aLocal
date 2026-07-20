@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   findStoreOverviewById: vi.fn(),
   findStoreOperationalSettingsById: vi.fn(),
   findStorePaymentSettingsById: vi.fn(),
-  getStoreReadinessForTenant: vi.fn(),
+  getStoreAvailabilityStateForTenant: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -24,8 +24,10 @@ vi.mock('@/server/repositories/store.repository', () => ({
   findStoreOperationalSettingsById: mocks.findStoreOperationalSettingsById,
   findStorePaymentSettingsById: mocks.findStorePaymentSettingsById,
 }));
+vi.mock('@/server/services/store-availability.service', () => ({
+  getStoreAvailabilityStateForTenant: mocks.getStoreAvailabilityStateForTenant,
+}));
 vi.mock('@/server/services/store-readiness.service', () => ({
-  getStoreReadinessForTenant: mocks.getStoreReadinessForTenant,
   getStoreReadinessStateForTenant: vi.fn(),
 }));
 
@@ -41,11 +43,14 @@ describe('StoreSettingsService', () => {
       session: managerSession,
       store: { id: 'store-a' },
     });
-    mocks.getStoreReadinessForTenant.mockResolvedValue({
-      isReady: true,
-      blockers: [],
-      warnings: [],
-      issues: [],
+    mocks.getStoreAvailabilityStateForTenant.mockResolvedValue({
+      readiness: { isReady: true, blockers: [], warnings: [], issues: [] },
+      availability: {
+        acceptingOrders: true,
+        state: 'OPEN',
+        reason: 'Aberta agora.',
+        nextTransitionAt: null,
+      },
     });
   });
 
@@ -102,6 +107,7 @@ describe('StoreSettingsService', () => {
 
     expect(result.store).toEqual(store);
     expect(result.store).not.toHaveProperty('settings');
+    expect(result.availability).toMatchObject({ acceptingOrders: true, state: 'OPEN' });
     expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
       'store-a',
       Permission.VIEW_STORE_OVERVIEW,

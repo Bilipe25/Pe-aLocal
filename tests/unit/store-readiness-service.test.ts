@@ -32,6 +32,7 @@ function readySnapshot(overrides: Partial<StoreReadinessSnapshot> = {}): StoreRe
     coverUrl: null,
     status: 'CLOSED',
     isActive: true,
+    timeZone: 'America/Fortaleza',
     configurationVersion: 3,
     tenant: { status: 'ACTIVE' },
     settings: {
@@ -53,6 +54,7 @@ function readySnapshot(overrides: Partial<StoreReadinessSnapshot> = {}): StoreRe
       zipCode: '60000-000',
     },
     openingHours: [{ dayOfWeek: 'MONDAY', openTime: '18:00', closeTime: '02:00' }],
+    scheduleExceptions: [],
     deliveryZones: [{ id: 'zone-a' }],
     categories: [{ id: 'category-a' }],
     products: [{ id: 'product-a' }],

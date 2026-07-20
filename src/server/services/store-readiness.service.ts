@@ -2,12 +2,12 @@ import 'server-only';
 
 import type { PixKeyType, Prisma } from '@prisma/client';
 
+import { DEFAULT_STORE_TIME_ZONE } from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
 import { TenantAccessError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import * as storeRepo from '@/server/repositories/store.repository';
 
-export const DEFAULT_STORE_TIME_ZONE = 'America/Fortaleza';
 export const HIGH_MIN_ORDER_VALUE_CENTS = 50_000;
 
 export type StoreReadinessSeverity = 'BLOCKER' | 'WARNING';
@@ -122,7 +122,7 @@ function issue(
 
 export function evaluateStoreReadiness(
   snapshot: StoreReadinessSnapshot,
-  timeZone = DEFAULT_STORE_TIME_ZONE,
+  timeZone = snapshot.timeZone ?? DEFAULT_STORE_TIME_ZONE,
 ): StoreReadiness {
   const blockers: StoreReadinessIssue[] = [];
   const warnings: StoreReadinessIssue[] = [];
