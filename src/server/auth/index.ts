@@ -161,7 +161,7 @@ export async function requireTenantRole(minimumRole: TenantRole): Promise<Tenant
 export async function requireStoreAccess(storeId: string): Promise<TenantContext> {
   const session = await requireTenantMember();
 
-  const store = await storeRepo.findStoreById(storeId, session.tenantId);
+  const store = await storeRepo.findStoreScopeById(storeId, session.tenantId);
   if (!store) {
     throw new TenantAccessError('A loja não pertence ao tenant autenticado.');
   }

@@ -3,8 +3,10 @@ import { ArrowRight, Clock, CreditCard, MapPin, Settings, Store, Truck } from 'l
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
+import { ReadOnlyNotice } from '@/components/shared/read-only-notice';
 import { StoreStatusControl } from '@/features/stores/components/store-status-control';
-import { getStoreForDashboard } from '@/features/stores/actions';
+import { loadStorePageData } from '@/features/stores/page-access';
+import { getStoreOverview } from '@/server/services/store-settings.service';
 
 export const metadata = { title: 'Minha loja' };
 
@@ -16,7 +18,7 @@ const STATUS_MAP = {
 
 export default async function StorePage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  const store = await getStoreForDashboard(storeId);
+  const { store, capabilities } = await loadStorePageData(() => getStoreOverview(storeId));
   const status = STATUS_MAP[store.status];
   const basePath = `/dashboard/stores/${store.id}`;
 
@@ -26,30 +28,35 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
       description: 'Nome, endereço público, descrição e contatos',
       href: `${basePath}/general`,
       icon: Settings,
+      visible: capabilities.viewGeneral,
     },
     {
       title: 'Horários de funcionamento',
       description: 'Dias e horários em que a loja aceita pedidos',
       href: `${basePath}/hours`,
       icon: Clock,
+      visible: capabilities.viewHours,
     },
     {
       title: 'Endereço',
       description: 'Endereço administrativo e referência da unidade',
       href: `${basePath}/address`,
       icon: MapPin,
+      visible: capabilities.viewAddress,
     },
     {
       title: 'Pagamentos',
       description: 'Configuração do Pix da unidade',
       href: `${basePath}/payments`,
       icon: CreditCard,
+      visible: capabilities.viewPayments,
     },
     {
       title: 'Operações',
       description: 'Pedido mínimo, prazo, entrega e retirada',
       href: `${basePath}/operations`,
       icon: Truck,
+      visible: capabilities.viewOperations,
     },
   ];
 
@@ -71,7 +78,11 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
           <Badge variant={status.variant}>{status.label}</Badge>
         </div>
         <div className="border-border mt-4 border-t pt-4">
-          <StoreStatusControl storeId={store.id} status={store.status} />
+          {capabilities.changeStatus ? (
+            <StoreStatusControl storeId={store.id} status={store.status} />
+          ) : (
+            <ReadOnlyNotice message="O status da unidade pode ser consultado acima, mas somente o proprietário pode alterá-lo." />
+          )}
         </div>
       </div>
 
@@ -79,22 +90,24 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
         className="divide-border border-border bg-surface divide-y overflow-hidden rounded-xl border"
         aria-label="Configurações da unidade"
       >
-        {links.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="hover:bg-surface-secondary flex min-h-20 items-center gap-3 p-4 transition-colors sm:px-5"
-          >
-            <span className="bg-brand-50 text-brand-700 rounded-lg p-2">
-              <item.icon className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="text-text-primary font-semibold">{item.title}</span>
-              <span className="text-text-secondary mt-0.5 block text-sm">{item.description}</span>
-            </span>
-            <ArrowRight className="text-text-muted shrink-0" aria-hidden="true" />
-          </Link>
-        ))}
+        {links
+          .filter((item) => item.visible)
+          .map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="hover:bg-surface-secondary flex min-h-20 items-center gap-3 p-4 transition-colors sm:px-5"
+            >
+              <span className="bg-brand-50 text-brand-700 rounded-lg p-2">
+                <item.icon className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="text-text-primary font-semibold">{item.title}</span>
+                <span className="text-text-secondary mt-0.5 block text-sm">{item.description}</span>
+              </span>
+              <ArrowRight className="text-text-muted shrink-0" aria-hidden="true" />
+            </Link>
+          ))}
       </nav>
     </div>
   );

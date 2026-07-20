@@ -1,6 +1,8 @@
 import { PageHeader } from '@/components/shared/page-header';
+import { ReadOnlyNotice } from '@/components/shared/read-only-notice';
 import { StoreGeneralForm } from '@/features/stores/components/store-general-form';
-import { getStoreForDashboard } from '@/features/stores/actions';
+import { loadStorePageData } from '@/features/stores/page-access';
+import { getStoreGeneralSettings } from '@/server/services/store-settings.service';
 
 export const metadata = { title: 'Informações gerais' };
 
@@ -10,7 +12,7 @@ export default async function StoreGeneralPage({
   params: Promise<{ storeId: string }>;
 }) {
   const { storeId } = await params;
-  const store = await getStoreForDashboard(storeId);
+  const { store, canEdit } = await loadStorePageData(() => getStoreGeneralSettings(storeId));
 
   return (
     <div>
@@ -23,7 +25,8 @@ export default async function StoreGeneralPage({
         className="border-border bg-surface max-w-3xl rounded-xl border p-4 sm:p-6"
         aria-label="Dados da loja"
       >
-        <StoreGeneralForm storeId={storeId} store={store} />
+        {!canEdit && <ReadOnlyNotice />}
+        <StoreGeneralForm storeId={storeId} store={store} readOnly={!canEdit} />
       </section>
     </div>
   );

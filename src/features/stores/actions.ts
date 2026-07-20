@@ -15,7 +15,7 @@ import {
 } from '@/schemas/store';
 import * as storeRepo from '@/server/repositories/store.repository';
 import { ConflictError } from '@/server/errors';
-import { getStoreOverview, rememberActiveStore } from '@/server/services/store-context.service';
+import { rememberActiveStore } from '@/server/services/store-context.service';
 
 // =============================================================================
 // Store Actions
@@ -26,10 +26,6 @@ export async function selectStoreAction(formData: FormData) {
   redirect(`/dashboard/stores/${context.store.id}`);
 }
 
-export async function getStoreForDashboard(storeId: string) {
-  return getStoreOverview(storeId);
-}
-
 export async function updateStoreAction(
   storeId: string,
   formData: FormData,
@@ -37,7 +33,7 @@ export async function updateStoreAction(
   try {
     const { session: ctx, store } = await requireTenantStoreAccess(
       storeId,
-      Permission.CONFIGURE_STORE,
+      Permission.EDIT_STORE_GENERAL,
     );
 
     const raw = Object.fromEntries(formData);
@@ -69,7 +65,7 @@ export async function updateStoreSettingsAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const { store } = await requireTenantStoreAccess(storeId, Permission.CONFIGURE_STORE);
+    const { store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_OPERATIONS);
 
     const raw = Object.fromEntries(formData);
     const parsed = updateStoreSettingsSchema.safeParse(raw);
@@ -94,7 +90,7 @@ export async function updatePixConfigAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const { store } = await requireTenantStoreAccess(storeId, Permission.CONFIGURE_STORE);
+    const { store } = await requireTenantStoreAccess(storeId, Permission.EDIT_PAYMENT_SETTINGS);
 
     const raw = Object.fromEntries(formData);
     const parsed = updatePixConfigSchema.safeParse(raw);
@@ -116,7 +112,7 @@ export async function updateAddressAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const { store } = await requireTenantStoreAccess(storeId, Permission.CONFIGURE_STORE);
+    const { store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_ADDRESS);
 
     const raw = Object.fromEntries(formData);
     const parsed = updateAddressSchema.safeParse(raw);
@@ -140,7 +136,7 @@ export async function updateHoursAction(
   },
 ): Promise<ActionResult> {
   try {
-    const { store } = await requireTenantStoreAccess(storeId, Permission.CONFIGURE_HOURS);
+    const { store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_HOURS);
 
     const parsed = updateHoursSchema.safeParse(data);
     if (!parsed.success) {
@@ -163,7 +159,7 @@ export async function toggleStoreStatusAction(
   try {
     const { session: ctx, store } = await requireTenantStoreAccess(
       storeId,
-      Permission.CONFIGURE_STORE,
+      Permission.CHANGE_STORE_STATUS,
     );
 
     await storeRepo.updateStore(store.id, ctx.tenantId, { status });

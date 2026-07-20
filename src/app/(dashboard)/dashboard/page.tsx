@@ -7,9 +7,9 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { listCategoriesAction, listProductsAction } from '@/features/catalog/actions';
 import { listDeliveryZonesAction } from '@/features/delivery/actions';
-import { getStoreForDashboard } from '@/features/stores/actions';
 import { getOrdersAction } from '@/features/orders/admin-actions';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
+import { getStoreOverview } from '@/server/services/store-settings.service';
 
 export const metadata = {
   title: 'Visão geral',
@@ -28,14 +28,15 @@ export default async function DashboardPage() {
     'READY',
     'OUT_FOR_DELIVERY',
   ];
-  const [store, categories, products, zones, ordersResult] = await Promise.all([
-    getStoreForDashboard(activeStore.store.id),
+  const [overview, categories, products, zones, ordersResult] = await Promise.all([
+    getStoreOverview(activeStore.store.id),
     listCategoriesAction(),
     listProductsAction(),
     listDeliveryZonesAction(),
     getOrdersAction({ statuses: activeStatuses }),
   ]);
-  const activeHours = store.openingHours.filter((hour) => hour.isActive).length;
+  const store = overview.store;
+  const activeHours = store.openingHours.length;
   const activeOrders = ordersResult.success ? ordersResult.data : [];
   const waitingOrders = activeOrders.filter(
     (order) => order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT',

@@ -1,12 +1,13 @@
 import { PageHeader } from '@/components/shared/page-header';
 import { HoursForm } from '@/features/stores/components/hours-form';
-import { getStoreForDashboard } from '@/features/stores/actions';
+import { loadStorePageData } from '@/features/stores/page-access';
+import { getStoreHoursSettings } from '@/server/services/store-settings.service';
 
 export const metadata = { title: 'Horários de funcionamento' };
 
 export default async function StoreHoursPage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  const store = await getStoreForDashboard(storeId);
+  const { store, canEdit } = await loadStorePageData(() => getStoreHoursSettings(storeId));
 
   return (
     <div>
@@ -19,7 +20,7 @@ export default async function StoreHoursPage({ params }: { params: Promise<{ sto
         className="border-border bg-surface max-w-4xl rounded-xl border p-4 sm:p-6"
         aria-label="Horários da loja"
       >
-        <HoursForm storeId={storeId} hours={store.openingHours} />
+        {canEdit && <HoursForm storeId={storeId} hours={store.openingHours} />}
       </section>
     </div>
   );

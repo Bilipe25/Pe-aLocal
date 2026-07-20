@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Building2, Store } from 'lucide-react';
+import { Building2, ShieldAlert, Store } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -19,9 +19,10 @@ const STATUS_MAP = {
 export default async function StoresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; access?: string }>;
 }) {
-  const rawPage = Number((await searchParams).page ?? '1');
+  const query = await searchParams;
+  const rawPage = Number(query.page ?? '1');
   const stores = await listAccessibleStores({
     page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
     pageSize: 20,
@@ -39,6 +40,16 @@ export default async function StoresPage({
         title="Unidades"
         description="Escolha qual loja deseja administrar. A seleção é sempre validada no servidor."
       />
+
+      {query.access === 'denied' && (
+        <div
+          className="bg-error-light text-error mb-4 flex items-start gap-3 rounded-lg p-3 text-sm"
+          role="alert"
+        >
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <p>Seu perfil não possui acesso a essa configuração da unidade.</p>
+        </div>
+      )}
 
       {stores.total === 0 ? (
         <section className="border-border bg-surface rounded-xl border p-6 text-center">

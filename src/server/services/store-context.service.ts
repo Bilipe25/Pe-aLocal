@@ -3,9 +3,9 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 
-import { requirePermission, requireTenantMember, requireTenantStoreAccess } from '@/server/auth';
+import { requirePermission, requireTenantStoreAccess } from '@/server/auth';
 import { TenantAccessError } from '@/server/errors';
-import type { Permission } from '@/server/permissions';
+import { Permission, type Permission as PermissionType } from '@/server/permissions';
 import * as storeRepo from '@/server/repositories/store.repository';
 
 export const ACTIVE_STORE_COOKIE = 'pedidolocal-active-store';
@@ -22,7 +22,7 @@ export interface AccessibleStoresPage {
 export async function listAccessibleStores(
   options: { page?: number; pageSize?: number } = {},
 ): Promise<AccessibleStoresPage> {
-  const session = await requireTenantMember();
+  const session = await requirePermission(Permission.VIEW_STORE_OVERVIEW);
   const page = Math.max(1, Math.trunc(options.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Math.trunc(options.pageSize ?? 20)));
   const [items, total] = await Promise.all([
@@ -36,8 +36,8 @@ export async function listAccessibleStores(
   return { items, total, page, pageSize };
 }
 
-export async function getActiveStoreContext(permission?: Permission) {
-  const session = permission ? await requirePermission(permission) : await requireTenantMember();
+export async function getActiveStoreContext(permission?: PermissionType) {
+  const session = await requirePermission(permission ?? Permission.VIEW_STORE_OVERVIEW);
   const cookieStoreId = (await cookies()).get(ACTIVE_STORE_COOKIE)?.value;
   const parsedCookie = storeIdSchema.safeParse(cookieStoreId);
 
@@ -55,7 +55,7 @@ export async function getActiveStoreContext(permission?: Permission) {
   return null;
 }
 
-export async function requireActiveStoreContext(permission?: Permission) {
+export async function requireActiveStoreContext(permission?: PermissionType) {
   const context = await getActiveStoreContext(permission);
   if (!context) {
     throw new TenantAccessError('Selecione uma loja para continuar.');
@@ -79,13 +79,4 @@ export async function rememberActiveStore(storeId: string) {
   });
 
   return context;
-}
-
-export async function getStoreOverview(storeId: string) {
-  const { session } = await requireTenantStoreAccess(storeId);
-  const store = await storeRepo.findStoreById(storeId, session.tenantId);
-  if (!store) {
-    throw new TenantAccessError('A loja não pertence ao estabelecimento autenticado.');
-  }
-  return store;
 }

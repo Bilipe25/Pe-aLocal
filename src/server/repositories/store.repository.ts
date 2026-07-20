@@ -30,13 +30,111 @@ export async function countStoresByTenantId(tenantId: string) {
   return getDb().store.count({ where: { tenantId } });
 }
 
-export async function findStoreById(id: string, tenantId: string) {
+export async function findStoreOverviewById(id: string, tenantId: string) {
   return getDb().store.findFirst({
     where: { id, tenantId },
-    include: {
-      settings: true,
-      address: true,
-      openingHours: { orderBy: { dayOfWeek: 'asc' } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      isActive: true,
+      tenant: { select: { status: true } },
+      address: { select: { id: true } },
+      openingHours: {
+        where: { isActive: true },
+        select: { dayOfWeek: true },
+      },
+    },
+  });
+}
+
+export async function findStoreGeneralSettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      phone: true,
+      whatsapp: true,
+    },
+  });
+}
+
+export async function findStoreAddressSettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      address: {
+        select: {
+          street: true,
+          number: true,
+          complement: true,
+          neighborhood: true,
+          city: true,
+          state: true,
+          zipCode: true,
+        },
+      },
+    },
+  });
+}
+
+export async function findStoreHoursSettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      openingHours: {
+        orderBy: { dayOfWeek: 'asc' },
+        select: {
+          dayOfWeek: true,
+          openTime: true,
+          closeTime: true,
+          isActive: true,
+        },
+      },
+    },
+  });
+}
+
+export async function findStoreOperationalSettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      settings: {
+        select: {
+          minOrderValue: true,
+          estimatedTime: true,
+          deliveryEnabled: true,
+          pickupEnabled: true,
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+        },
+      },
+    },
+  });
+}
+
+export async function findStorePaymentSettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      settings: {
+        select: {
+          pixKeyType: true,
+          pixKey: true,
+          pixRecipient: true,
+          pixBank: true,
+          pixInstructions: true,
+        },
+      },
     },
   });
 }
