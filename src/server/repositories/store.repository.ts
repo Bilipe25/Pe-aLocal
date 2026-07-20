@@ -5,21 +5,6 @@ import type { StoreStatus } from '@prisma/client';
 // Store Repository
 // =============================================================================
 
-/**
- * @deprecated Use o contexto explícito de loja. Mantido apenas durante a
- * migração incremental das áreas operacionais do dashboard.
- */
-export async function findStoreByTenantId(tenantId: string) {
-  return getDb().store.findFirst({
-    where: { tenantId },
-    include: {
-      settings: true,
-      address: true,
-      openingHours: { orderBy: { dayOfWeek: 'asc' } },
-    },
-  });
-}
-
 export async function listStoreSummariesByTenantId(
   tenantId: string,
   options: { skip?: number; take?: number } = {},
