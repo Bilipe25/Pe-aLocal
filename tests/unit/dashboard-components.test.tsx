@@ -121,6 +121,15 @@ describe('componentes do painel do tenant', () => {
     ).toBeInTheDocument();
   });
 
+  it('apresenta operações sem controles de salvamento no modo somente leitura', () => {
+    render(
+      <StoreSettingsForm storeId="00000000-0000-0000-0000-000000000001" settings={null} readOnly />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Entrega habilitada' })).toBeDisabled();
+  });
+
   it('apresenta grupos e opções existentes do produto', () => {
     render(
       <ProductOptionGroupsEditor

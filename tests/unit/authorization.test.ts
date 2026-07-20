@@ -10,7 +10,6 @@ import {
 
 const mocks = vi.hoisted(() => ({
   validateCurrentSession: vi.fn(),
-  findStoreById: vi.fn(),
   findStoreScopeById: vi.fn(),
 }));
 
@@ -18,7 +17,6 @@ vi.mock('@/server/services/auth.service', () => ({
   validateCurrentSession: mocks.validateCurrentSession,
 }));
 vi.mock('@/server/repositories/store.repository', () => ({
-  findStoreById: mocks.findStoreById,
   findStoreScopeById: mocks.findStoreScopeById,
 }));
 
@@ -74,12 +72,12 @@ describe('autorização de plataforma e isolamento de tenant', () => {
   });
 
   it('tenant A não acessa recurso do tenant B', async () => {
-    mocks.findStoreById.mockResolvedValue(null);
+    mocks.findStoreScopeById.mockResolvedValue(null);
 
     await expect(requireStoreAccess('store-from-tenant-b')).rejects.toBeInstanceOf(
       TenantAccessError,
     );
-    expect(mocks.findStoreById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
+    expect(mocks.findStoreScopeById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
   });
 
   it('valida a loja explícita contra o tenant autenticado', async () => {

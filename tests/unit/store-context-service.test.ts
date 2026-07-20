@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TenantAccessError } from '@/server/errors';
+import { Permission } from '@/server/permissions';
 import {
   ACTIVE_STORE_COOKIE,
   getActiveStoreContext,
@@ -10,7 +11,6 @@ import {
 const mocks = vi.hoisted(() => ({
   cookieGet: vi.fn(),
   cookieSet: vi.fn(),
-  requireTenantMember: vi.fn(),
   requirePermission: vi.fn(),
   requireTenantStoreAccess: vi.fn(),
   findStoreScopeById: vi.fn(),
@@ -22,7 +22,6 @@ vi.mock('next/headers', () => ({
   cookies: async () => ({ get: mocks.cookieGet, set: mocks.cookieSet }),
 }));
 vi.mock('@/server/auth', () => ({
-  requireTenantMember: mocks.requireTenantMember,
   requirePermission: mocks.requirePermission,
   requireTenantStoreAccess: mocks.requireTenantStoreAccess,
 }));
@@ -57,7 +56,7 @@ const storeA = {
 describe('contexto ativo de loja', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireTenantMember.mockResolvedValue(session);
+    mocks.requirePermission.mockResolvedValue(session);
     mocks.cookieGet.mockReturnValue(undefined);
     mocks.listStoreSummariesByTenantId.mockResolvedValue([]);
   });
@@ -67,6 +66,7 @@ describe('contexto ativo de loja', () => {
     mocks.findStoreScopeById.mockResolvedValue(storeA);
 
     await expect(getActiveStoreContext()).resolves.toEqual({ session, store: storeA });
+    expect(mocks.requirePermission).toHaveBeenCalledWith(Permission.VIEW_STORE_OVERVIEW);
     expect(mocks.findStoreScopeById).toHaveBeenCalledWith(storeAId, 'tenant-a');
   });
 
