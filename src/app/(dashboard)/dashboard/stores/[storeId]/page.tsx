@@ -17,12 +17,23 @@ const STATUS_MAP = {
   PAUSED: { label: 'Pausada', variant: 'warning' as const },
 };
 
+const EFFECTIVE_STATUS_MAP = {
+  OPEN: { label: 'Aceitando pedidos', variant: 'success' as const },
+  CLOSED_BY_SCHEDULE: { label: 'Fechada pelo horário', variant: 'secondary' as const },
+  MANUALLY_CLOSED: { label: 'Fechada manualmente', variant: 'destructive' as const },
+  PAUSED: { label: 'Pedidos pausados', variant: 'warning' as const },
+  TENANT_SUSPENDED: { label: 'Indisponível', variant: 'destructive' as const },
+  STORE_INACTIVE: { label: 'Unidade inativa', variant: 'destructive' as const },
+  NOT_READY: { label: 'Configuração incompleta', variant: 'warning' as const },
+};
+
 export default async function StorePage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  const { store, readiness, capabilities } = await loadStorePageData(() =>
+  const { store, readiness, availability, capabilities } = await loadStorePageData(() =>
     getStoreOverview(storeId),
   );
   const status = STATUS_MAP[store.status];
+  const effectiveStatus = EFFECTIVE_STATUS_MAP[availability.state];
   const basePath = `/dashboard/stores/${store.id}`;
 
   const links = [
@@ -78,8 +89,15 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
             <p className="text-text-primary truncate font-semibold">{store.name}</p>
             <p className="text-text-secondary truncate text-sm">/{store.slug}</p>
           </div>
-          <Badge variant={status.variant}>{status.label}</Badge>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Badge variant={status.variant}>Configurada: {status.label}</Badge>
+            <Badge variant={effectiveStatus.variant}>{effectiveStatus.label}</Badge>
+          </div>
         </div>
+        <p className="text-text-secondary mt-3 text-sm">
+          {store.status === 'OPEN' && 'Funcionamento automático habilitado. '}
+          {availability.reason}
+        </p>
         <div className="border-border mt-4 border-t pt-4">
           {capabilities.changeStatus ? (
             <StoreStatusControl

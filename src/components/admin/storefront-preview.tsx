@@ -139,7 +139,22 @@ export const StorefrontPreview = memo(function StorefrontPreview({
           <StoreHeader
             name={storeName}
             description="Cardápio demonstrativo para revisar a personalização."
-            status={storeStatus}
+            availability={{
+              acceptingOrders: storeStatus === 'OPEN',
+              state:
+                storeStatus === 'OPEN'
+                  ? 'OPEN'
+                  : storeStatus === 'PAUSED'
+                    ? 'PAUSED'
+                    : 'MANUALLY_CLOSED',
+              reason:
+                storeStatus === 'OPEN'
+                  ? 'Aberta agora.'
+                  : storeStatus === 'PAUSED'
+                    ? 'Os pedidos estão pausados temporariamente.'
+                    : 'A loja está fechada manualmente.',
+              nextTransitionAt: null,
+            }}
             estimatedTime="30–45 min"
             neighborhood="Centro"
             city="Sua cidade"

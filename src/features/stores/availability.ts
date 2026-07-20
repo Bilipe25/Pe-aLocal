@@ -44,6 +44,7 @@ const DAY_OF_WEEK = [
   'FRIDAY',
   'SATURDAY',
 ] as const;
+const APPROVED_TIME_ZONES = new Set<string>(APPROVED_STORE_TIME_ZONES);
 
 interface LocalDateTime {
   date: string;
@@ -138,7 +139,7 @@ export function evaluateEffectiveStoreAvailability(
   if (input.storeStatus === 'CLOSED') {
     return unavailable('MANUALLY_CLOSED', 'A loja está fechada manualmente.');
   }
-  if (!input.isReady || !APPROVED_STORE_TIME_ZONES.includes(input.timeZone as never)) {
+  if (!input.isReady || !APPROVED_TIME_ZONES.has(input.timeZone)) {
     return unavailable('NOT_READY', 'A loja ainda não está pronta para receber pedidos.');
   }
 
@@ -171,7 +172,12 @@ export function evaluateEffectiveStoreAvailability(
     };
   }
 
-  for (const date of [addDays(localNow.date, -1), localNow.date]) {
+  // Uma exceção da data atual substitui o calendário inteiro desse dia,
+  // inclusive o trecho noturno iniciado na véspera.
+  const currentIntervals = exceptions.has(localNow.date)
+    ? [localNow.date]
+    : [addDays(localNow.date, -1), localNow.date];
+  for (const date of currentIntervals) {
     const interval = intervalInstants(date);
     if (interval && now >= interval.startsAt && now < interval.endsAt) {
       return {

@@ -35,10 +35,13 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
   if (!store.settings) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p className="text-center text-text-muted">
+        <p className="text-text-muted text-center">
           Loja ainda não configurou as opções de pedido.
         </p>
-        <Link href={`/${storeSlug}`} className="storefront-link mt-4 inline-flex min-h-11 items-center hover:underline">
+        <Link
+          href={`/${storeSlug}`}
+          className="storefront-link mt-4 inline-flex min-h-11 items-center hover:underline"
+        >
           Voltar para a loja
         </Link>
       </div>
@@ -51,34 +54,34 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
     : [];
 
   return (
-    <div className="storefront-page-bottom-safe min-h-screen bg-papel">
+    <div className="storefront-page-bottom-safe bg-papel min-h-screen">
       {/* Header Fixo */}
-      <header className="sticky top-0 z-40 border-b border-tinta/10 bg-papel/80 px-4 py-3 backdrop-blur-md">
+      <header className="border-tinta/10 bg-papel/80 sticky top-0 z-40 border-b px-4 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <Link
             href={`/${storeSlug}/cart`}
             aria-label="Voltar para a sacola"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-tinta transition-colors hover:bg-tinta/5"
+            className="text-tinta hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors"
           >
             <ArrowLeft className="h-5 w-5" aria-hidden="true" />
           </Link>
           <div className="flex-1">
-            <h1 className="font-display text-lg font-bold text-tinta">Finalizar pedido</h1>
-            <p className="break-words text-sm text-text-muted">{store.name}</p>
+            <h1 className="font-display text-tinta text-lg font-bold">Finalizar pedido</h1>
+            <p className="text-text-muted text-sm break-words">{store.name}</p>
           </div>
         </div>
       </header>
 
       {/* Loja Fechada Warning */}
-      {store.status !== 'OPEN' && (
+      {!store.availability.acceptingOrders && (
         <div className="mx-auto max-w-md p-4 pb-0">
-          <StoreClosedBanner status={store.status as 'CLOSED' | 'PAUSED'} />
+          <StoreClosedBanner availability={store.availability} />
         </div>
       )}
 
       {/* Conteúdo Principal */}
       <main className="mx-auto max-w-md p-4">
-        {store.status === 'OPEN' ? (
+        {store.availability.acceptingOrders ? (
           <CheckoutForm
             storeSlug={storeSlug}
             minOrderValue={store.settings.minOrderValue}
@@ -91,9 +94,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
           />
         ) : (
           <div className="mt-8 text-center">
-            <p className="mb-4 text-sm text-text-muted">
-              Não é possível fazer pedidos no momento pois a loja está fechada.
-            </p>
+            <p className="text-text-muted mb-4 text-sm">{store.availability.reason}</p>
             <Link
               href={`/${storeSlug}`}
               className="storefront-primary-action inline-flex min-h-11 items-center justify-center px-4 py-2 font-medium"

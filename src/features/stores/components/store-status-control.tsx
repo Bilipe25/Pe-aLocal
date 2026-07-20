@@ -54,7 +54,8 @@ export function StoreStatusControl({
     <div>
       <h2 className="text-text-primary text-sm font-semibold">Recebimento de pedidos</h2>
       <p className="text-text-secondary mt-1 text-sm">
-        O status é aplicado imediatamente ao cardápio público.
+        Ao abrir, a loja aceita pedidos somente dentro dos horários configurados e quando estiver
+        operacionalmente pronta.
       </p>
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Status da loja">
         <Button

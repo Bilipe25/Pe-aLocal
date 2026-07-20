@@ -8,6 +8,7 @@ import type { ActionResult } from '@/server/errors';
 import { BusinessRuleError } from '@/server/errors';
 import { triggerNewOrder } from '@/lib/pusher/server';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 
 // =============================================================================
 // Checkout — Server Action
@@ -77,12 +78,18 @@ export async function createOrderAction(
       },
     });
 
-    if (!store || !store.isActive) {
-      throw new BusinessRuleError('Loja não encontrada ou inativa');
+    if (!store) {
+      throw new BusinessRuleError('Loja não encontrada');
     }
 
-    if (store.status !== 'OPEN') {
-      throw new BusinessRuleError('A loja está fechada no momento');
+    const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+    if (!availability.acceptingOrders) {
+      throw new BusinessRuleError(availability.reason, [
+        {
+          state: availability.state,
+          nextTransitionAt: availability.nextTransitionAt?.toISOString() ?? null,
+        },
+      ]);
     }
 
     // 3. Validar modalidade

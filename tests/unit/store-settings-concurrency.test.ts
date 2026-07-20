@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusinessRuleError, ConflictError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import {
+  removeStoreScheduleException,
+  saveStoreScheduleException,
   updateStoreAddressSettings,
   updateStoreOperationalSettings,
   updateStorePaymentSettings,
@@ -26,6 +28,12 @@ const mocks = vi.hoisted(() => {
     openingHour: {
       findMany: vi.fn(),
       upsert: vi.fn(),
+    },
+    storeScheduleException: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      upsert: vi.fn(),
+      delete: vi.fn(),
     },
     auditLog: {
       create: vi.fn(),
@@ -68,6 +76,8 @@ const context = {
     id: 'store-a',
     tenantId: 'tenant-a',
     slug: 'loja-a',
+    status: 'CLOSED',
+    timeZone: 'America/Fortaleza',
   },
 };
 
@@ -79,6 +89,10 @@ describe('concorrência das configurações da loja', () => {
     mocks.tx.store.findFirst.mockResolvedValue({ status: 'OPEN' });
     mocks.tx.storeSettings.findUnique.mockResolvedValue(null);
     mocks.tx.storeAddress.findUnique.mockResolvedValue(null);
+    mocks.tx.storeScheduleException.findUnique.mockResolvedValue(null);
+    mocks.tx.storeScheduleException.upsert.mockResolvedValue({
+      id: '4da03571-bffd-45ef-8c44-20686c487838',
+    });
     mocks.createAuditLog.mockResolvedValue({ id: 'audit-a' });
     mocks.getStoreReadinessStateForTenant.mockResolvedValue({
       snapshot: { status: 'OPEN', configurationVersion: 11 },
@@ -192,6 +206,57 @@ describe('concorrência das configurações da loja', () => {
           nextStatus: 'PAUSED',
         }),
       }),
+      mocks.tx,
+    );
+  });
+
+  it('salva uma exceção com escopo de tenant, versão e auditoria atômica', async () => {
+    await saveStoreScheduleException('store-a', 5, {
+      date: '2026-12-25',
+      type: 'CLOSED',
+      reason: 'Natal',
+    });
+
+    expect(mocks.tx.storeScheduleException.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          type: 'CLOSED',
+          createdById: 'user-owner',
+        }),
+      }),
+    );
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CREATE',
+        entity: 'StoreScheduleException',
+        metadata: expect.objectContaining({ date: '2026-12-25' }),
+      }),
+      mocks.tx,
+    );
+  });
+
+  it('remove somente a exceção da loja e audita a exclusão', async () => {
+    const exceptionId = '4da03571-bffd-45ef-8c44-20686c487838';
+    mocks.tx.storeScheduleException.findFirst.mockResolvedValue({
+      id: exceptionId,
+      date: new Date('2026-12-25T00:00:00.000Z'),
+      type: 'CLOSED',
+      openTime: null,
+      closeTime: null,
+      reason: 'Natal',
+    });
+
+    await removeStoreScheduleException('store-a', 6, exceptionId);
+
+    expect(mocks.tx.storeScheduleException.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: exceptionId, tenantId: 'tenant-a', storeId: 'store-a' },
+      }),
+    );
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DELETE', entity: 'StoreScheduleException' }),
       mocks.tx,
     );
   });

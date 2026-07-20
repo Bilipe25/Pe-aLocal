@@ -64,6 +64,28 @@ describe('disponibilidade efetiva da loja', () => {
     });
   });
 
+  it('fecha toda a data excepcional, inclusive o intervalo iniciado na véspera', () => {
+    const result = evaluateEffectiveStoreAvailability(
+      availabilityInput({
+        openingHours: [{ dayOfWeek: 'MONDAY', openTime: '18:00', closeTime: '02:00' }],
+        scheduleExceptions: [
+          {
+            date: '2026-07-21',
+            type: 'CLOSED',
+            openTime: null,
+            closeTime: null,
+          },
+        ],
+      }),
+      new Date('2026-07-21T04:00:00.000Z'), // terça, 01h em Fortaleza
+    );
+
+    expect(result).toMatchObject({
+      acceptingOrders: false,
+      state: 'CLOSED_BY_SCHEDULE',
+    });
+  });
+
   it('usa horário especial inclusive quando atravessa a meia-noite', () => {
     const result = evaluateEffectiveStoreAvailability(
       availabilityInput({

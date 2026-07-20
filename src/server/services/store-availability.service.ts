@@ -45,3 +45,8 @@ export async function getStoreAvailabilityStateForTenant(
 
   return { snapshot, readiness, availability };
 }
+
+export const StoreAvailabilityService = {
+  getForTenant: getEffectiveStoreAvailabilityForTenant,
+  getStateForTenant: getStoreAvailabilityStateForTenant,
+} as const;

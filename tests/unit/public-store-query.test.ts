@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   storeAssetFindMany: vi.fn(),
   listPublicStoreBanners: vi.fn(),
   findActivePrimaryStoreDomain: vi.fn(),
+  getEffectiveStoreAvailabilityForTenant: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -26,6 +27,9 @@ vi.mock('@/server/repositories/store-banner.repository', () => ({
 }));
 vi.mock('@/server/repositories/store-domain.repository', () => ({
   findActivePrimaryStoreDomain: mocks.findActivePrimaryStoreDomain,
+}));
+vi.mock('@/server/services/store-availability.service', () => ({
+  getEffectiveStoreAvailabilityForTenant: mocks.getEffectiveStoreAvailabilityForTenant,
 }));
 
 function publicStore() {
@@ -73,6 +77,12 @@ describe('queries públicas da loja', () => {
     mocks.storeAssetFindMany.mockResolvedValue([]);
     mocks.listPublicStoreBanners.mockResolvedValue([]);
     mocks.findActivePrimaryStoreDomain.mockResolvedValue(null);
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta agora.',
+      nextTransitionAt: null,
+    });
     mocks.getDb.mockReturnValue({
       store: { findUnique: mocks.storeFindUnique },
       category: { findMany: mocks.categoryFindMany },
@@ -195,6 +205,11 @@ describe('queries públicas da loja', () => {
     expect(customizationSelect).not.toHaveProperty('draftConfig');
     expect(customizationSelect).not.toHaveProperty('revisions');
     expect(result?.customization.config.identity.slogan).toBe('');
+    expect(result?.availability).toMatchObject({ acceptingOrders: true, state: 'OPEN' });
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'store-1',
+    );
   });
 
   it('retorna somente banners públicos resolvidos e o domínio primário ativo', async () => {

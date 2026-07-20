@@ -8,6 +8,7 @@ import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
 import * as bannerRepo from '@/server/repositories/store-banner.repository';
 import * as domainRepo from '@/server/repositories/store-domain.repository';
+import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 
 const PUBLIC_CACHE_SECONDS = 60;
 
@@ -67,7 +68,7 @@ async function getStoreFromDb(slug: string) {
     },
   });
 
-  if (!store || !store.isActive) return null;
+  if (!store) return null;
 
   const { customization, ...publicStore } = store;
   const resolvedCustomization = resolvePublicCustomization({
@@ -187,10 +188,16 @@ async function getStoreFromDb(slug: string) {
 
 /** Busca os dados públicos da loja e somente sua personalização publicada. */
 export async function getPublicStoreBySlug(slug: string) {
-  return unstable_cache(() => getStoreFromDb(slug), ['public-store', slug], {
+  const store = await unstable_cache(() => getStoreFromDb(slug), ['public-store', slug], {
     revalidate: PUBLIC_CACHE_SECONDS,
     tags: [CACHE_TAGS.storeSlug(slug)],
   })();
+  if (!store) return null;
+
+  // O snapshot visual pode ser cacheado; disponibilidade depende do relógio e
+  // precisa ser recalculada a cada request.
+  const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+  return { ...store, availability };
 }
 
 async function getCatalogFromDb(storeId: string, tenantId: string) {

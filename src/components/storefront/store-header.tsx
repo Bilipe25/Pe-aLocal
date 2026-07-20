@@ -1,6 +1,7 @@
 import { Banknote, CalendarDays, ChevronDown, Clock, MapPin, Package } from 'lucide-react';
 
 import { storeAssetSrcSet } from '@/features/assets/urls';
+import type { EffectiveStoreAvailability } from '@/features/stores/availability';
 import { formatCurrency } from '@/lib/utils';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
@@ -13,7 +14,7 @@ interface OpeningHour {
 interface StoreHeaderProps {
   name: string;
   description: string | null;
-  status: 'OPEN' | 'CLOSED' | 'PAUSED';
+  availability: EffectiveStoreAvailability;
   estimatedTime?: string;
   minOrderValue?: number;
   deliveryEnabled?: boolean;
@@ -31,8 +32,12 @@ interface StoreHeaderProps {
 
 const STATUS_CONFIG = {
   OPEN: { label: 'Aberta agora', classes: 'storefront-status-open' },
-  CLOSED: { label: 'Fechada agora', classes: 'storefront-status-closed' },
+  CLOSED_BY_SCHEDULE: { label: 'Fechada agora', classes: 'storefront-status-closed' },
+  MANUALLY_CLOSED: { label: 'Fechada', classes: 'storefront-status-closed' },
   PAUSED: { label: 'Pedidos pausados', classes: 'storefront-status-paused' },
+  TENANT_SUSPENDED: { label: 'Indisponível', classes: 'storefront-status-closed' },
+  STORE_INACTIVE: { label: 'Indisponível', classes: 'storefront-status-closed' },
+  NOT_READY: { label: 'Indisponível', classes: 'storefront-status-closed' },
 };
 
 const DAY_LABELS: Record<string, string> = {
@@ -48,7 +53,7 @@ const DAY_LABELS: Record<string, string> = {
 export function StoreHeader({
   name,
   description,
-  status,
+  availability,
   estimatedTime,
   minOrderValue = 0,
   deliveryEnabled = false,
@@ -63,7 +68,7 @@ export function StoreHeader({
   coverAssetId,
   config,
 }: StoreHeaderProps) {
-  const statusInfo = STATUS_CONFIG[status];
+  const statusInfo = STATUS_CONFIG[availability.state];
   const summary = config.identity.shortDescription || description;
   const showCover = config.layout.showCover && Boolean(coverUrl);
   const deliveryLabel =
@@ -133,7 +138,12 @@ export function StoreHeader({
                   <p className="storefront-slogan break-words">{config.identity.slogan}</p>
                 )}
               </div>
-              <span className={`storefront-status ${statusInfo.classes}`}>{statusInfo.label}</span>
+              <span
+                className={`storefront-status ${statusInfo.classes}`}
+                title={availability.reason}
+              >
+                {statusInfo.label}
+              </span>
             </div>
 
             {summary && <p className="storefront-description break-words">{summary}</p>}

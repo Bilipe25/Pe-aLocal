@@ -25,7 +25,7 @@ export default async function StorePage({ params }: StorePageProps) {
       categories={categories}
       storeId={store.id}
       storeSlug={store.slug}
-      storeOpen={store.status === 'OPEN'}
+      storeOpen={store.availability.acceptingOrders}
       customization={store.customization.config}
       banners={store.customization.banners}
     />
