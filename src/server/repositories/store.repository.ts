@@ -193,6 +193,7 @@ export async function findStoreReadinessById(
       whatsapp: true,
       logoUrl: true,
       coverUrl: true,
+      status: true,
       isActive: true,
       configurationVersion: true,
       tenant: { select: { status: true } },

@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { ReadOnlyNotice } from '@/components/shared/read-only-notice';
 import { StoreStatusControl } from '@/features/stores/components/store-status-control';
+import { StoreReadinessChecklist } from '@/features/stores/components/store-readiness-checklist';
 import { loadStorePageData } from '@/features/stores/page-access';
 import { getStoreOverview } from '@/server/services/store-settings.service';
 
@@ -18,7 +19,9 @@ const STATUS_MAP = {
 
 export default async function StorePage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  const { store, capabilities } = await loadStorePageData(() => getStoreOverview(storeId));
+  const { store, readiness, capabilities } = await loadStorePageData(() =>
+    getStoreOverview(storeId),
+  );
   const status = STATUS_MAP[store.status];
   const basePath = `/dashboard/stores/${store.id}`;
 
@@ -89,6 +92,8 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
           )}
         </div>
       </div>
+
+      <StoreReadinessChecklist readiness={readiness} showActions={capabilities.changeStatus} />
 
       <nav
         className="divide-border border-border bg-surface divide-y overflow-hidden rounded-xl border"

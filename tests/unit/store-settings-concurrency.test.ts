@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConflictError } from '@/server/errors';
+import { BusinessRuleError, ConflictError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import {
   updateStoreAddressSettings,
@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
     transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     requireTenantStoreAccess: vi.fn(),
     createAuditLog: vi.fn(),
+    getStoreReadinessStateForTenant: vi.fn(),
   };
 });
 
@@ -51,6 +52,10 @@ vi.mock('@/server/repositories/audit-log.repository', () => ({
 }));
 vi.mock('@/server/repositories/store.repository', () => ({
   findStoreBySlug: vi.fn(),
+}));
+vi.mock('@/server/services/store-readiness.service', () => ({
+  getStoreReadinessForTenant: vi.fn(),
+  getStoreReadinessStateForTenant: mocks.getStoreReadinessStateForTenant,
 }));
 
 const context = {
@@ -75,6 +80,10 @@ describe('concorrência das configurações da loja', () => {
     mocks.tx.storeSettings.findUnique.mockResolvedValue(null);
     mocks.tx.storeAddress.findUnique.mockResolvedValue(null);
     mocks.createAuditLog.mockResolvedValue({ id: 'audit-a' });
+    mocks.getStoreReadinessStateForTenant.mockResolvedValue({
+      snapshot: { status: 'OPEN', configurationVersion: 11 },
+      readiness: { isReady: true, blockers: [], warnings: [], issues: [] },
+    });
   });
 
   it('incrementa a versão com escopo de tenant e audita na mesma transação', async () => {
@@ -169,8 +178,6 @@ describe('concorrência das configurações da loja', () => {
   });
 
   it('protege mudança de status com versão e registra antes/depois', async () => {
-    mocks.tx.store.findFirst.mockResolvedValueOnce({ status: 'OPEN' });
-
     await updateStoreStatus('store-a', 11, 'PAUSED');
 
     expect(mocks.tx.store.updateMany).toHaveBeenCalledWith({
@@ -187,5 +194,52 @@ describe('concorrência das configurações da loja', () => {
       }),
       mocks.tx,
     );
+  });
+
+  it('bloqueia abertura integralmente e audita somente os códigos das pendências', async () => {
+    const blocker = {
+      code: 'DELIVERY_ZONE_REQUIRED',
+      severity: 'BLOCKER',
+      title: 'Entrega sem zona ativa',
+      description: 'Cadastre uma zona ativa.',
+      actionHref: '/dashboard/delivery',
+    };
+    mocks.getStoreReadinessStateForTenant.mockResolvedValueOnce({
+      snapshot: { status: 'CLOSED', configurationVersion: 11 },
+      readiness: { isReady: false, blockers: [blocker], warnings: [], issues: [blocker] },
+    });
+
+    await expect(updateStoreStatus('store-a', 11, 'OPEN')).rejects.toMatchObject({
+      code: 'BUSINESS_RULE_ERROR',
+      message: 'A loja possui 1 pendência que impede a abertura.',
+      details: [blocker],
+    } satisfies Partial<BusinessRuleError>);
+
+    expect(mocks.tx.store.updateMany).not.toHaveBeenCalled();
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'STATUS_CHANGE',
+        metadata: {
+          section: 'status',
+          outcome: 'BLOCKED',
+          requestedStatus: 'OPEN',
+          configurationVersion: 11,
+          blockerCodes: ['DELIVERY_ZONE_REQUIRED'],
+        },
+      }),
+      mocks.tx,
+    );
+  });
+
+  it('não audita tentativa de abertura com versão obsoleta', async () => {
+    mocks.getStoreReadinessStateForTenant.mockResolvedValueOnce({
+      snapshot: { status: 'CLOSED', configurationVersion: 12 },
+      readiness: { isReady: true, blockers: [], warnings: [], issues: [] },
+    });
+
+    await expect(updateStoreStatus('store-a', 11, 'OPEN')).rejects.toBeInstanceOf(ConflictError);
+
+    expect(mocks.tx.store.updateMany).not.toHaveBeenCalled();
+    expect(mocks.createAuditLog).not.toHaveBeenCalled();
   });
 });

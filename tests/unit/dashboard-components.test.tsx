@@ -6,6 +6,7 @@ import { HoursForm } from '@/features/stores/components/hours-form';
 import { ProductOptionGroupsEditor } from '@/features/catalog/components/product-option-groups-editor';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
 import { StoreSettingsForm } from '@/features/stores/components/store-settings-form';
+import { StoreReadinessChecklist } from '@/features/stores/components/store-readiness-checklist';
 
 const mocks = vi.hoisted(() => ({
   pathname: '/dashboard/catalog',
@@ -103,6 +104,41 @@ describe('componentes do painel do tenant', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Terça-feira' }));
     expect(screen.getByLabelText('Abertura de Terça-feira')).toBeInTheDocument();
     expect(screen.getByLabelText('Fechamento de Terça-feira')).toBeInTheDocument();
+  });
+
+  it('mostra bloqueadores de prontidão com atalho direto para correção', () => {
+    render(
+      <StoreReadinessChecklist
+        readiness={{
+          isReady: false,
+          blockers: [
+            {
+              code: 'DELIVERY_ZONE_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Entrega sem zona ativa',
+              description: 'Cadastre ao menos uma zona ativa.',
+              actionHref: '/dashboard/delivery',
+            },
+          ],
+          warnings: [],
+          issues: [
+            {
+              code: 'DELIVERY_ZONE_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Entrega sem zona ativa',
+              description: 'Cadastre ao menos uma zona ativa.',
+              actionHref: '/dashboard/delivery',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '1 pendência antes de abrir' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Corrigir/ })).toHaveAttribute(
+      'href',
+      '/dashboard/delivery',
+    );
   });
 
   it('mantém o fluxo de produto em duas etapas reais', () => {

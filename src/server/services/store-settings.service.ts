@@ -13,10 +13,19 @@ import {
 } from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
-import { ConflictError, TenantAccessError, ValidationError } from '@/server/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  TenantAccessError,
+  ValidationError,
+} from '@/server/errors';
 import { hasTenantPermission, Permission, type TenantRole } from '@/server/permissions';
 import * as auditRepo from '@/server/repositories/audit-log.repository';
 import * as storeRepo from '@/server/repositories/store.repository';
+import {
+  getStoreReadinessForTenant,
+  getStoreReadinessStateForTenant,
+} from '@/server/services/store-readiness.service';
 
 const CONFIGURATION_CONFLICT_MESSAGE =
   'As configurações foram alteradas em outra sessão. Recarregue a página antes de continuar.';
@@ -156,10 +165,13 @@ async function writeStoreAudit(
 
 export async function getStoreOverview(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_STORE_OVERVIEW);
-  const store = await storeRepo.findStoreOverviewById(storeId, session.tenantId);
+  const [store, readiness] = await Promise.all([
+    storeRepo.findStoreOverviewById(storeId, session.tenantId),
+    getStoreReadinessForTenant(session.tenantId, storeId),
+  ]);
   if (!store) missingStore();
 
-  return { store, capabilities: getStorePageCapabilities(session.tenantRole) };
+  return { store, readiness, capabilities: getStorePageCapabilities(session.tenantRole) };
 }
 
 export async function getStoreGeneralSettings(storeId: string) {
@@ -529,15 +541,53 @@ export async function updateStoreStatus(
     'O status da loja é inválido.',
   ) as StoreStatus;
 
-  await getDb().$transaction(async (tx) => {
-    const previous = await tx.store.findFirst({
-      where: { id: store.id, tenantId: session.tenantId, configurationVersion },
-      select: { status: true },
-    });
+  const result = await getDb().$transaction(async (tx) => {
+    let previousStatus: StoreStatus;
+
+    if (nextStatus === 'OPEN') {
+      const { snapshot, readiness } = await getStoreReadinessStateForTenant(
+        session.tenantId,
+        store.id,
+        tx,
+      );
+      if (snapshot.configurationVersion !== configurationVersion) {
+        throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+      }
+      previousStatus = snapshot.status;
+
+      if (!readiness.isReady) {
+        await auditRepo.createAuditLog(
+          {
+            tenantId: session.tenantId,
+            storeId: store.id,
+            userId: session.userId,
+            action: 'STATUS_CHANGE',
+            entity: 'Store',
+            entityId: store.id,
+            metadata: {
+              section: 'status',
+              outcome: 'BLOCKED',
+              requestedStatus: nextStatus,
+              configurationVersion,
+              blockerCodes: readiness.blockers.map((issue) => issue.code),
+            },
+          },
+          tx,
+        );
+        return { blockedBy: readiness.blockers };
+      }
+    } else {
+      const snapshot = await tx.store.findFirst({
+        where: { id: store.id, tenantId: session.tenantId, configurationVersion },
+        select: { status: true },
+      });
+      if (!snapshot) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+      previousStatus = snapshot.status;
+    }
+
     await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion, {
       status: nextStatus,
     });
-    if (!previous) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
     await writeStoreAudit(tx, {
       tenantId: session.tenantId,
       storeId: store.id,
@@ -546,11 +596,20 @@ export async function updateStoreStatus(
       section: 'status',
       expectedConfigurationVersion: configurationVersion,
       metadata: {
-        previousStatus: previous.status,
+        previousStatus,
         nextStatus,
       },
     });
+    return { blockedBy: [] };
   });
+
+  if (result.blockedBy.length > 0) {
+    const count = result.blockedBy.length;
+    throw new BusinessRuleError(
+      `A loja possui ${count} ${count === 1 ? 'pendência que impede' : 'pendências que impedem'} a abertura.`,
+      result.blockedBy.map((issue) => ({ ...issue })),
+    );
+  }
 
   return {
     storeId: store.id,

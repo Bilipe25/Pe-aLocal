@@ -339,7 +339,7 @@ export function evaluateStoreReadiness(
   return { isReady: blockers.length === 0, blockers, warnings, issues: [...blockers, ...warnings] };
 }
 
-export async function getStoreReadinessForTenant(
+export async function getStoreReadinessStateForTenant(
   tenantId: string,
   storeId: string,
   client?: ReadinessClient,
@@ -348,7 +348,16 @@ export async function getStoreReadinessForTenant(
   if (!snapshot) {
     throw new TenantAccessError('A loja não pertence ao estabelecimento autenticado.');
   }
-  return evaluateStoreReadiness(snapshot);
+  return { snapshot, readiness: evaluateStoreReadiness(snapshot) };
+}
+
+export async function getStoreReadinessForTenant(
+  tenantId: string,
+  storeId: string,
+  client?: ReadinessClient,
+) {
+  const { readiness } = await getStoreReadinessStateForTenant(tenantId, storeId, client);
+  return readiness;
 }
 
 export async function getStoreReadiness(storeId: string) {

@@ -30,6 +30,7 @@ function readySnapshot(overrides: Partial<StoreReadinessSnapshot> = {}): StoreRe
     whatsapp: '85999999999',
     logoUrl: 'https://assets.example/logo.png',
     coverUrl: null,
+    status: 'CLOSED',
     isActive: true,
     configurationVersion: 3,
     tenant: { status: 'ACTIVE' },

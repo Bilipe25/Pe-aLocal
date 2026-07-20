@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   findStoreOverviewById: vi.fn(),
   findStoreOperationalSettingsById: vi.fn(),
   findStorePaymentSettingsById: vi.fn(),
+  getStoreReadinessForTenant: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -22,6 +23,10 @@ vi.mock('@/server/repositories/store.repository', () => ({
   findStoreOverviewById: mocks.findStoreOverviewById,
   findStoreOperationalSettingsById: mocks.findStoreOperationalSettingsById,
   findStorePaymentSettingsById: mocks.findStorePaymentSettingsById,
+}));
+vi.mock('@/server/services/store-readiness.service', () => ({
+  getStoreReadinessForTenant: mocks.getStoreReadinessForTenant,
+  getStoreReadinessStateForTenant: vi.fn(),
 }));
 
 const managerSession = {
@@ -35,6 +40,12 @@ describe('StoreSettingsService', () => {
     mocks.requireTenantStoreAccess.mockResolvedValue({
       session: managerSession,
       store: { id: 'store-a' },
+    });
+    mocks.getStoreReadinessForTenant.mockResolvedValue({
+      isReady: true,
+      blockers: [],
+      warnings: [],
+      issues: [],
     });
   });
 
