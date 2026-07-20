@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  normalizePhone,
+  normalizePixKey,
+  normalizeState,
+  normalizeZipCode,
+  validateBrazilianPhone,
+  validateBrazilianState,
+  validatePixKey,
+  type PixKeyKind,
+} from '@/lib/brazil';
 
 // =============================================================================
 // Schemas de Loja
@@ -52,11 +62,31 @@ export const slugSchema = z
   .refine((val) => !RESERVED_SLUGS.includes(val), 'Este slug é reservado.');
 
 export const updateStoreSchema = z.object({
-  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(100),
+  name: z.string().trim().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(100),
   slug: slugSchema,
-  description: z.string().max(500, 'Descrição muito longa.').optional().default(''),
-  phone: z.string().max(20).optional().default(''),
-  whatsapp: z.string().max(20).optional().default(''),
+  description: z.string().trim().max(500, 'Descrição muito longa.').optional().default(''),
+  phone: z
+    .string()
+    .trim()
+    .max(20)
+    .refine(
+      (value) => !value || validateBrazilianPhone(value),
+      'Informe um telefone brasileiro válido.',
+    )
+    .transform((value) => (value ? normalizePhone(value) : ''))
+    .optional()
+    .default(''),
+  whatsapp: z
+    .string()
+    .trim()
+    .max(20)
+    .refine(
+      (value) => !value || validateBrazilianPhone(value),
+      'Informe um WhatsApp brasileiro válido.',
+    )
+    .transform((value) => (value ? normalizePhone(value) : ''))
+    .optional()
+    .default(''),
   status: z.enum(['OPEN', 'CLOSED', 'PAUSED']).optional(),
 });
 
@@ -67,33 +97,112 @@ export const expectedConfigurationVersionSchema = z.coerce
   .int('A versão da configuração deve ser um número inteiro.')
   .nonnegative('A versão da configuração é inválida.');
 
-export const updateStoreSettingsSchema = z.object({
-  primaryColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
-    .optional(),
-  secondaryColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
-    .optional(),
-  minOrderValue: z.coerce.number().min(0, 'Valor mínimo não pode ser negativo.').default(0),
-  estimatedTime: z.string().max(30).optional().default('30-50 min'),
-  deliveryEnabled: z.coerce.boolean().default(true),
-  pickupEnabled: z.coerce.boolean().default(true),
-  acceptsPix: z.coerce.boolean().default(true),
-  acceptsCash: z.coerce.boolean().default(true),
-  acceptsCardOnDelivery: z.coerce.boolean().default(true),
-});
+const formBooleanSchema = z.preprocess(
+  (value) => value === true || value === 'true' || value === 'on' || value === 1 || value === '1',
+  z.boolean(),
+);
+
+export const updateStoreSettingsSchema = z
+  .object({
+    primaryColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
+      .optional(),
+    secondaryColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
+      .optional(),
+    minOrderValue: z.coerce
+      .number()
+      .min(0, 'O pedido mínimo não pode ser negativo.')
+      .max(10_000, 'O pedido mínimo deve ser de até R$ 10.000,00.')
+      .default(0),
+    estimatedTimeMinMinutes: z.coerce
+      .number()
+      .int('Informe o prazo mínimo em minutos inteiros.')
+      .min(1, 'O prazo mínimo deve ser maior que zero.')
+      .max(1440, 'O prazo mínimo deve ser de até 1440 minutos.'),
+    estimatedTimeMaxMinutes: z.coerce
+      .number()
+      .int('Informe o prazo máximo em minutos inteiros.')
+      .min(1, 'O prazo máximo deve ser maior que zero.')
+      .max(1440, 'O prazo máximo deve ser de até 1440 minutos.'),
+    deliveryEnabled: formBooleanSchema.default(true),
+    pickupEnabled: formBooleanSchema.default(true),
+    acceptsPix: formBooleanSchema.default(true),
+    acceptsCash: formBooleanSchema.default(true),
+    acceptsCardOnDelivery: formBooleanSchema.default(true),
+  })
+  .superRefine((settings, context) => {
+    if (settings.estimatedTimeMaxMinutes < settings.estimatedTimeMinMinutes) {
+      context.addIssue({
+        code: 'custom',
+        path: ['estimatedTimeMaxMinutes'],
+        message: 'O prazo máximo precisa ser maior ou igual ao mínimo.',
+      });
+    }
+    if (!settings.deliveryEnabled && !settings.pickupEnabled) {
+      context.addIssue({
+        code: 'custom',
+        path: ['deliveryEnabled'],
+        message: 'Mantenha entrega ou retirada habilitada.',
+      });
+    }
+    if (!settings.acceptsPix && !settings.acceptsCash && !settings.acceptsCardOnDelivery) {
+      context.addIssue({
+        code: 'custom',
+        path: ['acceptsPix'],
+        message: 'Mantenha ao menos uma forma de pagamento habilitada.',
+      });
+    }
+  });
 
 export type UpdateStoreSettingsInput = z.infer<typeof updateStoreSettingsSchema>;
 
-export const updatePixConfigSchema = z.object({
-  pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']).nullable().optional(),
-  pixKey: z.string().max(100).optional().default(''),
-  pixRecipient: z.string().max(100).optional().default(''),
-  pixBank: z.string().max(60).optional().default(''),
-  pixInstructions: z.string().max(300).optional().default(''),
-});
+export const updatePixConfigSchema = z
+  .object({
+    pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']).nullable().optional(),
+    pixKey: z.string().trim().max(100).optional().default(''),
+    pixRecipient: z.string().trim().max(100).optional().default(''),
+    pixBank: z.string().trim().max(60).optional().default(''),
+    pixInstructions: z.string().trim().max(300).optional().default(''),
+  })
+  .superRefine((settings, context) => {
+    if (!settings.pixKeyType && settings.pixKey) {
+      context.addIssue({
+        code: 'custom',
+        path: ['pixKeyType'],
+        message: 'Selecione o tipo da chave Pix.',
+      });
+    }
+    if (settings.pixKeyType && !settings.pixKey) {
+      context.addIssue({ code: 'custom', path: ['pixKey'], message: 'Informe a chave Pix.' });
+    }
+    if (
+      settings.pixKeyType &&
+      settings.pixKey &&
+      !validatePixKey(settings.pixKeyType, settings.pixKey)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['pixKey'],
+        message: `A chave ${settings.pixKeyType} é inválida.`,
+      });
+    }
+    if (settings.pixKeyType && settings.pixRecipient.length < 2) {
+      context.addIssue({
+        code: 'custom',
+        path: ['pixRecipient'],
+        message: 'Informe o nome do beneficiário.',
+      });
+    }
+  })
+  .transform((settings) => ({
+    ...settings,
+    pixKey: settings.pixKeyType
+      ? normalizePixKey(settings.pixKeyType as PixKeyKind, settings.pixKey)
+      : '',
+  }));
 
 export type UpdatePixConfigInput = z.infer<typeof updatePixConfigSchema>;
 
@@ -103,8 +212,14 @@ export const updateAddressSchema = z.object({
   complement: z.string().max(100).optional().default(''),
   neighborhood: z.string().min(2, 'Bairro é obrigatório.').max(100),
   city: z.string().min(2, 'Cidade é obrigatória.').max(100),
-  state: z.string().length(2, 'Estado deve ter 2 letras.'),
-  zipCode: z.string().min(8, 'CEP inválido.').max(10),
+  state: z
+    .string()
+    .transform(normalizeState)
+    .refine(validateBrazilianState, 'Selecione uma UF brasileira válida.'),
+  zipCode: z
+    .string()
+    .transform(normalizeZipCode)
+    .refine((value) => /^\d{8}$/.test(value), 'Informe um CEP com oito dígitos.'),
 });
 
 export type UpdateAddressInput = z.infer<typeof updateAddressSchema>;

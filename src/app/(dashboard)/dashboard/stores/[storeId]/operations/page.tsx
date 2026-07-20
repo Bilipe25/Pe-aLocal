@@ -32,6 +32,7 @@ export default async function StoreOperationsPage({
           storeId={storeId}
           expectedConfigurationVersion={store.configurationVersion}
           settings={store.settings}
+          hasActiveDeliveryZone={store.deliveryZones.length > 0}
           readOnly={!canEdit}
         />
       </section>

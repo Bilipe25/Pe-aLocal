@@ -88,6 +88,7 @@ describe('componentes do painel do tenant', () => {
         timeZone="America/Fortaleza"
         canEditTimeZone
         exceptions={[]}
+        availability={{ reason: 'Aberta agora.', nextTransitionAt: null }}
         hours={[
           {
             dayOfWeek: 'MONDAY',
@@ -158,6 +159,7 @@ describe('componentes do painel do tenant', () => {
         storeId="00000000-0000-0000-0000-000000000001"
         expectedConfigurationVersion={0}
         settings={null}
+        hasActiveDeliveryZone
       />,
     );
 
@@ -173,6 +175,7 @@ describe('componentes do painel do tenant', () => {
         storeId="00000000-0000-0000-0000-000000000001"
         expectedConfigurationVersion={0}
         settings={null}
+        hasActiveDeliveryZone
         readOnly
       />,
     );

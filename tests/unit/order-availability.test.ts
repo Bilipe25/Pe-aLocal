@@ -51,6 +51,8 @@ describe('disponibilidade na criação do pedido', () => {
         deliveryEnabled: true,
         pickupEnabled: true,
         acceptsPix: true,
+        pixKeyType: 'EMAIL',
+        pixKey: 'financeiro@loja.test',
         acceptsCash: true,
         acceptsCardOnDelivery: true,
       },
@@ -94,6 +96,42 @@ describe('disponibilidade na criação do pedido', () => {
     expect(result).toMatchObject({
       success: false,
       error: { code: 'BUSINESS_RULE_ERROR' },
+    });
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('revalida a chave Pix no servidor antes de criar o pedido', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta agora.',
+      nextTransitionAt: null,
+    });
+    mocks.storeFindUnique.mockResolvedValueOnce({
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      status: 'OPEN',
+      isActive: true,
+      settings: {
+        minOrderValue: 0,
+        deliveryEnabled: true,
+        pickupEnabled: true,
+        acceptsPix: true,
+        pixKeyType: 'EMAIL',
+        pixKey: 'email-invalido',
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+      },
+    });
+
+    const result = await createOrderAction('loja-a', checkout);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: 'BUSINESS_RULE_ERROR',
+        message: 'O Pix está temporariamente indisponível. Escolha outra forma de pagamento.',
+      },
     });
     expect(mocks.createOrder).not.toHaveBeenCalled();
   });

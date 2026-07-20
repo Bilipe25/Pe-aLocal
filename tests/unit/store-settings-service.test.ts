@@ -60,12 +60,15 @@ describe('StoreSettingsService', () => {
       settings: {
         minOrderValue: 2000,
         estimatedTime: '30-50 min',
+        estimatedTimeMinMinutes: 30,
+        estimatedTimeMaxMinutes: 50,
         deliveryEnabled: true,
         pickupEnabled: true,
         acceptsPix: true,
         acceptsCash: true,
         acceptsCardOnDelivery: true,
       },
+      deliveryZones: [{ id: 'zone-a' }],
     };
     mocks.findStoreOperationalSettingsById.mockResolvedValue(store);
 

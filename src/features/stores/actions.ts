@@ -4,7 +4,8 @@ import { updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { CACHE_TAGS } from '@/server/cache';
-import { actionError, actionSuccess, type ActionResult } from '@/server/errors';
+import { actionError } from '@/server/errors';
+import { fieldErrorsFromDetails, type StoreFormActionResult } from '@/features/stores/form-state';
 import { rememberActiveStore } from '@/server/services/store-context.service';
 import {
   removeStoreScheduleException,
@@ -33,13 +34,26 @@ function invalidateStore(result: StoreConfigurationMutationResult) {
 
 async function executeStoreMutation(
   mutation: () => Promise<StoreConfigurationMutationResult>,
-): Promise<ActionResult<{ configurationVersion: number }>> {
+): Promise<StoreFormActionResult> {
   try {
     const result = await mutation();
     invalidateStore(result);
-    return actionSuccess({ configurationVersion: result.configurationVersion });
+    return {
+      success: true,
+      data: { configurationVersion: result.configurationVersion },
+      message: 'Alterações salvas.',
+      configurationVersion: result.configurationVersion,
+    };
   } catch (error) {
-    return actionError(error);
+    const result = actionError(error);
+    if (result.success) throw new Error('Estado de erro inesperado.');
+    const fieldErrors = fieldErrorsFromDetails(result.error.details);
+    return {
+      ...result,
+      success: false,
+      formError: result.error.message,
+      ...(Object.keys(fieldErrors).length > 0 ? { fieldErrors } : {}),
+    };
   }
 }
 

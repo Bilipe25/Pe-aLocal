@@ -3,6 +3,7 @@ import 'server-only';
 import { Prisma, type StoreStatus } from '@prisma/client';
 import { z } from 'zod';
 
+import { maskPixKey, normalizeSlug, validatePixKey } from '@/lib/brazil';
 import {
   createScheduleExceptionSchema,
   expectedConfigurationVersionSchema,
@@ -203,13 +204,17 @@ export async function getStoreAddressSettings(storeId: string) {
 
 export async function getStoreHoursSettings(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_STORE_HOURS);
-  const store = await storeRepo.findStoreHoursSettingsById(storeId, session.tenantId);
+  const [store, availabilityState] = await Promise.all([
+    storeRepo.findStoreHoursSettingsById(storeId, session.tenantId),
+    getStoreAvailabilityStateForTenant(session.tenantId, storeId),
+  ]);
   if (!store) missingStore();
 
   return {
     store,
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_STORE_HOURS),
     canEditTimeZone: session.tenantRole === 'OWNER',
+    availability: availabilityState.availability,
   };
 }
 
@@ -230,7 +235,15 @@ export async function getStorePaymentSettings(storeId: string) {
   if (!store) missingStore();
 
   return {
-    store,
+    store: {
+      ...store,
+      settings: store.settings
+        ? {
+            ...store.settings,
+            pixKeyMasked: maskPixKey(store.settings.pixKeyType, store.settings.pixKey),
+          }
+        : null,
+    },
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_PAYMENT_SETTINGS),
   };
 }
@@ -242,9 +255,10 @@ export async function updateStoreGeneralSettings(
 ): Promise<StoreConfigurationMutationResult> {
   const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_GENERAL);
   const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const raw = asRecord(input);
   const parsed = parseInput(
     updateStoreSchema,
-    asRecord(input),
+    { ...raw, slug: normalizeSlug(String(raw.slug ?? '')) },
     'Os dados gerais da loja são inválidos.',
   );
   const generalData = {
@@ -330,6 +344,7 @@ export async function updateStoreOperationalSettings(
   const settingsData = {
     ...parsed,
     minOrderValue: Math.round(parsed.minOrderValue * 100),
+    estimatedTime: `${parsed.estimatedTimeMinMinutes}-${parsed.estimatedTimeMaxMinutes} min`,
   };
 
   await getDb().$transaction(async (tx) => {
@@ -338,13 +353,40 @@ export async function updateStoreOperationalSettings(
       select: {
         minOrderValue: true,
         estimatedTime: true,
+        estimatedTimeMinMinutes: true,
+        estimatedTimeMaxMinutes: true,
         deliveryEnabled: true,
         pickupEnabled: true,
         acceptsPix: true,
         acceptsCash: true,
         acceptsCardOnDelivery: true,
+        pixKeyType: true,
+        pixKey: true,
       },
     });
+    if (
+      settingsData.acceptsPix &&
+      (!previous?.pixKeyType ||
+        !previous.pixKey ||
+        !validatePixKey(previous.pixKeyType, previous.pixKey))
+    ) {
+      throw new BusinessRuleError('Configure uma chave Pix válida antes de habilitar o Pix.', [
+        { field: 'acceptsPix', message: 'A chave Pix está ausente ou inválida.' },
+      ]);
+    }
+    const previousValues = previous
+      ? {
+          minOrderValue: previous.minOrderValue,
+          estimatedTime: previous.estimatedTime,
+          estimatedTimeMinMinutes: previous.estimatedTimeMinMinutes,
+          estimatedTimeMaxMinutes: previous.estimatedTimeMaxMinutes,
+          deliveryEnabled: previous.deliveryEnabled,
+          pickupEnabled: previous.pickupEnabled,
+          acceptsPix: previous.acceptsPix,
+          acceptsCash: previous.acceptsCash,
+          acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
+        }
+      : null;
     await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
     await tx.storeSettings.upsert({
       where: { storeId: store.id },
@@ -358,8 +400,8 @@ export async function updateStoreOperationalSettings(
       section: 'operations',
       expectedConfigurationVersion: configurationVersion,
       metadata: {
-        changedFields: changedFields(previous, settingsData),
-        previousValues: previous,
+        changedFields: changedFields(previousValues, settingsData),
+        previousValues,
         nextValues: settingsData,
       },
     });
@@ -416,6 +458,8 @@ export async function updateStorePaymentSettings(
         changedFields: changedFields(previous, parsed),
         previousPixKeyType: previous?.pixKeyType ?? null,
         nextPixKeyType: parsed.pixKeyType ?? null,
+        previousPixKeyMasked: maskPixKey(previous?.pixKeyType ?? null, previous?.pixKey ?? null),
+        nextPixKeyMasked: maskPixKey(parsed.pixKeyType ?? null, parsed.pixKey || null),
         pixKeyChanged: (previous?.pixKey ?? '') !== parsed.pixKey,
         pixRecipientChanged: (previous?.pixRecipient ?? '') !== parsed.pixRecipient,
         pixBankChanged: (previous?.pixBank ?? '') !== parsed.pixBank,

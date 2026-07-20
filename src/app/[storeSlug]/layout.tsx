@@ -85,7 +85,11 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         name={store.name}
         description={store.description}
         availability={store.availability}
-        estimatedTime={store.settings?.estimatedTime}
+        estimatedTime={
+          store.settings
+            ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
+            : undefined
+        }
         minOrderValue={store.settings?.minOrderValue}
         deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
         pickupEnabled={store.settings?.pickupEnabled}

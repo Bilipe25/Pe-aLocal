@@ -104,10 +104,11 @@ describe('concorrência das configurações da loja', () => {
     await expect(
       updateStoreOperationalSettings('store-a', 7, {
         minOrderValue: 20,
-        estimatedTime: '30-50 min',
+        estimatedTimeMinMinutes: 30,
+        estimatedTimeMaxMinutes: 50,
         deliveryEnabled: true,
         pickupEnabled: true,
-        acceptsPix: true,
+        acceptsPix: false,
         acceptsCash: false,
         acceptsCardOnDelivery: true,
       }),
@@ -171,7 +172,7 @@ describe('concorrência das configurações da loja', () => {
 
     await updateStorePaymentSettings('store-a', 2, {
       pixKeyType: 'RANDOM',
-      pixKey: 'segredo-nao-pode-ir-para-auditoria',
+      pixKey: '4da03571-bffd-45ef-8c44-20686c487838',
       pixRecipient: 'Pedido Local',
       pixBank: 'Banco B',
       pixInstructions: 'Nova instrução',
@@ -179,7 +180,7 @@ describe('concorrência das configurações da loja', () => {
 
     const auditPayload = mocks.createAuditLog.mock.calls[0]?.[0];
     const serializedAudit = JSON.stringify(auditPayload);
-    expect(serializedAudit).not.toContain('segredo-nao-pode-ir-para-auditoria');
+    expect(serializedAudit).not.toContain('4da03571-bffd-45ef-8c44-20686c487838');
     expect(serializedAudit).not.toContain('chave-anterior@example.com');
     expect(auditPayload).toMatchObject({
       metadata: {

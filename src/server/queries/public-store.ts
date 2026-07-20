@@ -34,6 +34,8 @@ async function getStoreFromDb(slug: string) {
           fontFamily: true,
           minOrderValue: true,
           estimatedTime: true,
+          estimatedTimeMinMinutes: true,
+          estimatedTimeMaxMinutes: true,
           deliveryEnabled: true,
           pickupEnabled: true,
           acceptsPix: true,

@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { PixKeyType, Prisma } from '@prisma/client';
 
+import { validatePixKey } from '@/lib/brazil';
 import { DEFAULT_STORE_TIME_ZONE } from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
 import { TenantAccessError } from '@/server/errors';
@@ -77,15 +78,7 @@ export function isValidStoreTimeZone(value: string) {
 }
 
 function isValidPixConfiguration(type: PixKeyType | null, key: string | null) {
-  if (!type || !hasText(key)) return false;
-  const value = key!.trim();
-  const digits = value.replace(/\D/g, '');
-
-  if (type === 'CPF') return digits.length === 11;
-  if (type === 'CNPJ') return digits.length === 14;
-  if (type === 'PHONE') return digits.length >= 10 && digits.length <= 15;
-  if (type === 'EMAIL') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return Boolean(type && key && validatePixKey(type, key));
 }
 
 function hasCompleteAddress(address: StoreReadinessSnapshot['address']) {

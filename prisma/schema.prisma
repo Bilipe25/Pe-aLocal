@@ -320,10 +320,12 @@ model StoreSettings {
   fontFamily     String @default("Inter")
 
   // Configurações de pedido
-  minOrderValue   Int     @default(0) // Em centavos
-  estimatedTime   String  @default("30-50 min")
-  deliveryEnabled Boolean @default(true)
-  pickupEnabled   Boolean @default(true)
+  minOrderValue           Int     @default(0) // Em centavos
+  estimatedTime           String  @default("30-50 min")
+  estimatedTimeMinMinutes Int     @default(30)
+  estimatedTimeMaxMinutes Int     @default(50)
+  deliveryEnabled         Boolean @default(true)
+  pickupEnabled           Boolean @default(true)
 
   // Formas de pagamento aceitas
   acceptsPix            Boolean @default(true)

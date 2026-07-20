@@ -131,12 +131,19 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
         select: {
           minOrderValue: true,
           estimatedTime: true,
+          estimatedTimeMinMinutes: true,
+          estimatedTimeMaxMinutes: true,
           deliveryEnabled: true,
           pickupEnabled: true,
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
         },
+      },
+      deliveryZones: {
+        where: { isActive: true },
+        take: 1,
+        select: { id: true },
       },
     },
   });

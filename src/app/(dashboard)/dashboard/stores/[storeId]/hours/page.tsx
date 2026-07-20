@@ -7,7 +7,7 @@ export const metadata = { title: 'Horários de funcionamento' };
 
 export default async function StoreHoursPage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  const { store, canEdit, canEditTimeZone } = await loadStorePageData(() =>
+  const { store, canEdit, canEditTimeZone, availability } = await loadStorePageData(() =>
     getStoreHoursSettings(storeId),
   );
 
@@ -34,6 +34,10 @@ export default async function StoreHoursPage({ params }: { params: Promise<{ sto
               ...exception,
               date: exception.date.toISOString().slice(0, 10),
             }))}
+            availability={{
+              reason: availability.reason,
+              nextTransitionAt: availability.nextTransitionAt?.toISOString() ?? null,
+            }}
           />
         )}
       </section>
