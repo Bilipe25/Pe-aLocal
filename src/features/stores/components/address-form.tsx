@@ -11,6 +11,7 @@ import { useState } from 'react';
 
 interface AddressFormProps {
   storeId: string;
+  expectedConfigurationVersion: number;
   readOnly?: boolean;
   address: {
     street: string;
@@ -23,14 +24,21 @@ interface AddressFormProps {
   } | null;
 }
 
-export function AddressForm({ storeId, address, readOnly = false }: AddressFormProps) {
+export function AddressForm({
+  storeId,
+  expectedConfigurationVersion,
+  address,
+  readOnly = false,
+}: AddressFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updateAddressAction(storeId, formData);
+    const result = await updateAddressAction(storeId, configurationVersion, formData);
     if (result.success) {
+      setConfigurationVersion(result.data.configurationVersion);
       toast.success('Endereço atualizado!');
       router.refresh();
     } else {

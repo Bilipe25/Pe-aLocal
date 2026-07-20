@@ -24,7 +24,12 @@ export default async function StorePaymentsPage({
         className="border-border bg-surface max-w-3xl rounded-xl border p-4 sm:p-6"
         aria-label="Dados do Pix"
       >
-        <PixForm storeId={storeId} settings={store.settings} readOnly={!canEdit} />
+        <PixForm
+          storeId={storeId}
+          expectedConfigurationVersion={store.configurationVersion}
+          settings={store.settings}
+          readOnly={!canEdit}
+        />
       </section>
     </div>
   );

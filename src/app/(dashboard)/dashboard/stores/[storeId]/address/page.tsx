@@ -26,7 +26,12 @@ export default async function StoreAddressPage({
         aria-label="Dados do endereço"
       >
         {!canEdit && <ReadOnlyNotice />}
-        <AddressForm storeId={storeId} address={store.address} readOnly={!canEdit} />
+        <AddressForm
+          storeId={storeId}
+          expectedConfigurationVersion={store.configurationVersion}
+          address={store.address}
+          readOnly={!canEdit}
+        />
       </section>
     </div>
   );

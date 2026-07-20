@@ -27,7 +27,7 @@ describe('autorizaÃ§Ã£o das aÃ§Ãµes de configuraÃ§Ã£o', () => {
   });
 
   it('protege a ediÃ§Ã£o operacional com permissÃ£o especÃ­fica', async () => {
-    await expect(updateStoreSettingsAction('store-a', new FormData())).resolves.toMatchObject({
+    await expect(updateStoreSettingsAction('store-a', 0, new FormData())).resolves.toMatchObject({
       success: false,
       error: { code: 'AUTHORIZATION_ERROR' },
     });
@@ -38,7 +38,7 @@ describe('autorizaÃ§Ã£o das aÃ§Ãµes de configuraÃ§Ã£o', () => {
   });
 
   it('protege a chave Pix com permissÃ£o especÃ­fica', async () => {
-    await expect(updatePixConfigAction('store-a', new FormData())).resolves.toMatchObject({
+    await expect(updatePixConfigAction('store-a', 0, new FormData())).resolves.toMatchObject({
       success: false,
       error: { code: 'AUTHORIZATION_ERROR' },
     });
@@ -49,7 +49,7 @@ describe('autorizaÃ§Ã£o das aÃ§Ãµes de configuraÃ§Ã£o', () => {
   });
 
   it('protege mudanÃ§as de status no servidor', async () => {
-    await expect(toggleStoreStatusAction('store-a', 'PAUSED')).resolves.toMatchObject({
+    await expect(toggleStoreStatusAction('store-a', 0, 'PAUSED')).resolves.toMatchObject({
       success: false,
       error: { code: 'AUTHORIZATION_ERROR' },
     });

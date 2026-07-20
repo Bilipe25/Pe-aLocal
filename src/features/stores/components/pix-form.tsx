@@ -20,6 +20,7 @@ const PIX_KEY_TYPES = [
 
 interface PixFormProps {
   storeId: string;
+  expectedConfigurationVersion: number;
   readOnly?: boolean;
   settings: {
     pixKeyType: string | null;
@@ -30,14 +31,21 @@ interface PixFormProps {
   } | null;
 }
 
-export function PixForm({ storeId, settings, readOnly = false }: PixFormProps) {
+export function PixForm({
+  storeId,
+  expectedConfigurationVersion,
+  settings,
+  readOnly = false,
+}: PixFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updatePixConfigAction(storeId, formData);
+    const result = await updatePixConfigAction(storeId, configurationVersion, formData);
     if (result.success) {
+      setConfigurationVersion(result.data.configurationVersion);
       toast.success('Configuração de Pix atualizada!');
       router.refresh();
     } else {

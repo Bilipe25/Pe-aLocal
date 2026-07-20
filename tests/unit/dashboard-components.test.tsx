@@ -83,6 +83,7 @@ describe('componentes do painel do tenant', () => {
     render(
       <HoursForm
         storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
         hours={[
           {
             dayOfWeek: 'MONDAY',
@@ -113,7 +114,13 @@ describe('componentes do painel do tenant', () => {
   });
 
   it('preserva a hierarquia de seções nas configurações da loja', () => {
-    render(<StoreSettingsForm storeId="00000000-0000-0000-0000-000000000001" settings={null} />);
+    render(
+      <StoreSettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
+        settings={null}
+      />,
+    );
 
     expect(screen.getByRole('heading', { level: 2, name: 'Modalidades' })).toBeInTheDocument();
     expect(
@@ -123,7 +130,12 @@ describe('componentes do painel do tenant', () => {
 
   it('apresenta operações sem controles de salvamento no modo somente leitura', () => {
     render(
-      <StoreSettingsForm storeId="00000000-0000-0000-0000-000000000001" settings={null} readOnly />,
+      <StoreSettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
+        settings={null}
+        readOnly
+      />,
     );
 
     expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();

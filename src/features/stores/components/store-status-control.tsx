@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { CirclePause, LockKeyhole, Store } from 'lucide-react';
@@ -11,16 +11,27 @@ import { toggleStoreStatusAction } from '@/features/stores/actions';
 
 type StoreStatus = 'OPEN' | 'CLOSED' | 'PAUSED';
 
-export function StoreStatusControl({ storeId, status }: { storeId: string; status: StoreStatus }) {
+export function StoreStatusControl({
+  storeId,
+  status,
+  expectedConfigurationVersion,
+}: {
+  storeId: string;
+  status: StoreStatus;
+  expectedConfigurationVersion: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function changeStatus(nextStatus: StoreStatus) {
-    const result = await toggleStoreStatusAction(storeId, nextStatus);
+    const result = await toggleStoreStatusAction(storeId, configurationVersion, nextStatus);
     if (!result.success) {
       toast.error(result.error.message);
       return false;
     }
+
+    setConfigurationVersion(result.data.configurationVersion);
 
     toast.success(
       nextStatus === 'OPEN'

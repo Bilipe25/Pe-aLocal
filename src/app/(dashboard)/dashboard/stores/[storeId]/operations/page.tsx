@@ -28,7 +28,12 @@ export default async function StoreOperationsPage({
         {!canEdit && (
           <ReadOnlyNotice message="Seu perfil pode consultar a operação, mas somente o proprietário pode alterá-la." />
         )}
-        <StoreSettingsForm storeId={storeId} settings={store.settings} readOnly={!canEdit} />
+        <StoreSettingsForm
+          storeId={storeId}
+          expectedConfigurationVersion={store.configurationVersion}
+          settings={store.settings}
+          readOnly={!canEdit}
+        />
       </section>
     </div>
   );

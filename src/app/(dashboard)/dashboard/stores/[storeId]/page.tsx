@@ -79,7 +79,11 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
         </div>
         <div className="border-border mt-4 border-t pt-4">
           {capabilities.changeStatus ? (
-            <StoreStatusControl storeId={store.id} status={store.status} />
+            <StoreStatusControl
+              storeId={store.id}
+              status={store.status}
+              expectedConfigurationVersion={store.configurationVersion}
+            />
           ) : (
             <ReadOnlyNotice message="O status da unidade pode ser consultado acima, mas somente o proprietário pode alterá-lo." />
           )}

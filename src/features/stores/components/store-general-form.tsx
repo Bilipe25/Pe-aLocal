@@ -12,6 +12,7 @@ import { useState } from 'react';
 
 interface StoreGeneralFormProps {
   storeId: string;
+  expectedConfigurationVersion: number;
   readOnly?: boolean;
   store: {
     name: string;
@@ -22,14 +23,21 @@ interface StoreGeneralFormProps {
   };
 }
 
-export function StoreGeneralForm({ storeId, store, readOnly = false }: StoreGeneralFormProps) {
+export function StoreGeneralForm({
+  storeId,
+  expectedConfigurationVersion,
+  store,
+  readOnly = false,
+}: StoreGeneralFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updateStoreAction(storeId, formData);
+    const result = await updateStoreAction(storeId, configurationVersion, formData);
     if (result.success) {
+      setConfigurationVersion(result.data.configurationVersion);
       toast.success('Loja atualizada com sucesso!');
       router.refresh();
     } else {

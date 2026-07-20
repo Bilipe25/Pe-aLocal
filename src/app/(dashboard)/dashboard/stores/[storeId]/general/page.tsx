@@ -26,7 +26,12 @@ export default async function StoreGeneralPage({
         aria-label="Dados da loja"
       >
         {!canEdit && <ReadOnlyNotice />}
-        <StoreGeneralForm storeId={storeId} store={store} readOnly={!canEdit} />
+        <StoreGeneralForm
+          storeId={storeId}
+          expectedConfigurationVersion={store.configurationVersion}
+          store={store}
+          readOnly={!canEdit}
+        />
       </section>
     </div>
   );

@@ -20,7 +20,13 @@ export default async function StoreHoursPage({ params }: { params: Promise<{ sto
         className="border-border bg-surface max-w-4xl rounded-xl border p-4 sm:p-6"
         aria-label="Horários da loja"
       >
-        {canEdit && <HoursForm storeId={storeId} hours={store.openingHours} />}
+        {canEdit && (
+          <HoursForm
+            storeId={storeId}
+            expectedConfigurationVersion={store.configurationVersion}
+            hours={store.openingHours}
+          />
+        )}
       </section>
     </div>
   );

@@ -29,11 +29,17 @@ interface HourEntry {
 
 interface HoursFormProps {
   storeId: string;
+  expectedConfigurationVersion: number;
   hours: HourEntry[];
 }
 
-export function HoursForm({ storeId, hours: initial }: HoursFormProps) {
+export function HoursForm({
+  storeId,
+  expectedConfigurationVersion,
+  hours: initial,
+}: HoursFormProps) {
   const router = useRouter();
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
   const [hours, setHours] = useState<HourEntry[]>(() =>
     DAYS.map((day) => {
       const existing = initial.find((h) => h.dayOfWeek === day.value);
@@ -53,8 +59,9 @@ export function HoursForm({ storeId, hours: initial }: HoursFormProps) {
     setSaving(true);
     setError(null);
     try {
-      const result = await updateHoursAction(storeId, { hours });
+      const result = await updateHoursAction(storeId, configurationVersion, { hours });
       if (result.success) {
+        setConfigurationVersion(result.data.configurationVersion);
         toast.success('Horários atualizados!');
         router.refresh();
       } else {

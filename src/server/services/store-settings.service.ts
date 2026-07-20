@@ -1,9 +1,34 @@
 import 'server-only';
 
+import { Prisma, type StoreStatus } from '@prisma/client';
+import { z } from 'zod';
+
+import {
+  expectedConfigurationVersionSchema,
+  updateAddressSchema,
+  updateHoursSchema,
+  updatePixConfigSchema,
+  updateStoreSchema,
+  updateStoreSettingsSchema,
+} from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
-import { TenantAccessError } from '@/server/errors';
+import { getDb } from '@/server/database/client';
+import { ConflictError, TenantAccessError, ValidationError } from '@/server/errors';
 import { hasTenantPermission, Permission, type TenantRole } from '@/server/permissions';
+import * as auditRepo from '@/server/repositories/audit-log.repository';
 import * as storeRepo from '@/server/repositories/store.repository';
+
+const CONFIGURATION_CONFLICT_MESSAGE =
+  'As configurações foram alteradas em outra sessão. Recarregue a página antes de continuar.';
+
+type RawFormInput = FormData | Record<string, unknown>;
+
+export interface StoreConfigurationMutationResult {
+  storeId: string;
+  configurationVersion: number;
+  storeSlug: string;
+  previousStoreSlug?: string;
+}
 
 export interface StorePageCapabilities {
   viewGeneral: boolean;
@@ -37,6 +62,96 @@ export function getStorePageCapabilities(role: TenantRole): StorePageCapabilitie
 
 function missingStore(): never {
   throw new TenantAccessError('A loja não pertence ao estabelecimento autenticado.');
+}
+
+function asRecord(input: RawFormInput): Record<string, unknown> {
+  return input instanceof FormData ? Object.fromEntries(input) : input;
+}
+
+function parseInput<T>(schema: z.ZodType<T>, input: unknown, message: string): T {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError(
+      message,
+      parsed.error.issues.map((issue) => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+      })),
+    );
+  }
+  return parsed.data;
+}
+
+function parseExpectedConfigurationVersion(value: unknown): number {
+  return parseInput(
+    expectedConfigurationVersionSchema,
+    value,
+    'A versão das configurações é inválida.',
+  );
+}
+
+function changedFields(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown>,
+): string[] {
+  return Object.keys(after).filter(
+    (field) => JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after[field] ?? null),
+  );
+}
+
+async function advanceConfigurationVersion(
+  tx: Prisma.TransactionClient,
+  storeId: string,
+  tenantId: string,
+  expectedConfigurationVersion: number,
+  data: Prisma.StoreUpdateManyMutationInput = {},
+) {
+  const updated = await tx.store.updateMany({
+    where: {
+      id: storeId,
+      tenantId,
+      configurationVersion: expectedConfigurationVersion,
+    },
+    data: {
+      ...data,
+      configurationVersion: { increment: 1 },
+    },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+  }
+}
+
+async function writeStoreAudit(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string;
+    storeId: string;
+    userId: string;
+    action?: 'UPDATE' | 'STATUS_CHANGE';
+    section: string;
+    expectedConfigurationVersion: number;
+    metadata: Prisma.InputJsonObject;
+  },
+) {
+  return auditRepo.createAuditLog(
+    {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      userId: input.userId,
+      action: input.action ?? 'UPDATE',
+      entity: 'Store',
+      entityId: input.storeId,
+      metadata: {
+        section: input.section,
+        previousConfigurationVersion: input.expectedConfigurationVersion,
+        nextConfigurationVersion: input.expectedConfigurationVersion + 1,
+        ...input.metadata,
+      },
+    },
+    tx,
+  );
 }
 
 export async function getStoreOverview(storeId: string) {
@@ -99,5 +214,347 @@ export async function getStorePaymentSettings(storeId: string) {
   return {
     store,
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_PAYMENT_SETTINGS),
+  };
+}
+
+export async function updateStoreGeneralSettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: RawFormInput,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_GENERAL);
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const parsed = parseInput(
+    updateStoreSchema,
+    asRecord(input),
+    'Os dados gerais da loja são inválidos.',
+  );
+  const generalData = {
+    name: parsed.name,
+    slug: parsed.slug,
+    description: parsed.description,
+    phone: parsed.phone,
+    whatsapp: parsed.whatsapp,
+  };
+
+  if (generalData.slug !== store.slug) {
+    const existing = await storeRepo.findStoreBySlug(generalData.slug);
+    if (existing && existing.id !== store.id) {
+      throw new ConflictError('Este slug já está em uso.');
+    }
+  }
+
+  try {
+    await getDb().$transaction(async (tx) => {
+      const previous = await tx.store.findFirst({
+        where: { id: store.id, tenantId: session.tenantId, configurationVersion },
+        select: {
+          name: true,
+          slug: true,
+          description: true,
+          phone: true,
+          whatsapp: true,
+        },
+      });
+
+      await advanceConfigurationVersion(
+        tx,
+        store.id,
+        session.tenantId,
+        configurationVersion,
+        generalData,
+      );
+      if (!previous) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+
+      await writeStoreAudit(tx, {
+        tenantId: session.tenantId,
+        storeId: store.id,
+        userId: session.userId,
+        section: 'general',
+        expectedConfigurationVersion: configurationVersion,
+        metadata: {
+          changedFields: changedFields(previous, generalData),
+          previousPublicIdentity: { name: previous.name, slug: previous.slug },
+          nextPublicIdentity: { name: generalData.name, slug: generalData.slug },
+        },
+      });
+    });
+  } catch (error) {
+    if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
+      throw new ConflictError('Este slug já está em uso.');
+    }
+    throw error;
+  }
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: generalData.slug,
+    previousStoreSlug: store.slug,
+  };
+}
+
+export async function updateStoreOperationalSettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: RawFormInput,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(
+    storeId,
+    Permission.EDIT_STORE_OPERATIONS,
+  );
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const parsed = parseInput(
+    updateStoreSettingsSchema,
+    asRecord(input),
+    'As configurações operacionais são inválidas.',
+  );
+  const settingsData = {
+    ...parsed,
+    minOrderValue: Math.round(parsed.minOrderValue * 100),
+  };
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeSettings.findUnique({
+      where: { storeId: store.id },
+      select: {
+        minOrderValue: true,
+        estimatedTime: true,
+        deliveryEnabled: true,
+        pickupEnabled: true,
+        acceptsPix: true,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+      },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeSettings.upsert({
+      where: { storeId: store.id },
+      update: settingsData,
+      create: { storeId: store.id, ...settingsData },
+    });
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      section: 'operations',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        changedFields: changedFields(previous, settingsData),
+        previousValues: previous,
+        nextValues: settingsData,
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function updateStorePaymentSettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: RawFormInput,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(
+    storeId,
+    Permission.EDIT_PAYMENT_SETTINGS,
+  );
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const raw = asRecord(input);
+  const parsed = parseInput(
+    updatePixConfigSchema,
+    { ...raw, pixKeyType: raw.pixKeyType || null },
+    'A configuração de Pix é inválida.',
+  );
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeSettings.findUnique({
+      where: { storeId: store.id },
+      select: {
+        pixKeyType: true,
+        pixKey: true,
+        pixRecipient: true,
+        pixBank: true,
+        pixInstructions: true,
+      },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeSettings.upsert({
+      where: { storeId: store.id },
+      update: parsed,
+      create: { storeId: store.id, ...parsed },
+    });
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      section: 'payments',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        changedFields: changedFields(previous, parsed),
+        previousPixKeyType: previous?.pixKeyType ?? null,
+        nextPixKeyType: parsed.pixKeyType ?? null,
+        pixKeyChanged: (previous?.pixKey ?? '') !== parsed.pixKey,
+        pixRecipientChanged: (previous?.pixRecipient ?? '') !== parsed.pixRecipient,
+        pixBankChanged: (previous?.pixBank ?? '') !== parsed.pixBank,
+        pixInstructionsChanged: (previous?.pixInstructions ?? '') !== parsed.pixInstructions,
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function updateStoreAddressSettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: RawFormInput,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_ADDRESS);
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const parsed = parseInput(updateAddressSchema, asRecord(input), 'O endereço da loja é inválido.');
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeAddress.findUnique({
+      where: { storeId: store.id },
+      select: {
+        street: true,
+        number: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
+        zipCode: true,
+      },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeAddress.upsert({
+      where: { storeId: store.id },
+      update: parsed,
+      create: { storeId: store.id, ...parsed },
+    });
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      section: 'address',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        changedFields: changedFields(previous, parsed),
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function updateStoreHoursSettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: unknown,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.EDIT_STORE_HOURS);
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const parsed = parseInput(updateHoursSchema, input, 'Os horários da loja são inválidos.');
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.openingHour.findMany({
+      where: { storeId: store.id },
+      orderBy: { dayOfWeek: 'asc' },
+      select: { dayOfWeek: true, openTime: true, closeTime: true, isActive: true },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    for (const hour of parsed.hours) {
+      await tx.openingHour.upsert({
+        where: { storeId_dayOfWeek: { storeId: store.id, dayOfWeek: hour.dayOfWeek } },
+        update: {
+          openTime: hour.openTime,
+          closeTime: hour.closeTime,
+          isActive: hour.isActive,
+        },
+        create: { storeId: store.id, ...hour },
+      });
+    }
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      section: 'hours',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        previousActiveDays: previous.filter((hour) => hour.isActive).map((hour) => hour.dayOfWeek),
+        nextActiveDays: parsed.hours.filter((hour) => hour.isActive).map((hour) => hour.dayOfWeek),
+        changedDays: parsed.hours
+          .filter((hour) => {
+            const old = previous.find((item) => item.dayOfWeek === hour.dayOfWeek);
+            return JSON.stringify(old ?? null) !== JSON.stringify(hour);
+          })
+          .map((hour) => hour.dayOfWeek),
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function updateStoreStatus(
+  storeId: string,
+  expectedVersion: unknown,
+  status: unknown,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(
+    storeId,
+    Permission.CHANGE_STORE_STATUS,
+  );
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const nextStatus = parseInput(
+    z.enum(['OPEN', 'CLOSED', 'PAUSED']),
+    status,
+    'O status da loja é inválido.',
+  ) as StoreStatus;
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.store.findFirst({
+      where: { id: store.id, tenantId: session.tenantId, configurationVersion },
+      select: { status: true },
+    });
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion, {
+      status: nextStatus,
+    });
+    if (!previous) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      action: 'STATUS_CHANGE',
+      section: 'status',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        previousStatus: previous.status,
+        nextStatus,
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
   };
 }

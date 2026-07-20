@@ -13,6 +13,7 @@ import { useState } from 'react';
 
 interface StoreSettingsFormProps {
   storeId: string;
+  expectedConfigurationVersion: number;
   readOnly?: boolean;
   settings: {
     minOrderValue: number;
@@ -25,14 +26,21 @@ interface StoreSettingsFormProps {
   } | null;
 }
 
-export function StoreSettingsForm({ storeId, settings, readOnly = false }: StoreSettingsFormProps) {
+export function StoreSettingsForm({
+  storeId,
+  expectedConfigurationVersion,
+  settings,
+  readOnly = false,
+}: StoreSettingsFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updateStoreSettingsAction(storeId, formData);
+    const result = await updateStoreSettingsAction(storeId, configurationVersion, formData);
     if (result.success) {
+      setConfigurationVersion(result.data.configurationVersion);
       toast.success('Configurações atualizadas!');
       router.refresh();
     } else {

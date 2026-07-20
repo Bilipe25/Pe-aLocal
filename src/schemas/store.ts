@@ -31,6 +31,11 @@ export const updateStoreSchema = z.object({
 
 export type UpdateStoreInput = z.infer<typeof updateStoreSchema>;
 
+export const expectedConfigurationVersionSchema = z.coerce
+  .number()
+  .int('A versão da configuração deve ser um número inteiro.')
+  .nonnegative('A versão da configuração é inválida.');
+
 export const updateStoreSettingsSchema = z.object({
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.').optional(),
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.').optional(),

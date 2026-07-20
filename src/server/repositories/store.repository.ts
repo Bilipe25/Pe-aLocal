@@ -1,5 +1,4 @@
 import { getDb } from '@/server/database/client';
-import type { StoreStatus } from '@prisma/client';
 
 // =============================================================================
 // Store Repository
@@ -39,6 +38,7 @@ export async function findStoreOverviewById(id: string, tenantId: string) {
       slug: true,
       status: true,
       isActive: true,
+      configurationVersion: true,
       tenant: { select: { status: true } },
       address: { select: { id: true } },
       openingHours: {
@@ -59,6 +59,7 @@ export async function findStoreGeneralSettingsById(id: string, tenantId: string)
       description: true,
       phone: true,
       whatsapp: true,
+      configurationVersion: true,
     },
   });
 }
@@ -68,6 +69,7 @@ export async function findStoreAddressSettingsById(id: string, tenantId: string)
     where: { id, tenantId },
     select: {
       id: true,
+      configurationVersion: true,
       address: {
         select: {
           street: true,
@@ -88,6 +90,7 @@ export async function findStoreHoursSettingsById(id: string, tenantId: string) {
     where: { id, tenantId },
     select: {
       id: true,
+      configurationVersion: true,
       openingHours: {
         orderBy: { dayOfWeek: 'asc' },
         select: {
@@ -106,6 +109,7 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
     where: { id, tenantId },
     select: {
       id: true,
+      configurationVersion: true,
       settings: {
         select: {
           minOrderValue: true,
@@ -126,6 +130,7 @@ export async function findStorePaymentSettingsById(id: string, tenantId: string)
     where: { id, tenantId },
     select: {
       id: true,
+      configurationVersion: true,
       settings: {
         select: {
           pixKeyType: true,
@@ -153,6 +158,7 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       slug: true,
       status: true,
       isActive: true,
+      configurationVersion: true,
       tenant: {
         select: { id: true, name: true, status: true },
       },
@@ -165,94 +171,4 @@ export async function findStoreBySlug(slug: string) {
     where: { slug },
     select: { id: true, tenantId: true },
   });
-}
-
-export async function updateStore(
-  id: string,
-  tenantId: string,
-  data: {
-    name?: string;
-    slug?: string;
-    description?: string;
-    phone?: string;
-    whatsapp?: string;
-    status?: StoreStatus;
-    logoUrl?: string;
-    coverUrl?: string;
-  },
-) {
-  return getDb().store.update({
-    where: { id, tenantId },
-    data,
-  });
-}
-
-export async function upsertStoreSettings(
-  storeId: string,
-  data: {
-    primaryColor?: string;
-    secondaryColor?: string;
-    minOrderValue?: number;
-    estimatedTime?: string;
-    deliveryEnabled?: boolean;
-    pickupEnabled?: boolean;
-    acceptsPix?: boolean;
-    acceptsCash?: boolean;
-    acceptsCardOnDelivery?: boolean;
-    pixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM' | null;
-    pixKey?: string;
-    pixRecipient?: string;
-    pixBank?: string;
-    pixInstructions?: string;
-  },
-) {
-  return getDb().storeSettings.upsert({
-    where: { storeId },
-    update: data,
-    create: { storeId, ...data },
-  });
-}
-
-export async function upsertStoreAddress(
-  storeId: string,
-  data: {
-    street: string;
-    number: string;
-    complement?: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    zipCode: string;
-  },
-) {
-  return getDb().storeAddress.upsert({
-    where: { storeId },
-    update: data,
-    create: { storeId, ...data },
-  });
-}
-
-export async function upsertOpeningHours(
-  storeId: string,
-  hours: {
-    dayOfWeek: 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
-    openTime: string;
-    closeTime: string;
-    isActive: boolean;
-  }[],
-) {
-  const operations = hours.map((h) =>
-    getDb().openingHour.upsert({
-      where: { storeId_dayOfWeek: { storeId, dayOfWeek: h.dayOfWeek } },
-      update: { openTime: h.openTime, closeTime: h.closeTime, isActive: h.isActive },
-      create: {
-        storeId,
-        dayOfWeek: h.dayOfWeek,
-        openTime: h.openTime,
-        closeTime: h.closeTime,
-        isActive: h.isActive,
-      },
-    }),
-  );
-  return getDb().$transaction(operations);
 }
