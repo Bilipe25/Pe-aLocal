@@ -1,4 +1,7 @@
 import { getDb } from '@/server/database/client';
+import type { Prisma } from '@prisma/client';
+
+type StoreReadinessClient = Pick<Prisma.TransactionClient, 'store'>;
 
 // =============================================================================
 // Store Repository
@@ -170,5 +173,81 @@ export async function findStoreBySlug(slug: string) {
   return getDb().store.findUnique({
     where: { slug },
     select: { id: true, tenantId: true },
+  });
+}
+
+export async function findStoreReadinessById(
+  id: string,
+  tenantId: string,
+  client: StoreReadinessClient = getDb(),
+) {
+  return client.store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      name: true,
+      slug: true,
+      description: true,
+      phone: true,
+      whatsapp: true,
+      logoUrl: true,
+      coverUrl: true,
+      isActive: true,
+      configurationVersion: true,
+      tenant: { select: { status: true } },
+      settings: {
+        select: {
+          minOrderValue: true,
+          deliveryEnabled: true,
+          pickupEnabled: true,
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+          pixKeyType: true,
+          pixKey: true,
+        },
+      },
+      address: {
+        select: {
+          street: true,
+          number: true,
+          neighborhood: true,
+          city: true,
+          state: true,
+          zipCode: true,
+        },
+      },
+      openingHours: {
+        where: { isActive: true },
+        orderBy: { dayOfWeek: 'asc' },
+        select: {
+          dayOfWeek: true,
+          openTime: true,
+          closeTime: true,
+        },
+      },
+      deliveryZones: {
+        where: { isActive: true },
+        take: 1,
+        select: { id: true },
+      },
+      categories: {
+        where: {
+          isActive: true,
+          products: { some: { isAvailable: true, isSoldOut: false } },
+        },
+        take: 1,
+        select: { id: true },
+      },
+      products: {
+        where: { isAvailable: true, isSoldOut: false, isFeatured: true },
+        take: 1,
+        select: { id: true },
+      },
+      customization: {
+        select: { publishedConfig: true },
+      },
+    },
   });
 }
