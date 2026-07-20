@@ -229,7 +229,7 @@ body {
 }
 
 .storefront-header {
-  overflow: hidden;
+  overflow: visible;
   border-bottom: 1px solid var(--store-border);
   background: var(--store-surface);
 }
@@ -322,32 +322,42 @@ body {
 
 .storefront-operational-info {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
   margin-top: 0.75rem;
+  border: 1px solid var(--store-border);
+  border-radius: var(--store-radius);
+  padding: 0.25rem;
+  background: var(--store-background);
 }
 
 .storefront-operational-item,
 .storefront-hours > summary {
-  display: inline-flex;
-  min-height: 2.75rem;
+  display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 0.35rem;
-  border: 1px solid var(--store-border);
-  border-radius: 9999px;
-  padding: 0.45rem 0.75rem;
+  gap: 0.5rem;
+  border-radius: calc(var(--store-radius) * 0.75);
+  padding: 0.25rem 0.5rem;
   color: var(--store-text);
-  background: var(--store-background);
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.25;
+}
+
+.storefront-operational-item > svg,
+.storefront-hours > summary > svg:first-child {
+  flex: none;
 }
 
 .storefront-hours {
   position: static;
+  min-width: 0;
 }
 
 .storefront-hours > summary {
+  min-height: 2.75rem;
   cursor: pointer;
   list-style: none;
 }
@@ -357,13 +367,26 @@ body {
 }
 
 .storefront-hours[open] > summary {
-  border-color: var(--store-button-background);
+  color: var(--store-button-background);
+  background: color-mix(in srgb, var(--store-button-background) 10%, transparent);
+}
+
+.storefront-hours-chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+  margin-left: auto;
+  transition: transform 180ms ease-out;
+}
+
+.storefront-hours[open] .storefront-hours-chevron {
+  transform: rotate(180deg);
 }
 
 .storefront-hours ul {
   position: absolute;
   z-index: 30;
-  top: calc(100% + 0.4rem);
+  top: calc(100% + 0.25rem);
   left: 0;
   width: 100%;
   border: 1px solid var(--store-border);
@@ -388,10 +411,20 @@ body {
   color: var(--store-button-text);
 }
 
-.storefront-layout-editorial-hero .storefront-operational-item,
-.storefront-layout-editorial-hero .storefront-hours > summary {
+.storefront-layout-editorial-hero .storefront-operational-info {
   border-color: color-mix(in srgb, var(--store-button-text) 35%, transparent);
   background: color-mix(in srgb, var(--store-button-text) 8%, transparent);
+}
+
+.storefront-layout-editorial-hero .storefront-hours[open] > summary {
+  color: var(--store-button-text);
+  background: color-mix(in srgb, var(--store-button-text) 12%, transparent);
+}
+
+@media (min-width: 640px) {
+  .storefront-operational-info {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .storefront-status {

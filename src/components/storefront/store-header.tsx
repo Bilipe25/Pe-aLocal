@@ -1,4 +1,4 @@
-import { Banknote, CalendarDays, Clock, MapPin, Package } from 'lucide-react';
+import { Banknote, CalendarDays, ChevronDown, Clock, MapPin, Package } from 'lucide-react';
 
 import { storeAssetSrcSet } from '@/features/assets/urls';
 import { formatCurrency } from '@/lib/utils';
@@ -78,6 +78,19 @@ export function StoreHeader({
         : pickupEnabled
           ? 'Retirada disponível'
           : null;
+  const compactFulfillmentLabel =
+    deliveryEnabled && pickupEnabled
+      ? `${minDeliveryFee && minDeliveryFee > 0 ? formatCurrency(minDeliveryFee) : 'Entrega'} · Retirada`
+      : deliveryEnabled
+        ? minDeliveryFee && minDeliveryFee > 0
+          ? formatCurrency(minDeliveryFee)
+          : 'Entrega'
+        : pickupEnabled
+          ? 'Retirada'
+          : null;
+  const hasOperationalInfo = Boolean(
+    estimatedTime || fulfillmentLabel || minOrderValue > 0 || openingHours.length > 0,
+  );
 
   return (
     <header className="storefront-header">
@@ -131,47 +144,62 @@ export function StoreHeader({
                 Loja em {[neighborhood, city].filter(Boolean).join(', ')}
               </p>
             )}
-
-            <div className="storefront-operational-info" aria-label="Informações para pedir">
-              {estimatedTime && (
-                <span className="storefront-operational-item">
-                  <Clock className="h-4 w-4" aria-hidden="true" />
-                  Preparo estimado: {estimatedTime}
-                </span>
-              )}
-              {fulfillmentLabel && (
-                <span className="storefront-operational-item">
-                  <Package className="h-4 w-4" aria-hidden="true" />
-                  {fulfillmentLabel}
-                </span>
-              )}
-              {minOrderValue > 0 && (
-                <span className="storefront-operational-item">
-                  <Banknote className="h-4 w-4" aria-hidden="true" />
-                  Pedido mínimo: {formatCurrency(minOrderValue)}
-                </span>
-              )}
-              {openingHours.length > 0 && (
-                <details className="storefront-hours">
-                  <summary>
-                    <CalendarDays className="h-4 w-4" aria-hidden="true" />
-                    Ver horários
-                  </summary>
-                  <ul>
-                    {openingHours.map((hour) => (
-                      <li key={hour.dayOfWeek}>
-                        <span>{DAY_LABELS[hour.dayOfWeek] ?? hour.dayOfWeek}</span>
-                        <span className="font-mono">
-                          {hour.openTime}–{hour.closeTime}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
           </div>
         </div>
+
+        {hasOperationalInfo && (
+          <div className="storefront-operational-info" aria-label="Informações para pedir">
+            {estimatedTime && (
+              <span
+                className="storefront-operational-item"
+                aria-label={`Preparo estimado: ${estimatedTime}`}
+                title={`Preparo estimado: ${estimatedTime}`}
+              >
+                <Clock className="h-4 w-4" aria-hidden="true" />
+                <span>{estimatedTime}</span>
+              </span>
+            )}
+            {fulfillmentLabel && (
+              <span
+                className="storefront-operational-item"
+                aria-label={fulfillmentLabel}
+                title={fulfillmentLabel}
+              >
+                <Package className="h-4 w-4" aria-hidden="true" />
+                <span>{compactFulfillmentLabel}</span>
+              </span>
+            )}
+            {minOrderValue > 0 && (
+              <span
+                className="storefront-operational-item"
+                aria-label={`Pedido mínimo: ${formatCurrency(minOrderValue)}`}
+                title={`Pedido mínimo: ${formatCurrency(minOrderValue)}`}
+              >
+                <Banknote className="h-4 w-4" aria-hidden="true" />
+                <span>Mín. {formatCurrency(minOrderValue)}</span>
+              </span>
+            )}
+            {openingHours.length > 0 && (
+              <details className="storefront-hours">
+                <summary aria-label="Ver horários">
+                  <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                  <span>Horários</span>
+                  <ChevronDown className="storefront-hours-chevron" aria-hidden="true" />
+                </summary>
+                <ul>
+                  {openingHours.map((hour) => (
+                    <li key={hour.dayOfWeek}>
+                      <span>{DAY_LABELS[hour.dayOfWeek] ?? hour.dayOfWeek}</span>
+                      <span className="font-mono">
+                        {hour.openTime}–{hour.closeTime}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );
