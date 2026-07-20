@@ -11,12 +11,12 @@ import { toggleStoreStatusAction } from '@/features/stores/actions';
 
 type StoreStatus = 'OPEN' | 'CLOSED' | 'PAUSED';
 
-export function StoreStatusControl({ status }: { status: StoreStatus }) {
+export function StoreStatusControl({ storeId, status }: { storeId: string; status: StoreStatus }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   async function changeStatus(nextStatus: StoreStatus) {
-    const result = await toggleStoreStatusAction(nextStatus);
+    const result = await toggleStoreStatusAction(storeId, nextStatus);
     if (!result.success) {
       toast.error(result.error.message);
       return false;
@@ -41,8 +41,8 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
 
   return (
     <div>
-      <h2 className="text-sm font-semibold text-text-primary">Recebimento de pedidos</h2>
-      <p className="mt-1 text-sm text-text-secondary">
+      <h2 className="text-text-primary text-sm font-semibold">Recebimento de pedidos</h2>
+      <p className="text-text-secondary mt-1 text-sm">
         O status é aplicado imediatamente ao cardápio público.
       </p>
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Status da loja">
@@ -61,8 +61,13 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
           confirmLabel="Pausar pedidos"
           onConfirm={() => changeStatus('PAUSED')}
           trigger={
-            <Button type="button" variant={status === 'PAUSED' ? 'secondary' : 'outline'} disabled={status === 'PAUSED'}>
-              <CirclePause aria-hidden="true" /> {status === 'PAUSED' ? 'Pedidos pausados' : 'Pausar'}
+            <Button
+              type="button"
+              variant={status === 'PAUSED' ? 'secondary' : 'outline'}
+              disabled={status === 'PAUSED'}
+            >
+              <CirclePause aria-hidden="true" />{' '}
+              {status === 'PAUSED' ? 'Pedidos pausados' : 'Pausar'}
             </Button>
           }
         />
@@ -73,7 +78,11 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
           confirmLabel="Fechar loja"
           onConfirm={() => changeStatus('CLOSED')}
           trigger={
-            <Button type="button" variant={status === 'CLOSED' ? 'secondary' : 'outline'} disabled={status === 'CLOSED'}>
+            <Button
+              type="button"
+              variant={status === 'CLOSED' ? 'secondary' : 'outline'}
+              disabled={status === 'CLOSED'}
+            >
               <LockKeyhole aria-hidden="true" /> {status === 'CLOSED' ? 'Loja fechada' : 'Fechar'}
             </Button>
           }

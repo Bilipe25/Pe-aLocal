@@ -45,6 +45,11 @@ export interface SuperAdminStoreContext {
   store: NonNullable<Awaited<ReturnType<typeof storeRepo.findStoreScopeById>>>;
 }
 
+export interface TenantStoreContext {
+  session: TenantContext;
+  store: NonNullable<Awaited<ReturnType<typeof storeRepo.findStoreScopeById>>>;
+}
+
 // =============================================================================
 // Funções de autenticação
 // =============================================================================
@@ -162,6 +167,28 @@ export async function requireStoreAccess(storeId: string): Promise<TenantContext
   }
 
   return session;
+}
+
+/**
+ * Autoriza uma loja explicitamente selecionada dentro do tenant da sessão.
+ * O storeId recebido pela URL, formulário ou cookie nunca é prova de acesso.
+ */
+export async function requireTenantStoreAccess(
+  storeId: string,
+  permission?: Permission,
+): Promise<TenantStoreContext> {
+  const session = permission ? await requirePermission(permission) : await requireTenantMember();
+
+  if (!storeId) {
+    throw new TenantAccessError('Selecione uma loja para continuar.');
+  }
+
+  const store = await storeRepo.findStoreScopeById(storeId, session.tenantId);
+  if (!store) {
+    throw new TenantAccessError('A loja não pertence ao estabelecimento autenticado.');
+  }
+
+  return { session, store };
 }
 
 /**

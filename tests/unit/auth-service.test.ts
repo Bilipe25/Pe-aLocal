@@ -158,7 +158,6 @@ describe('AuthService com Supabase Auth', () => {
     mocks.findFirstActiveMembership.mockResolvedValue({
       tenantId: 'tenant-1',
       role: 'MANAGER',
-      tenant: { stores: [{ id: 'store-1' }] },
     });
     await expect(validateCurrentSession()).resolves.toEqual({
       userId: 'profile-1',
@@ -168,7 +167,7 @@ describe('AuthService com Supabase Auth', () => {
       platformRole: 'USER',
       tenantRole: 'MANAGER',
       tenantId: 'tenant-1',
-      storeId: 'store-1',
+      storeId: null,
     });
 
     mocks.getClaims.mockResolvedValueOnce({ data: null, error: new Error('expired') });

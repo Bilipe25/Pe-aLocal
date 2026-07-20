@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthorizationError, TenantAccessError } from '@/server/errors';
-import { requireStoreAccess, requireSuperAdmin, requireSuperAdminStoreAccess } from '@/server/auth';
+import {
+  requireStoreAccess,
+  requireSuperAdmin,
+  requireSuperAdminStoreAccess,
+  requireTenantStoreAccess,
+} from '@/server/auth';
 
 const mocks = vi.hoisted(() => ({
   validateCurrentSession: vi.fn(),
@@ -75,6 +80,15 @@ describe('autorização de plataforma e isolamento de tenant', () => {
       TenantAccessError,
     );
     expect(mocks.findStoreById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
+  });
+
+  it('valida a loja explícita contra o tenant autenticado', async () => {
+    mocks.findStoreScopeById.mockResolvedValue(null);
+
+    await expect(requireTenantStoreAccess('store-from-tenant-b')).rejects.toBeInstanceOf(
+      TenantAccessError,
+    );
+    expect(mocks.findStoreScopeById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
   });
 
   it('SUPER_ADMIN acessa uma loja sem depender de tenant na sessão', async () => {

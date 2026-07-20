@@ -10,6 +10,7 @@ import { FormSubmitButton } from '@/components/shared/form-submit-button';
 import { useState } from 'react';
 
 interface AddressFormProps {
+  storeId: string;
   address: {
     street: string;
     number: string;
@@ -21,13 +22,13 @@ interface AddressFormProps {
   } | null;
 }
 
-export function AddressForm({ address }: AddressFormProps) {
+export function AddressForm({ storeId, address }: AddressFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updateAddressAction(formData);
+    const result = await updateAddressAction(storeId, formData);
     if (result.success) {
       toast.success('Endereço atualizado!');
       router.refresh();
@@ -42,13 +43,27 @@ export function AddressForm({ address }: AddressFormProps) {
       <FormMessage message={error} />
       <div className="space-y-2">
         <Label htmlFor="zipCode">CEP</Label>
-        <Input id="zipCode" name="zipCode" inputMode="numeric" autoComplete="postal-code" defaultValue={address?.zipCode ?? ''} placeholder="00000-000" className="w-40 max-w-full" />
+        <Input
+          id="zipCode"
+          name="zipCode"
+          inputMode="numeric"
+          autoComplete="postal-code"
+          defaultValue={address?.zipCode ?? ''}
+          placeholder="00000-000"
+          className="w-40 max-w-full"
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="street">Rua</Label>
-          <Input id="street" name="street" autoComplete="street-address" defaultValue={address?.street ?? ''} required />
+          <Input
+            id="street"
+            name="street"
+            autoComplete="street-address"
+            defaultValue={address?.street ?? ''}
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="number">Número</Label>
@@ -58,21 +73,46 @@ export function AddressForm({ address }: AddressFormProps) {
 
       <div className="space-y-2">
         <Label htmlFor="complement">Complemento</Label>
-        <Input id="complement" name="complement" defaultValue={address?.complement ?? ''} placeholder="Sala, bloco, etc." />
+        <Input
+          id="complement"
+          name="complement"
+          defaultValue={address?.complement ?? ''}
+          placeholder="Sala, bloco, etc."
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="neighborhood">Bairro</Label>
-          <Input id="neighborhood" name="neighborhood" defaultValue={address?.neighborhood ?? ''} required />
+          <Input
+            id="neighborhood"
+            name="neighborhood"
+            defaultValue={address?.neighborhood ?? ''}
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="city">Cidade</Label>
-          <Input id="city" name="city" autoComplete="address-level2" defaultValue={address?.city ?? ''} required />
+          <Input
+            id="city"
+            name="city"
+            autoComplete="address-level2"
+            defaultValue={address?.city ?? ''}
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="state">Estado</Label>
-          <Input id="state" name="state" autoComplete="address-level1" defaultValue={address?.state ?? ''} required maxLength={2} placeholder="SP" className="w-20 max-w-full" />
+          <Input
+            id="state"
+            name="state"
+            autoComplete="address-level1"
+            defaultValue={address?.state ?? ''}
+            required
+            maxLength={2}
+            placeholder="SP"
+            className="w-20 max-w-full"
+          />
         </div>
       </div>
 

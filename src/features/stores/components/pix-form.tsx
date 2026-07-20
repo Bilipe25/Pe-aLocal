@@ -19,6 +19,7 @@ const PIX_KEY_TYPES = [
 ];
 
 interface PixFormProps {
+  storeId: string;
   settings: {
     pixKeyType: string | null;
     pixKey: string | null;
@@ -28,13 +29,13 @@ interface PixFormProps {
   } | null;
 }
 
-export function PixForm({ settings }: PixFormProps) {
+export function PixForm({ storeId, settings }: PixFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updatePixConfigAction(formData);
+    const result = await updatePixConfigAction(storeId, formData);
     if (result.success) {
       toast.success('Configuração de Pix atualizada!');
       router.refresh();
@@ -53,18 +54,25 @@ export function PixForm({ settings }: PixFormProps) {
           id="pixKeyType"
           name="pixKeyType"
           defaultValue={settings?.pixKeyType ?? ''}
-          className="flex h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 flex h-11 w-full rounded-lg border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <option value="">Selecione...</option>
           {PIX_KEY_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
           ))}
         </select>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="pixKey">Chave Pix</Label>
-        <Input id="pixKey" name="pixKey" defaultValue={settings?.pixKey ?? ''} placeholder="Sua chave Pix" />
+        <Input
+          id="pixKey"
+          name="pixKey"
+          defaultValue={settings?.pixKey ?? ''}
+          placeholder="Sua chave Pix"
+        />
       </div>
 
       <div className="space-y-2">
@@ -74,12 +82,23 @@ export function PixForm({ settings }: PixFormProps) {
 
       <div className="space-y-2">
         <Label htmlFor="pixBank">Banco</Label>
-        <Input id="pixBank" name="pixBank" defaultValue={settings?.pixBank ?? ''} placeholder="Ex: Nubank, Inter, BB" />
+        <Input
+          id="pixBank"
+          name="pixBank"
+          defaultValue={settings?.pixBank ?? ''}
+          placeholder="Ex: Nubank, Inter, BB"
+        />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="pixInstructions">Instruções adicionais</Label>
-        <Textarea id="pixInstructions" name="pixInstructions" defaultValue={settings?.pixInstructions ?? ''} rows={2} placeholder="Ex: Enviar comprovante pelo WhatsApp" />
+        <Textarea
+          id="pixInstructions"
+          name="pixInstructions"
+          defaultValue={settings?.pixInstructions ?? ''}
+          rows={2}
+          placeholder="Ex: Enviar comprovante pelo WhatsApp"
+        />
       </div>
 
       <div className="flex justify-end pt-2">

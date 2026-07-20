@@ -18,6 +18,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/features/stores/actions', () => ({
+  selectStoreAction: vi.fn(),
   updateHoursAction: vi.fn(),
   updateStoreSettingsAction: vi.fn(),
 }));
@@ -52,7 +53,22 @@ describe('componentes do painel do tenant', () => {
     render(
       <DashboardShell
         userName="Dono da loja"
-        store={{ name: 'Loja teste', slug: 'loja-teste', status: 'OPEN' }}
+        stores={[
+          {
+            id: '00000000-0000-0000-0000-000000000001',
+            name: 'Loja teste',
+            slug: 'loja-teste',
+            status: 'OPEN',
+            isActive: true,
+          },
+        ]}
+        activeStore={{
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'Loja teste',
+          slug: 'loja-teste',
+          status: 'OPEN',
+          isActive: true,
+        }}
       >
         <p>Conteúdo</p>
       </DashboardShell>,
@@ -66,6 +82,7 @@ describe('componentes do painel do tenant', () => {
   it('compacta dias fechados e expõe horários somente quando ativos', () => {
     render(
       <HoursForm
+        storeId="00000000-0000-0000-0000-000000000001"
         hours={[
           {
             dayOfWeek: 'MONDAY',
@@ -96,7 +113,7 @@ describe('componentes do painel do tenant', () => {
   });
 
   it('preserva a hierarquia de seções nas configurações da loja', () => {
-    render(<StoreSettingsForm settings={null} />);
+    render(<StoreSettingsForm storeId="00000000-0000-0000-0000-000000000001" settings={null} />);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Modalidades' })).toBeInTheDocument();
     expect(

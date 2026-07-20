@@ -28,10 +28,11 @@ interface HourEntry {
 }
 
 interface HoursFormProps {
+  storeId: string;
   hours: HourEntry[];
 }
 
-export function HoursForm({ hours: initial }: HoursFormProps) {
+export function HoursForm({ storeId, hours: initial }: HoursFormProps) {
   const router = useRouter();
   const [hours, setHours] = useState<HourEntry[]>(() =>
     DAYS.map((day) => {
@@ -52,7 +53,7 @@ export function HoursForm({ hours: initial }: HoursFormProps) {
     setSaving(true);
     setError(null);
     try {
-      const result = await updateHoursAction({ hours });
+      const result = await updateHoursAction(storeId, { hours });
       if (result.success) {
         toast.success('Horários atualizados!');
         router.refresh();

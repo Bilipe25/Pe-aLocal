@@ -12,6 +12,7 @@ import { FormSubmitButton } from '@/components/shared/form-submit-button';
 import { useState } from 'react';
 
 interface StoreSettingsFormProps {
+  storeId: string;
   settings: {
     minOrderValue: number;
     estimatedTime: string;
@@ -23,13 +24,13 @@ interface StoreSettingsFormProps {
   } | null;
 }
 
-export function StoreSettingsForm({ settings }: StoreSettingsFormProps) {
+export function StoreSettingsForm({ storeId, settings }: StoreSettingsFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = await updateStoreSettingsAction(formData);
+    const result = await updateStoreSettingsAction(storeId, formData);
     if (result.success) {
       toast.success('Configurações atualizadas!');
       router.refresh();

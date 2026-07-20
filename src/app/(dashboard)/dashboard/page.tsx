@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, Clock3, ExternalLink, Settings, Truck, UtensilsCrossed } from 'lucide-react';
 import type { OrderStatus } from '@prisma/client';
+import { redirect } from 'next/navigation';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { listCategoriesAction, listProductsAction } from '@/features/catalog/act
 import { listDeliveryZonesAction } from '@/features/delivery/actions';
 import { getStoreForDashboard } from '@/features/stores/actions';
 import { getOrdersAction } from '@/features/orders/admin-actions';
+import { getActiveStoreContext } from '@/server/services/store-context.service';
 
 export const metadata = {
   title: 'Visão geral',
@@ -15,9 +17,19 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const activeStatuses: OrderStatus[] = ['PENDING', 'AWAITING_PAYMENT', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'];
+  const activeStore = await getActiveStoreContext();
+  if (!activeStore) redirect('/dashboard/stores');
+
+  const activeStatuses: OrderStatus[] = [
+    'PENDING',
+    'AWAITING_PAYMENT',
+    'CONFIRMED',
+    'PREPARING',
+    'READY',
+    'OUT_FOR_DELIVERY',
+  ];
   const [store, categories, products, zones, ordersResult] = await Promise.all([
-    getStoreForDashboard(),
+    getStoreForDashboard(activeStore.store.id),
     listCategoriesAction(),
     listProductsAction(),
     listDeliveryZonesAction(),
@@ -25,10 +37,20 @@ export default async function DashboardPage() {
   ]);
   const activeHours = store.openingHours.filter((hour) => hour.isActive).length;
   const activeOrders = ordersResult.success ? ordersResult.data : [];
-  const waitingOrders = activeOrders.filter((order) => order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT').length;
-  const preparingOrders = activeOrders.filter((order) => order.status === 'CONFIRMED' || order.status === 'PREPARING').length;
-  const readyOrders = activeOrders.filter((order) => order.status === 'READY' || order.status === 'OUT_FOR_DELIVERY').length;
-  const setupComplete = [categories.length > 0 && products.length > 0, zones.length > 0, activeHours > 0 && Boolean(store.address)].filter(Boolean).length;
+  const waitingOrders = activeOrders.filter(
+    (order) => order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT',
+  ).length;
+  const preparingOrders = activeOrders.filter(
+    (order) => order.status === 'CONFIRMED' || order.status === 'PREPARING',
+  ).length;
+  const readyOrders = activeOrders.filter(
+    (order) => order.status === 'READY' || order.status === 'OUT_FOR_DELIVERY',
+  ).length;
+  const setupComplete = [
+    categories.length > 0 && products.length > 0,
+    zones.length > 0,
+    activeHours > 0 && Boolean(store.address),
+  ].filter(Boolean).length;
 
   const setupItems = [
     {
@@ -48,7 +70,7 @@ export default async function DashboardPage() {
     {
       title: 'Dados da loja',
       detail: `${activeHours} ${activeHours === 1 ? 'dia com horário' : 'dias com horários'}`,
-      href: '/dashboard/store',
+      href: `/dashboard/stores/${store.id}`,
       icon: Settings,
       complete: activeHours > 0 && Boolean(store.address),
     },
@@ -68,21 +90,30 @@ export default async function DashboardPage() {
         }
       />
 
-      <section className="overflow-hidden rounded-xl bg-text-primary text-surface" aria-labelledby="shift-heading">
+      <section
+        className="bg-text-primary text-surface overflow-hidden rounded-xl"
+        aria-labelledby="shift-heading"
+      >
         <div className="p-5 sm:flex sm:items-start sm:justify-between sm:gap-8 sm:p-6">
           <div>
-            <div className="flex items-center gap-2 text-sm font-medium text-surface/80">
+            <div className="text-surface/80 flex items-center gap-2 text-sm font-medium">
               <Clock3 aria-hidden="true" /> Turno agora
             </div>
             <h2 id="shift-heading" className="mt-2 text-xl font-semibold">
-              {activeOrders.length === 0 ? 'Nenhum pedido aguardando ação' : `${activeOrders.length} ${activeOrders.length === 1 ? 'pedido precisa' : 'pedidos precisam'} de acompanhamento`}
+              {activeOrders.length === 0
+                ? 'Nenhum pedido aguardando ação'
+                : `${activeOrders.length} ${activeOrders.length === 1 ? 'pedido precisa' : 'pedidos precisam'} de acompanhamento`}
             </h2>
-            <p className="mt-2 max-w-2xl text-sm text-surface/80">
-              {activeOrders.length === 0 ? 'A central está pronta. Novos pedidos aparecerão em tempo real.' : 'Abra a central para priorizar os mais antigos e atualizar cada etapa.'}
+            <p className="text-surface/80 mt-2 max-w-2xl text-sm">
+              {activeOrders.length === 0
+                ? 'A central está pronta. Novos pedidos aparecerão em tempo real.'
+                : 'Abra a central para priorizar os mais antigos e atualizar cada etapa.'}
             </p>
           </div>
-          <Button asChild className="mt-5 w-full bg-brand-600 hover:bg-brand-700 sm:mt-0 sm:w-auto">
-            <Link href="/dashboard/orders">Abrir central <ArrowRight aria-hidden="true" /></Link>
+          <Button asChild className="bg-brand-600 hover:bg-brand-700 mt-5 w-full sm:mt-0 sm:w-auto">
+            <Link href="/dashboard/orders">
+              Abrir central <ArrowRight aria-hidden="true" />
+            </Link>
           </Button>
         </div>
         <dl className="grid border-t border-white/15 sm:grid-cols-3 sm:divide-x sm:divide-white/15">
@@ -91,9 +122,12 @@ export default async function DashboardPage() {
             ['Em preparo', preparingOrders],
             ['Prontos para sair', readyOrders],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between border-b border-white/15 px-5 py-3 last:border-b-0 sm:block sm:border-b-0 sm:px-6">
-              <dt className="text-sm text-surface/75">{label}</dt>
-              <dd className="font-mono text-lg font-bold text-surface sm:mt-1">{value}</dd>
+            <div
+              key={label}
+              className="flex items-center justify-between border-b border-white/15 px-5 py-3 last:border-b-0 sm:block sm:border-b-0 sm:px-6"
+            >
+              <dt className="text-surface/75 text-sm">{label}</dt>
+              <dd className="text-surface font-mono text-lg font-bold sm:mt-1">{value}</dd>
             </div>
           ))}
         </dl>
@@ -102,31 +136,45 @@ export default async function DashboardPage() {
       <section className="mt-8" aria-labelledby="setup-heading">
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
-            <h2 id="setup-heading" className="text-lg font-semibold text-text-primary">Pronto para vender</h2>
-            <p className="mt-1 text-sm text-text-secondary">{setupComplete} de 3 etapas essenciais revisadas.</p>
+            <h2 id="setup-heading" className="text-text-primary text-lg font-semibold">
+              Pronto para vender
+            </h2>
+            <p className="text-text-secondary mt-1 text-sm">
+              {setupComplete} de 3 etapas essenciais revisadas.
+            </p>
           </div>
         </div>
-        <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="divide-border border-border bg-surface divide-y overflow-hidden rounded-xl border">
           {setupItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex min-h-20 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-secondary sm:px-5"
+              className="hover:bg-surface-secondary flex min-h-20 items-center gap-3 px-4 py-3 transition-colors sm:px-5"
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+              <span className="bg-brand-50 text-brand-700 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg">
                 <item.icon aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="font-semibold text-text-primary">{item.title}</span>
-                <span className="mt-0.5 block text-sm text-text-secondary">{item.detail}</span>
-                <span className={item.complete ? 'mt-1 block text-sm font-medium text-success sm:hidden' : 'mt-1 block text-sm font-medium text-warning sm:hidden'}>
+                <span className="text-text-primary font-semibold">{item.title}</span>
+                <span className="text-text-secondary mt-0.5 block text-sm">{item.detail}</span>
+                <span
+                  className={
+                    item.complete
+                      ? 'text-success mt-1 block text-sm font-medium sm:hidden'
+                      : 'text-warning mt-1 block text-sm font-medium sm:hidden'
+                  }
+                >
                   {item.complete ? 'Configurado' : 'Revisar'}
                 </span>
               </span>
-              <span className={item.complete ? 'hidden text-success sm:inline' : 'hidden text-warning sm:inline'}>
+              <span
+                className={
+                  item.complete ? 'text-success hidden sm:inline' : 'text-warning hidden sm:inline'
+                }
+              >
                 {item.complete ? 'Configurado' : 'Revisar'}
               </span>
-              <ArrowRight className="shrink-0 text-text-muted" aria-hidden="true" />
+              <ArrowRight className="text-text-muted shrink-0" aria-hidden="true" />
             </Link>
           ))}
         </div>
