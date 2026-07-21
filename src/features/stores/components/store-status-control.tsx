@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { CirclePause, LockKeyhole, Store } from 'lucide-react';
@@ -11,16 +11,27 @@ import { toggleStoreStatusAction } from '@/features/stores/actions';
 
 type StoreStatus = 'OPEN' | 'CLOSED' | 'PAUSED';
 
-export function StoreStatusControl({ status }: { status: StoreStatus }) {
+export function StoreStatusControl({
+  storeId,
+  status,
+  expectedConfigurationVersion,
+}: {
+  storeId: string;
+  status: StoreStatus;
+  expectedConfigurationVersion: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [configurationVersion, setConfigurationVersion] = useState(expectedConfigurationVersion);
 
   async function changeStatus(nextStatus: StoreStatus) {
-    const result = await toggleStoreStatusAction(nextStatus);
+    const result = await toggleStoreStatusAction(storeId, configurationVersion, nextStatus);
     if (!result.success) {
       toast.error(result.error.message);
       return false;
     }
+
+    setConfigurationVersion(result.data.configurationVersion);
 
     toast.success(
       nextStatus === 'OPEN'
@@ -41,9 +52,10 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
 
   return (
     <div>
-      <h2 className="text-sm font-semibold text-text-primary">Recebimento de pedidos</h2>
-      <p className="mt-1 text-sm text-text-secondary">
-        O status é aplicado imediatamente ao cardápio público.
+      <h2 className="text-text-primary text-sm font-semibold">Recebimento de pedidos</h2>
+      <p className="text-text-secondary mt-1 text-sm">
+        Ao abrir, a loja aceita pedidos somente dentro dos horários configurados e quando estiver
+        operacionalmente pronta.
       </p>
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Status da loja">
         <Button
@@ -61,8 +73,13 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
           confirmLabel="Pausar pedidos"
           onConfirm={() => changeStatus('PAUSED')}
           trigger={
-            <Button type="button" variant={status === 'PAUSED' ? 'secondary' : 'outline'} disabled={status === 'PAUSED'}>
-              <CirclePause aria-hidden="true" /> {status === 'PAUSED' ? 'Pedidos pausados' : 'Pausar'}
+            <Button
+              type="button"
+              variant={status === 'PAUSED' ? 'secondary' : 'outline'}
+              disabled={status === 'PAUSED'}
+            >
+              <CirclePause aria-hidden="true" />{' '}
+              {status === 'PAUSED' ? 'Pedidos pausados' : 'Pausar'}
             </Button>
           }
         />
@@ -73,7 +90,11 @@ export function StoreStatusControl({ status }: { status: StoreStatus }) {
           confirmLabel="Fechar loja"
           onConfirm={() => changeStatus('CLOSED')}
           trigger={
-            <Button type="button" variant={status === 'CLOSED' ? 'secondary' : 'outline'} disabled={status === 'CLOSED'}>
+            <Button
+              type="button"
+              variant={status === 'CLOSED' ? 'secondary' : 'outline'}
+              disabled={status === 'CLOSED'}
+            >
               <LockKeyhole aria-hidden="true" /> {status === 'CLOSED' ? 'Loja fechada' : 'Fechar'}
             </Button>
           }

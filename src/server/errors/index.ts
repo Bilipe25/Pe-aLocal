@@ -115,8 +115,8 @@ export class BusinessRuleError extends DomainError {
   readonly statusCode = 422;
   readonly code = 'BUSINESS_RULE_ERROR';
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, details: Record<string, unknown>[] = []) {
+    super(message, details);
   }
 }
 

@@ -4,7 +4,10 @@ import { requireAuthenticatedUser } from '@/server/auth';
 import { PlatformRole } from '@/server/permissions';
 import { QueryProvider } from '@/providers/query-provider';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { getDb } from '@/server/database/client';
+import {
+  getActiveStoreContext,
+  listAccessibleStores,
+} from '@/server/services/store-context.service';
 
 export const metadata = {
   title: 'Painel',
@@ -27,13 +30,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/access-pending');
   }
 
-  const store = await getDb().store.findFirst({
-    where: { tenantId: session.tenantId },
-    select: { name: true, slug: true, status: true },
-  });
+  const [storesPage, activeContext] = await Promise.all([
+    listAccessibleStores({ pageSize: 100 }),
+    getActiveStoreContext(),
+  ]);
+  const activeStore = activeContext?.store
+    ? {
+        id: activeContext.store.id,
+        name: activeContext.store.name,
+        slug: activeContext.store.slug,
+        status: activeContext.store.status,
+        isActive: activeContext.store.isActive,
+      }
+    : null;
 
   return (
-    <DashboardShell userName={session.name} store={store}>
+    <DashboardShell userName={session.name} stores={storesPage.items} activeStore={activeStore}>
       <QueryProvider>{children}</QueryProvider>
     </DashboardShell>
   );

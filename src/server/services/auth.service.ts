@@ -78,7 +78,8 @@ async function resolveTenantContext(profile: { id: string; platformRole: Platfor
   return {
     tenantRole: membership?.role ?? null,
     tenantId: membership?.tenantId ?? null,
-    storeId: membership?.tenant?.stores?.[0]?.id ?? null,
+    // A unidade ativa é resolvida separadamente e sempre revalidada no servidor.
+    storeId: null,
   };
 }
 

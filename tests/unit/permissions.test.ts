@@ -30,6 +30,29 @@ describe('Permissions', () => {
     expect(isTenantRoleAtLeast(TenantRole.ATTENDANT, TenantRole.MANAGER)).toBe(false);
   });
 
+  it('concede ao OWNER todas as configurações da loja', () => {
+    expect(hasTenantPermission(TenantRole.OWNER, Permission.EDIT_STORE_GENERAL)).toBe(true);
+    expect(hasTenantPermission(TenantRole.OWNER, Permission.EDIT_STORE_OPERATIONS)).toBe(true);
+    expect(hasTenantPermission(TenantRole.OWNER, Permission.EDIT_PAYMENT_SETTINGS)).toBe(true);
+    expect(hasTenantPermission(TenantRole.OWNER, Permission.CHANGE_STORE_STATUS)).toBe(true);
+  });
+
+  it('mantém o MANAGER somente leitura em operações e sem acesso ao Pix', () => {
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.VIEW_STORE_OPERATIONS)).toBe(true);
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.EDIT_STORE_OPERATIONS)).toBe(false);
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.VIEW_PAYMENT_SETTINGS)).toBe(false);
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.EDIT_STORE_HOURS)).toBe(true);
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.CHANGE_STORE_STATUS)).toBe(false);
+  });
+
+  it('limita ATTENDANT ao resumo e à leitura operacional necessária', () => {
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_STORE_OVERVIEW)).toBe(true);
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_STORE_OPERATIONS)).toBe(true);
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_STORE_GENERAL)).toBe(false);
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_STORE_ADDRESS)).toBe(false);
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_PAYMENT_SETTINGS)).toBe(false);
+  });
+
   it('reconhece somente o papel de plataforma SUPER_ADMIN', () => {
     expect(isSuperAdmin(PlatformRole.SUPER_ADMIN)).toBe(true);
     expect(isSuperAdmin(PlatformRole.USER)).toBe(false);

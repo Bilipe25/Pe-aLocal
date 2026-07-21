@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthorizationError, TenantAccessError } from '@/server/errors';
-import { requireStoreAccess, requireSuperAdmin, requireSuperAdminStoreAccess } from '@/server/auth';
+import {
+  requireStoreAccess,
+  requireSuperAdmin,
+  requireSuperAdminStoreAccess,
+  requireTenantStoreAccess,
+} from '@/server/auth';
 
 const mocks = vi.hoisted(() => ({
   validateCurrentSession: vi.fn(),
-  findStoreById: vi.fn(),
   findStoreScopeById: vi.fn(),
 }));
 
@@ -13,7 +17,6 @@ vi.mock('@/server/services/auth.service', () => ({
   validateCurrentSession: mocks.validateCurrentSession,
 }));
 vi.mock('@/server/repositories/store.repository', () => ({
-  findStoreById: mocks.findStoreById,
   findStoreScopeById: mocks.findStoreScopeById,
 }));
 
@@ -69,12 +72,21 @@ describe('autorização de plataforma e isolamento de tenant', () => {
   });
 
   it('tenant A não acessa recurso do tenant B', async () => {
-    mocks.findStoreById.mockResolvedValue(null);
+    mocks.findStoreScopeById.mockResolvedValue(null);
 
     await expect(requireStoreAccess('store-from-tenant-b')).rejects.toBeInstanceOf(
       TenantAccessError,
     );
-    expect(mocks.findStoreById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
+    expect(mocks.findStoreScopeById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
+  });
+
+  it('valida a loja explícita contra o tenant autenticado', async () => {
+    mocks.findStoreScopeById.mockResolvedValue(null);
+
+    await expect(requireTenantStoreAccess('store-from-tenant-b')).rejects.toBeInstanceOf(
+      TenantAccessError,
+    );
+    expect(mocks.findStoreScopeById).toHaveBeenCalledWith('store-from-tenant-b', 'tenant-a');
   });
 
   it('SUPER_ADMIN acessa uma loja sem depender de tenant na sessão', async () => {

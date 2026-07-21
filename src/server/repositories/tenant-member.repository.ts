@@ -44,12 +44,6 @@ export async function findFirstActiveMembership(userId: string) {
           id: true,
           name: true,
           status: true,
-          stores: {
-            where: { isActive: true },
-            select: { id: true, slug: true, name: true },
-            take: 1,
-            orderBy: { createdAt: 'asc' },
-          },
         },
       },
     },

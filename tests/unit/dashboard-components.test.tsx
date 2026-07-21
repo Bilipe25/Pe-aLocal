@@ -6,6 +6,7 @@ import { HoursForm } from '@/features/stores/components/hours-form';
 import { ProductOptionGroupsEditor } from '@/features/catalog/components/product-option-groups-editor';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
 import { StoreSettingsForm } from '@/features/stores/components/store-settings-form';
+import { StoreReadinessChecklist } from '@/features/stores/components/store-readiness-checklist';
 
 const mocks = vi.hoisted(() => ({
   pathname: '/dashboard/catalog',
@@ -18,6 +19,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/features/stores/actions', () => ({
+  selectStoreAction: vi.fn(),
   updateHoursAction: vi.fn(),
   updateStoreSettingsAction: vi.fn(),
 }));
@@ -52,7 +54,22 @@ describe('componentes do painel do tenant', () => {
     render(
       <DashboardShell
         userName="Dono da loja"
-        store={{ name: 'Loja teste', slug: 'loja-teste', status: 'OPEN' }}
+        stores={[
+          {
+            id: '00000000-0000-0000-0000-000000000001',
+            name: 'Loja teste',
+            slug: 'loja-teste',
+            status: 'OPEN',
+            isActive: true,
+          },
+        ]}
+        activeStore={{
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'Loja teste',
+          slug: 'loja-teste',
+          status: 'OPEN',
+          isActive: true,
+        }}
       >
         <p>Conteúdo</p>
       </DashboardShell>,
@@ -66,6 +83,12 @@ describe('componentes do painel do tenant', () => {
   it('compacta dias fechados e expõe horários somente quando ativos', () => {
     render(
       <HoursForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
+        timeZone="America/Fortaleza"
+        canEditTimeZone
+        exceptions={[]}
+        availability={{ reason: 'Aberta agora.', nextTransitionAt: null }}
         hours={[
           {
             dayOfWeek: 'MONDAY',
@@ -87,6 +110,41 @@ describe('componentes do painel do tenant', () => {
     expect(screen.getByLabelText('Fechamento de Terça-feira')).toBeInTheDocument();
   });
 
+  it('mostra bloqueadores de prontidão com atalho direto para correção', () => {
+    render(
+      <StoreReadinessChecklist
+        readiness={{
+          isReady: false,
+          blockers: [
+            {
+              code: 'DELIVERY_ZONE_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Entrega sem zona ativa',
+              description: 'Cadastre ao menos uma zona ativa.',
+              actionHref: '/dashboard/delivery',
+            },
+          ],
+          warnings: [],
+          issues: [
+            {
+              code: 'DELIVERY_ZONE_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Entrega sem zona ativa',
+              description: 'Cadastre ao menos uma zona ativa.',
+              actionHref: '/dashboard/delivery',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '1 pendência antes de abrir' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Corrigir/ })).toHaveAttribute(
+      'href',
+      '/dashboard/delivery',
+    );
+  });
+
   it('mantém o fluxo de produto em duas etapas reais', () => {
     render(<ProductSetupProgress currentStep={2} />);
 
@@ -96,12 +154,34 @@ describe('componentes do painel do tenant', () => {
   });
 
   it('preserva a hierarquia de seções nas configurações da loja', () => {
-    render(<StoreSettingsForm settings={null} />);
+    render(
+      <StoreSettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
+        settings={null}
+        hasActiveDeliveryZone
+      />,
+    );
 
     expect(screen.getByRole('heading', { level: 2, name: 'Modalidades' })).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 2, name: 'Formas de pagamento' }),
     ).toBeInTheDocument();
+  });
+
+  it('apresenta operações sem controles de salvamento no modo somente leitura', () => {
+    render(
+      <StoreSettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={0}
+        settings={null}
+        hasActiveDeliveryZone
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Entrega habilitada' })).toBeDisabled();
   });
 
   it('apresenta grupos e opções existentes do produto', () => {

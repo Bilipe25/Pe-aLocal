@@ -3,10 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StoreHeader } from '@/components/storefront/store-header';
-import {
-  getStorefrontThemeStyle,
-  storefrontLayoutClass,
-} from '@/features/customization/theme';
+import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
 interface StoreLayoutProps {
@@ -70,7 +67,7 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
   if (!store) notFound();
 
   const config = store.customization.config;
-  const storeOpen = store.status === 'OPEN';
+  const storeOpen = store.availability.acceptingOrders;
   const deliveryZones = store.settings?.deliveryEnabled
     ? await getPublicDeliveryZones(store.id)
     : [];
@@ -87,8 +84,12 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
       <StoreHeader
         name={store.name}
         description={store.description}
-        status={store.status}
-        estimatedTime={store.settings?.estimatedTime}
+        availability={store.availability}
+        estimatedTime={
+          store.settings
+            ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
+            : undefined
+        }
         minOrderValue={store.settings?.minOrderValue}
         deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
         pickupEnabled={store.settings?.pickupEnabled}
@@ -103,7 +104,7 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         config={config}
       />
 
-      {!storeOpen && <StoreClosedBanner status={store.status as 'CLOSED' | 'PAUSED'} />}
+      {!storeOpen && <StoreClosedBanner availability={store.availability} />}
 
       {children}
 

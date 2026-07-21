@@ -52,6 +52,11 @@ enum DayOfWeek {
   SUNDAY
 }
 
+enum StoreScheduleExceptionType {
+  CLOSED
+  CUSTOM_HOURS
+}
+
 enum OrderModality {
   DELIVERY
   PICKUP
@@ -187,13 +192,15 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  sessions                Session[]
-  tenantMembers           TenantMember[]
-  auditLogs               AuditLog[]
-  customizationsPublished StoreCustomization[]         @relation("CustomizationPublishedBy")
-  customizationsUpdated   StoreCustomization[]         @relation("CustomizationUpdatedBy")
-  customizationRevisions  StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
-  storeAssetsCreated      StoreAsset[]                   @relation("StoreAssetCreatedBy")
+  sessions                  Session[]
+  tenantMembers             TenantMember[]
+  auditLogs                 AuditLog[]
+  customizationsPublished   StoreCustomization[]         @relation("CustomizationPublishedBy")
+  customizationsUpdated     StoreCustomization[]         @relation("CustomizationUpdatedBy")
+  customizationRevisions    StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
+  storeAssetsCreated        StoreAsset[]                 @relation("StoreAssetCreatedBy")
+  scheduleExceptionsCreated StoreScheduleException[]     @relation("StoreScheduleExceptionCreatedBy")
+  slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -227,15 +234,17 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members       TenantMember[]
-  stores        Store[]
-  categories    Category[]
-  products      Product[]
-  deliveryZones DeliveryZone[]
-  customers     Customer[]
-  orders        Order[]
-  coupons       Coupon[]
-  auditLogs     AuditLog[]
+  members            TenantMember[]
+  stores             Store[]
+  categories         Category[]
+  products           Product[]
+  deliveryZones      DeliveryZone[]
+  customers          Customer[]
+  orders             Order[]
+  coupons            Coupon[]
+  auditLogs          AuditLog[]
+  slugRedirects      StoreSlugRedirect[]
+  scheduleExceptions StoreScheduleException[]
 
   @@map("tenants")
 }
@@ -263,35 +272,39 @@ model TenantMember {
 // =============================================================================
 
 model Store {
-  id          String      @id @default(uuid())
-  tenantId    String
-  slug        String      @unique
-  name        String
-  description String?
-  phone       String?
-  whatsapp    String?
-  logoUrl     String?
-  coverUrl    String?
-  status      StoreStatus @default(CLOSED)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                   String      @id @default(uuid())
+  tenantId             String
+  slug                 String      @unique
+  name                 String
+  description          String?
+  phone                String?
+  whatsapp             String?
+  logoUrl              String?
+  coverUrl             String?
+  status               StoreStatus @default(CLOSED)
+  isActive             Boolean     @default(true)
+  timeZone             String      @default("America/Fortaleza")
+  configurationVersion Int         @default(0)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
 
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   settings StoreSettings?
 
-  address       StoreAddress?
-  openingHours  OpeningHour[]
-  categories    Category[]
-  products      Product[]
-  deliveryZones DeliveryZone[]
-  orders        Order[]
-  customization StoreCustomization?
-  auditLogs     AuditLog[]
-  assets        StoreAsset[]
-  banners       StoreBanner[]
-  domains       StoreDomain[]
-  entitlement   StoreEntitlement?
+  address            StoreAddress?
+  openingHours       OpeningHour[]
+  scheduleExceptions StoreScheduleException[]
+  categories         Category[]
+  products           Product[]
+  deliveryZones      DeliveryZone[]
+  orders             Order[]
+  customization      StoreCustomization?
+  auditLogs          AuditLog[]
+  assets             StoreAsset[]
+  banners            StoreBanner[]
+  domains            StoreDomain[]
+  entitlement        StoreEntitlement?
+  slugRedirects      StoreSlugRedirect[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -310,10 +323,12 @@ model StoreSettings {
   fontFamily     String @default("Inter")
 
   // Configurações de pedido
-  minOrderValue   Int     @default(0) // Em centavos
-  estimatedTime   String  @default("30-50 min")
-  deliveryEnabled Boolean @default(true)
-  pickupEnabled   Boolean @default(true)
+  minOrderValue           Int     @default(0) // Em centavos
+  estimatedTime           String  @default("30-50 min")
+  estimatedTimeMinMinutes Int     @default(30)
+  estimatedTimeMaxMinutes Int     @default(50)
+  deliveryEnabled         Boolean @default(true)
+  pickupEnabled           Boolean @default(true)
 
   // Formas de pagamento aceitas
   acceptsPix            Boolean @default(true)
@@ -333,6 +348,23 @@ model StoreSettings {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("store_settings")
+}
+
+model StoreSlugRedirect {
+  id          String   @id @default(uuid())
+  tenantId    String
+  storeId     String
+  oldSlug     String   @unique
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User?  @relation("StoreSlugRedirectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, storeId, createdAt])
+  @@index([createdById])
+  @@map("store_slug_redirects")
 }
 
 model StoreCustomization {
@@ -409,8 +441,8 @@ model StoreAsset {
   updatedAt   DateTime         @updatedAt
   deletedAt   DateTime?
 
-  store     Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  createdBy User? @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  store     Store         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User?         @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   banners   StoreBanner[]
 
   @@unique([id, tenantId, storeId])
@@ -522,6 +554,29 @@ model OpeningHour {
   @@unique([storeId, dayOfWeek])
   @@index([storeId])
   @@map("opening_hours")
+}
+
+model StoreScheduleException {
+  id          String                     @id @default(uuid())
+  tenantId    String
+  storeId     String
+  date        DateTime                   @db.Date
+  type        StoreScheduleExceptionType
+  openTime    String?
+  closeTime   String?
+  reason      String?
+  createdById String
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User   @relation("StoreScheduleExceptionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([storeId, date])
+  @@index([tenantId, storeId, date])
+  @@index([createdById])
+  @@map("store_schedule_exceptions")
 }
 
 // =============================================================================

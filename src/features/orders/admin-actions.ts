@@ -1,11 +1,11 @@
 'use server';
 
 import { getDb } from '@/server/database/client';
-import { requirePermission } from '@/server/auth';
 import { Permission } from '@/server/permissions';
 import { actionSuccess, actionError, type ActionResult, BusinessRuleError } from '@/server/errors';
 import { triggerOrderUpdated, triggerPaymentUpdated } from '@/lib/pusher/server';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
+import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 // =============================================================================
 // Ordens — Admin Server Actions
@@ -25,22 +25,7 @@ export interface GetOrdersParams {
  */
 export async function getOrdersAction(params?: GetOrdersParams) {
   try {
-    const session = await requirePermission(Permission.VIEW_ORDERS);
-
-    // Para o MVP, se o usuário não tem storeId fixo (dono de tudo), precisa pegar o primeiro store ou passar por param.
-    // Vamos assumir que a loja principal é a que tem pedidos, ou buscar a storeId.
-    let storeId = session.storeId;
-    if (!storeId) {
-      const firstStore = await getDb().store.findFirst({
-        where: { tenantId: session.tenantId },
-        select: { id: true },
-      });
-      if (firstStore) {
-        storeId = firstStore.id;
-      } else {
-        return actionSuccess([]); // Sem lojas
-      }
-    }
+    const { session, store } = await requireActiveStoreContext(Permission.VIEW_ORDERS);
 
     const query = params?.query?.trim();
     const orderNumber = query && /^#?\d+$/.test(query) ? Number(query.replace('#', '')) : null;
@@ -48,7 +33,7 @@ export async function getOrdersAction(params?: GetOrdersParams) {
     const orders = await getDb().order.findMany({
       where: {
         tenantId: session.tenantId,
-        storeId,
+        storeId: store.id,
         status: params?.statuses?.length ? { in: params.statuses } : params?.status,
         paymentStatus: params?.paymentStatus,
         createdAt: {
@@ -95,9 +80,9 @@ export async function undoOrderStatusAction(
   previousStatus: OrderStatus,
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission(Permission.UPDATE_ORDER_STATUS);
+    const { session, store } = await requireActiveStoreContext(Permission.UPDATE_ORDER_STATUS);
     const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId },
+      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
       select: {
         id: true,
         storeId: true,
@@ -121,7 +106,9 @@ export async function undoOrderStatusAction(
       latestChange.changedBy !== session.userId ||
       !isRecent
     ) {
-      throw new BusinessRuleError('Esta alteração não pode mais ser desfeita. Atualize a fila e revise o pedido.');
+      throw new BusinessRuleError(
+        'Esta alteração não pode mais ser desfeita. Atualize a fila e revise o pedido.',
+      );
     }
 
     await getDb().$transaction(async (tx) => {
@@ -152,10 +139,10 @@ export async function updateOrderStatusAction(
   newStatus: OrderStatus,
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission(Permission.UPDATE_ORDER_STATUS);
+    const { session, store } = await requireActiveStoreContext(Permission.UPDATE_ORDER_STATUS);
 
     const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId },
+      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
       select: { id: true, storeId: true, status: true },
     });
 
@@ -197,10 +184,10 @@ export async function updateOrderStatusAction(
  */
 export async function confirmPaymentAction(orderId: string): Promise<ActionResult> {
   try {
-    const session = await requirePermission(Permission.CONFIRM_MANUAL_PAYMENT);
+    const { session, store } = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
 
     const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId },
+      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
       select: { id: true, storeId: true, paymentStatus: true },
     });
 

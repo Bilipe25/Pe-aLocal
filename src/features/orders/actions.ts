@@ -8,6 +8,8 @@ import type { ActionResult } from '@/server/errors';
 import { BusinessRuleError } from '@/server/errors';
 import { triggerNewOrder } from '@/lib/pusher/server';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
+import { validatePixKey } from '@/lib/brazil';
 
 // =============================================================================
 // Checkout — Server Action
@@ -70,6 +72,8 @@ export async function createOrderAction(
             deliveryEnabled: true,
             pickupEnabled: true,
             acceptsPix: true,
+            pixKeyType: true,
+            pixKey: true,
             acceptsCash: true,
             acceptsCardOnDelivery: true,
           },
@@ -77,12 +81,18 @@ export async function createOrderAction(
       },
     });
 
-    if (!store || !store.isActive) {
-      throw new BusinessRuleError('Loja não encontrada ou inativa');
+    if (!store) {
+      throw new BusinessRuleError('Loja não encontrada');
     }
 
-    if (store.status !== 'OPEN') {
-      throw new BusinessRuleError('A loja está fechada no momento');
+    const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+    if (!availability.acceptingOrders) {
+      throw new BusinessRuleError(availability.reason, [
+        {
+          state: availability.state,
+          nextTransitionAt: availability.nextTransitionAt?.toISOString() ?? null,
+        },
+      ]);
     }
 
     // 3. Validar modalidade
@@ -95,8 +105,19 @@ export async function createOrderAction(
     }
 
     // 4. Validar forma de pagamento
-    if (input.paymentMethod === 'PIX' && !settings?.acceptsPix) {
-      throw new BusinessRuleError('Esta loja não aceita Pix');
+    if (input.paymentMethod === 'PIX') {
+      if (!settings?.acceptsPix) {
+        throw new BusinessRuleError('Esta loja não aceita Pix');
+      }
+      if (
+        !settings.pixKeyType ||
+        !settings.pixKey ||
+        !validatePixKey(settings.pixKeyType, settings.pixKey)
+      ) {
+        throw new BusinessRuleError(
+          'O Pix está temporariamente indisponível. Escolha outra forma de pagamento.',
+        );
+      }
     }
     if (input.paymentMethod === 'CASH' && !settings?.acceptsCash) {
       throw new BusinessRuleError('Esta loja não aceita dinheiro');

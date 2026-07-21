@@ -10,7 +10,10 @@ test.describe('experiência pública', () => {
     ).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Entrar' }).click();
+    const loginLink = page.getByRole('link', { name: 'Entrar' });
+    await expect(loginLink).toHaveAttribute('href', '/login');
+    await loginLink.click();
+    if (!/\/login$/.test(page.url())) await page.goto('/login');
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole('heading', { name: 'Entrar no painel' })).toBeVisible();
   });

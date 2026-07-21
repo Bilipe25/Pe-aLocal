@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultCustomization } from '@/features/customization/domain';
 import {
   getPublicCatalog,
+  getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
@@ -11,11 +12,13 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   unstableCache: vi.fn(),
   storeFindUnique: vi.fn(),
+  storeSlugRedirectFindUnique: vi.fn(),
   categoryFindMany: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
   storeAssetFindMany: vi.fn(),
   listPublicStoreBanners: vi.fn(),
   findActivePrimaryStoreDomain: vi.fn(),
+  getEffectiveStoreAvailabilityForTenant: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -26,6 +29,9 @@ vi.mock('@/server/repositories/store-banner.repository', () => ({
 }));
 vi.mock('@/server/repositories/store-domain.repository', () => ({
   findActivePrimaryStoreDomain: mocks.findActivePrimaryStoreDomain,
+}));
+vi.mock('@/server/services/store-availability.service', () => ({
+  getEffectiveStoreAvailabilityForTenant: mocks.getEffectiveStoreAvailabilityForTenant,
 }));
 
 function publicStore() {
@@ -47,6 +53,8 @@ function publicStore() {
       fontFamily: 'Inter',
       minOrderValue: 0,
       estimatedTime: '30-50 min',
+      estimatedTimeMinMinutes: 30,
+      estimatedTimeMaxMinutes: 50,
       deliveryEnabled: true,
       pickupEnabled: true,
       acceptsPix: true,
@@ -68,13 +76,21 @@ describe('queries públicas da loja', () => {
     vi.clearAllMocks();
     mocks.unstableCache.mockImplementation((callback: () => Promise<unknown>) => callback);
     mocks.storeFindUnique.mockResolvedValue(publicStore());
+    mocks.storeSlugRedirectFindUnique.mockResolvedValue(null);
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
     mocks.storeAssetFindMany.mockResolvedValue([]);
     mocks.listPublicStoreBanners.mockResolvedValue([]);
     mocks.findActivePrimaryStoreDomain.mockResolvedValue(null);
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta agora.',
+      nextTransitionAt: null,
+    });
     mocks.getDb.mockReturnValue({
       store: { findUnique: mocks.storeFindUnique },
+      storeSlugRedirect: { findUnique: mocks.storeSlugRedirectFindUnique },
       category: { findMany: mocks.categoryFindMany },
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
       storeAsset: { findMany: mocks.storeAssetFindMany },
@@ -195,6 +211,42 @@ describe('queries públicas da loja', () => {
     expect(customizationSelect).not.toHaveProperty('draftConfig');
     expect(customizationSelect).not.toHaveProperty('revisions');
     expect(result?.customization.config.identity.slogan).toBe('');
+    expect(result?.availability).toMatchObject({ acceptingOrders: true, state: 'OPEN' });
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'store-1',
+    );
+  });
+
+  it('resolve slug antigo pelo histórico e retorna a loja canônica', async () => {
+    const store = publicStore();
+    mocks.storeFindUnique.mockResolvedValueOnce(null);
+    mocks.storeSlugRedirectFindUnique.mockResolvedValueOnce({
+      store,
+    });
+
+    const result = await getPublicStoreBySlug('loja-antiga');
+
+    expect(mocks.storeSlugRedirectFindUnique).toHaveBeenCalledWith({
+      where: { oldSlug: 'loja-antiga' },
+      select: expect.objectContaining({
+        store: expect.any(Object),
+      }),
+    });
+    expect(result?.slug).toBe('loja-1');
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'store-1',
+    );
+  });
+
+  it('retorna slug canônico para rotas de acompanhamento antigas', async () => {
+    mocks.storeFindUnique.mockResolvedValueOnce(null);
+    mocks.storeSlugRedirectFindUnique.mockResolvedValueOnce({
+      store: { slug: 'loja-1' },
+    });
+
+    await expect(getCanonicalPublicStoreSlug('loja-antiga')).resolves.toBe('loja-1');
   });
 
   it('retorna somente banners públicos resolvidos e o domínio primário ativo', async () => {
