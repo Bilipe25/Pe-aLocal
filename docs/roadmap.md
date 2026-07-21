@@ -100,7 +100,7 @@
 
 - Supabase Realtime (WebSockets) para pedidos em tempo real
 - Integração com gateways de pagamento (Mercado Pago, Efí, Asaas)
-- Redis (Upstash) para rate limiting e cache
+- Redis (Upstash) para rate limiting e cache a a
 - Impressão de comanda térmica
 - Cupons automáticos
 - Relatórios avançados
