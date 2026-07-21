@@ -2,9 +2,9 @@
 
 ## Objetivo
 
-A Fase 7 usa uma pirâmide de testes: regras de negócio rápidas no Vitest, contratos HTTP em
-integração e jornadas críticas no Playwright. O deploy na Vercel é uma etapa separada e não é
-necessário para executar esta suíte localmente.
+A Fase 8 consolida a pirâmide de qualidade do PedidoLocal: regras de negócio rápidas no Vitest,
+contratos HTTP em integração, jornadas críticas no Playwright, auditoria de acessibilidade e smoke
+no runtime Cloudflare/workerd. Deploy é uma etapa separada; esta suíte não publica produção.
 
 ## Comandos
 
@@ -12,9 +12,11 @@ necessário para executar esta suíte localmente.
 pnpm test          # unitários e integração (Vitest)
 pnpm test:watch    # Vitest em modo watch
 pnpm test:e2e      # Playwright; inicia o Next.js localmente
+pnpm test:e2e:a11y # auditoria WCAG nas rotas críticas
+pnpm test:workerd  # smoke contra preview OpenNext/workerd
 pnpm lint          # ESLint
 pnpm typecheck     # TypeScript strict
-pnpm build         # build de produção local
+pnpm cf:build      # build Cloudflare Workers via OpenNext
 ```
 
 Na primeira execução do Playwright, instale o navegador usado pelos projetos desktop e mobile:
@@ -35,33 +37,30 @@ tests/
 
 ## Matriz atual
 
-| Camada      | Escopo atual                                                                   |
-| ----------- | ------------------------------------------------------------------------------ |
-| Unitários   | autenticação, tenants, sessão, senha, permissões, erros, schemas e utilitários |
-| Integração  | `/api/health`, login, logout e sessão atual                                    |
-| E2E         | home, navegação para login, validação acessível do formulário e health check   |
-| Navegadores | Chromium desktop e emulação mobile Pixel 5                                     |
+| Camada      | Escopo atual                                                                  |
+| ----------- | ----------------------------------------------------------------------------- |
+| Unitários   | autenticação, tenants, sessão, permissões, disponibilidade, settings e schemas |
+| Integração  | `/api/health`, login, logout, sessão atual e contratos de actions             |
+| E2E público | home, login, cardápio, carrinho, checkout, acompanhamento e assets            |
+| E2E admin   | SUPER_ADMIN, OWNER, personalização, painel operacional e status de pedidos    |
+| A11y        | axe WCAG 2 A/AA em home, login, cardápio, admin e dashboard                   |
+| Cloudflare  | `cf:build`, `cf:typegen` e smoke `test:workerd` contra preview OpenNext       |
+| Navegadores | Chromium desktop e emulação mobile Pixel 5                                    |
 
 ## Regras para novos testes
 
 - Toda nova regra de service deve cobrir sucesso, validação e erros de domínio.
 - Route Handlers devem testar status HTTP e o formato seguro da resposta.
-- Jornadas E2E devem usar seletores por papel, label ou nome acessível.
-- Testes que alteram o banco devem criar dados próprios e limpar somente esses dados.
+- Jornadas E2E devem usar seletores por papel, label, placeholder ou nome acessível.
+- Testes que alteram banco precisam ficar protegidos por `E2E_ALLOW_MUTATIONS=true`.
+- Use loja descartável para mutações E2E; nunca rode cenários mutáveis contra produção.
 - Falhas E2E preservam screenshot e contexto em `test-results/`; esses artefatos não devem ser
   commitados.
 
-## Próximas coberturas
+## Variáveis E2E
 
-1. Compra completa: catálogo, adicionais, carrinho, checkout e consulta do pedido.
-2. Painel autenticado: login, filtro, atualização de status e confirmação de pagamento.
-3. Auditoria WCAG automatizada nas rotas críticas.
-4. Orçamento de performance baseado em Core Web Vitals no build de produção.
-
-## White-label e acessibilidade
-
-A suíte `tests/e2e/white-label.spec.ts` usa o fluxo real do Supabase Auth e a
-autorização final de `public.users.platformRole`. Ela não possui bypass de teste.
+A suíte usa o fluxo real do Supabase Auth e a autorização final do servidor. Ela não possui bypass
+de teste.
 Configure em `.env.local`, ou no ambiente do processo Playwright:
 
 ```text
@@ -72,21 +71,30 @@ E2E_OWNER_PASSWORD=
 E2E_TENANT_ID=
 E2E_STORE_ID=
 E2E_STORE_SLUG=
+E2E_CATEGORY_NAME=
+E2E_CATEGORY_IMAGE_PATH=
 E2E_ALLOW_MUTATIONS=false
 ```
 
-Sem essas variáveis, os cenários dependentes de autenticação ou banco são
-marcados como ignorados com uma justificativa explícita. A jornada de publicação
-só executa quando `E2E_ALLOW_MUTATIONS=true`; use essa opção exclusivamente em
-uma loja descartável de teste. A própria jornada volta ao layout publicado
-original e descarta o draft criado pela validação de restauração.
+Sem essas variáveis, os cenários dependentes de autenticação, loja ou banco são ignorados com uma
+justificativa explícita. As jornadas de publicação, upload, checkout real e mudança de status só
+executam quando `E2E_ALLOW_MUTATIONS=true`.
+
+## Cloudflare local
+
+Para validar o pacote Worker localmente, o build precisa das variáveis públicas do Supabase e da
+connection string local do Hyperdrive apontando para `DATABASE_URL`; não imprima secrets no terminal.
+No Windows com PNPM, o OpenNext pode concluir o `next build` e falhar no empacotamento final por
+permissão ao ler links de `node_modules` dentro de `.open-next`. Quando isso ocorrer, valide em CI,
+Linux ou WSL antes de liberar staging.
 
 ```bash
-pnpm test:e2e
-pnpm test:e2e:a11y
+pnpm cf:typegen
+pnpm cf:build
 pnpm test:workerd
 ```
 
 A auditoria com axe bloqueia violações WCAG 2 A/AA de impacto `critical` ou
-`serious` na home, login, cardápio e editor. As credenciais nunca devem ser
-versionadas, impressas ou reutilizadas de produção.
+`serious` na home, login, cardápio e editor. Além do axe, os testes verificam overflow horizontal em
+mobile e alvos tocáveis mínimos em áreas operacionais. As credenciais nunca devem ser versionadas,
+impressas ou reutilizadas de produção.
