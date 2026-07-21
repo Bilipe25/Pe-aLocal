@@ -10,6 +10,7 @@ import { triggerNewOrder } from '@/lib/pusher/server';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { validatePixKey } from '@/lib/brazil';
+import { validateCartItems } from '@/lib/checkout/cart-validator';
 
 // =============================================================================
 // Checkout — Server Action
@@ -126,52 +127,75 @@ export async function createOrderAction(
       throw new BusinessRuleError('Esta loja não aceita cartão na entrega');
     }
 
-    // 5. Buscar produtos REAIS do banco
+    // 5. Buscar produtos REAIS do banco (com regras de validação de adicionais)
     const productIds = input.items.map((i) => i.productId);
     const products = await getDb().product.findMany({
       where: {
         id: { in: productIds },
         storeId: store.id,
-        isAvailable: true,
-        isSoldOut: false,
+        archivedAt: null,
       },
       select: {
         id: true,
         name: true,
         basePrice: true,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: true,
+        archivedAt: true,
+        category: { select: { isActive: true, archivedAt: true } },
         optionGroups: {
-          where: { isActive: true },
+          where: { archivedAt: null },
           select: {
+            id: true,
+            title: true,
+            isRequired: true,
+            isMultiple: true,
+            minSelections: true,
+            maxSelections: true,
+            isActive: true,
+            archivedAt: true,
             options: {
-              where: { isAvailable: true },
-              select: { id: true, name: true, price: true },
+              where: { archivedAt: null },
+              select: { id: true, name: true, price: true, isAvailable: true, archivedAt: true },
             },
           },
         },
       },
     });
 
+    // Verificar que a categoria do produto está ativa
+    for (const product of products) {
+      if (!product.category.isActive || product.category.archivedAt) {
+        throw new BusinessRuleError(
+          `O produto "${product.name}" não está disponível no momento.`,
+        );
+      }
+    }
+
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // 6. Resolver items e recalcular preços
+    // 6. Validar adicionais contra regras de negócio do servidor
+    validateCartItems(
+      productMap,
+      input.items.map((i) => ({ productId: i.productId, optionIds: i.optionIds, notes: i.notes })),
+    );
+
+    // 7. Resolver items e recalcular preços
     const resolvedItems: ResolvedItem[] = [];
 
     for (const cartItem of input.items) {
-      const product = productMap.get(cartItem.productId);
-      if (!product) {
-        throw new BusinessRuleError(`Produto "${cartItem.productId}" não está disponível`);
-      }
+      const product = productMap.get(cartItem.productId)!;
 
-      // Buscar opções reais (flat de todos os groups)
-      const allAvailableOptions = product.optionGroups.flatMap((g) => g.options);
+      // Buscar opções reais (flat de todos os groups ativos)
+      const allAvailableOptions = product.optionGroups
+        .filter((g) => g.isActive && !g.archivedAt)
+        .flatMap((g) => g.options.filter((o) => o.isAvailable && !o.archivedAt));
       const optionMap = new Map(allAvailableOptions.map((o) => [o.id, o]));
 
       const resolvedOptions: { id: string; name: string; price: number }[] = [];
       for (const optionId of cartItem.optionIds) {
-        const option = optionMap.get(optionId);
-        if (!option) {
-          throw new BusinessRuleError(`Adicional "${optionId}" não está disponível`);
-        }
+        const option = optionMap.get(optionId)!; // Já validado acima
         resolvedOptions.push({ id: option.id, name: option.name, price: option.price });
       }
 
@@ -184,7 +208,7 @@ export async function createOrderAction(
         productName: product.name,
         basePrice: product.basePrice,
         quantity: cartItem.quantity,
-        notes: cartItem.notes ?? '',
+        notes: (!product.allowNotes ? '' : (cartItem.notes ?? '')),
         options: resolvedOptions,
         unitPrice,
         itemTotal,
