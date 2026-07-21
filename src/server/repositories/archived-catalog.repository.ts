@@ -1,5 +1,4 @@
 import { getDb } from '@/server/database/client';
-import type { Prisma } from '@prisma/client';
 
 /** Lista categorias arquivadas de uma loja (para a área de restauração). */
 export async function listArchivedCategories(tenantId: string, storeId: string) {

@@ -38,13 +38,6 @@ export function CatalogSortableList({ items, kind, label, children }: CatalogSor
   const dragIndexRef = useRef<number | null>(null);
   const isSaving = useRef(false);
 
-  // Atualiza localOrder quando os items externos mudam (ex.: router.refresh)
-  const prevIds = useRef(items.map((i) => i.id).join(','));
-  const currentIds = items.map((i) => i.id).join(',');
-  if (prevIds.current !== currentIds) {
-    prevIds.current = currentIds;
-    setLocalOrder(items);
-  }
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number, id: string) => {
     dragIndexRef.current = index;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { formBooleanSchema, formBooleanWithDefault } from '@/schemas/form-boolean';
+import { formBooleanWithDefault } from '@/schemas/form-boolean';
 
 // =============================================================================
 // Schemas de Catálogo

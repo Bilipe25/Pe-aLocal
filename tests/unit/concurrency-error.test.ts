@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ConcurrencyError, ConflictError, NotFoundError, BusinessRuleError } from '@/server/errors';
+import { ConcurrencyError, ConflictError } from '@/server/errors';
 
 // =============================================================================
 // Testes de ConcurrencyError

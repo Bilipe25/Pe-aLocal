@@ -1,25 +1,9 @@
 import { getDb } from '@/server/database/client';
-import type { AuditAction, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 // =============================================================================
 // Category Repository
 // =============================================================================
-
-const categorySelect = {
-  id: true,
-  tenantId: true,
-  storeId: true,
-  name: true,
-  description: true,
-  sortOrder: true,
-  isActive: true,
-  version: true,
-  archivedAt: true,
-  archivedById: true,
-  archiveReason: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.CategorySelect;
 
 /** Lista categorias ativas (não arquivadas) de uma loja. */
 export async function listCategories(tenantId: string, storeId: string) {

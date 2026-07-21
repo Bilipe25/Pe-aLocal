@@ -17,7 +17,6 @@ import { FormMessage } from '@/components/shared/form-message';
 import { FormSubmitButton } from '@/components/shared/form-submit-button';
 import { PriceInput } from '@/components/shared/price-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Badge } from '@/components/ui/badge';
 import { useState } from 'react';
 
 interface Category {

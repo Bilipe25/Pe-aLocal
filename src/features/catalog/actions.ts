@@ -8,7 +8,6 @@ import {
   actionSuccess,
   actionError,
   NotFoundError,
-  ConflictError,
   ConcurrencyError,
   type ActionResult,
 } from '@/server/errors';
@@ -19,7 +18,6 @@ import {
   createOptionSchema,
   updateOptionGroupSchema,
   updateOptionSchema,
-  type UpdateCategoryInput,
 } from '@/schemas/catalog';
 import * as categoryRepo from '@/server/repositories/category.repository';
 import * as productRepo from '@/server/repositories/product.repository';
@@ -30,20 +28,6 @@ import { getDb } from '@/server/database/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 type MoveDirection = 'up' | 'down';
-
-// =============================================================================
-// Helpers internos
-// =============================================================================
-
-function getFieldErrors(error: { issues: Array<{ path: (string | number)[]; message: string }> }) {
-  const fieldErrors: Record<string, string[]> = {};
-  for (const issue of error.issues) {
-    const key = issue.path.join('.') || '_form';
-    if (!fieldErrors[key]) fieldErrors[key] = [];
-    fieldErrors[key].push(issue.message);
-  }
-  return fieldErrors;
-}
 
 
 // =============================================================================

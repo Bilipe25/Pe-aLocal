@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { Archive } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { listArchivedCatalogAction } from '@/features/catalog/actions';
