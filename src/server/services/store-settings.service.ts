@@ -268,13 +268,7 @@ export async function updateStoreGeneralSettings(
     phone: parsed.phone,
     whatsapp: parsed.whatsapp,
   };
-
-  if (generalData.slug !== store.slug) {
-    const existing = await storeRepo.findStoreBySlug(generalData.slug);
-    if (existing && existing.id !== store.id) {
-      throw new ConflictError('Este slug já está em uso.');
-    }
-  }
+  let previousStoreSlug = store.slug;
 
   try {
     await getDb().$transaction(async (tx) => {
@@ -288,6 +282,37 @@ export async function updateStoreGeneralSettings(
           whatsapp: true,
         },
       });
+      if (!previous) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+      previousStoreSlug = previous.slug;
+
+      const slugChanged = generalData.slug !== previous.slug;
+      if (slugChanged) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generalData.slug}))`;
+
+        const [storeUsingSlug, redirectUsingSlug] = await Promise.all([
+          tx.store.findUnique({
+            where: { slug: generalData.slug },
+            select: { id: true },
+          }),
+          tx.storeSlugRedirect.findUnique({
+            where: { oldSlug: generalData.slug },
+            select: { storeId: true },
+          }),
+        ]);
+
+        if (storeUsingSlug && storeUsingSlug.id !== store.id) {
+          throw new ConflictError('Este slug já está em uso.');
+        }
+        if (redirectUsingSlug && redirectUsingSlug.storeId !== store.id) {
+          throw new ConflictError('Este slug já está em uso.');
+        }
+
+        if (redirectUsingSlug?.storeId === store.id) {
+          await tx.storeSlugRedirect.delete({
+            where: { oldSlug: generalData.slug },
+          });
+        }
+      }
 
       await advanceConfigurationVersion(
         tx,
@@ -296,7 +321,23 @@ export async function updateStoreGeneralSettings(
         configurationVersion,
         generalData,
       );
-      if (!previous) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+
+      if (slugChanged) {
+        await tx.storeSlugRedirect.upsert({
+          where: { oldSlug: previous.slug },
+          update: {
+            tenantId: session.tenantId,
+            storeId: store.id,
+            createdById: session.userId,
+          },
+          create: {
+            tenantId: session.tenantId,
+            storeId: store.id,
+            oldSlug: previous.slug,
+            createdById: session.userId,
+          },
+        });
+      }
 
       await writeStoreAudit(tx, {
         tenantId: session.tenantId,
@@ -308,6 +349,7 @@ export async function updateStoreGeneralSettings(
           changedFields: changedFields(previous, generalData),
           previousPublicIdentity: { name: previous.name, slug: previous.slug },
           nextPublicIdentity: { name: generalData.name, slug: generalData.slug },
+          slugRedirectCreated: slugChanged ? previous.slug : null,
         },
       });
     });
@@ -322,7 +364,7 @@ export async function updateStoreGeneralSettings(
     storeId: store.id,
     configurationVersion: configurationVersion + 1,
     storeSlug: generalData.slug,
-    previousStoreSlug: store.slug,
+    previousStoreSlug,
   };
 }
 

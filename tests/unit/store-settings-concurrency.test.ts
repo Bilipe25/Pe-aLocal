@@ -5,6 +5,7 @@ import { Permission } from '@/server/permissions';
 import {
   removeStoreScheduleException,
   saveStoreScheduleException,
+  updateStoreGeneralSettings,
   updateStoreAddressSettings,
   updateStoreOperationalSettings,
   updateStorePaymentSettings,
@@ -13,9 +14,16 @@ import {
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    $executeRaw: vi.fn(),
     store: {
+      findUnique: vi.fn(),
       findFirst: vi.fn(),
       updateMany: vi.fn(),
+    },
+    storeSlugRedirect: {
+      findUnique: vi.fn(),
+      delete: vi.fn(),
+      upsert: vi.fn(),
     },
     storeSettings: {
       findUnique: vi.fn(),
@@ -85,8 +93,13 @@ describe('concorrência das configurações da loja', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireTenantStoreAccess.mockResolvedValue(context);
+    mocks.tx.$executeRaw.mockResolvedValue(0);
+    mocks.tx.store.findUnique.mockResolvedValue(null);
     mocks.tx.store.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.store.findFirst.mockResolvedValue({ status: 'OPEN' });
+    mocks.tx.storeSlugRedirect.findUnique.mockResolvedValue(null);
+    mocks.tx.storeSlugRedirect.delete.mockResolvedValue({ id: 'redirect-a' });
+    mocks.tx.storeSlugRedirect.upsert.mockResolvedValue({ id: 'redirect-a' });
     mocks.tx.storeSettings.findUnique.mockResolvedValue(null);
     mocks.tx.storeAddress.findUnique.mockResolvedValue(null);
     mocks.tx.storeScheduleException.findUnique.mockResolvedValue(null);
@@ -136,6 +149,88 @@ describe('concorrência das configurações da loja', () => {
       }),
       mocks.tx,
     );
+  });
+
+  it('altera slug com lock transacional, historico e auditoria segura', async () => {
+    mocks.tx.store.findFirst.mockResolvedValueOnce({
+      name: 'Loja A',
+      slug: 'loja-antiga',
+      description: '',
+      phone: '',
+      whatsapp: '',
+    });
+
+    await expect(
+      updateStoreGeneralSettings('store-a', 7, {
+        name: 'Loja A',
+        slug: 'Loja Nova',
+        description: '',
+        phone: '',
+        whatsapp: '',
+      }),
+    ).resolves.toMatchObject({
+      storeId: 'store-a',
+      configurationVersion: 8,
+      storeSlug: 'loja-nova',
+      previousStoreSlug: 'loja-antiga',
+    });
+
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.store.findUnique).toHaveBeenCalledWith({
+      where: { slug: 'loja-nova' },
+      select: { id: true },
+    });
+    expect(mocks.tx.storeSlugRedirect.findUnique).toHaveBeenCalledWith({
+      where: { oldSlug: 'loja-nova' },
+      select: { storeId: true },
+    });
+    expect(mocks.tx.storeSlugRedirect.upsert).toHaveBeenCalledWith({
+      where: { oldSlug: 'loja-antiga' },
+      update: {
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        createdById: 'user-owner',
+      },
+      create: {
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        oldSlug: 'loja-antiga',
+        createdById: 'user-owner',
+      },
+    });
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          slugRedirectCreated: 'loja-antiga',
+        }),
+      }),
+      mocks.tx,
+    );
+  });
+
+  it('bloqueia slug quando o historico pertence a outra loja', async () => {
+    mocks.tx.store.findFirst.mockResolvedValueOnce({
+      name: 'Loja A',
+      slug: 'loja-antiga',
+      description: '',
+      phone: '',
+      whatsapp: '',
+    });
+    mocks.tx.storeSlugRedirect.findUnique.mockResolvedValueOnce({ storeId: 'store-b' });
+
+    await expect(
+      updateStoreGeneralSettings('store-a', 7, {
+        name: 'Loja A',
+        slug: 'loja-reservada',
+        description: '',
+        phone: '',
+        whatsapp: '',
+      }),
+    ).rejects.toEqual(new ConflictError('Este slug já está em uso.'));
+
+    expect(mocks.tx.store.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.storeSlugRedirect.upsert).not.toHaveBeenCalled();
+    expect(mocks.createAuditLog).not.toHaveBeenCalled();
   });
 
   it('retorna conflito e não grava configuração nem auditoria quando a versão mudou', async () => {

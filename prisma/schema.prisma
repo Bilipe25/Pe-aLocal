@@ -200,6 +200,7 @@ model User {
   customizationRevisions    StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
   storeAssetsCreated        StoreAsset[]                 @relation("StoreAssetCreatedBy")
   scheduleExceptionsCreated StoreScheduleException[]     @relation("StoreScheduleExceptionCreatedBy")
+  slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -242,6 +243,7 @@ model Tenant {
   orders             Order[]
   coupons            Coupon[]
   auditLogs          AuditLog[]
+  slugRedirects      StoreSlugRedirect[]
   scheduleExceptions StoreScheduleException[]
 
   @@map("tenants")
@@ -302,6 +304,7 @@ model Store {
   banners            StoreBanner[]
   domains            StoreDomain[]
   entitlement        StoreEntitlement?
+  slugRedirects      StoreSlugRedirect[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -345,6 +348,23 @@ model StoreSettings {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("store_settings")
+}
+
+model StoreSlugRedirect {
+  id          String   @id @default(uuid())
+  tenantId    String
+  storeId     String
+  oldSlug     String   @unique
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy User?  @relation("StoreSlugRedirectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, storeId, createdAt])
+  @@index([createdById])
+  @@map("store_slug_redirects")
 }
 
 model StoreCustomization {
