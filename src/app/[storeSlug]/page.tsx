@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getPublicStoreBySlug, getPublicCatalog } from '@/server/queries/public-store';
 import { CatalogView } from '@/components/storefront/catalog-view';
 
@@ -13,6 +13,7 @@ export default async function StorePage({ params }: StorePageProps) {
   if (!store) {
     notFound();
   }
+  if (store.slug !== storeSlug) redirect(`/${store.slug}`);
 
   const categories = await getPublicCatalog(
     store.id,

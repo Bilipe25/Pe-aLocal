@@ -12,63 +12,74 @@ import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-
 
 const PUBLIC_CACHE_SECONDS = 60;
 
-async function getStoreFromDb(slug: string) {
-  const store = await getDb().store.findUnique({
-    where: { slug },
+const publicStoreSelect = {
+  id: true,
+  tenantId: true,
+  name: true,
+  slug: true,
+  description: true,
+  phone: true,
+  whatsapp: true,
+  logoUrl: true,
+  coverUrl: true,
+  status: true,
+  isActive: true,
+  settings: {
     select: {
-      id: true,
-      tenantId: true,
-      name: true,
-      slug: true,
-      description: true,
-      phone: true,
-      whatsapp: true,
-      logoUrl: true,
-      coverUrl: true,
-      status: true,
-      isActive: true,
-      settings: {
-        select: {
-          primaryColor: true,
-          secondaryColor: true,
-          fontFamily: true,
-          minOrderValue: true,
-          estimatedTime: true,
-          estimatedTimeMinMinutes: true,
-          estimatedTimeMaxMinutes: true,
-          deliveryEnabled: true,
-          pickupEnabled: true,
-          acceptsPix: true,
-          acceptsCash: true,
-          acceptsCardOnDelivery: true,
-        },
-      },
-      customization: {
-        // Contrato público intencionalmente não seleciona draftConfig nem revisões.
-        select: {
-          publishedConfig: true,
-          publishedVersion: true,
-          publishedAt: true,
-        },
-      },
-      address: {
-        select: {
-          neighborhood: true,
-          city: true,
-          state: true,
-        },
-      },
-      openingHours: {
-        where: { isActive: true },
-        orderBy: { dayOfWeek: 'asc' },
-        select: {
-          dayOfWeek: true,
-          openTime: true,
-          closeTime: true,
-        },
-      },
+      primaryColor: true,
+      secondaryColor: true,
+      fontFamily: true,
+      minOrderValue: true,
+      estimatedTime: true,
+      estimatedTimeMinMinutes: true,
+      estimatedTimeMaxMinutes: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: true,
     },
+  },
+  customization: {
+    // Contrato público intencionalmente não seleciona draftConfig nem revisões.
+    select: {
+      publishedConfig: true,
+      publishedVersion: true,
+      publishedAt: true,
+    },
+  },
+  address: {
+    select: {
+      neighborhood: true,
+      city: true,
+      state: true,
+    },
+  },
+  openingHours: {
+    where: { isActive: true },
+    orderBy: { dayOfWeek: 'asc' },
+    select: {
+      dayOfWeek: true,
+      openTime: true,
+      closeTime: true,
+    },
+  },
+} as const;
+
+async function getStoreFromDb(slug: string) {
+  const db = getDb();
+  let store = await db.store.findUnique({
+    where: { slug },
+    select: publicStoreSelect,
   });
+
+  if (!store) {
+    const redirect = await db.storeSlugRedirect.findUnique({
+      where: { oldSlug: slug },
+      select: { store: { select: publicStoreSelect } },
+    });
+    store = redirect?.store ?? null;
+  }
 
   if (!store) return null;
 
@@ -200,6 +211,20 @@ export async function getPublicStoreBySlug(slug: string) {
   // precisa ser recalculada a cada request.
   const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
   return { ...store, availability };
+}
+
+export async function getCanonicalPublicStoreSlug(slug: string) {
+  const current = await getDb().store.findUnique({
+    where: { slug },
+    select: { slug: true },
+  });
+  if (current) return current.slug;
+
+  const redirect = await getDb().storeSlugRedirect.findUnique({
+    where: { oldSlug: slug },
+    select: { store: { select: { slug: true } } },
+  });
+  return redirect?.store.slug ?? null;
 }
 
 async function getCatalogFromDb(storeId: string, tenantId: string) {

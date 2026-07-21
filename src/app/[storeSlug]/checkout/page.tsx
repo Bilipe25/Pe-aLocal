@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getPublicStoreBySlug, getPublicDeliveryZones } from '@/server/queries/public-store';
@@ -30,6 +30,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
   if (!store) {
     notFound();
   }
+  if (store.slug !== storeSlug) redirect(`/${store.slug}/checkout`);
 
   // Se não tem settings, não pode fazer checkout
   if (!store.settings) {
@@ -39,7 +40,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
           Loja ainda não configurou as opções de pedido.
         </p>
         <Link
-          href={`/${storeSlug}`}
+          href={`/${store.slug}`}
           className="storefront-link mt-4 inline-flex min-h-11 items-center hover:underline"
         >
           Voltar para a loja
@@ -59,7 +60,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
       <header className="border-tinta/10 bg-papel/80 sticky top-0 z-40 border-b px-4 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <Link
-            href={`/${storeSlug}/cart`}
+            href={`/${store.slug}/cart`}
             aria-label="Voltar para a sacola"
             className="text-tinta hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors"
           >
@@ -83,7 +84,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
       <main className="mx-auto max-w-md p-4">
         {store.availability.acceptingOrders ? (
           <CheckoutForm
-            storeSlug={storeSlug}
+            storeSlug={store.slug}
             minOrderValue={store.settings.minOrderValue}
             deliveryEnabled={store.settings.deliveryEnabled}
             pickupEnabled={store.settings.pickupEnabled}
@@ -96,7 +97,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
           <div className="mt-8 text-center">
             <p className="text-text-muted mb-4 text-sm">{store.availability.reason}</p>
             <Link
-              href={`/${storeSlug}`}
+              href={`/${store.slug}`}
               className="storefront-primary-action inline-flex min-h-11 items-center justify-center px-4 py-2 font-medium"
             >
               Voltar ao cardápio
