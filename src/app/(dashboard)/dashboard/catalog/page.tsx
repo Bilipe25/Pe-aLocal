@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { listCategoriesAction, listProductsAction } from '@/features/catalog/actions';
 import { formatCurrency } from '@/lib/utils';
 import { CatalogOrderControls } from '@/features/catalog/components/catalog-order-controls';
+import { ProductAvailabilityToggle } from '@/features/catalog/components/product-availability-toggle';
 
 export const metadata = { title: 'Catálogo' };
 
@@ -49,6 +50,7 @@ export default async function CatalogPage() {
 
             return (
               <div key={category.id} className="border-border bg-surface rounded-xl border">
+                {/* Cabeçalho da categoria */}
                 <div className="border-border flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <h2 className="text-text-primary font-semibold">{category.name}</h2>
@@ -76,6 +78,7 @@ export default async function CatalogPage() {
                   </div>
                 </div>
 
+                {/* Produtos da categoria */}
                 {categoryProducts.length > 0 ? (
                   <div className="divide-border divide-y">
                     {categoryProducts.map((product, productIndex) => (
@@ -83,23 +86,44 @@ export default async function CatalogPage() {
                         key={product.id}
                         className="hover:bg-surface-secondary flex min-h-16 flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center"
                       >
+                        {/* Área clicável — vai para edição */}
                         <Link
                           href={`/dashboard/catalog/products/${product.id}/edit`}
                           className="focus-visible:ring-brand-500 flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg py-1 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                         >
                           <p className="text-text-primary font-medium">{product.name}</p>
-                          <p className="text-text-secondary text-sm">
-                            {product._count.optionGroups > 0 &&
-                              `${product._count.optionGroups} ${product._count.optionGroups === 1 ? 'grupo de adicionais' : 'grupos de adicionais'}`}
-                          </p>
+                          {product._count.optionGroups > 0 && (
+                            <p className="text-text-secondary text-sm">
+                              {product._count.optionGroups}{' '}
+                              {product._count.optionGroups === 1
+                                ? 'grupo de adicionais'
+                                : 'grupos de adicionais'}
+                            </p>
+                          )}
                         </Link>
+
+                        {/* Controles direitos */}
                         <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
                           <span className="text-text-primary font-mono font-semibold">
                             {formatCurrency(product.basePrice)}
                           </span>
-                          {!product.isAvailable && (
-                            <Badge variant="destructive">Indisponível</Badge>
-                          )}
+
+                          {/* Badges de status */}
+                          <div className="flex items-center gap-1.5">
+                            {product.isSoldOut && (
+                              <Badge variant="warning">Esgotado</Badge>
+                            )}
+                            {!product.isAvailable && !product.isSoldOut && (
+                              <Badge variant="secondary">Indisp.</Badge>
+                            )}
+                          </div>
+
+                          {/* Toggle de esgotado — acessível para ATTENDANT */}
+                          <ProductAvailabilityToggle
+                            productId={product.id}
+                            isSoldOut={product.isSoldOut}
+                          />
+
                           <CatalogOrderControls
                             id={product.id}
                             kind="product"

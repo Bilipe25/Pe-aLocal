@@ -9,6 +9,7 @@ import {
   actionError,
   NotFoundError,
   ConflictError,
+  ConcurrencyError,
   type ActionResult,
 } from '@/server/errors';
 import {
@@ -123,17 +124,36 @@ export async function updateCategoryAction(
     if (!category || category.storeId !== store.id)
       return actionError(new NotFoundError('Categoria'));
 
+    // Concorrência otimista — o form passa a versão atual
+    const expectedVersion = Number(raw.version ?? -1);
+    const useVersion = expectedVersion >= 0;
+
     await getDb().$transaction(async (tx) => {
-      await categoryRepo.updateCategory(
-        id,
-        session.tenantId,
-        {
-          name: parsed.data.name,
-          description: parsed.data.description,
-          isActive: parsed.data.isActive,
-        },
-        tx,
-      );
+      if (useVersion) {
+        const updated = await categoryRepo.updateCategoryWithVersion(
+          id,
+          session.tenantId,
+          expectedVersion,
+          {
+            name: parsed.data.name,
+            description: parsed.data.description,
+            isActive: parsed.data.isActive,
+          },
+          tx,
+        );
+        if (updated === 0) throw new ConcurrencyError('Categoria');
+      } else {
+        await categoryRepo.updateCategory(
+          id,
+          session.tenantId,
+          {
+            name: parsed.data.name,
+            description: parsed.data.description,
+            isActive: parsed.data.isActive,
+          },
+          tx,
+        );
+      }
 
       await auditRepo.createAuditLog(
         {
@@ -366,22 +386,43 @@ export async function updateProductAction(id: string, formData: FormData): Promi
 
     const basePriceBefore = product.basePrice;
     const basePriceAfter = Math.round(parsed.data.basePrice * 100);
+    const expectedVersion = Number(raw.version ?? -1);
+    const useVersion = expectedVersion >= 0;
 
     await getDb().$transaction(async (tx) => {
-      await productRepo.updateProduct(
-        id,
-        session.tenantId,
-        {
-          categoryId: parsed.data.categoryId,
-          name: parsed.data.name,
-          description: parsed.data.description,
-          basePrice: basePriceAfter,
-          isAvailable: parsed.data.isAvailable,
-          isFeatured: parsed.data.isFeatured,
-          allowNotes: parsed.data.allowNotes,
-        },
-        tx,
-      );
+      if (useVersion) {
+        const updated = await productRepo.updateProductWithVersion(
+          id,
+          session.tenantId,
+          expectedVersion,
+          {
+            categoryId: parsed.data.categoryId,
+            name: parsed.data.name,
+            description: parsed.data.description,
+            basePrice: basePriceAfter,
+            isAvailable: parsed.data.isAvailable,
+            isFeatured: parsed.data.isFeatured,
+            allowNotes: parsed.data.allowNotes,
+          },
+          tx,
+        );
+        if (updated === 0) throw new ConcurrencyError('Produto');
+      } else {
+        await productRepo.updateProduct(
+          id,
+          session.tenantId,
+          {
+            categoryId: parsed.data.categoryId,
+            name: parsed.data.name,
+            description: parsed.data.description,
+            basePrice: basePriceAfter,
+            isAvailable: parsed.data.isAvailable,
+            isFeatured: parsed.data.isFeatured,
+            allowNotes: parsed.data.allowNotes,
+          },
+          tx,
+        );
+      }
 
       const auditMetadata: Prisma.InputJsonValue = {
         changedFields: Object.keys(parsed.data),

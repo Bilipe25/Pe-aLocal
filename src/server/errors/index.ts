@@ -109,6 +109,22 @@ export class ConflictError extends DomainError {
 }
 
 /**
+ * 409 — Conflito de concorrência otimista.
+ * Ocorre quando dois usuários editam o mesmo recurso simultaneamente.
+ * O cliente deve recarregar o recurso e re-aplicar as alterações.
+ */
+export class ConcurrencyError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = 'CONCURRENCY_CONFLICT';
+
+  constructor(resource = 'Recurso') {
+    super(
+      `${resource} foi alterado por outro usuário. Recarregue a página e tente novamente.`,
+    );
+  }
+}
+
+/**
  * 422 — Regra de negócio violada (ex.: loja fechada, pedido mínimo).
  */
 export class BusinessRuleError extends DomainError {
