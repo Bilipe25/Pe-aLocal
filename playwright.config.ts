@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+import { config as loadEnv } from 'dotenv';
+
+loadEnv({ path: '.env.local' });
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -30,5 +33,12 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      ...process.env,
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:
+        process.env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE ??
+        process.env.DATABASE_URL ??
+        '',
+    },
   },
 });
