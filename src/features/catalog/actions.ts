@@ -1007,3 +1007,197 @@ export async function listArchivedCatalogAction() {
   ]);
   return { categories, products };
 }
+
+// =============================================================================
+// Batch Reorder Actions (Fase 5)
+// =============================================================================
+
+/**
+ * Reordena categorias recebendo uma lista de IDs na nova ordem desejada.
+ * Valida que todos os IDs pertencem ao tenant+store antes de gravar.
+ */
+export async function reorderCategoriesAction(
+  orderedIds: string[],
+): Promise<ActionResult> {
+  try {
+    const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
+
+    if (orderedIds.length === 0) return actionSuccess();
+
+    // Verifica propriedade de todos os IDs
+    const owned = await getDb().category.findMany({
+      where: { id: { in: orderedIds }, tenantId: session.tenantId, storeId: store.id },
+      select: { id: true },
+    });
+
+    if (owned.length !== orderedIds.length) {
+      return actionError(new NotFoundError('Uma ou mais categorias'));
+    }
+
+    await getDb().$transaction(
+      orderedIds.map((id, index) =>
+        getDb().category.update({
+          where: { id },
+          data: { sortOrder: (index + 1) * 1000 },
+        }),
+      ),
+    );
+
+    updateTag(CACHE_TAGS.catalog(store.id));
+    return actionSuccess();
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+/**
+ * Reordena produtos dentro de uma categoria.
+ * Valida que todos os IDs pertencem ao tenant+store antes de gravar.
+ */
+export async function reorderProductsAction(
+  orderedIds: string[],
+): Promise<ActionResult> {
+  try {
+    const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
+
+    if (orderedIds.length === 0) return actionSuccess();
+
+    const owned = await getDb().product.findMany({
+      where: { id: { in: orderedIds }, tenantId: session.tenantId, storeId: store.id },
+      select: { id: true },
+    });
+
+    if (owned.length !== orderedIds.length) {
+      return actionError(new NotFoundError('Um ou mais produtos'));
+    }
+
+    await getDb().$transaction(
+      orderedIds.map((id, index) =>
+        getDb().product.update({
+          where: { id },
+          data: { sortOrder: (index + 1) * 1000 },
+        }),
+      ),
+    );
+
+    updateTag(CACHE_TAGS.catalog(store.id));
+    return actionSuccess();
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+/**
+ * Reordena grupos de adicionais de um produto.
+ */
+export async function reorderOptionGroupsAction(
+  productId: string,
+  orderedIds: string[],
+): Promise<ActionResult> {
+  try {
+    const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
+
+    if (orderedIds.length === 0) return actionSuccess();
+
+    const product = await productRepo.findProductById(productId, session.tenantId);
+    if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
+
+    await getDb().$transaction(
+      orderedIds.map((id, index) =>
+        getDb().productOptionGroup.update({
+          where: { id },
+          data: { sortOrder: (index + 1) * 1000 },
+        }),
+      ),
+    );
+
+    updateTag(CACHE_TAGS.catalog(store.id));
+    return actionSuccess();
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+/**
+ * Associa um asset R2 existente como imagem de um produto.
+ * O upload já deve ter sido feito via /api/admin/tenants/.../assets.
+ * A URL pública (imageUrl) é passada pelo cliente pois não está armazenada no DB.
+ */
+export async function setProductImageAction(
+  productId: string,
+  assetId: string | null,
+  imageUrl?: string | null,
+): Promise<ActionResult> {
+  try {
+    const { session, store } = await requireActiveStoreContext(Permission.MANAGE_PRODUCT_IMAGES);
+
+    const product = await productRepo.findProductById(productId, session.tenantId);
+    if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
+
+    if (assetId !== null) {
+      // Verifica que o asset pertence à mesma loja e é do tipo PRODUCT_IMAGE
+      const asset = await getDb().storeAsset.findFirst({
+        where: {
+          id: assetId,
+          tenantId: session.tenantId,
+          storeId: store.id,
+          assetType: 'PRODUCT_IMAGE',
+          deletedAt: null,
+        },
+        select: { id: true, objectKey: true },
+      });
+      if (!asset) return actionError(new NotFoundError('Asset de imagem'));
+
+      await getDb().$transaction(async (tx) => {
+        await tx.product.update({
+          where: { id: productId },
+          data: {
+            imageAssetId: assetId,
+            // imageUrl recebido do cliente (URL pública retornada pelo upload)
+            imageUrl: imageUrl ?? null,
+            version: { increment: 1 },
+          },
+        });
+
+        await auditRepo.createAuditLog(
+          {
+            tenantId: session.tenantId,
+            storeId: store.id,
+            userId: session.userId,
+            action: 'PRODUCT_UPDATED',
+            entity: 'Product',
+            entityId: productId,
+            metadata: { changedFields: ['imageAssetId'], assetId, objectKey: asset.objectKey },
+          },
+          tx,
+        );
+      });
+    } else {
+      // Remove imagem
+      await getDb().$transaction(async (tx) => {
+        await tx.product.update({
+          where: { id: productId },
+          data: { imageAssetId: null, imageUrl: null, version: { increment: 1 } },
+        });
+
+        await auditRepo.createAuditLog(
+          {
+            tenantId: session.tenantId,
+            storeId: store.id,
+            userId: session.userId,
+            action: 'PRODUCT_UPDATED',
+            entity: 'Product',
+            entityId: productId,
+            metadata: { changedFields: ['imageAssetId'], assetId: null },
+          },
+          tx,
+        );
+      });
+    }
+
+    updateTag(CACHE_TAGS.catalog(product.storeId));
+    return actionSuccess();
+  } catch (error) {
+    return actionError(error);
+  }
+}
