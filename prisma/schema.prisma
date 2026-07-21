@@ -127,6 +127,25 @@ enum AuditAction {
   DOMAIN_STATUS_CHANGED
   ENTITLEMENT_UPDATED
   BRANDING_VISIBILITY_CHANGED
+  CATEGORY_CREATED
+  CATEGORY_UPDATED
+  CATEGORY_ARCHIVED
+  CATEGORY_RESTORED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_ARCHIVED
+  PRODUCT_RESTORED
+  PRODUCT_DUPLICATED
+  PRODUCT_AVAILABILITY_CHANGED
+  PRODUCT_PRICE_CHANGED
+  PRODUCT_IMAGE_UPDATED
+  OPTION_GROUP_CREATED
+  OPTION_GROUP_UPDATED
+  OPTION_GROUP_ARCHIVED
+  OPTION_CREATED
+  OPTION_UPDATED
+  OPTION_ARCHIVED
+  CATALOG_REORDERED
 }
 
 enum CustomizationRevisionAction {
@@ -148,6 +167,7 @@ enum StoreAssetType {
   SOCIAL_IMAGE
   BANNER
   CATEGORY_IMAGE
+  PRODUCT_IMAGE
 }
 
 enum StoreAssetStatus {
@@ -285,6 +305,7 @@ model Store {
   isActive             Boolean     @default(true)
   timeZone             String      @default("America/Fortaleza")
   configurationVersion Int         @default(0)
+  catalogVersion       Int         @default(0)
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
 
@@ -584,20 +605,26 @@ model StoreScheduleException {
 // =============================================================================
 
 model Category {
-  id          String   @id @default(uuid())
-  tenantId    String
-  storeId     String
-  name        String
-  description String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  tenantId      String
+  storeId       String
+  name          String
+  description   String?
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
+  version       Int       @default(0)
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   products Product[]
 
+  @@index([tenantId, storeId, archivedAt, sortOrder])
+  @@index([storeId, isActive, archivedAt])
   @@index([tenantId])
   @@index([storeId])
   @@index([sortOrder])
@@ -605,27 +632,36 @@ model Category {
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  tenantId    String
-  storeId     String
-  categoryId  String
-  name        String
-  description String?
-  imageUrl    String?
-  basePrice   Int // Em centavos
-  isAvailable Boolean  @default(true)
-  isFeatured  Boolean  @default(false)
-  isSoldOut   Boolean  @default(false)
-  allowNotes  Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  tenantId      String
+  storeId       String
+  categoryId    String
+  name          String
+  description   String?
+  imageUrl      String?   // Legado — preferir imageAssetId
+  imageAssetId  String?   // FK para StoreAsset (PRODUCT_IMAGE)
+  basePrice     Int       // Em centavos
+  isAvailable   Boolean   @default(true)
+  isFeatured    Boolean   @default(false)
+  isSoldOut     Boolean   @default(false)
+  allowNotes    Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  version       Int       @default(0)
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   category     Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   optionGroups ProductOptionGroup[]
 
+  @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
+  @@index([storeId, isAvailable, isSoldOut, archivedAt])
+  @@index([categoryId, archivedAt, sortOrder])
+  @@index([storeId, updatedAt])
   @@index([tenantId])
   @@index([storeId])
   @@index([categoryId])
@@ -635,39 +671,47 @@ model Product {
 }
 
 model ProductOptionGroup {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   productId     String
   title         String
   description   String?
-  isRequired    Boolean  @default(false)
-  isMultiple    Boolean  @default(false)
-  minSelections Int      @default(0)
-  maxSelections Int      @default(1)
-  sortOrder     Int      @default(0)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isRequired    Boolean   @default(false)
+  isMultiple    Boolean   @default(false)
+  minSelections Int       @default(0)
+  maxSelections Int       @default(1)
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
+  version       Int       @default(0)
+  archivedAt    DateTime?
+  archivedById  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   options ProductOption[]
 
+  @@index([productId, archivedAt, sortOrder])
   @@index([productId])
   @@index([sortOrder])
   @@map("product_option_groups")
 }
 
 model ProductOption {
-  id          String   @id @default(uuid())
-  groupId     String
-  name        String
-  price       Int      @default(0) // Preço adicional em centavos
-  isAvailable Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(uuid())
+  groupId      String
+  name         String
+  price        Int       @default(0) // Preço adicional em centavos
+  isAvailable  Boolean   @default(true)
+  sortOrder    Int       @default(0)
+  version      Int       @default(0)
+  archivedAt   DateTime?
+  archivedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   group ProductOptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
+  @@index([groupId, archivedAt, sortOrder])
   @@index([groupId])
   @@index([sortOrder])
   @@map("product_options")

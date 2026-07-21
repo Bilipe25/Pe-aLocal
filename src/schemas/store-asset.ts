@@ -8,6 +8,7 @@ export const STORE_ASSET_TYPES = [
   'SOCIAL_IMAGE',
   'BANNER',
   'CATEGORY_IMAGE',
+  'PRODUCT_IMAGE',
 ] as const;
 
 export const STORE_ASSET_MIME_TYPES = [
@@ -25,6 +26,7 @@ export const STORE_ASSET_MAX_BYTES: Record<(typeof STORE_ASSET_TYPES)[number], n
   SOCIAL_IMAGE: 3 * 1024 * 1024,
   BANNER: 5 * 1024 * 1024,
   CATEGORY_IMAGE: 2 * 1024 * 1024,
+  PRODUCT_IMAGE: 3 * 1024 * 1024,
 };
 
 export const storeAssetUploadMetadataSchema = z
