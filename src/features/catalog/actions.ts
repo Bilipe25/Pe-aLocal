@@ -25,6 +25,7 @@ import * as categoryRepo from '@/server/repositories/category.repository';
 import * as productRepo from '@/server/repositories/product.repository';
 import * as optionGroupRepo from '@/server/repositories/option-group.repository';
 import * as auditRepo from '@/server/repositories/audit-log.repository';
+import * as archivedRepo from '@/server/repositories/archived-catalog.repository';
 import { getDb } from '@/server/database/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
@@ -991,4 +992,18 @@ export async function moveOptionAction(
   } catch (error) {
     return actionError(error);
   }
+}
+
+// =============================================================================
+// Archived Catalog Actions (Fase 4)
+// =============================================================================
+
+/** Lista categorias e produtos arquivados da loja ativa. */
+export async function listArchivedCatalogAction() {
+  const { session, store } = await requireActiveStoreContext(Permission.ARCHIVE_CATALOG_ITEMS);
+  const [categories, products] = await Promise.all([
+    archivedRepo.listArchivedCategories(session.tenantId, store.id),
+    archivedRepo.listArchivedProducts(session.tenantId, store.id),
+  ]);
+  return { categories, products };
 }
