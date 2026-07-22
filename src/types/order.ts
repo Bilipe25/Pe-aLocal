@@ -57,6 +57,8 @@ export const orderWithDetailsSelect = {
       actorNameSnapshot: true,
       source: true,
       reasonCode: true,
+      versionFrom: true,
+      versionTo: true,
       isUndo: true,
       createdAt: true,
     },

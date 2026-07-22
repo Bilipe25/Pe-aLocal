@@ -130,6 +130,19 @@ enum AuditAction {
   LOGOUT
   STATUS_CHANGE
   PAYMENT_CONFIRMED
+  ORDER_CREATED
+  ORDER_ACCEPTED
+  ORDER_PREPARATION_STARTED
+  ORDER_READY
+  ORDER_DISPATCHED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+  ORDER_TRANSITION_UNDONE
+  PAYMENT_REPORTED
+  PAYMENT_FAILED
+  PAYMENT_CANCELLED
+  PAYMENT_REFUNDED
+  ORDER_INTERNAL_NOTE_ADDED
   TENANT_SUSPENDED
   TENANT_ACTIVATED
   CUSTOMIZATION_DRAFT_SAVED
@@ -935,6 +948,8 @@ model OrderStatusHistory {
   actorNameSnapshot String?
   source            OrderChangeSource            @default(SYSTEM)
   reasonCode        OrderCancellationReasonCode?
+  versionFrom       Int?
+  versionTo         Int?
   isUndo            Boolean                      @default(false)
   revertsHistoryId  String?                      @unique
   createdAt         DateTime                     @default(now())
@@ -1036,10 +1051,13 @@ model AuditLog {
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([tenantId, createdAt, id])
   @@index([storeId])
+  @@index([storeId, createdAt, id])
   @@index([userId])
   @@index([action])
   @@index([entity])
+  @@index([entity, entityId, createdAt, id])
   @@index([createdAt])
   @@map("audit_logs")
 }
