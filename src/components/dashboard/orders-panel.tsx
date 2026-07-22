@@ -14,6 +14,7 @@ import { initialOrderFilters, OrderFilters } from './order-filters';
 import { DailyMetrics } from './daily-metrics';
 import { OrderDetailModal } from './order-detail-modal';
 import type { GetOrdersParams } from '@/features/orders/admin-actions';
+import type { OrderCapabilities } from '@/features/orders/capabilities';
 
 const CONNECTION_LABELS = {
   unavailable: { label: 'Atualização manual', className: 'bg-surface-tertiary text-text-secondary', icon: WifiOff },
@@ -31,8 +32,8 @@ const QUEUE_SECTIONS: Array<{
   {
     key: 'attention',
     title: 'Aguardando atenção',
-    description: 'Pedidos novos ou aguardando confirmação de pagamento.',
-    statuses: ['PENDING', 'AWAITING_PAYMENT'],
+    description: 'Pedidos novos aguardando aceite.',
+    statuses: ['PENDING'],
   },
   {
     key: 'preparation',
@@ -76,7 +77,13 @@ function groupOrders(orders: OrderWithDetails[]) {
   }).filter((section) => section.orders.length > 0);
 }
 
-export function OrdersPanel({ storeId }: { storeId: string }) {
+export function OrdersPanel({
+  storeId,
+  capabilities,
+}: {
+  storeId: string;
+  capabilities: OrderCapabilities;
+}) {
   const [filters, setFilters] = useState<GetOrdersParams>(() => initialOrderFilters());
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedOrderSnapshot, setSelectedOrderSnapshot] = useState<OrderWithDetails | null>(null);
@@ -169,7 +176,7 @@ export function OrdersPanel({ storeId }: { storeId: string }) {
           )}
         </div>
 
-        <OrderDetailModal order={selectedOrder} open={Boolean(selectedOrder)} onOpenChange={(open) => { if (!open) closeDetails(); }} />
+        <OrderDetailModal order={selectedOrder} capabilities={capabilities} open={Boolean(selectedOrder)} onOpenChange={(open) => { if (!open) closeDetails(); }} />
       </div>
     </div>
   );

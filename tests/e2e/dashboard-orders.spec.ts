@@ -56,6 +56,6 @@ test.describe('painel operacional autenticado', () => {
     await pendingOrder.click();
 
     await page.getByRole('button', { name: 'Aceitar Pedido' }).click();
-    await expect(page.getByText('Status do pedido atualizado.')).toBeVisible();
+    await expect(page.getByText('Pedido aceito.')).toBeVisible();
   });
 });

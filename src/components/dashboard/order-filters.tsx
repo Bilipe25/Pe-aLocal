@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 
 export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'PENDING',
-  'AWAITING_PAYMENT',
   'CONFIRMED',
   'PREPARING',
   'READY',

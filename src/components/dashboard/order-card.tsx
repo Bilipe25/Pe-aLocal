@@ -33,7 +33,7 @@ export function OrderCard({ order, onClick, now, selected = false }: { order: Or
   
   const timeAgo = Math.floor((now - new Date(order.createdAt).getTime()) / 60000);
   const timeText = timeAgo < 1 ? 'Agora' : timeAgo < 60 ? `Há ${timeAgo} min` : `Há ${Math.floor(timeAgo / 60)} h`;
-  const needsAttention = (order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT') && timeAgo >= 10;
+  const needsAttention = order.status === 'PENDING' && timeAgo >= 10;
 
   return (
     <button

@@ -10,14 +10,16 @@ import { formatCurrency } from '@/lib/utils';
 import type { OrderWithDetails } from '@/types/order';
 import { paymentStatusMap, statusMap } from './order-card';
 import { StatusActions } from './status-actions';
+import type { OrderCapabilities } from '@/features/orders/capabilities';
 
 interface OrderDetailModalProps {
   order: OrderWithDetails | null;
+  capabilities: OrderCapabilities;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-function OrderDetails({ order, onClose, dialog = false }: { order: OrderWithDetails; onClose: () => void; dialog?: boolean }) {
+function OrderDetails({ order, capabilities, onClose, dialog = false }: { order: OrderWithDetails; capabilities: OrderCapabilities; onClose: () => void; dialog?: boolean }) {
   const paymentInfo = paymentStatusMap[order.paymentStatus as PaymentStatus];
   const recentHistory = order.statusHistory.slice(0, 4);
 
@@ -53,9 +55,13 @@ function OrderDetails({ order, onClose, dialog = false }: { order: OrderWithDeta
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="text-text-muted" aria-hidden="true" />
-                  <a href={`https://wa.me/55${order.customerPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-1 text-brand-700 underline-offset-4 hover:underline">
-                    {order.customerPhone} <ExternalLink aria-hidden="true" />
-                  </a>
+                  {capabilities.canViewCustomerContact ? (
+                    <a href={`https://wa.me/55${order.customerPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-1 text-brand-700 underline-offset-4 hover:underline">
+                      {order.customerPhone} <ExternalLink aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <span className="text-text-secondary">Contato protegido</span>
+                  )}
                 </div>
               </div>
             </section>
@@ -65,14 +71,14 @@ function OrderDetails({ order, onClose, dialog = false }: { order: OrderWithDeta
               <div className="space-y-3 rounded-lg bg-surface-secondary p-3 text-sm">
                 <div>
                   <div className="mb-1 flex items-center gap-2 text-text-secondary"><MapPin aria-hidden="true" /><span>{order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}</span></div>
-                  {order.modality === 'DELIVERY' && <p className="pl-6 font-medium text-text-primary">{order.deliveryAddress}</p>}
+                  {order.modality === 'DELIVERY' && <p className="pl-6 font-medium text-text-primary">{capabilities.canViewCustomerContact ? order.deliveryAddress : 'Endereço protegido'}</p>}
                 </div>
                 <div className="border-t border-border pt-3">
                   <div className="mb-1 flex items-center justify-between gap-3 text-text-secondary">
                     <div className="flex items-center gap-2"><Receipt aria-hidden="true" /><span>{order.paymentMethod === 'PIX' ? 'Pix' : order.paymentMethod === 'CASH' ? 'Dinheiro' : 'Cartão'}</span></div>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${paymentInfo.color}`}>{paymentInfo.label}</span>
                   </div>
-                  {order.paymentMethod === 'CASH' && order.changeFor && <p className="pl-6 text-text-primary">Troco para {formatCurrency(order.changeFor)}</p>}
+                  {capabilities.canViewPaymentDetails && order.paymentMethod === 'CASH' && order.changeFor && <p className="pl-6 text-text-primary">Troco para {formatCurrency(order.changeFor)}</p>}
                 </div>
               </div>
             </section>
@@ -102,7 +108,7 @@ function OrderDetails({ order, onClose, dialog = false }: { order: OrderWithDeta
               </div>
             </section>
 
-            {recentHistory.length > 0 && (
+            {capabilities.canViewHistory && recentHistory.length > 0 && (
               <section aria-labelledby={`history-heading-${order.id}`}>
                 <h3 id={`history-heading-${order.id}`} className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary"><History aria-hidden="true" /> Histórico recente</h3>
                 <ol className="space-y-2 text-sm">
@@ -120,20 +126,20 @@ function OrderDetails({ order, onClose, dialog = false }: { order: OrderWithDeta
       </div>
 
       <div className="border-t border-border bg-surface-secondary p-4">
-        <StatusActions order={order} onOrderChanged={onClose} />
+        <StatusActions order={order} capabilities={capabilities} onOrderChanged={onClose} />
       </div>
     </>
   );
 }
 
-export function OrderDetailModal({ order, open, onOpenChange }: OrderDetailModalProps) {
+export function OrderDetailModal({ order, capabilities, open, onOpenChange }: OrderDetailModalProps) {
   const isDesktop = useMediaQuery('(min-width: 1280px)');
   if (!order) return null;
 
   if (isDesktop) {
     return (
       <aside className="sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-xl border border-border bg-surface" aria-label={`Detalhes do pedido ${order.orderNumber}`}>
-        <OrderDetails order={order} onClose={() => onOpenChange(false)} />
+        <OrderDetails order={order} capabilities={capabilities} onClose={() => onOpenChange(false)} />
       </aside>
     );
   }
@@ -143,7 +149,7 @@ export function OrderDetailModal({ order, open, onOpenChange }: OrderDetailModal
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-tinta/50" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface shadow-lg focus:outline-none">
-          <OrderDetails order={order} dialog onClose={() => onOpenChange(false)} />
+          <OrderDetails order={order} capabilities={capabilities} dialog onClose={() => onOpenChange(false)} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

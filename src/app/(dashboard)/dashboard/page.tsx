@@ -22,7 +22,6 @@ export default async function DashboardPage() {
 
   const activeStatuses: OrderStatus[] = [
     'PENDING',
-    'AWAITING_PAYMENT',
     'CONFIRMED',
     'PREPARING',
     'READY',
@@ -39,7 +38,7 @@ export default async function DashboardPage() {
   const activeHours = store.openingHours.length;
   const activeOrders = ordersResult.success ? ordersResult.data : [];
   const waitingOrders = activeOrders.filter(
-    (order) => order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT',
+    (order) => order.status === 'PENDING',
   ).length;
   const preparingOrders = activeOrders.filter(
     (order) => order.status === 'CONFIRMED' || order.status === 'PREPARING',
