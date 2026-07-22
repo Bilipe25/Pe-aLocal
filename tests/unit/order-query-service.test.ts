@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   orderAggregate: vi.fn(),
   historyFindMany: vi.fn(),
   auditFindMany: vi.fn(),
+  paymentHistoryFindMany: vi.fn(),
   queryRaw: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ vi.mock('@/server/database/client', () => ({
     auditLog: {
       findMany: mocks.auditFindMany,
     },
+    paymentStatusHistory: { findMany: mocks.paymentHistoryFindMany },
     $queryRaw: mocks.queryRaw,
   }),
 }));
@@ -86,6 +88,8 @@ function historyEntry(id = 'history-a') {
 describe('OrderQueryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.auditFindMany.mockResolvedValue([]);
+    mocks.paymentHistoryFindMany.mockResolvedValue([]);
   });
 
   it('retorna DTO resumido, limite e cursor estável sem PII', async () => {
@@ -118,25 +122,31 @@ describe('OrderQueryService', () => {
   });
 
   it('cria baseline sem notificar pedidos já existentes', async () => {
-    mocks.auditFindMany.mockResolvedValue([{
-      id: 'audit-existing',
-      createdAt: new Date('2026-07-21T12:00:00.000Z'),
-    }]);
+    mocks.auditFindMany.mockResolvedValue([
+      {
+        id: 'audit-existing',
+        createdAt: new Date('2026-07-21T12:00:00.000Z'),
+      },
+    ]);
 
     const result = await getOrderNotificationSignals(context);
 
     expect(result.items).toEqual([]);
     expect(result.processedEventIds).toEqual(['audit-existing']);
-    expect(decodeOrderCursor(result.nextCursor)).toEqual(expect.objectContaining({
-      id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-    }));
+    expect(decodeOrderCursor(result.nextCursor)).toEqual(
+      expect.objectContaining({
+        id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+      }),
+    );
   });
 
   it('retorna novos sinais em ordem crescente e isolados por loja', async () => {
-    mocks.auditFindMany.mockResolvedValueOnce([{
-      id: 'audit-1',
-      createdAt: new Date('2026-07-21T12:00:00.000Z'),
-    }]);
+    mocks.auditFindMany.mockResolvedValueOnce([
+      {
+        id: 'audit-1',
+        createdAt: new Date('2026-07-21T12:00:00.000Z'),
+      },
+    ]);
     const baseline = await getOrderNotificationSignals(context);
     mocks.auditFindMany.mockResolvedValueOnce([
       {
@@ -152,31 +162,37 @@ describe('OrderQueryService', () => {
 
     const result = await getOrderNotificationSignals(context, baseline.nextCursor);
 
-    expect(result.items).toEqual([{
-      eventId: 'audit-2',
-      orderId: 'order-2',
-      orderNumber: 2,
-      isNew: true,
-      createdAt: '2026-07-21T12:01:00.000Z',
-    }]);
+    expect(result.items).toEqual([
+      {
+        eventId: 'audit-2',
+        orderId: 'order-2',
+        orderNumber: 2,
+        isNew: true,
+        createdAt: '2026-07-21T12:01:00.000Z',
+      },
+    ]);
     expect(result.hasMore).toBe(false);
     expect(result.processedEventIds).toEqual(['audit-2']);
-    expect(mocks.auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a' }),
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: 51,
-    }));
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a' }),
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 51,
+      }),
+    );
   });
 
   it('resolve mudanças de pagamento para o pedido sem expor metadata', async () => {
-    mocks.auditFindMany.mockResolvedValue([{
-      id: 'audit-payment',
-      action: 'PAYMENT_CONFIRMED_MANUALLY',
-      entity: 'Payment',
-      entityId: 'payment-a',
-      metadata: { orderId: 'order-a', previousStatus: 'PENDING', nextStatus: 'PAID' },
-      createdAt: new Date('2026-07-21T12:02:00.000Z'),
-    }]);
+    mocks.auditFindMany.mockResolvedValue([
+      {
+        id: 'audit-payment',
+        action: 'PAYMENT_CONFIRMED_MANUALLY',
+        entity: 'Payment',
+        entityId: 'payment-a',
+        metadata: { orderId: 'order-a', previousStatus: 'PENDING', nextStatus: 'PAID' },
+        createdAt: new Date('2026-07-21T12:02:00.000Z'),
+      },
+    ]);
     mocks.orderFindMany.mockResolvedValue([{ id: 'order-a', orderNumber: 12 }]);
 
     const result = await getOrderNotificationSignals(
@@ -187,13 +203,15 @@ describe('OrderQueryService', () => {
       }),
     );
 
-    expect(result.items).toEqual([{
-      eventId: 'audit-payment',
-      orderId: 'order-a',
-      orderNumber: 12,
-      isNew: false,
-      createdAt: '2026-07-21T12:02:00.000Z',
-    }]);
+    expect(result.items).toEqual([
+      {
+        eventId: 'audit-payment',
+        orderId: 'order-a',
+        orderNumber: 12,
+        isNew: false,
+        createdAt: '2026-07-21T12:02:00.000Z',
+      },
+    ]);
     expect(result.items[0]).not.toHaveProperty('metadata');
   });
 
@@ -202,34 +220,40 @@ describe('OrderQueryService', () => {
       createdAt: new Date('2026-07-21T12:05:00.000Z'),
       id: 'audit-latest',
     });
-    mocks.auditFindMany.mockResolvedValue([{
-      id: 'audit-late',
-      action: 'ORDER_CREATED',
-      entity: 'Order',
-      entityId: 'order-late',
-      metadata: null,
-      createdAt: new Date('2026-07-21T12:04:00.000Z'),
-    }]);
+    mocks.auditFindMany.mockResolvedValue([
+      {
+        id: 'audit-late',
+        action: 'ORDER_CREATED',
+        entity: 'Order',
+        entityId: 'order-late',
+        metadata: null,
+        createdAt: new Date('2026-07-21T12:04:00.000Z'),
+      },
+    ]);
     mocks.orderFindMany.mockResolvedValue([{ id: 'order-late', orderNumber: 13 }]);
 
     const result = await getOrderNotificationSignals(context, cursor, ['audit-latest']);
 
-    expect(result.items[0]).toEqual(expect.objectContaining({
-      eventId: 'audit-late',
-      orderId: 'order-late',
-      isNew: true,
-    }));
-    expect(result.nextCursor).toBe(cursor);
-    expect(mocks.auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: expect.arrayContaining([
-          expect.objectContaining({
-            createdAt: { gte: new Date('2026-07-21T12:00:00.000Z') },
-          }),
-        ]),
-        id: { notIn: ['audit-latest'] },
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        eventId: 'audit-late',
+        orderId: 'order-late',
+        isNew: true,
       }),
-    }));
+    );
+    expect(result.nextCursor).toBe(cursor);
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              createdAt: { gte: new Date('2026-07-21T12:00:00.000Z') },
+            }),
+          ]),
+          id: { notIn: ['audit-latest'] },
+        }),
+      }),
+    );
   });
 
   it('aplica cursor composto e não repete a contagem de ativos', async () => {
@@ -260,6 +284,18 @@ describe('OrderQueryService', () => {
   });
 
   it('carrega detalhes no escopo e limita dados financeiros do atendente', async () => {
+    mocks.paymentHistoryFindMany.mockResolvedValue([
+      {
+        id: 'payment-history-a',
+        fromStatus: 'PENDING',
+        toStatus: 'CUSTOMER_REPORTED_PAID',
+        actorNameSnapshot: 'Cliente',
+        source: 'CUSTOMER',
+        reasonCode: 'PAYMENT_NOT_IDENTIFIED',
+        note: 'Observação financeira restrita',
+        createdAt: new Date('2026-07-21T12:09:00.000Z'),
+      },
+    ]);
     mocks.orderFindFirst.mockResolvedValue({
       id: 'order-a',
       orderNumber: 7,
@@ -284,7 +320,20 @@ describe('OrderQueryService', () => {
       cancellationNote: null,
       cancelledAt: null,
       items: [],
-      payment: { method: 'CASH', status: 'PENDING', amount: 2500, paidAt: null },
+      payment: {
+        id: 'payment-a',
+        method: 'CASH',
+        status: 'PENDING',
+        amount: 2500,
+        paidAt: null,
+        reportedAt: null,
+        failedAt: null,
+        failureReasonCode: null,
+        cancelledAt: null,
+        refundedAt: null,
+        refundReasonCode: null,
+        refundAmount: null,
+      },
       statusHistory: [historyEntry()],
     });
 
@@ -301,6 +350,18 @@ describe('OrderQueryService', () => {
     expect(result.allowedActions.complete).toBe(true);
     expect(result.allowedActions.cancel).toBe(false);
     expect(result.allowedActions.undo).toBe(true);
+    expect(result.allowedActions.confirmPayment).toBe(true);
+    expect(result.allowedActions.markPaymentFailed).toBe(false);
+    expect(result.allowedActions.refundPayment).toBe(false);
+    expect(result.recentPaymentHistory).toEqual([
+      expect.objectContaining({
+        action: 'PENDING_CUSTOMER_REPORTED_PAID',
+        actorName: 'Cliente',
+        nextStatus: 'CUSTOMER_REPORTED_PAID',
+        reasonCode: null,
+        note: null,
+      }),
+    ]);
   });
 
   it('pagina histórico somente após confirmar o pedido no escopo', async () => {
@@ -337,10 +398,7 @@ describe('OrderQueryService', () => {
       { averageAcceptanceMinutes: 4.5, averagePreparationMinutes: 22 },
     ]);
 
-    const result = await getDailyOrderMetrics(
-      { ...context, tenantRole: 'MANAGER' },
-      '2026-07-21',
-    );
+    const result = await getDailyOrderMetrics({ ...context, tenantRole: 'MANAGER' }, '2026-07-21');
 
     expect(result).toEqual({
       financialMetricsVisible: true,
@@ -359,9 +417,7 @@ describe('OrderQueryService', () => {
   });
 
   it('não consulta nem retorna métricas financeiras sem VIEW_BASIC_REPORTS', async () => {
-    mocks.orderGroupBy.mockResolvedValueOnce([
-      { status: 'PENDING', _count: { _all: 2 } },
-    ]);
+    mocks.orderGroupBy.mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 2 } }]);
     mocks.queryRaw.mockResolvedValue([
       { averageAcceptanceMinutes: null, averagePreparationMinutes: null },
     ]);

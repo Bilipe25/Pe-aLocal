@@ -7,7 +7,9 @@ import type { OrderStatus, PaymentStatus } from '@prisma/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 import {
   cancelOrderInputSchema,
+  markPaymentFailedInputSchema,
   orderVersionInputSchema,
+  refundPaymentInputSchema,
   type CancelOrderInput,
   type OrderVersionInput,
 } from './schemas';
@@ -160,6 +162,48 @@ export async function confirmPaymentAction(
     const input = parseActionInput(orderVersionInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
     const result = await paymentService.confirmManualPayment(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function markPaymentFailedAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  try {
+    const input = parseActionInput(markPaymentFailedInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const result = await paymentService.markPaymentFailed(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function retryFailedPaymentAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  try {
+    const input = parseActionInput(orderVersionInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const result = await paymentService.retryFailedPayment(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function refundPaymentAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  try {
+    const input = parseActionInput(refundPaymentInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.REFUND_PAYMENT);
+    const result = await paymentService.refundPayment(mutationContext(context), input);
     const notificationPending = await publishMutation(result, false);
     return actionSuccess({ ...result, notificationPending });
   } catch (error) {

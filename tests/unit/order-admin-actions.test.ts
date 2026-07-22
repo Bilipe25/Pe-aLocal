@@ -5,6 +5,9 @@ import {
   cancelOrderAction,
   completeOrderAction,
   confirmPaymentAction,
+  markPaymentFailedAction,
+  refundPaymentAction,
+  retryFailedPaymentAction,
 } from '@/features/orders/admin-actions';
 import { Permission } from '@/server/permissions';
 
@@ -14,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   completeOrder: vi.fn(),
   cancelOrder: vi.fn(),
   confirmManualPayment: vi.fn(),
+  markPaymentFailed: vi.fn(),
+  retryFailedPayment: vi.fn(),
+  refundPayment: vi.fn(),
   triggerOrderUpdated: vi.fn(),
   triggerPaymentUpdated: vi.fn(),
   dispatchCommittedOrderEvents: vi.fn(),
@@ -34,6 +40,9 @@ vi.mock('@/server/services/order-workflow.service', () => ({
 }));
 vi.mock('@/server/services/order-payment.service', () => ({
   confirmManualPayment: mocks.confirmManualPayment,
+  markPaymentFailed: mocks.markPaymentFailed,
+  retryFailedPayment: mocks.retryFailedPayment,
+  refundPayment: mocks.refundPayment,
 }));
 vi.mock('@/lib/pusher/server', () => ({
   triggerOrderUpdated: mocks.triggerOrderUpdated,
@@ -76,6 +85,21 @@ describe('ações administrativas de pedidos', () => {
     mocks.confirmManualPayment.mockResolvedValue({
       ...mutationResult,
       paymentStatus: 'PAID',
+      paymentUpdated: true,
+    });
+    mocks.markPaymentFailed.mockResolvedValue({
+      ...mutationResult,
+      paymentStatus: 'FAILED',
+      paymentUpdated: true,
+    });
+    mocks.retryFailedPayment.mockResolvedValue({
+      ...mutationResult,
+      paymentStatus: 'PENDING',
+      paymentUpdated: true,
+    });
+    mocks.refundPayment.mockResolvedValue({
+      ...mutationResult,
+      paymentStatus: 'REFUNDED',
       paymentUpdated: true,
     });
     mocks.triggerOrderUpdated.mockResolvedValue({});
@@ -121,10 +145,30 @@ describe('ações administrativas de pedidos', () => {
   it('confirmação financeira exige CONFIRM_MANUAL_PAYMENT', async () => {
     await confirmPaymentAction(input);
 
-    expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(
+    expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(Permission.CONFIRM_MANUAL_PAYMENT);
+    expect(mocks.confirmManualPayment).toHaveBeenCalledOnce();
+  });
+
+  it('rejeição e reabertura financeira exigem CONFIRM_MANUAL_PAYMENT', async () => {
+    await markPaymentFailedAction({
+      ...input,
+      reasonCode: 'PAYMENT_NOT_IDENTIFIED',
+    });
+    expect(mocks.requireActiveStoreContext).toHaveBeenLastCalledWith(
       Permission.CONFIRM_MANUAL_PAYMENT,
     );
-    expect(mocks.confirmManualPayment).toHaveBeenCalledOnce();
+
+    await retryFailedPaymentAction(input);
+    expect(mocks.requireActiveStoreContext).toHaveBeenLastCalledWith(
+      Permission.CONFIRM_MANUAL_PAYMENT,
+    );
+  });
+
+  it('reembolso exige REFUND_PAYMENT', async () => {
+    await refundPaymentAction({ ...input, reasonCode: 'CUSTOMER_REQUEST' });
+
+    expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(Permission.REFUND_PAYMENT);
+    expect(mocks.refundPayment).toHaveBeenCalledOnce();
   });
 
   it('falha do Pusher não transforma uma operação persistida em erro', async () => {

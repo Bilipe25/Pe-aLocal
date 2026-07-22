@@ -75,6 +75,9 @@ describe('Permissions', () => {
     expect(owner.canConfirmPayment).toBe(true);
     expect(manager.canConfirmPayment).toBe(true);
     expect(attendant.canConfirmPayment).toBe(true);
+    expect(owner.canRefundPayment).toBe(true);
+    expect(manager.canRefundPayment).toBe(true);
+    expect(attendant.canRefundPayment).toBe(false);
 
     expect(attendant.canViewPaymentDetails).toBe(false);
     expect(attendant.canViewCustomerContact).toBe(true);

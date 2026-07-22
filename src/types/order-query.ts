@@ -64,7 +64,22 @@ export interface OrderAllowedActionsDTO {
   complete: boolean;
   cancel: boolean;
   confirmPayment: boolean;
+  markPaymentFailed: boolean;
+  retryPayment: boolean;
+  refundPayment: boolean;
   undo: boolean;
+}
+
+export interface PaymentHistoryItemDTO {
+  id: string;
+  action: string;
+  previousStatus: PaymentStatus;
+  nextStatus: PaymentStatus;
+  actorName: string;
+  source: OrderChangeSource;
+  reasonCode: string | null;
+  note: string | null;
+  createdAt: string;
 }
 
 export interface OrderHistoryItemDTO {
@@ -119,6 +134,13 @@ export interface OrderDetailsDTO {
     changeFor: number | null;
     amount: number | null;
     paidAt: string | null;
+    reportedAt: string | null;
+    failedAt: string | null;
+    failureReasonCode: string | null;
+    cancelledAt: string | null;
+    refundedAt: string | null;
+    refundReasonCode: string | null;
+    refundAmount: number | null;
   };
   status: OrderStatus;
   customerNotes: string | null;
@@ -128,6 +150,7 @@ export interface OrderDetailsDTO {
     cancelledAt: string | null;
   };
   recentHistory: OrderHistoryItemDTO[];
+  recentPaymentHistory: PaymentHistoryItemDTO[];
   version: number;
   createdAt: string;
   statusChangedAt: string;

@@ -1,17 +1,11 @@
 import 'server-only';
 
-import type {
-  OrderModality,
-  OrderStatus,
-  PaymentMethodType,
-  Prisma,
-} from '@prisma/client';
+import type { OrderModality, OrderStatus, PaymentMethodType, Prisma } from '@prisma/client';
 
 import { canTransitionOrder } from '@/domain/orders/order-workflow';
+import { canTransitionPayment } from '@/domain/orders/payment-workflow';
 import { getOrderCapabilities } from '@/features/orders/capabilities';
-import type {
-  OrderHistoryInput,
-} from '@/features/orders/query-schemas';
+import type { OrderHistoryInput } from '@/features/orders/query-schemas';
 import { normalizePhone } from '@/lib/brazil';
 import { decodeOrderCursor, encodeOrderCursor } from '@/lib/orders/cursor';
 import { getStoreDayRangeUtc } from '@/lib/time/store-time';
@@ -26,6 +20,7 @@ import type {
   OrderDetailsDTO,
   OrderHistoryItemDTO,
   OrderHistoryPageDTO,
+  PaymentHistoryItemDTO,
   OrderNotificationSignalsDTO,
   OrderQueueFilters,
   OrderQueuePageDTO,
@@ -97,9 +92,10 @@ export async function getOrderNotificationSignals(
       }),
     );
     const latest = baseline[0];
-    const baselineCursor = latest && latest.createdAt > watermark
-      ? { createdAt: latest.createdAt, id: latest.id }
-      : { createdAt: watermark, id: MAX_NOTIFICATION_CURSOR_ID };
+    const baselineCursor =
+      latest && latest.createdAt > watermark
+        ? { createdAt: latest.createdAt, id: latest.id }
+        : { createdAt: watermark, id: MAX_NOTIFICATION_CURSOR_ID };
     return {
       items: [],
       processedEventIds: [...baseline].reverse().map((entry) => entry.id),
@@ -136,7 +132,9 @@ export async function getOrderNotificationSignals(
     }),
   );
   const page = rows.slice(0, NOTIFICATION_SIGNAL_PAGE_SIZE);
-  const orderIds = [...new Set(page.map(orderIdFromAudit).filter((id): id is string => Boolean(id)))];
+  const orderIds = [
+    ...new Set(page.map(orderIdFromAudit).filter((id): id is string => Boolean(id))),
+  ];
   const orders = orderIds.length
     ? await measured('notification-orders', context, () =>
         getDb().order.findMany({
@@ -146,34 +144,39 @@ export async function getOrderNotificationSignals(
             storeId: context.storeId,
           },
           select: { id: true, orderNumber: true },
-        }))
+        }),
+      )
     : [];
   const orderNumbers = new Map(orders.map((order) => [order.id, order.orderNumber]));
   const latest = page.at(-1);
-  const latestIsAfterCursor = Boolean(latest && (
-    latest.createdAt > after.createdAt ||
-    (latest.createdAt.getTime() === after.createdAt.getTime() && latest.id > after.id)
-  ));
+  const latestIsAfterCursor = Boolean(
+    latest &&
+    (latest.createdAt > after.createdAt ||
+      (latest.createdAt.getTime() === after.createdAt.getTime() && latest.id > after.id)),
+  );
 
   return {
     items: page.flatMap((row) => {
       const orderId = orderIdFromAudit(row);
       const orderNumber = orderId ? orderNumbers.get(orderId) : undefined;
       return orderId && orderNumber !== undefined
-        ? [{
-            eventId: row.id,
-            orderId,
-            orderNumber,
-            isNew: row.action === 'ORDER_CREATED',
-            createdAt: row.createdAt.toISOString(),
-          }]
+        ? [
+            {
+              eventId: row.id,
+              orderId,
+              orderNumber,
+              isNew: row.action === 'ORDER_CREATED',
+              createdAt: row.createdAt.toISOString(),
+            },
+          ]
         : [];
     }),
     processedEventIds: page.map((row) => row.id),
     hasMore: rows.length > NOTIFICATION_SIGNAL_PAGE_SIZE,
-    nextCursor: latestIsAfterCursor && latest
-      ? encodeOrderCursor({ createdAt: latest.createdAt, id: latest.id })
-      : cursor,
+    nextCursor:
+      latestIsAfterCursor && latest
+        ? encodeOrderCursor({ createdAt: latest.createdAt, id: latest.id })
+        : cursor,
   };
 }
 
@@ -210,7 +213,8 @@ function searchConditions(query: string): Prisma.OrderWhereInput[] {
   const modalities: OrderModality[] = [];
   const paymentMethods: PaymentMethodType[] = [];
 
-  if ('entrega'.includes(lowerQuery) || lowerQuery.includes('delivery')) modalities.push('DELIVERY');
+  if ('entrega'.includes(lowerQuery) || lowerQuery.includes('delivery'))
+    modalities.push('DELIVERY');
   if ('retirada'.includes(lowerQuery) || lowerQuery.includes('pickup')) modalities.push('PICKUP');
   if (lowerQuery.includes('pix')) paymentMethods.push('PIX');
   if (lowerQuery.includes('dinheiro')) paymentMethods.push('CASH');
@@ -255,6 +259,29 @@ function historyItem(entry: {
   };
 }
 
+function paymentHistoryItem(entry: {
+  id: string;
+  fromStatus: PaymentHistoryItemDTO['previousStatus'] | null;
+  toStatus: PaymentHistoryItemDTO['nextStatus'];
+  actorNameSnapshot: string | null;
+  source: PaymentHistoryItemDTO['source'];
+  reasonCode: string | null;
+  note: string | null;
+  createdAt: Date;
+}): PaymentHistoryItemDTO {
+  return {
+    id: entry.id,
+    action: `${entry.fromStatus ?? 'INITIAL'}_${entry.toStatus}`,
+    previousStatus: entry.fromStatus ?? entry.toStatus,
+    nextStatus: entry.toStatus,
+    actorName: entry.actorNameSnapshot ?? (entry.source === 'CUSTOMER' ? 'Cliente' : 'Sistema'),
+    source: entry.source,
+    reasonCode: entry.reasonCode,
+    note: entry.note,
+    createdAt: entry.createdAt.toISOString(),
+  };
+}
+
 export async function getOrderQueue(
   context: OrderQueryContext,
   filters: OrderQueueFilters,
@@ -264,7 +291,8 @@ export async function getOrderQueue(
     const and: Prisma.OrderWhereInput[] = [];
     const selectedStatuses = filters.statuses ?? (filters.status ? [filters.status] : []);
     const prioritizeOldest =
-      selectedStatuses.length > 0 && selectedStatuses.every((status) => ACTIVE_STATUSES.includes(status));
+      selectedStatuses.length > 0 &&
+      selectedStatuses.every((status) => ACTIVE_STATUSES.includes(status));
 
     if (filters.date) {
       const range = getStoreDayRangeUtc(filters.date, context.timeZone);
@@ -357,9 +385,7 @@ export async function getOrderQueue(
         hasInternalAlerts: false,
       })),
       nextCursor:
-        hasNextPage && last
-          ? encodeOrderCursor({ createdAt: last.createdAt, id: last.id })
-          : null,
+        hasNextPage && last ? encodeOrderCursor({ createdAt: last.createdAt, id: last.id }) : null,
       activeOrderCount,
       hasAbnormalActiveVolume:
         activeOrderCount !== null && activeOrderCount > ABNORMAL_ACTIVE_ORDER_COUNT,
@@ -393,6 +419,11 @@ function allowedActions(
   const completionPaymentAllowed =
     order.paymentStatus === 'PAID' ||
     (order.paymentMethod !== 'PIX' && capabilities.canConfirmPayment);
+  const paymentWorkflowContext = {
+    status: order.paymentStatus,
+    method: order.paymentMethod,
+    orderStatus: order.status,
+  };
 
   return {
     accept: capabilities.canAcceptOrder && canMove('CONFIRMED'),
@@ -400,20 +431,24 @@ function allowedActions(
     markReady: capabilities.canMarkReady && canMove('READY'),
     dispatch: capabilities.canDispatch && canMove('OUT_FOR_DELIVERY'),
     complete: capabilities.canComplete && completionPaymentAllowed && canMove('DELIVERED'),
-    cancel:
-      capabilities.canCancel && order.paymentStatus !== 'PAID' && canMove('CANCELLED'),
+    cancel: capabilities.canCancel && order.paymentStatus !== 'PAID' && canMove('CANCELLED'),
     confirmPayment:
       capabilities.canConfirmPayment &&
-      order.status !== 'CANCELLED' &&
-      ['PENDING', 'CUSTOMER_REPORTED_PAID'].includes(order.paymentStatus),
+      canTransitionPayment(paymentWorkflowContext, 'CONFIRM_MANUALLY'),
+    markPaymentFailed:
+      capabilities.canReviewPayment && canTransitionPayment(paymentWorkflowContext, 'MARK_FAILED'),
+    retryPayment:
+      capabilities.canReviewPayment && canTransitionPayment(paymentWorkflowContext, 'RETRY_FAILED'),
+    refundPayment:
+      capabilities.canRefundPayment && canTransitionPayment(paymentWorkflowContext, 'REFUND'),
     undo: Boolean(
       latestHistory &&
-        latestHistory.changedById === context.userId &&
-        latestHistory.source === 'DASHBOARD' &&
-        !latestHistory.isUndo &&
-        latestHistory.versionTo === order.version &&
-        undoRecent &&
-        ['CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(order.status),
+      latestHistory.changedById === context.userId &&
+      latestHistory.source === 'DASHBOARD' &&
+      !latestHistory.isUndo &&
+      latestHistory.versionTo === order.version &&
+      undoRecent &&
+      ['CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(order.status),
     ),
   };
 }
@@ -424,7 +459,8 @@ export async function getOrderDetails(
 ): Promise<OrderDetailsDTO> {
   return measured('getOrderDetails', context, async () => {
     const capabilities = getOrderCapabilities(context.tenantRole);
-    const order = await getDb().order.findFirst({
+    const database = getDb();
+    const order = await database.order.findFirst({
       where: { id: orderId, tenantId: context.tenantId, storeId: context.storeId },
       select: {
         id: true,
@@ -464,7 +500,22 @@ export async function getOrderDetails(
             },
           },
         },
-        payment: { select: { method: true, status: true, amount: true, paidAt: true } },
+        payment: {
+          select: {
+            id: true,
+            method: true,
+            status: true,
+            amount: true,
+            paidAt: true,
+            reportedAt: true,
+            failedAt: true,
+            failureReasonCode: true,
+            cancelledAt: true,
+            refundedAt: true,
+            refundReasonCode: true,
+            refundAmount: true,
+          },
+        },
         statusHistory: {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: 8,
@@ -490,11 +541,34 @@ export async function getOrderDetails(
     if (
       !order.payment ||
       order.payment.method !== order.paymentMethod ||
-      order.payment.status !== order.paymentStatus
+      order.payment.status !== order.paymentStatus ||
+      order.payment.amount !== order.total
     ) {
       throw new OrderPaymentConsistencyError();
     }
     const latestHistory = order.statusHistory[0] ?? null;
+    const paymentHistory = capabilities.canViewHistory
+      ? await database.paymentStatusHistory.findMany({
+          where: {
+            tenantId: context.tenantId,
+            storeId: context.storeId,
+            orderId: order.id,
+            paymentId: order.payment.id,
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            fromStatus: true,
+            toStatus: true,
+            actorNameSnapshot: true,
+            source: true,
+            reasonCode: true,
+            note: true,
+            createdAt: true,
+          },
+        })
+      : [];
 
     return {
       id: order.id,
@@ -536,6 +610,29 @@ export async function getOrderDetails(
           capabilities.canViewPaymentDetails && order.payment.paidAt
             ? order.payment.paidAt.toISOString()
             : null,
+        reportedAt:
+          capabilities.canViewPaymentDetails && order.payment.reportedAt
+            ? order.payment.reportedAt.toISOString()
+            : null,
+        failedAt:
+          capabilities.canViewPaymentDetails && order.payment.failedAt
+            ? order.payment.failedAt.toISOString()
+            : null,
+        failureReasonCode: capabilities.canViewPaymentDetails
+          ? order.payment.failureReasonCode
+          : null,
+        cancelledAt:
+          capabilities.canViewPaymentDetails && order.payment.cancelledAt
+            ? order.payment.cancelledAt.toISOString()
+            : null,
+        refundedAt:
+          capabilities.canViewPaymentDetails && order.payment.refundedAt
+            ? order.payment.refundedAt.toISOString()
+            : null,
+        refundReasonCode: capabilities.canViewPaymentDetails
+          ? order.payment.refundReasonCode
+          : null,
+        refundAmount: capabilities.canViewPaymentDetails ? order.payment.refundAmount : null,
       },
       status: order.status,
       customerNotes: order.notes,
@@ -544,13 +641,18 @@ export async function getOrderDetails(
         note: capabilities.canViewHistory ? order.cancellationNote : null,
         cancelledAt: order.cancelledAt?.toISOString() ?? null,
       },
-      recentHistory: capabilities.canViewHistory
-        ? order.statusHistory.map(historyItem)
-        : [],
+      recentHistory: capabilities.canViewHistory ? order.statusHistory.map(historyItem) : [],
+      recentPaymentHistory: paymentHistory.map((entry) => ({
+        ...paymentHistoryItem(entry),
+        reasonCode: capabilities.canViewPaymentDetails ? entry.reasonCode : null,
+        note: capabilities.canViewPaymentDetails ? entry.note : null,
+      })),
       version: order.version,
       createdAt: order.createdAt.toISOString(),
       statusChangedAt: order.statusChangedAt.toISOString(),
-      lastChangedBy: capabilities.canViewHistory ? (latestHistory?.actorNameSnapshot ?? null) : null,
+      lastChangedBy: capabilities.canViewHistory
+        ? (latestHistory?.actorNameSnapshot ?? null)
+        : null,
       allowedActions: allowedActions(context, order, latestHistory),
     };
   });
@@ -602,9 +704,7 @@ export async function getOrderHistory(
     return {
       items: page.map(historyItem),
       nextCursor:
-        hasNextPage && last
-          ? encodeOrderCursor({ createdAt: last.createdAt, id: last.id })
-          : null,
+        hasNextPage && last ? encodeOrderCursor({ createdAt: last.createdAt, id: last.id }) : null,
     };
   });
 }

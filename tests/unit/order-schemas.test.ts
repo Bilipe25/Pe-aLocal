@@ -73,9 +73,9 @@ describe('schemas de mutação de pedidos', () => {
   it('aceita somente token público UUID para informar PIX', () => {
     expect(
       reportPixPaymentInputSchema.safeParse({
-        publicToken: '4da03571-bffd-45ef-8c44-20686c487838',
+        reportToken: '4da03571-bffd-45ef-8c44-20686c487838',
       }).success,
     ).toBe(true);
-    expect(reportPixPaymentInputSchema.safeParse({ publicToken: 'order-a' }).success).toBe(false);
+    expect(reportPixPaymentInputSchema.safeParse({ reportToken: 'order-a' }).success).toBe(false);
   });
 });
