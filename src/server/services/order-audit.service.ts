@@ -30,8 +30,8 @@ export async function writeOrderStatusAudit(
     hasNote?: boolean;
     revertedHistoryId?: string;
   },
-): Promise<void> {
-  await auditRepo.createAuditLog(
+): Promise<string> {
+  const audit = await auditRepo.createAuditLog(
     {
       tenantId: context.tenantId,
       storeId: context.storeId,
@@ -52,6 +52,7 @@ export async function writeOrderStatusAudit(
     },
     tx,
   );
+  return audit.id;
 }
 
 export async function writePaymentAudit(
@@ -67,8 +68,8 @@ export async function writePaymentAudit(
     nextVersion: number;
     source?: 'DASHBOARD' | 'SYSTEM';
   },
-): Promise<void> {
-  await auditRepo.createAuditLog(
+): Promise<string> {
+  const audit = await auditRepo.createAuditLog(
     {
       tenantId: context.tenantId,
       storeId: context.storeId,
@@ -87,6 +88,7 @@ export async function writePaymentAudit(
     },
     tx,
   );
+  return audit.id;
 }
 
 export async function writeOrderCreatedAudit(
@@ -97,8 +99,8 @@ export async function writeOrderCreatedAudit(
     orderId: string;
     orderNumber: number;
   },
-): Promise<void> {
-  await auditRepo.createAuditLog(
+): Promise<string> {
+  const audit = await auditRepo.createAuditLog(
     {
       tenantId: data.tenantId,
       storeId: data.storeId,
@@ -117,4 +119,5 @@ export async function writeOrderCreatedAudit(
     },
     tx,
   );
+  return audit.id;
 }

@@ -169,6 +169,7 @@ describe('disponibilidade na criação do pedido', () => {
       publicToken: 'public-token',
       orderNumber: 10,
       created: true,
+      outboxEventIds: ['outbox-a'],
     });
     mocks.triggerNewOrder.mockRejectedValue(new Error('Pusher indisponível'));
 
@@ -193,6 +194,7 @@ describe('disponibilidade na criação do pedido', () => {
       publicToken: 'public-token',
       orderNumber: 10,
       created: false,
+      outboxEventIds: [],
     });
 
     const result = await createOrderAction('loja-teste', checkout);

@@ -97,6 +97,25 @@ enum OrderChangeSource {
   QUEUE
 }
 
+enum OrderOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum OrderOutboxEventType {
+  ORDER_CREATED
+  ORDER_ACCEPTED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_DISPATCHED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+  ORDER_TRANSITION_UNDONE
+  PAYMENT_UPDATED
+}
+
 enum OrderCancellationReasonCode {
   CUSTOMER_REQUEST
   PRODUCT_UNAVAILABLE
@@ -298,6 +317,7 @@ model Tenant {
   orders             Order[]
   coupons            Coupon[]
   auditLogs          AuditLog[]
+  orderOutboxEvents  OrderOutboxEvent[]
   slugRedirects      StoreSlugRedirect[]
   scheduleExceptions StoreScheduleException[]
 
@@ -357,6 +377,7 @@ model Store {
   orderCounter       StoreOrderCounter?
   customization      StoreCustomization?
   auditLogs          AuditLog[]
+  orderOutboxEvents  OrderOutboxEvent[]
   assets             StoreAsset[]
   banners            StoreBanner[]
   domains            StoreDomain[]
@@ -674,9 +695,9 @@ model Product {
   categoryId    String
   name          String
   description   String?
-  imageUrl      String?   // Legado — preferir imageAssetId
-  imageAssetId  String?   // FK para StoreAsset (PRODUCT_IMAGE)
-  basePrice     Int       // Em centavos
+  imageUrl      String? // Legado — preferir imageAssetId
+  imageAssetId  String? // FK para StoreAsset (PRODUCT_IMAGE)
+  basePrice     Int // Em centavos
   isAvailable   Boolean   @default(true)
   isFeatured    Boolean   @default(false)
   isSoldOut     Boolean   @default(false)
@@ -835,18 +856,18 @@ model StoreOrderCounter {
 }
 
 model Order {
-  id             String  @id @default(uuid())
-  tenantId       String
-  storeId        String
-  customerId     String?
-  orderNumber    Int     @default(0)
-  idempotencyKey String
+  id                     String  @id @default(uuid())
+  tenantId               String
+  storeId                String
+  customerId             String?
+  orderNumber            Int     @default(0)
+  idempotencyKey         String
   idempotencyFingerprint String?
-  publicToken    String  @unique @default(uuid())
+  publicToken            String  @unique @default(uuid())
 
   // Dados do cliente (snapshot)
-  customerName  String
-  customerPhone String
+  customerName            String
+  customerPhone           String
   customerPhoneNormalized String?
 
   // Modalidade e endereço
@@ -879,7 +900,7 @@ model Order {
 
   cancelledById                      String?
   cancellationReasonCode             OrderCancellationReasonCode?
-  cancellationNote                   String?                     @db.VarChar(500)
+  cancellationNote                   String?                      @db.VarChar(500)
   cancellationSource                 OrderChangeSource?
   customerCancellationNoticeRequired Boolean?
 
@@ -893,17 +914,19 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  cancelledBy User?  @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
   payment       Payment?
+  outboxEvents  OrderOutboxEvent[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
+  @@unique([id, tenantId, storeId])
   @@index([tenantId])
   @@index([storeId])
   @@index([status])
@@ -971,8 +994,8 @@ model OrderStatusHistory {
   revertsHistoryId  String?                      @unique
   createdAt         DateTime                     @default(now())
 
-  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  changedByUser   User? @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  order         Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser User? @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([orderId, createdAt, id])
@@ -1001,6 +1024,42 @@ model Payment {
 
   @@index([status])
   @@map("payments")
+}
+
+model OrderOutboxEvent {
+  id               String               @id @default(uuid())
+  tenantId         String
+  storeId          String
+  orderId          String
+  auditLogId       String?              @unique
+  eventType        OrderOutboxEventType
+  aggregateVersion Int
+  schemaVersion    Int                  @default(1)
+  payload          Json
+  status           OrderOutboxStatus    @default(PENDING)
+  attempts         Int                  @default(0)
+  availableAt      DateTime             @default(now())
+  queuedAt         DateTime?
+  lockedAt         DateTime?
+  lockToken        String?              @db.Uuid
+  processedAt      DateTime?
+  failedAt         DateTime?
+  lastError        String?              @db.VarChar(1000)
+  occurredAt       DateTime
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order    Order     @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  auditLog AuditLog? @relation(fields: [auditLogId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, eventType, aggregateVersion])
+  @@index([status, availableAt, createdAt])
+  @@index([storeId, createdAt, id])
+  @@index([orderId, createdAt, id])
+  @@index([queuedAt, processedAt])
+  @@map("order_outbox_events")
 }
 
 // =============================================================================
@@ -1063,9 +1122,10 @@ model AuditLog {
   userAgent String?
   createdAt DateTime    @default(now())
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  store  Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  store       Store?            @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outboxEvent OrderOutboxEvent?
 
   @@index([tenantId])
   @@index([tenantId, createdAt, id])

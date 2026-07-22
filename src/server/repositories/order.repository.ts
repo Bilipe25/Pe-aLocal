@@ -4,6 +4,7 @@ import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
 import * as orderAudit from '@/server/services/order-audit.service';
 import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
+import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
 import { normalizePhone } from '@/lib/brazil';
 
 // =============================================================================
@@ -41,6 +42,7 @@ interface CreateOrderResult {
   publicToken: string;
   orderNumber: number;
   created: boolean;
+  outboxEventIds: string[];
 }
 
 /**
@@ -82,6 +84,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         publicToken: existing.publicToken,
         orderNumber: existing.orderNumber,
         created: false,
+        outboxEventIds: [],
       };
     }
 
@@ -154,17 +157,36 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         id: true,
         publicToken: true,
         orderNumber: true,
+        createdAt: true,
       },
     });
 
-    await orderAudit.writeOrderCreatedAudit(tx, {
+    const auditLogId = await orderAudit.writeOrderCreatedAudit(tx, {
       tenantId,
       storeId,
       orderId: order.id,
       orderNumber: order.orderNumber,
     });
+    const outboxEvent = await appendOrderOutboxEvent(tx, {
+      tenantId,
+      storeId,
+      orderId: order.id,
+      auditLogId,
+      eventType: 'ORDER_CREATED',
+      orderNumber: order.orderNumber,
+      status: 'PENDING',
+      paymentStatus: 'PENDING',
+      aggregateVersion: 0,
+      occurredAt: order.createdAt,
+    });
 
-    return { ...order, created: true };
+    return {
+      id: order.id,
+      publicToken: order.publicToken,
+      orderNumber: order.orderNumber,
+      created: true,
+      outboxEventIds: [outboxEvent.id],
+    };
   });
 }
 

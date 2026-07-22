@@ -3,7 +3,8 @@
   "name": "pedidolocal-staging",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-05-03",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"], "keep_vars": true,
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "keep_vars": true,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
@@ -27,6 +28,7 @@
   },
   "vars": {
     "APP_ENV": "staging",
+    "ORDER_EVENT_PUBLISH_MODE": "direct",
   },
   "services": [
     {
@@ -50,6 +52,14 @@
       "id": "db9213cd1b214074928647719ddff805",
     },
   ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ORDER_OUTBOX_QUEUE",
+        "queue": "pedidolocal-order-events-staging",
+      },
+    ],
+  },
   "ratelimits": [
     {
       "name": "AUTH_RATE_LIMITER",
@@ -67,6 +77,7 @@
       "name": "pedidolocal-staging",
       "vars": {
         "APP_ENV": "staging",
+        "ORDER_EVENT_PUBLISH_MODE": "direct",
       },
       "images": {
         "binding": "IMAGES",
@@ -93,6 +104,14 @@
           "id": "db9213cd1b214074928647719ddff805",
         },
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ORDER_OUTBOX_QUEUE",
+            "queue": "pedidolocal-order-events-staging",
+          },
+        ],
+      },
       "ratelimits": [
         {
           "name": "AUTH_RATE_LIMITER",
@@ -110,6 +129,7 @@
       "name": "pedidolocal-production",
       "vars": {
         "APP_ENV": "production",
+        "ORDER_EVENT_PUBLISH_MODE": "direct",
       },
       "images": {
         "binding": "IMAGES",
@@ -136,6 +156,14 @@
           "id": "4e8ea7785f6443a682350235f432d380",
         },
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ORDER_OUTBOX_QUEUE",
+            "queue": "pedidolocal-order-events-production",
+          },
+        ],
+      },
       "ratelimits": [
         {
           "name": "AUTH_RATE_LIMITER",

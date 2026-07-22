@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     order: { findFirst: vi.fn(), updateMany: vi.fn() },
     payment: { updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
+    orderOutboxEvent: { create: vi.fn() },
   };
   return {
     tx,
@@ -31,6 +32,7 @@ function pendingOrder() {
   return {
     id: 'order-a',
     storeId: 'store-a',
+    orderNumber: 12,
     status: 'READY',
     paymentStatus: 'PENDING',
     paymentMethod: 'PIX',
@@ -46,6 +48,7 @@ describe('OrderPaymentService', () => {
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
+    mocks.tx.orderOutboxEvent.create.mockResolvedValue({ id: 'outbox-a' });
   });
 
   it('confirma Order e Payment com a mesma versão e auditoria atômica', async () => {
@@ -81,6 +84,16 @@ describe('OrderPaymentService', () => {
       }),
     );
     expect(result).toMatchObject({ paymentStatus: 'PAID', version: 5 });
+    expect(result.outboxEventIds).toEqual(['outbox-a']);
+    expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          auditLogId: 'audit-a',
+          eventType: 'PAYMENT_UPDATED',
+          aggregateVersion: 5,
+        }),
+      }),
+    );
   });
 
   it('revalida a permissão financeira dentro do serviço', async () => {

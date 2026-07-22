@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   confirmManualPayment: vi.fn(),
   triggerOrderUpdated: vi.fn(),
   triggerPaymentUpdated: vi.fn(),
+  dispatchCommittedOrderEvents: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({ getDb: vi.fn() }));
@@ -38,6 +39,9 @@ vi.mock('@/lib/pusher/server', () => ({
   triggerOrderUpdated: mocks.triggerOrderUpdated,
   triggerPaymentUpdated: mocks.triggerPaymentUpdated,
 }));
+vi.mock('@/server/services/order-event-dispatch.service', () => ({
+  dispatchCommittedOrderEvents: mocks.dispatchCommittedOrderEvents,
+}));
 
 const input = {
   orderId: '4da03571-bffd-45ef-8c44-20686c487838',
@@ -51,6 +55,7 @@ const mutationResult = {
   paymentStatus: 'PENDING' as const,
   version: 3,
   paymentUpdated: false,
+  outboxEventIds: ['outbox-a'],
 };
 
 describe('ações administrativas de pedidos', () => {
@@ -75,6 +80,7 @@ describe('ações administrativas de pedidos', () => {
     });
     mocks.triggerOrderUpdated.mockResolvedValue({});
     mocks.triggerPaymentUpdated.mockResolvedValue({});
+    mocks.dispatchCommittedOrderEvents.mockResolvedValue({ notificationPending: false });
   });
 
   it('valida o input antes de consultar sessão ou banco', async () => {
@@ -122,7 +128,7 @@ describe('ações administrativas de pedidos', () => {
   });
 
   it('falha do Pusher não transforma uma operação persistida em erro', async () => {
-    mocks.triggerOrderUpdated.mockRejectedValue(new Error('Pusher indisponível'));
+    mocks.dispatchCommittedOrderEvents.mockResolvedValue({ notificationPending: true });
 
     const result = await acceptOrderAction(input);
 
@@ -134,5 +140,8 @@ describe('ações administrativas de pedidos', () => {
         notificationPending: true,
       },
     });
+    expect(mocks.dispatchCommittedOrderEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ eventIds: ['outbox-a'] }),
+    );
   });
 });

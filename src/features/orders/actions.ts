@@ -11,6 +11,7 @@ import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { validatePixKey } from '@/lib/brazil';
 import { validateCartItems } from '@/lib/checkout/cart-validator';
+import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
 import {
   assertMatchingOrderFingerprint,
   createOrderFingerprint,
@@ -303,15 +304,12 @@ export async function createOrderAction(
     });
 
     if (order.created) {
-      try {
-        await triggerNewOrder(store.id, order.id, order.orderNumber);
-      } catch (error) {
-        console.error('[ORDER_CREATED_REALTIME_PUBLISH_FAILED]', {
-          orderId: order.id,
-          storeId: store.id,
-          error: error instanceof Error ? error.message : 'unknown',
-        });
-      }
+      await dispatchCommittedOrderEvents({
+        eventIds: order.outboxEventIds,
+        publishDirect: async () => {
+          await triggerNewOrder(store.id, order.id, order.orderNumber);
+        },
+      });
     }
 
     return actionSuccess({

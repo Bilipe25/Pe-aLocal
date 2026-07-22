@@ -4,6 +4,7 @@ import type {
   AuditAction,
   OrderCancellationReasonCode,
   OrderModality,
+  OrderOutboxEventType,
   OrderStatus,
   PaymentMethodType,
   PaymentStatus,
@@ -22,6 +23,7 @@ import {
   OrderUndoNotAllowedError,
 } from '@/server/errors';
 import * as orderAudit from './order-audit.service';
+import { appendOrderOutboxEvent } from './order-outbox.service';
 import type {
   OrderMutationContext,
   OrderMutationResult,
@@ -36,6 +38,7 @@ const UNDO_WINDOW_MS = 2 * 60 * 1000;
 interface OrderSnapshot {
   id: string;
   storeId: string;
+  orderNumber: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethodType;
@@ -80,6 +83,7 @@ async function getOrderSnapshot(
     select: {
       id: true,
       storeId: true,
+      orderNumber: true,
       status: true,
       paymentStatus: true,
       paymentMethod: true,
@@ -176,6 +180,26 @@ function auditActionForStatus(status: OrderStatus): AuditAction {
   }
 }
 
+function outboxEventTypeForStatus(status: OrderStatus): OrderOutboxEventType {
+  switch (status) {
+    case 'CONFIRMED':
+      return 'ORDER_ACCEPTED';
+    case 'PREPARING':
+      return 'ORDER_PREPARING';
+    case 'READY':
+      return 'ORDER_READY';
+    case 'OUT_FOR_DELIVERY':
+      return 'ORDER_DISPATCHED';
+    case 'DELIVERED':
+      return 'ORDER_COMPLETED';
+    case 'CANCELLED':
+      return 'ORDER_CANCELLED';
+    case 'PENDING':
+    case 'AWAITING_PAYMENT':
+      throw new BusinessRuleError('A transição não possui evento operacional direto.');
+  }
+}
+
 async function transitionOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
@@ -244,7 +268,7 @@ async function transitionOrder(
       versionTo: input.expectedVersion + 1,
     });
 
-    await orderAudit.writeOrderStatusAudit(tx, context, {
+    const statusAuditId = await orderAudit.writeOrderStatusAudit(tx, context, {
       orderId: order.id,
       action: auditActionForStatus(targetStatus),
       previousStatus: order.status,
@@ -252,9 +276,22 @@ async function transitionOrder(
       previousVersion: input.expectedVersion,
       nextVersion: input.expectedVersion + 1,
     });
+    const orderEvent = await appendOrderOutboxEvent(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      auditLogId: statusAuditId,
+      eventType: outboxEventTypeForStatus(targetStatus),
+      orderNumber: order.orderNumber,
+      status: targetStatus,
+      paymentStatus: nextPaymentStatus,
+      aggregateVersion: input.expectedVersion + 1,
+      occurredAt: changedAt,
+    });
+    const outboxEventIds = [orderEvent.id];
 
     if (confirmPaymentOnCompletion) {
-      await orderAudit.writePaymentAudit(tx, context, {
+      const paymentAuditId = await orderAudit.writePaymentAudit(tx, context, {
         orderId: order.id,
         paymentId: order.payment!.id,
         action: 'PAYMENT_CONFIRMED',
@@ -263,6 +300,19 @@ async function transitionOrder(
         previousVersion: input.expectedVersion,
         nextVersion: input.expectedVersion + 1,
       });
+      const paymentEvent = await appendOrderOutboxEvent(tx, {
+        tenantId: context.tenantId,
+        storeId: context.storeId,
+        orderId: order.id,
+        auditLogId: paymentAuditId,
+        eventType: 'PAYMENT_UPDATED',
+        orderNumber: order.orderNumber,
+        status: targetStatus,
+        paymentStatus: 'PAID',
+        aggregateVersion: input.expectedVersion + 1,
+        occurredAt: changedAt,
+      });
+      outboxEventIds.push(paymentEvent.id);
     }
 
     return {
@@ -272,6 +322,7 @@ async function transitionOrder(
       paymentStatus: nextPaymentStatus,
       version: input.expectedVersion + 1,
       paymentUpdated: confirmPaymentOnCompletion,
+      outboxEventIds,
     };
   });
 }
@@ -378,7 +429,7 @@ export async function cancelOrder(
       versionTo: input.expectedVersion + 1,
     });
 
-    await orderAudit.writeOrderStatusAudit(tx, context, {
+    const statusAuditId = await orderAudit.writeOrderStatusAudit(tx, context, {
       orderId: order.id,
       action: 'ORDER_CANCELLED',
       previousStatus: order.status,
@@ -388,9 +439,22 @@ export async function cancelOrder(
       reasonCode: input.reasonCode,
       hasNote: Boolean(input.note),
     });
+    const orderEvent = await appendOrderOutboxEvent(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      auditLogId: statusAuditId,
+      eventType: 'ORDER_CANCELLED',
+      orderNumber: order.orderNumber,
+      status: 'CANCELLED',
+      paymentStatus: nextPaymentStatus,
+      aggregateVersion: input.expectedVersion + 1,
+      occurredAt: changedAt,
+    });
+    const outboxEventIds = [orderEvent.id];
 
     if (cancelPayment) {
-      await orderAudit.writePaymentAudit(tx, context, {
+      const paymentAuditId = await orderAudit.writePaymentAudit(tx, context, {
         orderId: order.id,
         paymentId: order.payment!.id,
         action: 'PAYMENT_CANCELLED',
@@ -399,6 +463,19 @@ export async function cancelOrder(
         previousVersion: input.expectedVersion,
         nextVersion: input.expectedVersion + 1,
       });
+      const paymentEvent = await appendOrderOutboxEvent(tx, {
+        tenantId: context.tenantId,
+        storeId: context.storeId,
+        orderId: order.id,
+        auditLogId: paymentAuditId,
+        eventType: 'PAYMENT_UPDATED',
+        orderNumber: order.orderNumber,
+        status: 'CANCELLED',
+        paymentStatus: 'CANCELLED',
+        aggregateVersion: input.expectedVersion + 1,
+        occurredAt: changedAt,
+      });
+      outboxEventIds.push(paymentEvent.id);
     }
 
     return {
@@ -408,6 +485,7 @@ export async function cancelOrder(
       paymentStatus: nextPaymentStatus,
       version: input.expectedVersion + 1,
       paymentUpdated: cancelPayment,
+      outboxEventIds,
     };
   });
 }
@@ -498,7 +576,7 @@ export async function undoLastOrderTransition(
       versionTo: input.expectedVersion + 1,
     });
 
-    await orderAudit.writeOrderStatusAudit(tx, context, {
+    const statusAuditId = await orderAudit.writeOrderStatusAudit(tx, context, {
       orderId: order.id,
       action: 'ORDER_TRANSITION_UNDONE',
       previousStatus: order.status,
@@ -506,6 +584,18 @@ export async function undoLastOrderTransition(
       previousVersion: input.expectedVersion,
       nextVersion: input.expectedVersion + 1,
       revertedHistoryId: latestChange.id,
+    });
+    const orderEvent = await appendOrderOutboxEvent(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      auditLogId: statusAuditId,
+      eventType: 'ORDER_TRANSITION_UNDONE',
+      orderNumber: order.orderNumber,
+      status: previousStatus,
+      paymentStatus: order.paymentStatus,
+      aggregateVersion: input.expectedVersion + 1,
+      occurredAt: changedAt,
     });
 
     return {
@@ -515,6 +605,7 @@ export async function undoLastOrderTransition(
       paymentStatus: order.paymentStatus,
       version: input.expectedVersion + 1,
       paymentUpdated: false,
+      outboxEventIds: [orderEvent.id],
     };
   });
 }

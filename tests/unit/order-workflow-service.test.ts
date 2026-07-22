@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => {
     auditLog: {
       create: vi.fn(),
     },
+    orderOutboxEvent: {
+      create: vi.fn(),
+    },
   };
 
   return {
@@ -46,7 +49,14 @@ const context: OrderMutationContext = {
 
 function orderSnapshot(
   overrides: Partial<{
-    status: 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
+    status:
+      | 'PENDING'
+      | 'CONFIRMED'
+      | 'PREPARING'
+      | 'READY'
+      | 'OUT_FOR_DELIVERY'
+      | 'DELIVERED'
+      | 'CANCELLED';
     paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
     paymentMethod: 'PIX' | 'CASH' | 'CARD_ON_DELIVERY';
     modality: 'PICKUP' | 'DELIVERY';
@@ -56,6 +66,7 @@ function orderSnapshot(
   const snapshot = {
     id: 'order-a',
     storeId: 'store-a',
+    orderNumber: 12,
     status: 'PENDING' as const,
     paymentStatus: 'PENDING' as const,
     paymentMethod: 'PIX' as const,
@@ -81,6 +92,10 @@ describe('OrderWorkflowService', () => {
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.orderStatusHistory.create.mockResolvedValue({ id: 'history-new' });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-new' });
+    mocks.tx.orderOutboxEvent.create.mockReset();
+    mocks.tx.orderOutboxEvent.create
+      .mockResolvedValueOnce({ id: 'outbox-order' })
+      .mockResolvedValueOnce({ id: 'outbox-payment' });
   });
 
   it('aceita pedido com CAS por tenant, loja, status e versão', async () => {
@@ -119,6 +134,27 @@ describe('OrderWorkflowService', () => {
       }),
     );
     expect(result).toMatchObject({ status: 'CONFIRMED', version: 1 });
+    expect(result.outboxEventIds).toEqual(['outbox-order']);
+    expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventType: 'ORDER_ACCEPTED',
+          aggregateVersion: 1,
+          auditLogId: 'audit-new',
+        }),
+      }),
+    );
+  });
+
+  it('não conclui a mutação quando a escrita transacional da outbox falha', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue(orderSnapshot());
+    mocks.tx.orderOutboxEvent.create.mockReset();
+    mocks.tx.orderOutboxEvent.create.mockRejectedValue(new Error('outbox unavailable'));
+
+    await expect(acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 })).rejects.toThrow(
+      'outbox unavailable',
+    );
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledOnce();
   });
 
   it('gera conflito sem criar histórico quando a versão ficou obsoleta', async () => {
@@ -133,9 +169,7 @@ describe('OrderWorkflowService', () => {
   });
 
   it('identifica versão obsoleta antes de validar a transição atual', async () => {
-    mocks.tx.order.findFirst.mockResolvedValue(
-      orderSnapshot({ status: 'CONFIRMED', version: 1 }),
-    );
+    mocks.tx.order.findFirst.mockResolvedValue(orderSnapshot({ status: 'CONFIRMED', version: 1 }));
 
     await expect(
       acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 }),
@@ -191,6 +225,8 @@ describe('OrderWorkflowService', () => {
       paymentUpdated: true,
     });
     expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(result.outboxEventIds).toEqual(['outbox-order', 'outbox-payment']);
+    expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('não cria histórico quando a atualização financeira concorrente falha', async () => {
@@ -235,6 +271,8 @@ describe('OrderWorkflowService', () => {
     );
     expect(result.paymentStatus).toBe('CANCELLED');
     expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(result.outboxEventIds).toEqual(['outbox-order', 'outbox-payment']);
+    expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('bloqueia cancelamento de pedido pago', async () => {
@@ -289,6 +327,7 @@ describe('OrderWorkflowService', () => {
         data: expect.objectContaining({ action: 'ORDER_TRANSITION_UNDONE' }),
       }),
     );
+    expect(result.outboxEventIds).toEqual(['outbox-order']);
   });
 
   it.each([
@@ -355,8 +394,8 @@ describe('OrderWorkflowService', () => {
     mocks.tx.order.findFirst.mockResolvedValue(orderSnapshot());
     mocks.tx.auditLog.create.mockRejectedValue(new Error('audit unavailable'));
 
-    await expect(
-      acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 }),
-    ).rejects.toThrow('audit unavailable');
+    await expect(acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 })).rejects.toThrow(
+      'audit unavailable',
+    );
   });
 });

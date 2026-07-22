@@ -1,7 +1,6 @@
 import { cache } from 'react';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { createDatabaseClient } from './factory';
 
 function getConnectionString(): string {
   try {
@@ -23,20 +22,11 @@ function getConnectionString(): string {
   return connectionString;
 }
 
-function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({ connectionString: getConnectionString(), maxUses: 1 });
-
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  });
-}
-
 /**
  * Retorna um Prisma Client associado à requisição/renderização atual.
  * O cache do React é request-scoped no servidor do Next.js; não existe Pool
  * ou Prisma Client mutável em escopo global entre requisições do Worker.
  */
-export const getDb = cache(createPrismaClient);
+export const getDb = cache(() => createDatabaseClient(getConnectionString()));
 
 export type DatabaseClient = ReturnType<typeof getDb>;

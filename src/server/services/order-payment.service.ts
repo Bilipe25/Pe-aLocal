@@ -10,6 +10,7 @@ import {
   OrderPaymentConsistencyError,
 } from '@/server/errors';
 import * as orderAudit from './order-audit.service';
+import { appendOrderOutboxEvent } from './order-outbox.service';
 import type {
   OrderMutationContext,
   OrderMutationResult,
@@ -36,6 +37,7 @@ export async function confirmManualPayment(
       select: {
         id: true,
         storeId: true,
+        orderNumber: true,
         status: true,
         paymentStatus: true,
         paymentMethod: true,
@@ -93,7 +95,7 @@ export async function confirmManualPayment(
     });
     if (paymentUpdated.count !== 1) throw new ConflictError(ORDER_CONFLICT_MESSAGE);
 
-    await orderAudit.writePaymentAudit(tx, context, {
+    const paymentAuditId = await orderAudit.writePaymentAudit(tx, context, {
       orderId: order.id,
       paymentId: order.payment.id,
       action: 'PAYMENT_CONFIRMED',
@@ -101,6 +103,18 @@ export async function confirmManualPayment(
       nextStatus: 'PAID',
       previousVersion: input.expectedVersion,
       nextVersion: input.expectedVersion + 1,
+    });
+    const outboxEvent = await appendOrderOutboxEvent(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      auditLogId: paymentAuditId,
+      eventType: 'PAYMENT_UPDATED',
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: 'PAID',
+      aggregateVersion: input.expectedVersion + 1,
+      occurredAt: paidAt,
     });
 
     return {
@@ -110,6 +124,7 @@ export async function confirmManualPayment(
       paymentStatus: 'PAID',
       version: input.expectedVersion + 1,
       paymentUpdated: true,
+      outboxEventIds: [outboxEvent.id],
     };
   });
 }

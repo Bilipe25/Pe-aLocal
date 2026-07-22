@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
     },
     auditLog: { create: vi.fn() },
+    orderOutboxEvent: { create: vi.fn() },
   };
   return {
     tx,
@@ -68,8 +69,10 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      createdAt: new Date('2026-07-22T10:00:00.000Z'),
     });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
+    mocks.tx.orderOutboxEvent.create.mockResolvedValue({ id: 'outbox-a' });
   });
 
   it('cria auditoria na mesma transação somente para pedido novo', async () => {
@@ -80,10 +83,20 @@ describe('OrderRepository', () => {
       publicToken: 'public-token',
       orderNumber: 1,
       created: true,
+      outboxEventIds: ['outbox-a'],
     });
     expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ action: 'ORDER_CREATED', entityId: 'order-a' }),
+      }),
+    );
+    expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          auditLogId: 'audit-a',
+          eventType: 'ORDER_CREATED',
+          aggregateVersion: 0,
+        }),
       }),
     );
     expect(mocks.tx.order.create).toHaveBeenCalledWith(
@@ -119,6 +132,7 @@ describe('OrderRepository', () => {
     expect(mocks.tx.$executeRaw).toHaveBeenCalledOnce();
     expect(mocks.tx.order.create).not.toHaveBeenCalled();
     expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+    expect(mocks.tx.orderOutboxEvent.create).not.toHaveBeenCalled();
   });
 
   it('rejeita reuso da chave idempotente com payload diferente', async () => {

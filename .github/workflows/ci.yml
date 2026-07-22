@@ -23,13 +23,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      - run: pnpm cf:typegen
+      - run: git diff --exit-code -- cloudflare-env.d.ts
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm db:validate
-      - run: pnpm cf:typegen
-        env:
-          CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
+      - run: pnpm cf:order-events:dry-run:staging
+      - run: pnpm cf:order-events:dry-run:production
       - run: pnpm cf:build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}

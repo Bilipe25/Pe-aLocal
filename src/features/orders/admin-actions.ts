@@ -23,6 +23,7 @@ import type {
   OrderMutationResult,
 } from '@/server/services/order-mutation.types';
 import type { z } from 'zod';
+import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
 
 // =============================================================================
 // Ordens — Admin Server Actions
@@ -69,24 +70,24 @@ async function publishMutation(
   result: workflowService.OrderMutationResult,
   publishOrder: boolean,
 ): Promise<boolean> {
-  try {
-    if (publishOrder) {
-      await triggerOrderUpdated(result.storeId, result.orderId, result.status);
-    }
-    if (result.paymentUpdated) {
-      await triggerPaymentUpdated(result.storeId, result.orderId, result.paymentStatus);
-    }
-    return false;
-  } catch (error) {
-    console.error('[ORDER_REALTIME_PUBLISH_FAILED]', {
-      orderId: result.orderId,
-      storeId: result.storeId,
-      status: result.status,
-      paymentStatus: result.paymentStatus,
-      error: error instanceof Error ? error.message : 'unknown',
-    });
-    return true;
-  }
+  const dispatch = await dispatchCommittedOrderEvents({
+    eventIds: result.outboxEventIds,
+    publishDirect: async () => {
+      const publications: Promise<unknown>[] = [];
+      if (publishOrder) {
+        publications.push(triggerOrderUpdated(result.storeId, result.orderId, result.status));
+      }
+      if (result.paymentUpdated) {
+        publications.push(
+          triggerPaymentUpdated(result.storeId, result.orderId, result.paymentStatus),
+        );
+      }
+      const outcomes = await Promise.allSettled(publications);
+      const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
+    },
+  });
+  return dispatch.notificationPending;
 }
 
 async function runStatusAction(

@@ -30,7 +30,9 @@ function getPusherServer(): Pusher {
       // Retorna instância dummy se não configurado (dev sem Pusher)
       console.warn('[PUSHER] Variáveis de ambiente não configuradas. Real-time desabilitado.');
       return {
-        trigger: async () => ({}),
+        trigger: async () => {
+          throw new Error('Pusher server is not configured.');
+        },
       } as unknown as Pusher;
     }
 

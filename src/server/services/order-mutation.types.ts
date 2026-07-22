@@ -15,4 +15,5 @@ export interface OrderMutationResult {
   paymentStatus: PaymentStatus;
   version: number;
   paymentUpdated: boolean;
+  outboxEventIds: string[];
 }
