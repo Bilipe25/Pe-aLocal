@@ -18,6 +18,11 @@ import {
   type OrderVersionInput,
 } from './schemas';
 import * as workflowService from '@/server/services/order-workflow.service';
+import * as paymentService from '@/server/services/order-payment.service';
+import type {
+  OrderMutationContext,
+  OrderMutationResult,
+} from '@/server/services/order-mutation.types';
 import type { z } from 'zod';
 import { getOrderCapabilities } from './capabilities';
 import { orderWithDetailsSelect } from '@/types/order';
@@ -110,7 +115,7 @@ function parseActionInput<T>(schema: z.ZodType<T>, input: unknown): T {
 
 function mutationContext(
   context: Awaited<ReturnType<typeof requireActiveStoreContext>>,
-): workflowService.OrderMutationContext {
+): OrderMutationContext {
   return {
     tenantId: context.session.tenantId,
     storeId: context.store.id,
@@ -151,9 +156,9 @@ async function runStatusAction(
   rawInput: unknown,
   permission: Permission,
   operation: (
-    context: workflowService.OrderMutationContext,
+    context: OrderMutationContext,
     input: OrderVersionInput,
-  ) => Promise<workflowService.OrderMutationResult>,
+  ) => Promise<OrderMutationResult>,
 ): Promise<ActionResult<OrderActionData>> {
   try {
     const input = parseActionInput(orderVersionInputSchema, rawInput);
@@ -228,7 +233,7 @@ export async function confirmPaymentAction(
   try {
     const input = parseActionInput(orderVersionInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
-    const result = await workflowService.confirmManualPayment(mutationContext(context), input);
+    const result = await paymentService.confirmManualPayment(mutationContext(context), input);
     const notificationPending = await publishMutation(result, false);
     return actionSuccess({ ...result, notificationPending });
   } catch (error) {

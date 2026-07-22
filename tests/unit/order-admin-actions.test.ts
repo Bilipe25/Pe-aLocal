@@ -4,6 +4,7 @@ import {
   acceptOrderAction,
   cancelOrderAction,
   completeOrderAction,
+  confirmPaymentAction,
 } from '@/features/orders/admin-actions';
 import { Permission } from '@/server/permissions';
 
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   acceptOrder: vi.fn(),
   completeOrder: vi.fn(),
   cancelOrder: vi.fn(),
+  confirmManualPayment: vi.fn(),
   triggerOrderUpdated: vi.fn(),
   triggerPaymentUpdated: vi.fn(),
 }));
@@ -28,7 +30,9 @@ vi.mock('@/server/services/order-workflow.service', () => ({
   completeOrder: mocks.completeOrder,
   cancelOrder: mocks.cancelOrder,
   undoLastOrderTransition: vi.fn(),
-  confirmManualPayment: vi.fn(),
+}));
+vi.mock('@/server/services/order-payment.service', () => ({
+  confirmManualPayment: mocks.confirmManualPayment,
 }));
 vi.mock('@/lib/pusher/server', () => ({
   triggerOrderUpdated: mocks.triggerOrderUpdated,
@@ -64,6 +68,11 @@ describe('ações administrativas de pedidos', () => {
     mocks.acceptOrder.mockResolvedValue(mutationResult);
     mocks.completeOrder.mockResolvedValue({ ...mutationResult, status: 'DELIVERED' });
     mocks.cancelOrder.mockResolvedValue({ ...mutationResult, status: 'CANCELLED' });
+    mocks.confirmManualPayment.mockResolvedValue({
+      ...mutationResult,
+      paymentStatus: 'PAID',
+      paymentUpdated: true,
+    });
     mocks.triggerOrderUpdated.mockResolvedValue({});
     mocks.triggerPaymentUpdated.mockResolvedValue({});
   });
@@ -101,6 +110,15 @@ describe('ações administrativas de pedidos', () => {
     await completeOrderAction(input);
 
     expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(Permission.COMPLETE_ORDERS);
+  });
+
+  it('confirmação financeira exige CONFIRM_MANUAL_PAYMENT', async () => {
+    await confirmPaymentAction(input);
+
+    expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(
+      Permission.CONFIRM_MANUAL_PAYMENT,
+    );
+    expect(mocks.confirmManualPayment).toHaveBeenCalledOnce();
   });
 
   it('falha do Pusher não transforma uma operação persistida em erro', async () => {
