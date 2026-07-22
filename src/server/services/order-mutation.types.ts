@@ -6,6 +6,7 @@ export interface OrderMutationContext {
   userId: string;
   userName: string;
   canConfirmPayment: boolean;
+  canRefundPayment: boolean;
 }
 
 export interface OrderMutationResult {

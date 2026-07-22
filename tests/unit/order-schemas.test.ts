@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { cancelOrderInputSchema, orderVersionInputSchema } from '@/features/orders/schemas';
+import {
+  cancelOrderInputSchema,
+  markPaymentFailedInputSchema,
+  orderVersionInputSchema,
+  refundPaymentInputSchema,
+  reportPixPaymentInputSchema,
+} from '@/features/orders/schemas';
 
 const validBase = {
   orderId: '4da03571-bffd-45ef-8c44-20686c487838',
@@ -22,9 +28,9 @@ describe('schemas de mutação de pedidos', () => {
   });
 
   it('exige observação para o motivo OTHER', () => {
-    expect(
-      cancelOrderInputSchema.safeParse({ ...validBase, reasonCode: 'OTHER' }).success,
-    ).toBe(false);
+    expect(cancelOrderInputSchema.safeParse({ ...validBase, reasonCode: 'OTHER' }).success).toBe(
+      false,
+    );
     expect(
       cancelOrderInputSchema.safeParse({
         ...validBase,
@@ -49,5 +55,27 @@ describe('schemas de mutação de pedidos', () => {
         note: 'a'.repeat(501),
       }).success,
     ).toBe(false);
+  });
+
+  it.each([markPaymentFailedInputSchema, refundPaymentInputSchema])(
+    'protege observações financeiras e exige detalhe para OTHER',
+    (schema) => {
+      expect(schema.safeParse({ ...validBase, reasonCode: 'OTHER' }).success).toBe(false);
+      expect(
+        schema.safeParse({ ...validBase, reasonCode: 'OTHER', note: 'Análise manual' }).success,
+      ).toBe(true);
+      expect(
+        schema.safeParse({ ...validBase, reasonCode: 'OTHER', note: '<b>inválido</b>' }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('aceita somente token público UUID para informar PIX', () => {
+    expect(
+      reportPixPaymentInputSchema.safeParse({
+        publicToken: '4da03571-bffd-45ef-8c44-20686c487838',
+      }).success,
+    ).toBe(true);
+    expect(reportPixPaymentInputSchema.safeParse({ publicToken: 'order-a' }).success).toBe(false);
   });
 });

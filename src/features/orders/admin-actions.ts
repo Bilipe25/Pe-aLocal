@@ -1,12 +1,7 @@
 'use server';
 
 import { hasTenantPermission, Permission } from '@/server/permissions';
-import {
-  actionSuccess,
-  actionError,
-  type ActionResult,
-  ValidationError,
-} from '@/server/errors';
+import { actionSuccess, actionError, type ActionResult, ValidationError } from '@/server/errors';
 import { triggerOrderUpdated, triggerPaymentUpdated } from '@/lib/pusher/server';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
@@ -63,6 +58,7 @@ function mutationContext(
       context.session.tenantRole,
       Permission.CONFIRM_MANUAL_PAYMENT,
     ),
+    canRefundPayment: hasTenantPermission(context.session.tenantRole, Permission.REFUND_PAYMENT),
   };
 }
 
@@ -123,27 +119,19 @@ export async function startOrderPreparationAction(
   );
 }
 
-export async function markOrderReadyAction(
-  input: unknown,
-): Promise<ActionResult<OrderActionData>> {
+export async function markOrderReadyAction(input: unknown): Promise<ActionResult<OrderActionData>> {
   return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.markOrderReady);
 }
 
-export async function dispatchOrderAction(
-  input: unknown,
-): Promise<ActionResult<OrderActionData>> {
+export async function dispatchOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
   return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.dispatchOrder);
 }
 
-export async function completeOrderAction(
-  input: unknown,
-): Promise<ActionResult<OrderActionData>> {
+export async function completeOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
   return runStatusAction(input, Permission.COMPLETE_ORDERS, workflowService.completeOrder);
 }
 
-export async function cancelOrderAction(
-  rawInput: unknown,
-): Promise<ActionResult<OrderActionData>> {
+export async function cancelOrderAction(rawInput: unknown): Promise<ActionResult<OrderActionData>> {
   try {
     const input: CancelOrderInput = parseActionInput(cancelOrderInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.CANCEL_ORDERS);

@@ -2,6 +2,7 @@ import 'server-only';
 
 import type {
   AuditAction,
+  OrderChangeSource,
   OrderCancellationReasonCode,
   OrderStatus,
   PaymentStatus,
@@ -11,10 +12,13 @@ import type {
 import * as auditRepo from '@/server/repositories/audit-log.repository';
 import type { OrderMutationContext } from './order-mutation.types';
 
-type OrderAuditContext = Pick<
-  OrderMutationContext,
-  'tenantId' | 'storeId' | 'userId'
->;
+type OrderAuditContext = Pick<OrderMutationContext, 'tenantId' | 'storeId' | 'userId'>;
+
+interface PaymentAuditContext {
+  tenantId: string;
+  storeId: string;
+  userId: string | null;
+}
 
 export async function writeOrderStatusAudit(
   tx: Prisma.TransactionClient,
@@ -57,7 +61,7 @@ export async function writeOrderStatusAudit(
 
 export async function writePaymentAudit(
   tx: Prisma.TransactionClient,
-  context: OrderAuditContext,
+  context: PaymentAuditContext,
   data: {
     orderId: string;
     paymentId: string;
@@ -66,7 +70,9 @@ export async function writePaymentAudit(
     nextStatus: PaymentStatus;
     previousVersion: number;
     nextVersion: number;
-    source?: 'DASHBOARD' | 'SYSTEM';
+    source?: OrderChangeSource;
+    reasonCode?: string;
+    hasNote?: boolean;
   },
 ): Promise<string> {
   const audit = await auditRepo.createAuditLog(
@@ -84,6 +90,8 @@ export async function writePaymentAudit(
         nextStatus: data.nextStatus,
         previousOrderVersion: data.previousVersion,
         nextOrderVersion: data.nextVersion,
+        ...(data.reasonCode ? { reasonCode: data.reasonCode } : {}),
+        ...(data.hasNote !== undefined ? { hasNote: data.hasNote } : {}),
       },
     },
     tx,

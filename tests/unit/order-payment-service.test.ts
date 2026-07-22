@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { confirmManualPayment } from '@/server/services/order-payment.service';
+import {
+  confirmManualPayment,
+  markPaymentFailed,
+  refundPayment,
+  reportCustomerPixPayment,
+  retryFailedPayment,
+} from '@/server/services/order-payment.service';
 import type { OrderMutationContext } from '@/server/services/order-mutation.types';
 
 const mocks = vi.hoisted(() => {
   const tx = {
-    order: { findFirst: vi.fn(), updateMany: vi.fn() },
+    order: { findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
     payment: { updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
     orderOutboxEvent: { create: vi.fn() },
@@ -26,6 +32,7 @@ const context: OrderMutationContext = {
   userId: 'user-a',
   userName: 'Gerente',
   canConfirmPayment: true,
+  canRefundPayment: true,
 };
 
 function pendingOrder() {
@@ -36,8 +43,10 @@ function pendingOrder() {
     status: 'READY',
     paymentStatus: 'PENDING',
     paymentMethod: 'PIX',
+    tenantId: 'tenant-a',
+    total: 2500,
     version: 4,
-    payment: { id: 'payment-a', status: 'PENDING', method: 'PIX' },
+    payment: { id: 'payment-a', status: 'PENDING', method: 'PIX', amount: 2500 },
   };
 }
 
@@ -45,6 +54,7 @@ describe('OrderPaymentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.tx.order.findFirst.mockResolvedValue(pendingOrder());
+    mocks.tx.order.findUnique.mockResolvedValue(pendingOrder());
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
@@ -119,6 +129,56 @@ describe('OrderPaymentService', () => {
     expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('bloqueia divergência de valor entre Order e Payment', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      payment: { ...pendingOrder().payment, amount: 2400 },
+    });
+
+    await expect(
+      confirmManualPayment(context, { orderId: 'order-a', expectedVersion: 4 }),
+    ).rejects.toMatchObject({ code: 'ORDER_PAYMENT_INCONSISTENT' });
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('confirma PIX informado pelo cliente sem duplicar o relato', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      payment: { ...pendingOrder().payment, status: 'CUSTOMER_REPORTED_PAID' },
+    });
+
+    await expect(
+      confirmManualPayment(context, { orderId: 'order-a', expectedVersion: 4 }),
+    ).resolves.toMatchObject({ paymentStatus: 'PAID', version: 5 });
+    expect(mocks.tx.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'CUSTOMER_REPORTED_PAID' }),
+        data: expect.objectContaining({ status: 'PAID', confirmedBy: 'user-a' }),
+      }),
+    );
+  });
+
+  it('não permite confirmação manual antecipada de cartão na entrega', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      paymentMethod: 'CARD_ON_DELIVERY',
+      payment: { ...pendingOrder().payment, method: 'CARD_ON_DELIVERY' },
+    });
+
+    await expect(
+      confirmManualPayment(context, { orderId: 'order-a', expectedVersion: 4 }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_ERROR' });
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejeita versão obsoleta antes de qualquer escrita', async () => {
+    await expect(
+      confirmManualPayment(context, { orderId: 'order-a', expectedVersion: 3 }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
   it('não aceita confirmação em pedido cancelado', async () => {
     mocks.tx.order.findFirst.mockResolvedValue({ ...pendingOrder(), status: 'CANCELLED' });
 
@@ -133,5 +193,121 @@ describe('OrderPaymentService', () => {
     await expect(
       confirmManualPayment(context, { orderId: 'order-a', expectedVersion: 4 }),
     ).rejects.toThrow('audit unavailable');
+  });
+
+  it('rejeita um PIX informado com motivo seguro e auditoria', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      payment: { ...pendingOrder().payment, status: 'CUSTOMER_REPORTED_PAID' },
+    });
+
+    const result = await markPaymentFailed(context, {
+      orderId: 'order-a',
+      expectedVersion: 4,
+      reasonCode: 'PAYMENT_NOT_IDENTIFIED',
+    });
+
+    expect(result).toMatchObject({ paymentStatus: 'FAILED', version: 5 });
+    expect(mocks.tx.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'FAILED',
+          failureReasonCode: 'PAYMENT_NOT_IDENTIFIED',
+          failedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'PAYMENT_FAILED' }),
+      }),
+    );
+  });
+
+  it('reabre explicitamente um PIX com falha para nova análise', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      paymentStatus: 'FAILED',
+      payment: { ...pendingOrder().payment, status: 'FAILED' },
+    });
+
+    await expect(
+      retryFailedPayment(context, { orderId: 'order-a', expectedVersion: 4 }),
+    ).resolves.toMatchObject({ paymentStatus: 'PENDING', version: 5 });
+    expect(mocks.tx.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'PENDING',
+          failedAt: null,
+          failureReasonCode: null,
+        }),
+      }),
+    );
+  });
+
+  it('registra reembolso integral somente com permissão financeira', async () => {
+    const paidOrder = {
+      ...pendingOrder(),
+      paymentStatus: 'PAID',
+      payment: { ...pendingOrder().payment, status: 'PAID' },
+    };
+    mocks.tx.order.findFirst.mockResolvedValue(paidOrder);
+
+    await expect(
+      refundPayment(
+        { ...context, canRefundPayment: false },
+        {
+          orderId: 'order-a',
+          expectedVersion: 4,
+          reasonCode: 'CUSTOMER_REQUEST',
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'AUTHORIZATION_ERROR' });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+
+    const result = await refundPayment(context, {
+      orderId: 'order-a',
+      expectedVersion: 4,
+      reasonCode: 'CUSTOMER_REQUEST',
+    });
+    expect(result).toMatchObject({ paymentStatus: 'REFUNDED', version: 5 });
+    expect(mocks.tx.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'REFUNDED',
+          refundedBy: 'user-a',
+          refundAmount: 2500,
+          refundReasonCode: 'CUSTOMER_REQUEST',
+        }),
+      }),
+    );
+  });
+
+  it('registra relato público de PIX uma vez e trata retry como idempotente', async () => {
+    const first = await reportCustomerPixPayment('00000000-0000-4000-8000-000000000001');
+    expect(first).toMatchObject({ paymentStatus: 'CUSTOMER_REPORTED_PAID', version: 5 });
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: undefined,
+          action: 'PAYMENT_REPORTED',
+          metadata: expect.objectContaining({ source: 'CUSTOMER' }),
+        }),
+      }),
+    );
+
+    vi.clearAllMocks();
+    mocks.tx.order.findUnique.mockResolvedValue({
+      ...pendingOrder(),
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      version: 5,
+      payment: { ...pendingOrder().payment, status: 'CUSTOMER_REPORTED_PAID' },
+    });
+    const retry = await reportCustomerPixPayment('00000000-0000-4000-8000-000000000001');
+    expect(retry).toMatchObject({ paymentStatus: 'CUSTOMER_REPORTED_PAID', version: 5 });
+    expect(retry.outboxEventIds).toEqual([]);
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
   });
 });

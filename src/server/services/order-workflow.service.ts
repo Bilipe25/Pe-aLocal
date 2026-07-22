@@ -12,6 +12,7 @@ import type {
 } from '@prisma/client';
 
 import { assertOrderTransition } from '@/domain/orders/order-workflow';
+import { assertPaymentTransition } from '@/domain/orders/payment-workflow';
 import type { CancelOrderInput, OrderVersionInput } from '@/features/orders/schemas';
 import { getDb } from '@/server/database/client';
 import {
@@ -24,10 +25,7 @@ import {
 } from '@/server/errors';
 import * as orderAudit from './order-audit.service';
 import { appendOrderOutboxEvent } from './order-outbox.service';
-import type {
-  OrderMutationContext,
-  OrderMutationResult,
-} from './order-mutation.types';
+import type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
 
 export type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
 
@@ -44,10 +42,12 @@ interface OrderSnapshot {
   paymentMethod: PaymentMethodType;
   modality: OrderModality;
   version: number;
+  total: number;
   payment: {
     id: string;
     status: PaymentStatus;
     method: PaymentMethodType;
+    amount: number;
   } | null;
 }
 
@@ -63,7 +63,8 @@ function assertPaymentConsistency(order: OrderSnapshot): void {
   if (
     !order.payment ||
     order.payment.status !== order.paymentStatus ||
-    order.payment.method !== order.paymentMethod
+    order.payment.method !== order.paymentMethod ||
+    order.payment.amount !== order.total
   ) {
     throw new OrderPaymentConsistencyError();
   }
@@ -89,11 +90,13 @@ async function getOrderSnapshot(
       paymentMethod: true,
       modality: true,
       version: true,
+      total: true,
       payment: {
         select: {
           id: true,
           status: true,
           method: true,
+          amount: true,
         },
       },
     },
@@ -218,6 +221,16 @@ async function transitionOrder(
     if (confirmPaymentOnCompletion && !context.canConfirmPayment) {
       throw new AuthorizationError(
         'Seu perfil não possui permissão para confirmar o pagamento na conclusão.',
+      );
+    }
+    if (confirmPaymentOnCompletion) {
+      assertPaymentTransition(
+        {
+          status: order.paymentStatus,
+          method: order.paymentMethod,
+          orderStatus: order.status,
+        },
+        'CONFIRM_ON_COMPLETION',
       );
     }
     const nextPaymentStatus = confirmPaymentOnCompletion ? 'PAID' : order.paymentStatus;
@@ -372,9 +385,7 @@ export async function cancelOrder(
     assertOrderTransition(order, 'CANCELLED');
 
     if (order.paymentStatus === 'PAID') {
-      throw new BusinessRuleError(
-        'Um pedido pago precisa ser reembolsado antes do cancelamento.',
-      );
+      throw new BusinessRuleError('Um pedido pago precisa ser reembolsado antes do cancelamento.');
     }
 
     const changedAt = new Date();
@@ -382,6 +393,16 @@ export async function cancelOrder(
       order.paymentStatus,
     );
     const nextPaymentStatus = cancelPayment ? 'CANCELLED' : order.paymentStatus;
+    if (cancelPayment) {
+      assertPaymentTransition(
+        {
+          status: order.paymentStatus,
+          method: order.paymentMethod,
+          orderStatus: order.status,
+        },
+        'CANCEL',
+      );
+    }
 
     const updated = await tx.order.updateMany({
       where: {
@@ -414,7 +435,7 @@ export async function cancelOrder(
           method: order.paymentMethod,
           status: order.paymentStatus,
         },
-        data: { status: 'CANCELLED' },
+        data: { status: 'CANCELLED', cancelledAt: changedAt },
       });
       if (paymentUpdated.count !== 1) conflict();
     }

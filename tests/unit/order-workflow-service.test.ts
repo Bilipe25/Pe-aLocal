@@ -45,6 +45,7 @@ const context: OrderMutationContext = {
   userId: 'user-a',
   userName: 'Operador',
   canConfirmPayment: true,
+  canRefundPayment: true,
 };
 
 function orderSnapshot(
@@ -72,6 +73,7 @@ function orderSnapshot(
     paymentMethod: 'PIX' as const,
     modality: 'PICKUP' as const,
     version: 0,
+    total: 2500,
     ...overrides,
   };
 
@@ -81,6 +83,7 @@ function orderSnapshot(
       id: 'payment-a',
       status: snapshot.paymentStatus,
       method: snapshot.paymentMethod,
+      amount: 2500,
     },
   };
 }
@@ -262,7 +265,7 @@ describe('OrderWorkflowService', () => {
       }),
     );
     expect(mocks.tx.payment.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'CANCELLED' } }),
+      expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }),
     );
     expect(mocks.tx.orderStatusHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({
