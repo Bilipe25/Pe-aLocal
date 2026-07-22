@@ -14,19 +14,20 @@ import {
 } from '@/features/orders/admin-actions';
 import { Button } from '@/components/ui/button';
 import { Check, CheckCircle2, Package, Truck, UtensilsCrossed } from 'lucide-react';
-import type { OrderWithDetails } from '@/types/order';
+import type { OrderDetailsDTO } from '@/types/order-query';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2 } from 'lucide-react';
 import type { ActionResult } from '@/server/errors';
-import type { OrderCapabilities } from '@/features/orders/capabilities';
 import type { CancelOrderInput } from '@/features/orders/schemas';
 import { CancelOrderDialog } from './cancel-order-dialog';
+import { orderQueryKeys } from '@/hooks/use-orders';
 
 interface StatusActionsProps {
-  order: OrderWithDetails;
-  capabilities: OrderCapabilities;
+  order: OrderDetailsDTO;
+  storeId: string;
+  authorizationScope: string;
   onOrderChanged?: () => void;
 }
 
@@ -35,9 +36,18 @@ type OrderMutation = (input: {
   expectedVersion: number;
 }) => Promise<ActionResult<OrderActionData>>;
 
-export function StatusActions({ order, capabilities, onOrderChanged }: StatusActionsProps) {
+export function StatusActions({ order, storeId, authorizationScope, onOrderChanged }: StatusActionsProps) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
+
+  function refreshOrderData() {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
+      queryClient.invalidateQueries({ queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id) }),
+      queryClient.invalidateQueries({ queryKey: orderQueryKeys.history(storeId, authorizationScope, order.id) }),
+      queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) }),
+    ]);
+  }
 
   async function handleMutation(
     mutation: OrderMutation,
@@ -50,11 +60,11 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
       if (!result.success) {
         toast.error(result.error.message);
         if (result.error.code === 'CONFLICT') {
-          await queryClient.invalidateQueries({ queryKey: ['orders'] });
+          await refreshOrderData();
         }
         return false;
       }
-      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await refreshOrderData();
       if (result.data.notificationPending) {
         toast.warning('Operação concluída. A atualização em tempo real está pendente.');
       }
@@ -83,10 +93,10 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
       const result = await undoLastOrderTransitionAction({ orderId: order.id, expectedVersion });
       if (!result.success) {
         toast.error(result.error.message);
-        await queryClient.invalidateQueries({ queryKey: ['orders'] });
+        await refreshOrderData();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await refreshOrderData();
       toast.success('Alteração desfeita.');
     } finally {
       setLoading(false);
@@ -103,7 +113,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
       if (!result.success) {
         toast.error(result.error.message);
         if (result.error.code === 'CONFLICT') {
-          await queryClient.invalidateQueries({ queryKey: ['orders'] });
+          await refreshOrderData();
         }
         return false;
       }
@@ -111,15 +121,14 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
       if (result.data.notificationPending) {
         toast.warning('Pagamento salvo. A atualização em tempo real está pendente.');
       }
-      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await refreshOrderData();
       return true;
     } finally {
       setLoading(false);
     }
   }
 
-  const isDelivery = order.modality === 'DELIVERY';
-  const pixNeedsPayment = order.paymentMethod === 'PIX' && order.paymentStatus !== 'PAID';
+  const pixNeedsPayment = order.payment.method === 'PIX' && order.payment.status !== 'PAID';
 
   async function handleCancel(
     reasonCode: CancelOrderInput['reasonCode'],
@@ -136,11 +145,11 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
       if (!result.success) {
         toast.error(result.error.message);
         if (result.error.code === 'CONFLICT') {
-          await queryClient.invalidateQueries({ queryKey: ['orders'] });
+          await refreshOrderData();
         }
         return false;
       }
-      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await refreshOrderData();
       toast.success('Pedido cancelado.');
       if (result.data.notificationPending) {
         toast.warning('Cancelamento salvo. A atualização em tempo real está pendente.');
@@ -156,9 +165,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       {/* Payment Action */}
       <div>
-        {capabilities.canConfirmPayment &&
-          (order.paymentStatus === 'PENDING' ||
-            order.paymentStatus === 'CUSTOMER_REPORTED_PAID') && (
+        {order.allowedActions.confirmPayment && (
           <ConfirmDialog
             title="Confirmar o pagamento?"
             description="Use esta ação somente depois de verificar o recebimento. O pedido será marcado como pago."
@@ -171,7 +178,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
 
       {/* Status Actions */}
       <div className="flex flex-wrap items-center gap-2">
-        {capabilities.canAcceptOrder && order.status === 'PENDING' && (
+        {order.allowedActions.accept && (
           <Button 
             onClick={() => handleMutation(acceptOrderAction, 'Pedido aceito.')}
             disabled={loading}
@@ -182,7 +189,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
           </Button>
         )}
         
-        {capabilities.canStartPreparation && order.status === 'CONFIRMED' && (
+        {order.allowedActions.startPreparation && (
           <Button 
             onClick={() => handleMutation(startOrderPreparationAction, 'Preparo iniciado.')}
             disabled={loading}
@@ -193,7 +200,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
           </Button>
         )}
 
-        {capabilities.canMarkReady && order.status === 'PREPARING' && (
+        {order.allowedActions.markReady && (
           <Button 
             onClick={() => handleMutation(markOrderReadyAction, 'Pedido marcado como pronto.')}
             disabled={loading}
@@ -204,7 +211,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
           </Button>
         )}
 
-        {capabilities.canDispatch && order.status === 'READY' && isDelivery && (
+        {order.allowedActions.dispatch && (
           <Button
             onClick={() => handleMutation(dispatchOrderAction, 'Pedido despachado.')}
             disabled={loading}
@@ -215,8 +222,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
           </Button>
         )}
 
-        {capabilities.canComplete &&
-          ((order.status === 'READY' && !isDelivery) || order.status === 'OUT_FOR_DELIVERY') && (
+        {order.allowedActions.complete && (
           <ConfirmDialog
             title={`Concluir o pedido ${order.orderNumber}?`}
             description={pixNeedsPayment ? 'Confirme o pagamento Pix antes de concluir o pedido.' : 'Confirme depois que o cliente receber o pedido ou concluir a retirada.'}
@@ -231,7 +237,7 @@ export function StatusActions({ order, capabilities, onOrderChanged }: StatusAct
           />
         )}
 
-        {capabilities.canCancel && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (
+        {order.allowedActions.cancel && (
           <CancelOrderDialog
             orderNumber={order.orderNumber}
             onConfirm={handleCancel}

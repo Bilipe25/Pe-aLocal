@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { OrdersPanel } from '@/components/dashboard/orders-panel';
-import { getOrderCapabilities } from '@/features/orders/capabilities';
+import { getStoreLocalDate } from '@/lib/time/store-time';
 import { Permission } from '@/server/permissions';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
 
@@ -16,7 +16,10 @@ export default async function OrdersPage() {
   return (
     <OrdersPanel
       storeId={context.store.id}
-      capabilities={getOrderCapabilities(context.session.tenantRole)}
+      storeName={context.store.name}
+      timeZone={context.store.timeZone}
+      initialLocalDate={getStoreLocalDate(new Date(), context.store.timeZone)}
+      authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
     />
   );
 }

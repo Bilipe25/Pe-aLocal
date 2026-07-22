@@ -3,7 +3,7 @@
 import { Clock, MapPin, Receipt, CheckCircle2, Package } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
-import type { OrderWithDetails } from '@/types/order';
+import type { OrderQueueItemDTO } from '@/types/order-query';
 import type { LucideIcon } from 'lucide-react';
 
 export const statusMap: Record<OrderStatus, { label: string; color: string; icon: LucideIcon }> = {
@@ -26,12 +26,12 @@ export const paymentStatusMap: Record<PaymentStatus, { label: string; color: str
   CUSTOMER_REPORTED_PAID: { label: 'Pagamento informado', color: 'bg-info-light text-info' },
 };
 
-export function OrderCard({ order, onClick, now, selected = false }: { order: OrderWithDetails; onClick: () => void; now: number; selected?: boolean }) {
+export function OrderCard({ order, onClick, now, selected = false }: { order: OrderQueueItemDTO; onClick: () => void; now: number; selected?: boolean }) {
   const statusInfo = statusMap[order.status as OrderStatus];
   const paymentInfo = paymentStatusMap[order.paymentStatus as PaymentStatus];
   const StatusIcon = statusInfo.icon;
   
-  const timeAgo = Math.floor((now - new Date(order.createdAt).getTime()) / 60000);
+  const timeAgo = Math.floor((now - new Date(order.statusChangedAt).getTime()) / 60000);
   const timeText = timeAgo < 1 ? 'Agora' : timeAgo < 60 ? `Há ${timeAgo} min` : `Há ${Math.floor(timeAgo / 60)} h`;
   const needsAttention = order.status === 'PENDING' && timeAgo >= 10;
 
@@ -62,10 +62,10 @@ export function OrderCard({ order, onClick, now, selected = false }: { order: Or
 
       <div className="mb-3">
         <p className="text-sm font-medium text-text-primary">
-          {order.customerName}
+          {order.customerDisplayName}
         </p>
         <p className="text-xs text-text-secondary line-clamp-1">
-          {order.items.length} {order.items.length === 1 ? 'item' : 'itens'} • {formatCurrency(order.total)}
+          {order.itemCount} {order.itemCount === 1 ? 'item' : 'itens'} • {formatCurrency(order.total)}
         </p>
       </div>
 

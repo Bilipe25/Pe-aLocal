@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { ArrowRight, Clock3, ExternalLink, Settings, Truck, UtensilsCrossed } from 'lucide-react';
-import type { OrderStatus } from '@prisma/client';
 import { redirect } from 'next/navigation';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { listCategoriesAction, listProductsAction } from '@/features/catalog/actions';
 import { listDeliveryZonesAction } from '@/features/delivery/actions';
-import { getOrdersAction } from '@/features/orders/admin-actions';
+import { getActiveOrderCountsAction } from '@/features/orders/query-actions';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
 import { getStoreOverview } from '@/server/services/store-settings.service';
 
@@ -20,32 +19,20 @@ export default async function DashboardPage() {
   const activeStore = await getActiveStoreContext();
   if (!activeStore) redirect('/dashboard/stores');
 
-  const activeStatuses: OrderStatus[] = [
-    'PENDING',
-    'CONFIRMED',
-    'PREPARING',
-    'READY',
-    'OUT_FOR_DELIVERY',
-  ];
   const [overview, categories, products, zones, ordersResult] = await Promise.all([
     getStoreOverview(activeStore.store.id),
     listCategoriesAction(),
     listProductsAction(),
     listDeliveryZonesAction(),
-    getOrdersAction({ statuses: activeStatuses }),
+    getActiveOrderCountsAction(),
   ]);
   const store = overview.store;
   const activeHours = store.openingHours.length;
-  const activeOrders = ordersResult.success ? ordersResult.data : [];
-  const waitingOrders = activeOrders.filter(
-    (order) => order.status === 'PENDING',
-  ).length;
-  const preparingOrders = activeOrders.filter(
-    (order) => order.status === 'CONFIRMED' || order.status === 'PREPARING',
-  ).length;
-  const readyOrders = activeOrders.filter(
-    (order) => order.status === 'READY' || order.status === 'OUT_FOR_DELIVERY',
-  ).length;
+  const ordersAvailable = ordersResult.success;
+  const activeOrders = ordersResult.success ? ordersResult.data.total : 0;
+  const waitingOrders = ordersResult.success ? ordersResult.data.pending : 0;
+  const preparingOrders = ordersResult.success ? ordersResult.data.preparing : 0;
+  const readyOrders = ordersResult.success ? ordersResult.data.ready : 0;
   const setupComplete = [
     categories.length > 0 && products.length > 0,
     zones.length > 0,
@@ -100,12 +87,16 @@ export default async function DashboardPage() {
               <Clock3 aria-hidden="true" /> Turno agora
             </div>
             <h2 id="shift-heading" className="mt-2 text-xl font-semibold">
-              {activeOrders.length === 0
+              {!ordersAvailable
+                ? 'Operação de pedidos indisponível'
+                : activeOrders === 0
                 ? 'Nenhum pedido aguardando ação'
-                : `${activeOrders.length} ${activeOrders.length === 1 ? 'pedido precisa' : 'pedidos precisam'} de acompanhamento`}
+                  : `${activeOrders} ${activeOrders === 1 ? 'pedido precisa' : 'pedidos precisam'} de acompanhamento`}
             </h2>
             <p className="text-surface/80 mt-2 max-w-2xl text-sm">
-              {activeOrders.length === 0
+              {!ordersAvailable
+                ? 'Não foi possível consultar a fila. Abra a central para tentar novamente.'
+                : activeOrders === 0
                 ? 'A central está pronta. Novos pedidos aparecerão em tempo real.'
                 : 'Abra a central para priorizar os mais antigos e atualizar cada etapa.'}
             </p>
@@ -118,9 +109,9 @@ export default async function DashboardPage() {
         </div>
         <dl className="grid border-t border-white/15 sm:grid-cols-3 sm:divide-x sm:divide-white/15">
           {[
-            ['Aguardando atenção', waitingOrders],
-            ['Em preparo', preparingOrders],
-            ['Prontos para sair', readyOrders],
+            ['Aguardando atenção', ordersAvailable ? waitingOrders : '—'],
+            ['Em preparo', ordersAvailable ? preparingOrders : '—'],
+            ['Prontos para sair', ordersAvailable ? readyOrders : '—'],
           ].map(([label, value]) => (
             <div
               key={label}
