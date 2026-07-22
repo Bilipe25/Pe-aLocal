@@ -20,8 +20,8 @@ export const orderQueryKeys = {
     storeId: string | null,
     authorizationScope: string,
     filters: Omit<OrderQueueFilters, 'cursor'>,
-    searchRevision = 0,
-  ) => ['order-queue', storeId, authorizationScope, safeFilterKey(filters), searchRevision] as const,
+    searchToken = 'none',
+  ) => ['order-queue', storeId, authorizationScope, safeFilterKey(filters), searchToken] as const,
   queueStore: (storeId: string | null) => ['order-queue', storeId] as const,
   details: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
     ['order-details', storeId, authorizationScope, orderId] as const,
@@ -47,10 +47,10 @@ export function useOrderQueue(
   storeId: string | null,
   authorizationScope: string,
   filters: Omit<OrderQueueFilters, 'cursor'>,
-  searchRevision = 0,
+  searchToken = 'none',
 ) {
   const queryClient = useQueryClient();
-  const queryKey = orderQueryKeys.queue(storeId, authorizationScope, filters, searchRevision);
+  const queryKey = orderQueryKeys.queue(storeId, authorizationScope, filters, searchToken);
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: null as string | null,

@@ -141,17 +141,17 @@ export function OrdersPanel({
   const [localDate, setLocalDate] = useState(initialLocalDate);
   const [filterState, setFilterState] = useState(() => ({
     filters: filtersFromUrl(new URLSearchParams(searchParams.toString()), initialLocalDate),
-    searchRevision: 0,
+    searchToken: 'none',
   }));
-  const { filters, searchRevision } = filterState;
+  const { filters, searchToken } = filterState;
   const updateFilters = useCallback((update: SetStateAction<Omit<OrderQueueFilters, 'cursor'>>) => {
     setFilterState((current) => {
       const nextFilters = typeof update === 'function' ? update(current.filters) : update;
       return {
         filters: nextFilters,
-        searchRevision: nextFilters.query === current.filters.query
-          ? current.searchRevision
-          : nextFilters.query ? current.searchRevision + 1 : 0,
+        searchToken: nextFilters.query === current.filters.query
+          ? current.searchToken
+          : nextFilters.query ? crypto.randomUUID() : 'none',
       };
     });
   }, []);
@@ -166,7 +166,7 @@ export function OrdersPanel({
   const connection = CONNECTION_LABELS[connectionState];
   const ConnectionIcon = connection.icon;
 
-  const queueQuery = useOrderQueue(storeId, authorizationScope, filters, searchRevision);
+  const queueQuery = useOrderQueue(storeId, authorizationScope, filters, searchToken);
   const metricsQuery = useOrderMetrics(storeId, authorizationScope, localDate);
   const orders = useMemo(
     () => queueQuery.data?.pages.flatMap((page) => page.items) ?? [],
