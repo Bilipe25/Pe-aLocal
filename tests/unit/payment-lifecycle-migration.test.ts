@@ -2,19 +2,29 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const migration = readFileSync(
-  join(
-    process.cwd(),
-    'prisma/migrations/20260722170000_payment_lifecycle_consistency/migration.sql',
-  ),
-  'utf8',
+const migrationDirectories = [
+  '20260722170000_payment_lifecycle_expand',
+  '20260722170500_payment_history_expand',
+  '20260722171000_payment_lifecycle_backfill',
+  '20260722172000_payment_consistency_guard',
+] as const;
+const migrations = migrationDirectories.map((directory) =>
+  readFileSync(join(process.cwd(), `prisma/migrations/${directory}/migration.sql`), 'utf8'),
 );
+const migration = migrations.join('\n');
 
 describe('payment lifecycle consistency migration', () => {
   it('é atômica e limita espera por locks', () => {
-    expect(migration.trimStart()).toMatch(/^BEGIN;/);
+    for (const sql of migrations) {
+      expect(sql.trimStart()).toMatch(/^BEGIN;/);
+      expect(sql).toContain('COMMIT;');
+    }
     expect(migration).toContain("SET LOCAL lock_timeout = '5s'");
-    expect(migration).toContain('COMMIT;');
+    expect(migrations[0]).toContain('Worker anterior compatível');
+    expect(migrations[0]).toContain("DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days')");
+    expect(migrations[1]).toContain('payments_capture_legacy_status_history');
+    expect(migrations[1]).toContain('payments_populate_legacy_lifecycle_metadata');
+    expect(migrations[1]).toContain('ON CONFLICT ("paymentId", "orderVersionTo", "toStatus")');
   });
 
   it('faz backfill conservador dos timestamps financeiros', () => {
@@ -41,9 +51,15 @@ describe('payment lifecycle consistency migration', () => {
   });
 
   it('protege metadados mínimos de reembolso e estados terminais', () => {
-    expect(migration).toContain('CONSTRAINT "payments_lifecycle_metadata_check"');
+    expect(migration).toContain('CREATE TABLE public.payment_status_history');
+    expect(migration).toContain('Estado financeiro existente no início do histórico estruturado.');
+    expect(migration).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(migration).toContain('payments_lifecycle_metadata_check');
+    expect(migration).toContain('status <> \'CANCELLED\' OR "cancelledAt" IS NOT NULL');
     expect(migration).toContain('"refundAmount" = amount');
-    expect(migration).toContain('"refundReasonCode" IS NOT NULL');
+    expect(migration).toContain('"refundAmount" IS NOT NULL');
+    expect(migration).toContain('payment_status_history_reject_update');
+    expect(migration).toContain('BEFORE UPDATE OR DELETE ON public.payment_status_history');
     expect(migration).toContain('REVOKE ALL ON FUNCTION public.assert_order_payment_consistency()');
   });
 });

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
   const tx = {
     order: { findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
     payment: { updateMany: vi.fn() },
+    paymentStatusHistory: { create: vi.fn() },
     auditLog: { create: vi.fn() },
     orderOutboxEvent: { create: vi.fn() },
   };
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/server/database/client', () => ({
-  getDb: () => ({ $transaction: mocks.transaction }),
+  getDb: () => ({ $transaction: mocks.transaction, order: mocks.tx.order }),
 }));
 
 const context: OrderMutationContext = {
@@ -46,6 +47,7 @@ function pendingOrder() {
     tenantId: 'tenant-a',
     total: 2500,
     version: 4,
+    paymentReportExpiresAt: new Date(Date.now() + 60_000),
     payment: { id: 'payment-a', status: 'PENDING', method: 'PIX', amount: 2500 },
   };
 }
@@ -57,6 +59,7 @@ describe('OrderPaymentService', () => {
     mocks.tx.order.findUnique.mockResolvedValue(pendingOrder());
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.paymentStatusHistory.create.mockResolvedValue({ id: 'payment-history-a' });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
     mocks.tx.orderOutboxEvent.create.mockResolvedValue({ id: 'outbox-a' });
   });
@@ -206,6 +209,7 @@ describe('OrderPaymentService', () => {
       orderId: 'order-a',
       expectedVersion: 4,
       reasonCode: 'PAYMENT_NOT_IDENTIFIED',
+      note: 'Comprovante não corresponde ao recebimento.',
     });
 
     expect(result).toMatchObject({ paymentStatus: 'FAILED', version: 5 });
@@ -222,6 +226,19 @@ describe('OrderPaymentService', () => {
       expect.objectContaining({
         data: expect.objectContaining({ action: 'PAYMENT_FAILED' }),
       }),
+    );
+    expect(mocks.tx.paymentStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fromStatus: 'CUSTOMER_REPORTED_PAID',
+          toStatus: 'FAILED',
+          actorNameSnapshot: 'Gerente',
+          note: 'Comprovante não corresponde ao recebimento.',
+        }),
+      }),
+    );
+    expect(mocks.tx.paymentStatusHistory.create.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.payment.updateMany.mock.invocationCallOrder[0],
     );
   });
 
@@ -284,6 +301,23 @@ describe('OrderPaymentService', () => {
     );
   });
 
+  it('permite reembolso corretivo de pagamento pago em pedido já cancelado', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...pendingOrder(),
+      status: 'CANCELLED',
+      paymentStatus: 'PAID',
+      payment: { ...pendingOrder().payment, status: 'PAID' },
+    });
+
+    await expect(
+      refundPayment(context, {
+        orderId: 'order-a',
+        expectedVersion: 4,
+        reasonCode: 'ORDER_CANCELLATION',
+      }),
+    ).resolves.toMatchObject({ paymentStatus: 'REFUNDED' });
+  });
+
   it('registra relato público de PIX uma vez e trata retry como idempotente', async () => {
     const first = await reportCustomerPixPayment('00000000-0000-4000-8000-000000000001');
     expect(first).toMatchObject({ paymentStatus: 'CUSTOMER_REPORTED_PAID', version: 5 });
@@ -309,5 +343,64 @@ describe('OrderPaymentService', () => {
     expect(retry.outboxEventIds).toEqual([]);
     expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
     expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('reconcilia relato público concorrente sem criar segundo evento', async () => {
+    const pending = pendingOrder();
+    mocks.tx.order.findUnique.mockResolvedValueOnce(pending).mockResolvedValueOnce({
+      id: pending.id,
+      storeId: pending.storeId,
+      status: pending.status,
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      version: 5,
+    });
+    mocks.tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await reportCustomerPixPayment('00000000-0000-4000-8000-000000000001');
+
+    expect(result).toMatchObject({
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      version: 5,
+      outboxEventIds: [],
+    });
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('não aceita token de relato para dinheiro nem token expirado', async () => {
+    mocks.tx.order.findUnique.mockResolvedValue({
+      ...pendingOrder(),
+      paymentMethod: 'CASH',
+      payment: { ...pendingOrder().payment, method: 'CASH' },
+    });
+    await expect(reportCustomerPixPayment('00000000-0000-4000-8000-000000000001')).rejects.toThrow(
+      'Somente pagamentos Pix',
+    );
+
+    mocks.tx.order.findUnique.mockResolvedValue({
+      ...pendingOrder(),
+      paymentReportExpiresAt: new Date(Date.now() - 1_000),
+    });
+    await expect(reportCustomerPixPayment('00000000-0000-4000-8000-000000000001')).rejects.toThrow(
+      'prazo para informar',
+    );
+  });
+
+  it('mantém sucesso idempotente de relato já salvo depois da expiração', async () => {
+    mocks.tx.order.findUnique.mockResolvedValue({
+      ...pendingOrder(),
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      paymentReportExpiresAt: new Date(Date.now() - 1_000),
+      payment: {
+        ...pendingOrder().payment,
+        status: 'CUSTOMER_REPORTED_PAID',
+      },
+    });
+
+    await expect(
+      reportCustomerPixPayment('00000000-0000-4000-8000-000000000001'),
+    ).resolves.toMatchObject({
+      paymentStatus: 'CUSTOMER_REPORTED_PAID',
+      paymentUpdated: false,
+    });
   });
 });

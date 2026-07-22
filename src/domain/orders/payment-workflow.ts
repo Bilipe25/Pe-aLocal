@@ -70,7 +70,9 @@ function operationMatchesMethod(
 export function getAllowedPaymentTransitions(
   context: PaymentWorkflowContext,
 ): readonly PaymentStatus[] {
-  if (context.orderStatus === 'CANCELLED') return [];
+  if (context.orderStatus === 'CANCELLED') {
+    return context.status === 'PAID' ? ['REFUNDED'] : [];
+  }
   return PAYMENT_TRANSITIONS[context.status];
 }
 

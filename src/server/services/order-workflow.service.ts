@@ -25,6 +25,7 @@ import {
 } from '@/server/errors';
 import * as orderAudit from './order-audit.service';
 import { appendOrderOutboxEvent } from './order-outbox.service';
+import { appendPaymentStatusHistory } from './order-payment-history.service';
 import type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
 
 export type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
@@ -255,6 +256,21 @@ async function transitionOrder(
     if (updated.count !== 1) conflict();
 
     if (confirmPaymentOnCompletion) {
+      await appendPaymentStatusHistory(tx, {
+        tenantId: context.tenantId,
+        storeId: context.storeId,
+        orderId: order.id,
+        paymentId: order.payment!.id,
+        fromStatus: order.paymentStatus,
+        toStatus: 'PAID',
+        changedById: context.userId,
+        actorNameSnapshot: context.userName,
+        source: 'DASHBOARD',
+        reasonCode: 'ORDER_COMPLETED',
+        orderVersionFrom: input.expectedVersion,
+        orderVersionTo: input.expectedVersion + 1,
+        createdAt: changedAt,
+      });
       const paymentUpdated = await tx.payment.updateMany({
         where: {
           orderId: order.id,
@@ -429,6 +445,22 @@ export async function cancelOrder(
     if (updated.count !== 1) conflict();
 
     if (cancelPayment) {
+      await appendPaymentStatusHistory(tx, {
+        tenantId: context.tenantId,
+        storeId: context.storeId,
+        orderId: order.id,
+        paymentId: order.payment!.id,
+        fromStatus: order.paymentStatus,
+        toStatus: 'CANCELLED',
+        changedById: context.userId,
+        actorNameSnapshot: context.userName,
+        source: 'DASHBOARD',
+        reasonCode: input.reasonCode,
+        note: input.note,
+        orderVersionFrom: input.expectedVersion,
+        orderVersionTo: input.expectedVersion + 1,
+        createdAt: changedAt,
+      });
       const paymentUpdated = await tx.payment.updateMany({
         where: {
           orderId: order.id,

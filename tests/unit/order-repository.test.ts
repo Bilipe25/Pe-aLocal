@@ -69,7 +69,9 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      paymentReportToken: 'payment-report-token',
       createdAt: new Date('2026-07-22T10:00:00.000Z'),
+      payment: { id: 'payment-a' },
     });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
     mocks.tx.orderOutboxEvent.create.mockResolvedValue({ id: 'outbox-a' });
@@ -82,6 +84,7 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      paymentReportToken: 'payment-report-token',
       created: true,
       outboxEventIds: ['outbox-a'],
     });
@@ -110,9 +113,7 @@ describe('OrderRepository', () => {
     );
     expect(mocks.tx.order.create.mock.calls[0][0].data).not.toHaveProperty('orderNumber');
     expect(mocks.tx.$executeRaw).toHaveBeenCalledOnce();
-    expect(mocks.tx.$executeRaw.mock.calls[0][1]).toBe(
-      `store-a:${params.input.idempotencyKey}`,
-    );
+    expect(mocks.tx.$executeRaw.mock.calls[0][1]).toBe(`store-a:${params.input.idempotencyKey}`);
     expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.tx.order.findUnique.mock.invocationCallOrder[0],
     );
@@ -123,6 +124,7 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      paymentReportToken: 'payment-report-token',
       idempotencyFingerprint: 'fingerprint-a',
     });
 
@@ -140,6 +142,7 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      paymentReportToken: 'payment-report-token',
       idempotencyFingerprint: 'fingerprint-b',
     });
 

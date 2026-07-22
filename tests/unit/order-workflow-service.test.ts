@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => {
     payment: {
       updateMany: vi.fn(),
     },
+    paymentStatusHistory: {
+      create: vi.fn(),
+    },
     orderStatusHistory: {
       create: vi.fn(),
       findFirst: vi.fn(),
@@ -93,6 +96,7 @@ describe('OrderWorkflowService', () => {
     vi.clearAllMocks();
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.paymentStatusHistory.create.mockResolvedValue({ id: 'payment-history-a' });
     mocks.tx.orderStatusHistory.create.mockResolvedValue({ id: 'history-new' });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-new' });
     mocks.tx.orderOutboxEvent.create.mockReset();

@@ -41,9 +41,7 @@ const ACTION_LABELS: Record<OrderOperationalAction, string> = {
 
 function assertOperationalStatus(status: OrderStatus): asserts status is OperationalOrderStatus {
   if (status === 'AWAITING_PAYMENT') {
-    throw new BusinessRuleError(
-      'Aguardando pagamento não é um estado operacional do pedido.',
-    );
+    throw new BusinessRuleError('Aguardando pagamento não é um estado operacional do pedido.');
   }
 }
 
@@ -55,13 +53,15 @@ function canCompleteOrder(context: OrderWorkflowContext): boolean {
   return context.paymentStatus === 'PENDING' || context.paymentStatus === 'PAID';
 }
 
-export function getAllowedOrderTransitions(
-  context: OrderWorkflowContext,
-): readonly OrderStatus[] {
+export function getAllowedOrderTransitions(context: OrderWorkflowContext): readonly OrderStatus[] {
   assertOperationalStatus(context.status);
 
   if (context.status === 'DELIVERED' || context.status === 'CANCELLED') {
     return [];
+  }
+
+  if (context.paymentStatus === 'REFUNDED') {
+    return ['CANCELLED'];
   }
 
   let forwardTransitions = FORWARD_TRANSITIONS[context.status];
@@ -98,9 +98,7 @@ export function assertOrderTransition(
   assertOperationalStatus(context.status);
 
   if (nextStatus === 'AWAITING_PAYMENT') {
-    throw new BusinessRuleError(
-      'Aguardando pagamento não é um estado operacional do pedido.',
-    );
+    throw new BusinessRuleError('Aguardando pagamento não é um estado operacional do pedido.');
   }
 
   const isCompletionStep =
@@ -110,7 +108,9 @@ export function assertOrderTransition(
 
   if (isCompletionStep && !canCompleteOrder(context)) {
     if (context.paymentMethod === 'PIX') {
-      throw new BusinessRuleError('O pagamento via PIX deve estar confirmado para concluir o pedido.');
+      throw new BusinessRuleError(
+        'O pagamento via PIX deve estar confirmado para concluir o pedido.',
+      );
     }
 
     throw new BusinessRuleError('O pagamento deve estar pendente ou pago para concluir o pedido.');

@@ -192,6 +192,14 @@ describe('máquina de estados de pedidos', () => {
         expect(() => assertOrderTransition(current, 'DELIVERED')).toThrow(BusinessRuleError);
       },
     );
+
+    it('pedido ativo reembolsado permite somente cancelamento', () => {
+      const refunded = context({ status: 'CONFIRMED', paymentStatus: 'REFUNDED' });
+
+      expect(getAllowedOrderTransitions(refunded)).toEqual(['CANCELLED']);
+      expect(canTransitionOrder(refunded, 'PREPARING')).toBe(false);
+      expect(canTransitionOrder(refunded, 'CANCELLED')).toBe(true);
+    });
   });
 
   describe('estados especiais e terminais', () => {
@@ -208,9 +216,7 @@ describe('máquina de estados de pedidos', () => {
       const pending = context({ status: 'PENDING' });
 
       expect(canTransitionOrder(pending, 'AWAITING_PAYMENT')).toBe(false);
-      expect(() => assertOrderTransition(pending, 'AWAITING_PAYMENT')).toThrow(
-        BusinessRuleError,
-      );
+      expect(() => assertOrderTransition(pending, 'AWAITING_PAYMENT')).toThrow(BusinessRuleError);
     });
 
     it.each(['DELIVERED', 'CANCELLED'] as const)('%s é terminal', (status) => {
@@ -227,12 +233,8 @@ describe('máquina de estados de pedidos', () => {
   describe('ações operacionais e labels', () => {
     it('retorna a ação principal de cada etapa', () => {
       expect(getNextOperationalAction(context({ status: 'PENDING' }))).toBe('CONFIRM_ORDER');
-      expect(getNextOperationalAction(context({ status: 'CONFIRMED' }))).toBe(
-        'START_PREPARATION',
-      );
-      expect(getNextOperationalAction(context({ status: 'PREPARING' }))).toBe(
-        'MARK_ORDER_READY',
-      );
+      expect(getNextOperationalAction(context({ status: 'CONFIRMED' }))).toBe('START_PREPARATION');
+      expect(getNextOperationalAction(context({ status: 'PREPARING' }))).toBe('MARK_ORDER_READY');
       expect(
         getNextOperationalAction(context({ status: 'OUT_FOR_DELIVERY', modality: 'DELIVERY' })),
       ).toBe('COMPLETE_DELIVERY');

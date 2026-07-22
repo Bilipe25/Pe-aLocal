@@ -6,6 +6,7 @@ import * as orderAudit from '@/server/services/order-audit.service';
 import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
 import { normalizePhone } from '@/lib/brazil';
+import { OrderPaymentConsistencyError } from '@/server/errors';
 
 // =============================================================================
 // Order Repository — Criação atômica de pedidos
@@ -41,6 +42,7 @@ interface CreateOrderResult {
   id: string;
   publicToken: string;
   orderNumber: number;
+  paymentReportToken: string;
   created: boolean;
   outboxEventIds: string[];
 }
@@ -74,7 +76,13 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
           idempotencyKey: input.idempotencyKey,
         },
       },
-      select: { id: true, publicToken: true, orderNumber: true, idempotencyFingerprint: true },
+      select: {
+        id: true,
+        publicToken: true,
+        orderNumber: true,
+        paymentReportToken: true,
+        idempotencyFingerprint: true,
+      },
     });
 
     if (existing) {
@@ -83,6 +91,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         id: existing.id,
         publicToken: existing.publicToken,
         orderNumber: existing.orderNumber,
+        paymentReportToken: existing.paymentReportToken,
         created: false,
         outboxEventIds: [],
       };
@@ -95,6 +104,8 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         storeId,
         idempotencyKey: input.idempotencyKey,
         idempotencyFingerprint,
+        paymentReportToken: crypto.randomUUID(),
+        paymentReportExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000),
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerPhoneNormalized: normalizePhone(input.customerPhone),
@@ -157,9 +168,13 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         id: true,
         publicToken: true,
         orderNumber: true,
+        paymentReportToken: true,
         createdAt: true,
+        payment: { select: { id: true } },
       },
     });
+
+    if (!order.payment) throw new OrderPaymentConsistencyError();
 
     const auditLogId = await orderAudit.writeOrderCreatedAudit(tx, {
       tenantId,
@@ -184,6 +199,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       id: order.id,
       publicToken: order.publicToken,
       orderNumber: order.orderNumber,
+      paymentReportToken: order.paymentReportToken,
       created: true,
       outboxEventIds: [outboxEvent.id],
     };

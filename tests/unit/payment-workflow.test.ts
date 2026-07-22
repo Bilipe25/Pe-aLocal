@@ -105,9 +105,15 @@ describe('máquina de estados de pagamento', () => {
     }
   });
 
-  it('bloqueia qualquer mutação financeira depois do cancelamento do pedido', () => {
+  it('permite remediar pagamento pago após cancelamento e bloqueia outras mutações', () => {
     expect(
       canTransitionPayment(context({ status: 'PAID', orderStatus: 'CANCELLED' }), 'REFUND'),
+    ).toBe(true);
+    expect(
+      canTransitionPayment(
+        context({ status: 'PENDING', orderStatus: 'CANCELLED' }),
+        'REPORT_BY_CUSTOMER',
+      ),
     ).toBe(false);
   });
 

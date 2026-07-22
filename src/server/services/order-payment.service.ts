@@ -30,6 +30,7 @@ import {
 import * as orderAudit from './order-audit.service';
 import type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
 import { appendOrderOutboxEvent } from './order-outbox.service';
+import { appendPaymentStatusHistory } from './order-payment-history.service';
 
 const ORDER_CONFLICT_MESSAGE =
   'Este pedido foi alterado por outra pessoa. Atualize a central antes de continuar.';
@@ -56,6 +57,7 @@ interface PaymentActor {
   tenantId: string;
   storeId: string;
   userId: string | null;
+  userName: string;
   source: OrderChangeSource;
 }
 
@@ -181,6 +183,25 @@ async function transitionPayment(
   });
   if (updated.count !== 1) conflict();
 
+  // Antecipar o histórico permite ao trigger de compatibilidade distinguir o
+  // writer novo de uma transição feita por uma versão anterior do Worker.
+  await appendPaymentStatusHistory(tx, {
+    tenantId: options.actor.tenantId,
+    storeId: options.actor.storeId,
+    orderId: order.id,
+    paymentId: order.payment!.id,
+    fromStatus: order.paymentStatus,
+    toStatus: nextStatus,
+    changedById: options.actor.userId,
+    actorNameSnapshot: options.actor.userName,
+    source: options.actor.source,
+    reasonCode: options.reasonCode,
+    note: options.note,
+    orderVersionFrom: options.expectedVersion,
+    orderVersionTo: nextVersion,
+    createdAt: changedAt,
+  });
+
   const paymentUpdated = await tx.payment.updateMany({
     where: {
       id: order.payment!.id,
@@ -258,6 +279,7 @@ function dashboardActor(context: OrderMutationContext): PaymentActor {
     tenantId: context.tenantId,
     storeId: context.storeId,
     userId: context.userId,
+    userName: context.userName,
     source: 'DASHBOARD',
   };
 }
@@ -334,27 +356,73 @@ export async function refundPayment(
   );
 }
 
-export async function reportCustomerPixPayment(publicToken: string): Promise<OrderMutationResult> {
-  return getDb().$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { publicToken },
+export async function reportCustomerPixPayment(reportToken: string): Promise<OrderMutationResult> {
+  try {
+    return await getDb().$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { paymentReportToken: reportToken },
+        select: {
+          id: true,
+          tenantId: true,
+          storeId: true,
+          orderNumber: true,
+          total: true,
+          status: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          version: true,
+          paymentReportExpiresAt: true,
+          payment: { select: { id: true, status: true, method: true, amount: true } },
+        },
+      });
+      if (!order) throw new NotFoundError('Pedido');
+      assertPaymentConsistency(order);
+      if (order.paymentMethod !== 'PIX') {
+        throw new BusinessRuleError('Somente pagamentos Pix podem ser informados pelo cliente.');
+      }
+      if (order.paymentStatus === 'CUSTOMER_REPORTED_PAID' || order.paymentStatus === 'PAID') {
+        return {
+          orderId: order.id,
+          storeId: order.storeId,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          version: order.version,
+          paymentUpdated: false,
+          outboxEventIds: [],
+        };
+      }
+      if (order.paymentReportExpiresAt <= new Date()) {
+        throw new BusinessRuleError('O prazo para informar este pagamento expirou.');
+      }
+
+      return transitionPayment(tx, order, {
+        operation: 'REPORT_BY_CUSTOMER',
+        expectedVersion: order.version,
+        actor: {
+          tenantId: order.tenantId,
+          storeId: order.storeId,
+          userId: null,
+          userName: 'Cliente',
+          source: 'CUSTOMER',
+        },
+      });
+    });
+  } catch (error) {
+    if (!(error instanceof ConflictError)) throw error;
+    const order = await getDb().order.findUnique({
+      where: { paymentReportToken: reportToken },
       select: {
         id: true,
-        tenantId: true,
         storeId: true,
-        orderNumber: true,
-        total: true,
         status: true,
         paymentStatus: true,
-        paymentMethod: true,
         version: true,
-        payment: { select: { id: true, status: true, method: true, amount: true } },
       },
     });
-    if (!order) throw new NotFoundError('Pedido');
-    assertPaymentConsistency(order);
-
-    if (order.paymentStatus === 'CUSTOMER_REPORTED_PAID' || order.paymentStatus === 'PAID') {
+    if (
+      order &&
+      (order.paymentStatus === 'CUSTOMER_REPORTED_PAID' || order.paymentStatus === 'PAID')
+    ) {
       return {
         orderId: order.id,
         storeId: order.storeId,
@@ -365,16 +433,6 @@ export async function reportCustomerPixPayment(publicToken: string): Promise<Ord
         outboxEventIds: [],
       };
     }
-
-    return transitionPayment(tx, order, {
-      operation: 'REPORT_BY_CUSTOMER',
-      expectedVersion: order.version,
-      actor: {
-        tenantId: order.tenantId,
-        storeId: order.storeId,
-        userId: null,
-        source: 'CUSTOMER',
-      },
-    });
-  });
+    throw error;
+  }
 }
