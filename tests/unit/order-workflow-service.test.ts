@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       findFirst: vi.fn(),
     },
+    auditLog: {
+      create: vi.fn(),
+    },
   };
 
   return {
@@ -64,6 +67,7 @@ function orderSnapshot(
   return {
     ...snapshot,
     payment: {
+      id: 'payment-a',
       status: snapshot.paymentStatus,
       method: snapshot.paymentMethod,
     },
@@ -76,6 +80,7 @@ describe('OrderWorkflowService', () => {
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.orderStatusHistory.create.mockResolvedValue({ id: 'history-new' });
+    mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-new' });
   });
 
   it('aceita pedido com CAS por tenant, loja, status e versão', async () => {
@@ -99,6 +104,20 @@ describe('OrderWorkflowService', () => {
       }),
     );
     expect(mocks.tx.orderStatusHistory.create).toHaveBeenCalledOnce();
+    expect(mocks.tx.orderStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ versionFrom: 0, versionTo: 1 }),
+      }),
+    );
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'ORDER_ACCEPTED',
+          entity: 'Order',
+          entityId: 'order-a',
+        }),
+      }),
+    );
     expect(result).toMatchObject({ status: 'CONFIRMED', version: 1 });
   });
 
@@ -110,6 +129,7 @@ describe('OrderWorkflowService', () => {
       acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(mocks.tx.orderStatusHistory.create).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('identifica versão obsoleta antes de validar a transição atual', async () => {
@@ -170,6 +190,7 @@ describe('OrderWorkflowService', () => {
       paymentStatus: 'PAID',
       paymentUpdated: true,
     });
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
   });
 
   it('não cria histórico quando a atualização financeira concorrente falha', async () => {
@@ -213,6 +234,7 @@ describe('OrderWorkflowService', () => {
       }),
     );
     expect(result.paymentStatus).toBe('CANCELLED');
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
   });
 
   it('bloqueia cancelamento de pedido pago', async () => {
@@ -241,6 +263,8 @@ describe('OrderWorkflowService', () => {
       changedById: 'user-a',
       source: 'DASHBOARD',
       isUndo: false,
+      versionFrom: 1,
+      versionTo: 2,
       createdAt: new Date(),
     });
 
@@ -260,5 +284,79 @@ describe('OrderWorkflowService', () => {
         data: expect.objectContaining({ preparingAt: null }),
       }),
     );
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'ORDER_TRANSITION_UNDONE' }),
+      }),
+    );
+  });
+
+  it.each([
+    {
+      label: 'outro usuário',
+      latest: { changedById: 'user-b', source: 'DASHBOARD', isUndo: false, createdAt: new Date() },
+    },
+    {
+      label: 'uma transição que já é undo',
+      latest: { changedById: 'user-a', source: 'DASHBOARD', isUndo: true, createdAt: new Date() },
+    },
+    {
+      label: 'uma transição fora da janela',
+      latest: {
+        changedById: 'user-a',
+        source: 'DASHBOARD',
+        isUndo: false,
+        createdAt: new Date(Date.now() - 3 * 60 * 1000),
+      },
+    },
+  ])('rejeita undo de $label', async ({ latest }) => {
+    mocks.tx.order.findFirst.mockResolvedValue(
+      orderSnapshot({ status: 'PREPARING', paymentStatus: 'PAID', version: 2 }),
+    );
+    mocks.tx.orderStatusHistory.findFirst.mockResolvedValue({
+      id: 'history-a',
+      fromStatus: 'CONFIRMED',
+      toStatus: 'PREPARING',
+      versionFrom: 1,
+      versionTo: 2,
+      ...latest,
+    });
+
+    await expect(
+      undoLastOrderTransition(context, { orderId: 'order-a', expectedVersion: 2 }),
+    ).rejects.toMatchObject({ code: 'ORDER_UNDO_NOT_ALLOWED' });
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita undo quando uma escrita posterior incrementou a versão do pedido', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue(
+      orderSnapshot({ status: 'PREPARING', paymentStatus: 'PAID', version: 3 }),
+    );
+    mocks.tx.orderStatusHistory.findFirst.mockResolvedValue({
+      id: 'history-a',
+      fromStatus: 'CONFIRMED',
+      toStatus: 'PREPARING',
+      changedById: 'user-a',
+      source: 'DASHBOARD',
+      isUndo: false,
+      versionFrom: 1,
+      versionTo: 2,
+      createdAt: new Date(),
+    });
+
+    await expect(
+      undoLastOrderTransition(context, { orderId: 'order-a', expectedVersion: 3 }),
+    ).rejects.toMatchObject({ code: 'ORDER_UNDO_NOT_ALLOWED' });
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('propaga falha de auditoria para abortar a transação', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue(orderSnapshot());
+    mocks.tx.auditLog.create.mockRejectedValue(new Error('audit unavailable'));
+
+    await expect(
+      acceptOrder(context, { orderId: 'order-a', expectedVersion: 0 }),
+    ).rejects.toThrow('audit unavailable');
   });
 });

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type {
+  AuditAction,
   OrderCancellationReasonCode,
   OrderModality,
   OrderStatus,
@@ -17,28 +18,20 @@ import {
   BusinessRuleError,
   ConflictError,
   NotFoundError,
+  OrderPaymentConsistencyError,
+  OrderUndoNotAllowedError,
 } from '@/server/errors';
+import * as orderAudit from './order-audit.service';
+import type {
+  OrderMutationContext,
+  OrderMutationResult,
+} from './order-mutation.types';
+
+export type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
 
 const ORDER_CONFLICT_MESSAGE =
   'Este pedido foi alterado por outra pessoa. Atualize a central antes de continuar.';
 const UNDO_WINDOW_MS = 2 * 60 * 1000;
-
-export interface OrderMutationContext {
-  tenantId: string;
-  storeId: string;
-  userId: string;
-  userName: string;
-  canConfirmPayment: boolean;
-}
-
-export interface OrderMutationResult {
-  orderId: string;
-  storeId: string;
-  status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  version: number;
-  paymentUpdated: boolean;
-}
 
 interface OrderSnapshot {
   id: string;
@@ -49,6 +42,7 @@ interface OrderSnapshot {
   modality: OrderModality;
   version: number;
   payment: {
+    id: string;
     status: PaymentStatus;
     method: PaymentMethodType;
   } | null;
@@ -68,9 +62,7 @@ function assertPaymentConsistency(order: OrderSnapshot): void {
     order.payment.status !== order.paymentStatus ||
     order.payment.method !== order.paymentMethod
   ) {
-    throw new BusinessRuleError(
-      'Os dados de pagamento deste pedido estão inconsistentes. A operação foi bloqueada.',
-    );
+    throw new OrderPaymentConsistencyError();
   }
 }
 
@@ -95,6 +87,7 @@ async function getOrderSnapshot(
       version: true,
       payment: {
         select: {
+          id: true,
           status: true,
           method: true,
         },
@@ -138,6 +131,8 @@ async function createStatusHistory(
     toStatus: OrderStatus;
     note?: string;
     reasonCode?: OrderCancellationReasonCode;
+    versionFrom: number;
+    versionTo: number;
     isUndo?: boolean;
     revertsHistoryId?: string;
   },
@@ -149,6 +144,8 @@ async function createStatusHistory(
       toStatus: data.toStatus,
       note: data.note,
       reasonCode: data.reasonCode,
+      versionFrom: data.versionFrom,
+      versionTo: data.versionTo,
       changedBy: context.userId,
       changedById: context.userId,
       actorNameSnapshot: context.userName,
@@ -157,6 +154,26 @@ async function createStatusHistory(
       revertsHistoryId: data.revertsHistoryId,
     },
   });
+}
+
+function auditActionForStatus(status: OrderStatus): AuditAction {
+  switch (status) {
+    case 'CONFIRMED':
+      return 'ORDER_ACCEPTED';
+    case 'PREPARING':
+      return 'ORDER_PREPARATION_STARTED';
+    case 'READY':
+      return 'ORDER_READY';
+    case 'OUT_FOR_DELIVERY':
+      return 'ORDER_DISPATCHED';
+    case 'DELIVERED':
+      return 'ORDER_COMPLETED';
+    case 'CANCELLED':
+      return 'ORDER_CANCELLED';
+    case 'PENDING':
+    case 'AWAITING_PAYMENT':
+      return 'STATUS_CHANGE';
+  }
 }
 
 async function transitionOrder(
@@ -223,7 +240,30 @@ async function transitionOrder(
       note: confirmPaymentOnCompletion
         ? 'Pagamento confirmado durante a conclusão do pedido'
         : undefined,
+      versionFrom: input.expectedVersion,
+      versionTo: input.expectedVersion + 1,
     });
+
+    await orderAudit.writeOrderStatusAudit(tx, context, {
+      orderId: order.id,
+      action: auditActionForStatus(targetStatus),
+      previousStatus: order.status,
+      nextStatus: targetStatus,
+      previousVersion: input.expectedVersion,
+      nextVersion: input.expectedVersion + 1,
+    });
+
+    if (confirmPaymentOnCompletion) {
+      await orderAudit.writePaymentAudit(tx, context, {
+        orderId: order.id,
+        paymentId: order.payment!.id,
+        action: 'PAYMENT_CONFIRMED',
+        previousStatus: order.paymentStatus,
+        nextStatus: 'PAID',
+        previousVersion: input.expectedVersion,
+        nextVersion: input.expectedVersion + 1,
+      });
+    }
 
     return {
       orderId: order.id,
@@ -334,7 +374,32 @@ export async function cancelOrder(
       toStatus: 'CANCELLED',
       reasonCode: input.reasonCode,
       note: input.note,
+      versionFrom: input.expectedVersion,
+      versionTo: input.expectedVersion + 1,
     });
+
+    await orderAudit.writeOrderStatusAudit(tx, context, {
+      orderId: order.id,
+      action: 'ORDER_CANCELLED',
+      previousStatus: order.status,
+      nextStatus: 'CANCELLED',
+      previousVersion: input.expectedVersion,
+      nextVersion: input.expectedVersion + 1,
+      reasonCode: input.reasonCode,
+      hasNote: Boolean(input.note),
+    });
+
+    if (cancelPayment) {
+      await orderAudit.writePaymentAudit(tx, context, {
+        orderId: order.id,
+        paymentId: order.payment!.id,
+        action: 'PAYMENT_CANCELLED',
+        previousStatus: order.paymentStatus,
+        nextStatus: 'CANCELLED',
+        previousVersion: input.expectedVersion,
+        nextVersion: input.expectedVersion + 1,
+      });
+    }
 
     return {
       orderId: order.id,
@@ -396,11 +461,11 @@ export async function undoLastOrderTransition(
       latestChange.changedById !== context.userId ||
       latestChange.source !== 'DASHBOARD' ||
       latestChange.isUndo ||
+      latestChange.versionFrom !== input.expectedVersion - 1 ||
+      latestChange.versionTo !== input.expectedVersion ||
       !isRecent
     ) {
-      throw new BusinessRuleError(
-        'Esta alteração não pode mais ser desfeita. Atualize a central e revise o pedido.',
-      );
+      throw new OrderUndoNotAllowedError();
     }
 
     const changedAt = new Date();
@@ -429,6 +494,18 @@ export async function undoLastOrderTransition(
       note: 'Alteração desfeita pelo painel',
       isUndo: true,
       revertsHistoryId: latestChange.id,
+      versionFrom: input.expectedVersion,
+      versionTo: input.expectedVersion + 1,
+    });
+
+    await orderAudit.writeOrderStatusAudit(tx, context, {
+      orderId: order.id,
+      action: 'ORDER_TRANSITION_UNDONE',
+      previousStatus: order.status,
+      nextStatus: previousStatus,
+      previousVersion: input.expectedVersion,
+      nextVersion: input.expectedVersion + 1,
+      revertedHistoryId: latestChange.id,
     });
 
     return {
@@ -438,62 +515,6 @@ export async function undoLastOrderTransition(
       paymentStatus: order.paymentStatus,
       version: input.expectedVersion + 1,
       paymentUpdated: false,
-    };
-  });
-}
-
-export async function confirmManualPayment(
-  context: OrderMutationContext,
-  input: OrderVersionInput,
-): Promise<OrderMutationResult> {
-  return getDb().$transaction(async (tx) => {
-    const order = await getOrderSnapshot(tx, context, input.orderId);
-    assertExpectedVersion(order, input.expectedVersion);
-    if (order.status === 'CANCELLED') {
-      throw new BusinessRuleError('Um pedido cancelado não pode ser marcado como pago.');
-    }
-    if (!['PENDING', 'CUSTOMER_REPORTED_PAID'].includes(order.paymentStatus)) {
-      throw new BusinessRuleError('Este pagamento não pode ser confirmado no estado atual.');
-    }
-
-    const paidAt = new Date();
-    const updated = await tx.order.updateMany({
-      where: {
-        id: order.id,
-        tenantId: context.tenantId,
-        storeId: context.storeId,
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-        version: input.expectedVersion,
-      },
-      data: {
-        paymentStatus: 'PAID',
-        version: { increment: 1 },
-      },
-    });
-    if (updated.count !== 1) conflict();
-
-    const paymentUpdated = await tx.payment.updateMany({
-      where: {
-        orderId: order.id,
-        method: order.paymentMethod,
-        status: order.paymentStatus,
-      },
-      data: {
-        status: 'PAID',
-        paidAt,
-        confirmedBy: context.userId,
-      },
-    });
-    if (paymentUpdated.count !== 1) conflict();
-
-    return {
-      orderId: order.id,
-      storeId: order.storeId,
-      status: order.status,
-      paymentStatus: 'PAID',
-      version: input.expectedVersion + 1,
-      paymentUpdated: true,
     };
   });
 }
