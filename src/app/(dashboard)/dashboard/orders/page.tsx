@@ -19,12 +19,14 @@ export default async function OrdersPage() {
     timeZone: context.store.timeZone,
     userId: context.session.userId,
     tenantRole: context.session.tenantRole,
+    estimatedTimeMaxMinutes: context.store.settings?.estimatedTimeMaxMinutes ?? 50,
   });
 
   return (
     <OrdersPanel
       storeId={context.store.id}
       storeName={context.store.name}
+      storeSlug={context.store.slug}
       timeZone={context.store.timeZone}
       initialLocalDate={getStoreLocalDate(new Date(), context.store.timeZone)}
       authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}

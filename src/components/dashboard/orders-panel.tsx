@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { BellRing, RefreshCw, Volume2, VolumeX, Wifi, X } from 'lucide-react';
+import Link from 'next/link';
+import { BellRing, ExternalLink, RefreshCw, Volume2, VolumeX, Wifi, X } from 'lucide-react';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
@@ -30,18 +31,36 @@ import { DailyMetrics } from './daily-metrics';
 import { OrderDetailModal } from './order-detail-modal';
 
 const CONNECTION_LABELS = {
-  unavailable: { label: 'Atualização automática', className: 'bg-info-light text-info', icon: RefreshCw },
+  unavailable: {
+    label: 'Atualização automática',
+    className: 'bg-info-light text-info',
+    icon: RefreshCw,
+  },
   connecting: { label: 'Conectando…', className: 'bg-warning-light text-warning', icon: Wifi },
   connected: { label: 'Tempo real ativo', className: 'bg-success-light text-success', icon: Wifi },
-  degraded: { label: 'Atualização automática', className: 'bg-warning-light text-warning', icon: RefreshCw },
+  degraded: {
+    label: 'Atualização automática',
+    className: 'bg-warning-light text-warning',
+    icon: RefreshCw,
+  },
 } as const;
 
 const ALL_STATUSES: OrderStatus[] = [
-  'PENDING', 'CONFIRMED', 'PREPARING', 'READY',
-  'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED',
+  'PENDING',
+  'CONFIRMED',
+  'PREPARING',
+  'READY',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+  'CANCELLED',
 ];
 const ALL_PAYMENT_STATUSES: PaymentStatus[] = [
-  'PENDING', 'CUSTOMER_REPORTED_PAID', 'PAID', 'FAILED', 'CANCELLED', 'REFUNDED',
+  'PENDING',
+  'CUSTOMER_REPORTED_PAID',
+  'PAID',
+  'FAILED',
+  'CANCELLED',
+  'REFUNDED',
 ];
 
 const QUEUE_SECTIONS: Array<{
@@ -51,17 +70,43 @@ const QUEUE_SECTIONS: Array<{
   statuses: OrderStatus[];
 }> = [
   { key: 'new', title: 'Novos', description: 'Pedidos aguardando aceite.', statuses: ['PENDING'] },
-  { key: 'preparation', title: 'Em preparo', description: 'Pedidos aceitos e em produção.', statuses: ['CONFIRMED', 'PREPARING'] },
-  { key: 'ready', title: 'Prontos', description: 'Pedidos aguardando retirada ou despacho.', statuses: ['READY'] },
-  { key: 'delivery', title: 'Em entrega', description: 'Pedidos em rota para o cliente.', statuses: ['OUT_FOR_DELIVERY'] },
-  { key: 'finished', title: 'Encerrados', description: 'Pedidos concluídos ou cancelados.', statuses: ['DELIVERED', 'CANCELLED'] },
+  {
+    key: 'preparation',
+    title: 'Em preparo',
+    description: 'Pedidos aceitos e em produção.',
+    statuses: ['CONFIRMED', 'PREPARING'],
+  },
+  {
+    key: 'ready',
+    title: 'Prontos',
+    description: 'Pedidos aguardando retirada ou despacho.',
+    statuses: ['READY'],
+  },
+  {
+    key: 'delivery',
+    title: 'Em entrega',
+    description: 'Pedidos em rota para o cliente.',
+    statuses: ['OUT_FOR_DELIVERY'],
+  },
+  {
+    key: 'finished',
+    title: 'Encerrados',
+    description: 'Pedidos concluídos ou cancelados.',
+    statuses: ['DELIVERED', 'CANCELLED'],
+  },
 ];
 
 function OrdersSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2" aria-label="Carregando pedidos" role="status">
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className={cn('h-40 animate-pulse rounded-xl bg-surface-tertiary', index >= 2 && 'hidden md:block')} />
+        <div
+          key={index}
+          className={cn(
+            'bg-surface-tertiary h-40 animate-pulse rounded-xl',
+            index >= 2 && 'hidden md:block',
+          )}
+        />
       ))}
     </div>
   );
@@ -79,7 +124,10 @@ function groupOrders(orders: OrderQueueItemDTO[]) {
   }).filter((section) => section.orders.length > 0);
 }
 
-function filtersFromUrl(searchParams: URLSearchParams, localDate: string): Omit<OrderQueueFilters, 'cursor'> {
+function filtersFromUrl(
+  searchParams: URLSearchParams,
+  localDate: string,
+): Omit<OrderQueueFilters, 'cursor'> {
   const rawDate = searchParams.get('date');
   const rawStatus = searchParams.get('status');
   const rawStatuses = searchParams.get('statuses')?.split(',');
@@ -89,22 +137,31 @@ function filtersFromUrl(searchParams: URLSearchParams, localDate: string): Omit<
     if (!rawDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return undefined;
     const [year, month, day] = rawDate.split('-').map(Number);
     const date = new Date(Date.UTC(year, month - 1, day));
-    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    return date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
       ? rawDate
       : undefined;
   })();
-  const status = rawStatus && ALL_STATUSES.includes(rawStatus as OrderStatus)
-    ? (rawStatus as OrderStatus)
-    : undefined;
+  const status =
+    rawStatus && ALL_STATUSES.includes(rawStatus as OrderStatus)
+      ? (rawStatus as OrderStatus)
+      : undefined;
   const statuses = status
     ? undefined
-    : rawStatuses?.filter((value): value is OrderStatus => ALL_STATUSES.includes(value as OrderStatus));
-  const paymentStatus = rawPaymentStatus && ALL_PAYMENT_STATUSES.includes(rawPaymentStatus as PaymentStatus)
-    ? (rawPaymentStatus as PaymentStatus)
-    : undefined;
+    : rawStatuses?.filter((value): value is OrderStatus =>
+        ALL_STATUSES.includes(value as OrderStatus),
+      );
+  const paymentStatus =
+    rawPaymentStatus && ALL_PAYMENT_STATUSES.includes(rawPaymentStatus as PaymentStatus)
+      ? (rawPaymentStatus as PaymentStatus)
+      : undefined;
   const modality = rawModality === 'DELIVERY' || rawModality === 'PICKUP' ? rawModality : undefined;
   if (!validDate && !status && !statuses?.length && !paymentStatus && !modality) {
-    return { statuses: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'], pageSize: 30 };
+    return {
+      statuses: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'],
+      pageSize: 30,
+    };
   }
   const hasUndatedOperationalFilter = Boolean(status || statuses?.length);
 
@@ -132,6 +189,7 @@ function filtersToUrl(filters: Omit<OrderQueueFilters, 'cursor'>, orderId: strin
 export function OrdersPanel({
   storeId,
   storeName,
+  storeSlug,
   timeZone,
   initialLocalDate,
   authorizationScope,
@@ -139,6 +197,7 @@ export function OrdersPanel({
 }: {
   storeId: string;
   storeName: string;
+  storeSlug: string;
   timeZone: string;
   initialLocalDate: string;
   authorizationScope: string;
@@ -159,31 +218,41 @@ export function OrdersPanel({
       const nextFilters = typeof update === 'function' ? update(current.filters) : update;
       return {
         filters: nextFilters,
-        searchToken: nextFilters.query === current.filters.query
-          ? current.searchToken
-          : nextFilters.query ? crypto.randomUUID() : 'none',
+        searchToken:
+          nextFilters.query === current.filters.query
+            ? current.searchToken
+            : nextFilters.query
+              ? crypto.randomUUID()
+              : 'none',
       };
     });
   }, []);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(() => {
     const orderId = searchParams.get('order');
-    return orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)
+    return orderId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)
       ? orderId
       : null;
   });
   const [now, setNow] = useState(0);
-  const [recentNewOrders, setRecentNewOrders] = useState<Array<{
-    orderId: string;
-    orderNumber: number;
-  }>>([]);
+  const [recentNewOrders, setRecentNewOrders] = useState<
+    Array<{
+      orderId: string;
+      orderNumber: number;
+    }>
+  >([]);
   const notifiedOrderIds = useRef(new Set<string>());
   const sound = useOrderNotificationSound(`${authorizationScope}:${storeId}`);
   const refreshStore = (orderIds: string[] = []) => {
     void queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) });
     void queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) });
     for (const orderId of new Set(orderIds)) {
-      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId) });
-      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.history(storeId, authorizationScope, orderId) });
+      void queryClient.invalidateQueries({
+        queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: orderQueryKeys.history(storeId, authorizationScope, orderId),
+      });
     }
   };
   const processSignals = (signals: IncomingOrderSignal[]) => {
@@ -228,6 +297,7 @@ export function OrdersPanel({
   );
   const groupedOrders = useMemo(() => groupOrders(orders), [orders]);
   const firstPage = queueQuery.data?.pages[0];
+  const lastSynchronizedAt = Math.max(queueQuery.dataUpdatedAt, metricsQuery.dataUpdatedAt);
 
   useEffect(() => {
     const query = filtersToUrl(filters, selectedOrderId);
@@ -246,14 +316,19 @@ export function OrdersPanel({
     const scheduleMidnight = () => {
       const currentDate = new Date();
       const nextMidnight = getNextStoreMidnight(currentDate, timeZone);
-      timeout = window.setTimeout(() => {
-        const nextLocalDate = getStoreLocalDate(new Date(), timeZone);
-        setLocalDate((previous) => {
-          updateFilters((current) => current.date === previous ? { ...current, date: nextLocalDate } : current);
-          return nextLocalDate;
-        });
-        scheduleMidnight();
-      }, Math.max(1_000, nextMidnight.getTime() - currentDate.getTime() + 1_000));
+      timeout = window.setTimeout(
+        () => {
+          const nextLocalDate = getStoreLocalDate(new Date(), timeZone);
+          setLocalDate((previous) => {
+            updateFilters((current) =>
+              current.date === previous ? { ...current, date: nextLocalDate } : current,
+            );
+            return nextLocalDate;
+          });
+          scheduleMidnight();
+        },
+        Math.max(1_000, nextMidnight.getTime() - currentDate.getTime() + 1_000),
+      );
     };
     scheduleMidnight();
     return () => window.clearTimeout(timeout);
@@ -264,7 +339,9 @@ export function OrdersPanel({
       queueQuery.refetch(),
       metricsQuery.refetch(),
       selectedOrderId
-        ? queryClient.invalidateQueries({ queryKey: orderQueryKeys.details(storeId, authorizationScope, selectedOrderId) })
+        ? queryClient.invalidateQueries({
+            queryKey: orderQueryKeys.details(storeId, authorizationScope, selectedOrderId),
+          })
         : Promise.resolve(),
     ]);
   }
@@ -276,11 +353,24 @@ export function OrdersPanel({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Central de pedidos</h1>
-          <p className="mt-1 max-w-2xl text-sm text-text-secondary">{storeName} · operação no fuso {timeZone}</p>
+          <h1 className="text-text-primary text-2xl font-bold">Central de pedidos</h1>
+          <p className="text-text-secondary mt-1 max-w-2xl text-sm">
+            {storeName} · operação no fuso {timeZone}
+          </p>
+          <p className="text-text-secondary mt-1 text-xs" aria-live="polite">
+            {lastSynchronizedAt
+              ? `Última sincronização às ${new Intl.DateTimeFormat('pt-BR', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(lastSynchronizedAt))}`
+              : 'Sincronizando pedidos…'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={cn('inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium', connection.className)} aria-live="polite">
+          <span
+            className={cn(
+              'inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium',
+              connection.className,
+            )}
+            aria-live="polite"
+          >
             <ConnectionIcon aria-hidden="true" /> {connection.label}
           </span>
           <Button
@@ -293,29 +383,57 @@ export function OrdersPanel({
             {sound.enabled ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
             {sound.isActivating ? 'Ativando…' : sound.enabled ? 'Som ligado' : 'Ativar som'}
           </Button>
-          <Button variant="outline" size="icon" aria-label="Atualizar pedidos" onClick={refresh} disabled={queueQuery.isFetching || metricsQuery.isFetching}>
-            <RefreshCw className={queueQuery.isFetching || metricsQuery.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Atualizar pedidos"
+            onClick={refresh}
+            disabled={queueQuery.isFetching || metricsQuery.isFetching}
+          >
+            <RefreshCw
+              className={
+                queueQuery.isFetching || metricsQuery.isFetching ? 'animate-spin' : undefined
+              }
+              aria-hidden="true"
+            />
+          </Button>
+          <Button variant="outline" asChild className="gap-2">
+            <Link href={`/${storeSlug}`} target="_blank" rel="noreferrer">
+              Ver cardápio <ExternalLink aria-hidden="true" />
+            </Link>
           </Button>
         </div>
       </div>
 
       {sound.error && (
-        <p className="-mt-3 text-sm text-warning" role="status">{sound.error}</p>
+        <p className="text-warning -mt-3 text-sm" role="status">
+          {sound.error}
+        </p>
       )}
 
-      <DailyMetrics metrics={metricsQuery.data} isLoading={metricsQuery.isLoading} hasError={Boolean(metricsQuery.error)} />
-      <OrderFilters key={filters.query ?? 'no-query'} filters={filters} localDate={localDate} timeZone={timeZone} onChange={updateFilters} />
+      <DailyMetrics
+        metrics={metricsQuery.data}
+        isLoading={metricsQuery.isLoading}
+        hasError={Boolean(metricsQuery.error)}
+      />
+      <OrderFilters
+        key={filters.query ?? 'no-query'}
+        filters={filters}
+        localDate={localDate}
+        timeZone={timeZone}
+        onChange={updateFilters}
+      />
 
       {recentNewOrders.length > 0 && (
         <section
-          className="flex flex-col gap-3 rounded-xl border border-info/30 bg-info-light px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          className="border-info/30 bg-info-light flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           aria-label="Pedidos recebidos agora"
           aria-live="polite"
         >
           <div className="flex min-w-0 items-start gap-3">
-            <BellRing className="mt-0.5 shrink-0 text-info" aria-hidden="true" />
+            <BellRing className="text-info mt-0.5 shrink-0" aria-hidden="true" />
             <div>
-              <p className="font-semibold text-text-primary">
+              <p className="text-text-primary font-semibold">
                 {recentNewOrders.length === 1 ? 'Novo pedido recebido' : 'Novos pedidos recebidos'}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -327,7 +445,9 @@ export function OrdersPanel({
                     className="bg-surface font-mono"
                     onClick={() => {
                       setSelectedOrderId(order.orderId);
-                      setRecentNewOrders((current) => current.filter((item) => item.orderId !== order.orderId));
+                      setRecentNewOrders((current) =>
+                        current.filter((item) => item.orderId !== order.orderId),
+                      );
                     }}
                   >
                     Abrir #{order.orderNumber}
@@ -349,55 +469,96 @@ export function OrdersPanel({
       )}
 
       {firstPage?.hasAbnormalActiveVolume && (
-        <div className="rounded-xl border border-warning/40 bg-warning-light px-4 py-3 text-sm text-warning" role="status">
-          A loja possui {firstPage.activeOrderCount} pedidos ativos. Revise pedidos antigos e possíveis integrações pendentes.
+        <div
+          className="border-warning/40 bg-warning-light text-warning rounded-xl border px-4 py-3 text-sm"
+          role="status"
+        >
+          A loja possui {firstPage.activeOrderCount} pedidos ativos. Revise pedidos antigos e
+          possíveis integrações pendentes.
         </div>
       )}
       {queueQuery.error && hasOrders && (
-        <div className="rounded-xl border border-warning/30 bg-warning-light px-4 py-3 text-sm text-warning" role="status">
+        <div
+          className="border-warning/30 bg-warning-light text-warning rounded-xl border px-4 py-3 text-sm"
+          role="status"
+        >
           A última atualização falhou. Os pedidos carregados continuam visíveis.
         </div>
       )}
 
-      <div className={cn('min-w-0 gap-5', selectedOrderId && 'xl:grid xl:grid-cols-[minmax(0,1fr)_28rem]')}>
+      <div
+        className={cn(
+          'min-w-0 gap-5',
+          selectedOrderId && 'xl:grid xl:grid-cols-[minmax(0,1fr)_28rem]',
+        )}
+      >
         <div className="min-w-0 space-y-7">
           {queueQuery.isLoading ? (
             <OrdersSkeleton />
           ) : showBlockingError ? (
-            <div className="rounded-xl border border-error/30 bg-error-light px-4 py-8 text-center">
-              <p className="font-semibold text-error">Não foi possível carregar os pedidos.</p>
-              <p className="mt-1 text-sm text-error">Verifique sua conexão e tente novamente.</p>
-              <Button variant="outline" className="mt-4 border-error/40 text-error hover:bg-surface" onClick={() => queueQuery.refetch()}>Tentar novamente</Button>
+            <div className="border-error/30 bg-error-light rounded-xl border px-4 py-8 text-center">
+              <p className="text-error font-semibold">Não foi possível carregar os pedidos.</p>
+              <p className="text-error mt-1 text-sm">Verifique sua conexão e tente novamente.</p>
+              <Button
+                variant="outline"
+                className="border-error/40 text-error hover:bg-surface mt-4"
+                onClick={() => queueQuery.refetch()}
+              >
+                Tentar novamente
+              </Button>
             </div>
           ) : !hasOrders ? (
-            <div className="rounded-xl border border-dashed border-border bg-surface px-4 py-10 text-center">
-              <p className="font-semibold text-text-primary">Nenhum pedido encontrado</p>
-              <p className="mt-1 text-sm text-text-secondary">Ajuste a busca ou volte para os pedidos do dia da loja.</p>
-              <Button variant="ghost" className="mt-3" onClick={() => updateFilters(initialOrderFilters(localDate))}>Ver pedidos de hoje</Button>
+            <div className="border-border bg-surface rounded-xl border border-dashed px-4 py-10 text-center">
+              <p className="text-text-primary font-semibold">Nenhum pedido encontrado</p>
+              <p className="text-text-secondary mt-1 text-sm">
+                Ajuste a busca ou volte para os pedidos do dia da loja.
+              </p>
+              <Button
+                variant="ghost"
+                className="mt-3"
+                onClick={() => updateFilters(initialOrderFilters(localDate))}
+              >
+                Ver pedidos de hoje
+              </Button>
             </div>
           ) : (
             <>
               {groupedOrders.map((section) => (
                 <section key={section.key} aria-labelledby={`orders-${section.key}`}>
-                  <div className="mb-3 flex items-start justify-between gap-3 border-b border-border pb-3">
+                  <div className="border-border mb-3 flex items-start justify-between gap-3 border-b pb-3">
                     <div>
-                      <h2 id={`orders-${section.key}`} className="font-semibold text-text-primary">{section.title}</h2>
-                      <p className="mt-0.5 text-sm text-text-secondary">{section.description}</p>
+                      <h2 id={`orders-${section.key}`} className="text-text-primary font-semibold">
+                        {section.title}
+                      </h2>
+                      <p className="text-text-secondary mt-0.5 text-sm">{section.description}</p>
                     </div>
-                    <span className="rounded-full bg-surface-tertiary px-2.5 py-1 font-mono text-sm font-bold text-text-primary" aria-label={`${section.orders.length} pedidos carregados`}>
+                    <span
+                      className="bg-surface-tertiary text-text-primary rounded-full px-2.5 py-1 font-mono text-sm font-bold"
+                      aria-label={`${section.orders.length} pedidos carregados`}
+                    >
                       {section.orders.length}
                     </span>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     {section.orders.map((order) => (
-                      <OrderCard key={order.id} order={order} now={now || new Date(order.statusChangedAt).getTime()} onClick={() => setSelectedOrderId(order.id)} selected={selectedOrderId === order.id} />
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        now={now || new Date(order.stageStartedAt).getTime()}
+                        onClick={() => setSelectedOrderId(order.id)}
+                        selected={selectedOrderId === order.id}
+                      />
                     ))}
                   </div>
                 </section>
               ))}
               {queueQuery.hasNextPage && (
-                <div className="flex justify-center border-t border-border pt-5">
-                  <Button variant="outline" onClick={() => queueQuery.fetchNextPage()} disabled={queueQuery.isFetchingNextPage}>
+                <div className="border-border flex justify-center border-t pt-5">
+                  <Button
+                    variant="outline"
+                    onClick={() => queueQuery.fetchNextPage()}
+                    disabled={queueQuery.isFetchingNextPage}
+                  >
                     {queueQuery.isFetchingNextPage ? 'Carregando…' : 'Carregar mais pedidos'}
                   </Button>
                 </div>
@@ -406,7 +567,16 @@ export function OrdersPanel({
           )}
         </div>
 
-        <OrderDetailModal orderId={selectedOrderId} storeId={storeId} authorizationScope={authorizationScope} timeZone={timeZone} open={Boolean(selectedOrderId)} onOpenChange={(open) => { if (!open) setSelectedOrderId(null); }} />
+        <OrderDetailModal
+          orderId={selectedOrderId}
+          storeId={storeId}
+          authorizationScope={authorizationScope}
+          timeZone={timeZone}
+          open={Boolean(selectedOrderId)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedOrderId(null);
+          }}
+        />
       </div>
     </div>
   );

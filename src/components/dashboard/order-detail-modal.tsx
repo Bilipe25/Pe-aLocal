@@ -2,7 +2,18 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { useState } from 'react';
-import { ExternalLink, History, MapPin, Phone, Receipt, User, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Clock3,
+  ExternalLink,
+  History,
+  MapPin,
+  Phone,
+  Receipt,
+  Timer,
+  User,
+  X,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -12,6 +23,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { OrderDetailsDTO, OrderHistoryItemDTO } from '@/types/order-query';
 import { paymentStatusMap, statusMap } from './order-card';
 import { StatusActions } from './status-actions';
+import { InternalOrderNotes } from './internal-order-notes';
 
 interface OrderDetailModalProps {
   orderId: string | null;
@@ -30,24 +42,56 @@ function formatDate(value: string, timeZone: string, compact = false) {
 }
 
 function HistoryList({ entries, timeZone }: { entries: OrderHistoryItemDTO[]; timeZone: string }) {
+  const sourceLabels: Record<OrderHistoryItemDTO['source'], string> = {
+    CUSTOMER: 'Cliente',
+    DASHBOARD: 'Painel',
+    SYSTEM: 'Sistema',
+    WEBHOOK: 'Webhook',
+    SUPPORT: 'Suporte',
+    QUEUE: 'Fila',
+  };
   return (
-    <ol className="space-y-2 text-sm">
+    <ol className="space-y-3 text-sm">
       {entries.map((entry) => (
-        <li
-          key={entry.id}
-          className="border-border flex items-start justify-between gap-3 border-b pb-2 last:border-0"
-        >
-          <span className="text-text-primary min-w-0">
-            <span className="block">{statusMap[entry.toStatus].label}</span>
-            <span className="text-text-secondary block truncate text-xs">{entry.actorName}</span>
-          </span>
-          <time className="text-text-secondary shrink-0 text-xs" dateTime={entry.createdAt}>
-            {formatDate(entry.createdAt, timeZone, true)}
-          </time>
+        <li key={entry.id} className="border-border border-b pb-3 last:border-0">
+          <div className="flex items-start justify-between gap-3">
+            <span className="text-text-primary min-w-0">
+              <span className="block font-medium">
+                {entry.isUndo
+                  ? `Desfeito para ${statusMap[entry.toStatus].label}`
+                  : entry.fromStatus
+                    ? `${statusMap[entry.fromStatus].label} → ${statusMap[entry.toStatus].label}`
+                    : statusMap[entry.toStatus].label}
+              </span>
+              <span className="text-text-secondary mt-0.5 block text-xs">
+                {entry.actorName} · {sourceLabels[entry.source]}
+                {entry.versionTo !== null ? ` · versão ${entry.versionTo}` : ''}
+              </span>
+            </span>
+            <time className="text-text-secondary shrink-0 text-xs" dateTime={entry.createdAt}>
+              {formatDate(entry.createdAt, timeZone, true)}
+            </time>
+          </div>
+          {entry.reasonCode && (
+            <p className="text-text-secondary mt-2 text-xs font-medium">
+              Motivo: {entry.reasonCode.replaceAll('_', ' ')}
+            </p>
+          )}
+          {entry.note && (
+            <p className="text-text-secondary mt-1 text-xs break-words whitespace-pre-wrap">
+              {entry.note}
+            </p>
+          )}
         </li>
       ))}
     </ol>
   );
+}
+
+function durationLabel(minutes: number | null) {
+  if (minutes === null) return '—';
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
 const paymentHistoryLabels: Record<string, string> = {
@@ -161,6 +205,49 @@ function OrderDetails({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
+        <section
+          className="border-border mb-6 border-b pb-5"
+          aria-label="Tempo operacional do pedido"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-text-primary flex items-center gap-2 text-sm font-semibold">
+                <Clock3 aria-hidden="true" /> {order.operational.stageLabel}
+              </p>
+              <p className="text-text-secondary mt-1 text-xs">
+                Nesta etapa há {durationLabel(order.operational.elapsedMinutes)}
+              </p>
+            </div>
+            {order.operational.alerts.map((alert) => (
+              <span
+                key={alert.code}
+                className={
+                  alert.severity === 'critical'
+                    ? 'bg-error-light text-error inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold'
+                    : 'bg-warning-light text-warning inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold'
+                }
+              >
+                <AlertTriangle aria-hidden="true" /> {alert.label}
+              </span>
+            ))}
+          </div>
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-5">
+            {[
+              ['Aceite', order.operational.durations.acceptanceMinutes],
+              ['Preparo', order.operational.durations.preparationMinutes],
+              ['Pronto', order.operational.durations.readyMinutes],
+              ['Entrega', order.operational.durations.deliveryMinutes],
+              ['Total', order.operational.durations.totalMinutes],
+            ].map(([label, value]) => (
+              <div key={label as string}>
+                <dt className="text-text-secondary">{label}</dt>
+                <dd className="text-text-primary mt-0.5 flex items-center gap-1 font-mono font-bold">
+                  <Timer aria-hidden="true" /> {durationLabel(value as number | null)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
         <div className={dialog ? 'grid gap-6 md:grid-cols-2' : 'space-y-6'}>
           <div className="space-y-6">
             <section aria-labelledby={`customer-heading-${order.id}`}>
@@ -349,6 +436,13 @@ function OrderDetails({
               </div>
             </section>
 
+            <InternalOrderNotes
+              order={order}
+              storeId={storeId}
+              authorizationScope={authorizationScope}
+              timeZone={timeZone}
+            />
+
             {displayedHistory.length > 0 && (
               <section aria-labelledby={`history-heading-${order.id}`}>
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -388,7 +482,7 @@ function OrderDetails({
         </div>
       </div>
 
-      <div className="border-border bg-surface-secondary border-t p-4">
+      <div className="border-border bg-surface shrink-0 border-t p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-4">
         <StatusActions
           order={order}
           storeId={storeId}
@@ -462,7 +556,7 @@ export function OrderDetailModal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="bg-tinta/50 fixed inset-0 z-40" />
-        <Dialog.Content className="bg-surface fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl shadow-lg focus:outline-none">
+        <Dialog.Content className="bg-surface fixed inset-x-0 bottom-0 z-50 flex max-h-[calc(100dvh-0.75rem)] w-full flex-col overflow-hidden rounded-t-xl shadow-lg focus:outline-none sm:inset-x-4 sm:bottom-4 sm:mx-auto sm:max-w-2xl sm:rounded-xl">
           {content}
         </Dialog.Content>
       </Dialog.Portal>

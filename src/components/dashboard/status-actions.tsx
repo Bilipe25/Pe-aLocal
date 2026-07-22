@@ -203,9 +203,9 @@ export function StatusActions({
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex max-h-[36dvh] flex-col gap-3 overflow-y-auto sm:max-h-none sm:overflow-visible">
       {/* Payment Action */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="order-2 flex flex-wrap items-center gap-2 [&_button]:w-full sm:[&_button]:w-auto">
         {order.allowedActions.confirmPayment && (
           <ConfirmDialog
             title="Confirmar o pagamento?"
@@ -272,7 +272,7 @@ export function StatusActions({
       </div>
 
       {/* Status Actions */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="order-1 flex flex-wrap items-center gap-2 [&_button]:w-full sm:[&_button]:w-auto">
         {order.allowedActions.accept && (
           <Button
             onClick={() => handleMutation(acceptOrderAction, 'Pedido aceito.')}
@@ -358,7 +358,10 @@ export function StatusActions({
         )}
       </div>
       {loading && (
-        <span role="status" className="text-text-secondary inline-flex items-center gap-2 text-sm">
+        <span
+          role="status"
+          className="text-text-secondary order-3 inline-flex items-center gap-2 text-sm"
+        >
           <Loader2 className="animate-spin" aria-hidden="true" /> Atualizando pedido…
         </span>
       )}
