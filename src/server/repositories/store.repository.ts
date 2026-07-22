@@ -184,6 +184,9 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       isActive: true,
       timeZone: true,
       configurationVersion: true,
+      settings: {
+        select: { estimatedTimeMaxMinutes: true },
+      },
       tenant: {
         select: { id: true, name: true, status: true },
       },

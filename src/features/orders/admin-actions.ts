@@ -7,6 +7,7 @@ import type { OrderStatus, PaymentStatus } from '@prisma/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 import {
   cancelOrderInputSchema,
+  addInternalOrderNoteInputSchema,
   markPaymentFailedInputSchema,
   orderVersionInputSchema,
   refundPaymentInputSchema,
@@ -21,6 +22,7 @@ import type {
 } from '@/server/services/order-mutation.types';
 import type { z } from 'zod';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
+import { addOrderInternalNote } from '@/server/services/order-internal-note.service';
 
 // =============================================================================
 // Ordens — Admin Server Actions
@@ -32,6 +34,10 @@ export interface OrderActionData {
   paymentStatus: PaymentStatus;
   version: number;
   notificationPending: boolean;
+}
+
+export interface InternalOrderNoteActionData extends OrderActionData {
+  noteId: string;
 }
 
 function parseActionInput<T>(schema: z.ZodType<T>, input: unknown): T {
@@ -205,6 +211,20 @@ export async function refundPaymentAction(
     const context = await requireActiveStoreContext(Permission.REFUND_PAYMENT);
     const result = await paymentService.refundPayment(mutationContext(context), input);
     const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function addInternalOrderNoteAction(
+  rawInput: unknown,
+): Promise<ActionResult<InternalOrderNoteActionData>> {
+  try {
+    const input = parseActionInput(addInternalOrderNoteInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.ADD_INTERNAL_ORDER_NOTE);
+    const result = await addOrderInternalNote(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, true);
     return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);

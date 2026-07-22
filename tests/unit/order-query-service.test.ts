@@ -47,6 +47,7 @@ const context: OrderQueryContext = {
   timeZone: 'America/Fortaleza',
   userId: 'user-a',
   tenantRole: 'ATTENDANT',
+  estimatedTimeMaxMinutes: 50,
 };
 
 function queueOrder(id: string, createdAt: string) {
@@ -61,6 +62,12 @@ function queueOrder(id: string, createdAt: string) {
     total: 2500,
     createdAt: new Date(createdAt),
     statusChangedAt: new Date(createdAt),
+    acceptedAt: null,
+    preparingAt: null,
+    readyAt: null,
+    dispatchedAt: null,
+    deliveredAt: null,
+    cancelledAt: null,
     version: 0,
     notes: null,
     _count: { items: 2 },
@@ -316,6 +323,11 @@ describe('OrderQueryService', () => {
       version: 3,
       createdAt: new Date('2026-07-21T12:00:00.000Z'),
       statusChangedAt: new Date('2026-07-21T12:10:00.000Z'),
+      acceptedAt: new Date('2026-07-21T12:01:00.000Z'),
+      preparingAt: new Date('2026-07-21T12:02:00.000Z'),
+      readyAt: new Date('2026-07-21T12:10:00.000Z'),
+      dispatchedAt: null,
+      deliveredAt: null,
       cancellationReasonCode: null,
       cancellationNote: null,
       cancelledAt: null,

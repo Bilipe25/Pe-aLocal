@@ -2,7 +2,13 @@ import 'server-only';
 
 import type { OrderModality, OrderStatus, PaymentMethodType, Prisma } from '@prisma/client';
 
-import { canTransitionOrder } from '@/domain/orders/order-workflow';
+import { getOrderOperationalSnapshot } from '@/domain/orders/order-operations';
+import {
+  canTransitionOrder,
+  getNextOperationalAction,
+  getOrderWorkflowLabel,
+  type OrderOperationalAction,
+} from '@/domain/orders/order-workflow';
 import { canTransitionPayment } from '@/domain/orders/payment-workflow';
 import { getOrderCapabilities } from '@/features/orders/capabilities';
 import type { OrderHistoryInput } from '@/features/orders/query-schemas';
@@ -47,6 +53,7 @@ export interface OrderQueryContext {
   timeZone: string;
   userId: string;
   tenantRole: TenantRole;
+  estimatedTimeMaxMinutes?: number;
 }
 
 function orderIdFromAudit(entry: {
@@ -56,7 +63,7 @@ function orderIdFromAudit(entry: {
 }) {
   if (entry.entity === 'Order') return entry.entityId;
   if (
-    entry.entity === 'Payment' &&
+    (entry.entity === 'Payment' || entry.entity === 'OrderInternalNote') &&
     entry.metadata &&
     typeof entry.metadata === 'object' &&
     !Array.isArray(entry.metadata) &&
@@ -75,7 +82,7 @@ export async function getOrderNotificationSignals(
   const auditScope = {
     tenantId: context.tenantId,
     storeId: context.storeId,
-    entity: { in: ['Order', 'Payment'] },
+    entity: { in: ['Order', 'Payment', 'OrderInternalNote'] },
   } satisfies Prisma.AuditLogWhereInput;
 
   if (!cursor) {
@@ -282,6 +289,28 @@ function paymentHistoryItem(entry: {
   };
 }
 
+function nextActionLabel(
+  context: OrderQueryContext,
+  order: Pick<OrderDetailsDTO, 'status' | 'modality'> & {
+    paymentMethod: PaymentMethodType;
+    paymentStatus: OrderDetailsDTO['payment']['status'];
+  },
+) {
+  if (order.status === 'AWAITING_PAYMENT') return null;
+  const capabilities = getOrderCapabilities(context.tenantRole);
+  const action = getNextOperationalAction(order);
+  const allowed: Record<OrderOperationalAction, boolean> = {
+    CONFIRM_ORDER: capabilities.canAcceptOrder,
+    START_PREPARATION: capabilities.canStartPreparation,
+    MARK_ORDER_READY: capabilities.canMarkReady,
+    DISPATCH_FOR_DELIVERY: capabilities.canDispatch,
+    CONFIRM_PAYMENT: capabilities.canConfirmPayment,
+    COMPLETE_PICKUP: capabilities.canComplete,
+    COMPLETE_DELIVERY: capabilities.canComplete,
+  };
+  return action && allowed[action] ? getOrderWorkflowLabel(action) : null;
+}
+
 export async function getOrderQueue(
   context: OrderQueryContext,
   filters: OrderQueueFilters,
@@ -339,6 +368,12 @@ export async function getOrderQueue(
           total: true,
           createdAt: true,
           statusChangedAt: true,
+          acceptedAt: true,
+          preparingAt: true,
+          readyAt: true,
+          dispatchedAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
           version: true,
           notes: true,
           _count: { select: { items: true } },
@@ -368,22 +403,32 @@ export async function getOrderQueue(
     }
 
     return {
-      items: page.map((order) => ({
-        id: order.id,
-        orderNumber: order.orderNumber,
-        customerDisplayName: order.customerName,
-        modality: order.modality,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        status: order.status,
-        total: order.total,
-        itemCount: order._count.items,
-        createdAt: order.createdAt.toISOString(),
-        statusChangedAt: order.statusChangedAt.toISOString(),
-        version: order.version,
-        hasCustomerNotes: Boolean(order.notes) || order.items.length > 0,
-        hasInternalAlerts: false,
-      })),
+      items: page.map((order) => {
+        const operational = getOrderOperationalSnapshot({
+          ...order,
+          estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
+        });
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerDisplayName: order.customerName,
+          modality: order.modality,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
+          status: order.status,
+          total: order.total,
+          itemCount: order._count.items,
+          createdAt: order.createdAt.toISOString(),
+          statusChangedAt: order.statusChangedAt.toISOString(),
+          stageStartedAt: operational.stageStartedAt.toISOString(),
+          stageLabel: operational.stageLabel,
+          stageAlerts: operational.alerts,
+          nextActionLabel: nextActionLabel(context, order),
+          version: order.version,
+          hasCustomerNotes: Boolean(order.notes) || order.items.length > 0,
+          hasOperationalAlert: operational.alerts.length > 0,
+        };
+      }),
       nextCursor:
         hasNextPage && last ? encodeOrderCursor({ createdAt: last.createdAt, id: last.id }) : null,
       activeOrderCount,
@@ -450,6 +495,10 @@ function allowedActions(
       undoRecent &&
       ['CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(order.status),
     ),
+    viewCustomerContact: capabilities.canViewCustomerContact,
+    viewPaymentDetails: capabilities.canViewPaymentDetails,
+    viewHistory: capabilities.canViewHistory,
+    addInternalNote: capabilities.canAddInternalNote,
   };
 }
 
@@ -482,6 +531,11 @@ export async function getOrderDetails(
         version: true,
         createdAt: true,
         statusChangedAt: true,
+        acceptedAt: true,
+        preparingAt: true,
+        readyAt: true,
+        dispatchedAt: true,
+        deliveredAt: true,
         cancellationReasonCode: true,
         cancellationNote: true,
         cancelledAt: true,
@@ -547,6 +601,10 @@ export async function getOrderDetails(
       throw new OrderPaymentConsistencyError();
     }
     const latestHistory = order.statusHistory[0] ?? null;
+    const operational = getOrderOperationalSnapshot({
+      ...order,
+      estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
+    });
     const paymentHistory = capabilities.canViewHistory
       ? await database.paymentStatusHistory.findMany({
           where: {
@@ -653,6 +711,13 @@ export async function getOrderDetails(
       lastChangedBy: capabilities.canViewHistory
         ? (latestHistory?.actorNameSnapshot ?? null)
         : null,
+      operational: {
+        stageLabel: operational.stageLabel,
+        stageStartedAt: operational.stageStartedAt.toISOString(),
+        elapsedMinutes: operational.elapsedMinutes,
+        alerts: operational.alerts,
+        durations: operational.durations,
+      },
       allowedActions: allowedActions(context, order, latestHistory),
     };
   });

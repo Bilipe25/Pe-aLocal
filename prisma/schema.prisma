@@ -113,6 +113,7 @@ enum OrderOutboxEventType {
   ORDER_COMPLETED
   ORDER_CANCELLED
   ORDER_TRANSITION_UNDONE
+  ORDER_INTERNAL_NOTE_ADDED
   PAYMENT_UPDATED
 }
 
@@ -275,6 +276,7 @@ model User {
   slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
   ordersCancelled           Order[]                      @relation("OrderCancelledBy")
   orderStatusChanges        OrderStatusHistory[]         @relation("OrderStatusChangedBy")
+  orderInternalNotes        OrderInternalNote[]          @relation("OrderInternalNoteAuthor")
   paymentStatusChanges      PaymentStatusHistory[]       @relation("PaymentStatusChangedBy")
 
   @@index([email])
@@ -926,6 +928,7 @@ model Order {
 
   items          OrderItem[]
   statusHistory  OrderStatusHistory[]
+  internalNotes  OrderInternalNote[]
   payment        Payment?
   outboxEvents   OrderOutboxEvent[]
   paymentHistory PaymentStatusHistory[]
@@ -946,6 +949,24 @@ model Order {
   @@index([storeId, status, statusChangedAt, id])
   @@index([storeId, customerPhoneNormalized, createdAt, id])
   @@map("orders")
+}
+
+model OrderInternalNote {
+  id           String   @id @default(uuid())
+  tenantId     String
+  storeId      String
+  orderId      String
+  authorUserId String
+  body         String   @db.VarChar(1000)
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  order  Order @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  author User  @relation("OrderInternalNoteAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt, id])
+  @@index([tenantId, storeId, createdAt, id])
+  @@map("order_internal_notes")
 }
 
 model OrderItem {

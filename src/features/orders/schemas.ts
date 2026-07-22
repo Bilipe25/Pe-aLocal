@@ -92,8 +92,18 @@ export const reportPixPaymentInputSchema = z.object({
   reportToken: z.string().uuid('O código para informar o pagamento é inválido.'),
 });
 
+export const addInternalOrderNoteInputSchema = orderVersionInputSchema.extend({
+  body: z
+    .string()
+    .trim()
+    .min(1, 'Escreva a observação interna.')
+    .max(1000, 'A observação interna deve ter no máximo 1000 caracteres.')
+    .refine((value) => !/<[^>]*>/.test(value), 'A observação interna não pode conter HTML.'),
+});
+
 export type OrderVersionInput = z.infer<typeof orderVersionInputSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderInputSchema>;
 export type MarkPaymentFailedInput = z.infer<typeof markPaymentFailedInputSchema>;
 export type RefundPaymentInput = z.infer<typeof refundPaymentInputSchema>;
 export type ReportPixPaymentInput = z.infer<typeof reportPixPaymentInputSchema>;
+export type AddInternalOrderNoteInput = z.infer<typeof addInternalOrderNoteInputSchema>;

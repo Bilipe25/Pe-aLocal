@@ -1,14 +1,12 @@
 'use client';
 
-import {
-  useInfiniteQuery,
-  useQuery,
-} from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import {
   getDailyOrderMetricsAction,
   getOrderDetailsAction,
   getOrderHistoryAction,
+  getOrderInternalNotesAction,
   getOrderNotificationSignalsAction,
   getOrderQueueAction,
 } from '@/features/orders/query-actions';
@@ -28,6 +26,8 @@ export const orderQueryKeys = {
     ['order-details', storeId, authorizationScope, orderId] as const,
   history: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
     ['order-history', storeId, authorizationScope, orderId] as const,
+  internalNotes: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
+    ['order-internal-notes', storeId, authorizationScope, orderId] as const,
   metrics: (storeId: string | null, authorizationScope: string, localDate: string) =>
     ['order-metrics', storeId, authorizationScope, localDate] as const,
   metricsStore: (storeId: string | null) => ['order-metrics', storeId] as const,
@@ -45,7 +45,9 @@ function safeFilterKey(filters: Omit<OrderQueueFilters, 'cursor'>) {
   return safeFilters;
 }
 
-function actionData<T>(result: { success: true; data: T } | { success: false; error: { message: string } }): T {
+function actionData<T>(
+  result: { success: true; data: T } | { success: false; error: { message: string } },
+): T {
   if (!result.success) throw new Error(result.error.message);
   return result.data;
 }
@@ -80,12 +82,14 @@ export function useOrderNotificationSignals(
   authorizationScope: string,
   initialBaseline: OrderNotificationSignalsDTO,
   pollingInterval: number,
-  onSignals: (signals: Array<{
-    eventId: string;
-    orderId: string;
-    orderNumber: number;
-    isNew: boolean;
-  }>) => void,
+  onSignals: (
+    signals: Array<{
+      eventId: string;
+      orderId: string;
+      orderNumber: number;
+      isNew: boolean;
+    }>,
+  ) => void,
   onReconcileRequired: () => void,
 ) {
   const emitSignals = useEffectEvent(onSignals);
@@ -123,10 +127,12 @@ export function useOrderNotificationSignals(
         let hasMore = false;
         let pages = 0;
         do {
-          const data = actionData(await getOrderNotificationSignalsAction({
-            cursor,
-            seenEventIds: [...processedEventIds.keys()],
-          }));
+          const data = actionData(
+            await getOrderNotificationSignalsAction({
+              cursor,
+              seenEventIds: [...processedEventIds.keys()],
+            }),
+          );
           if (stopped) return;
           cursor = data.nextCursor;
           const observedAt = Date.now();
@@ -180,7 +186,6 @@ export function useOrderNotificationSignals(
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
   }, [authorizationScope, storeId]);
-
 }
 
 export function useOrderDetails(
@@ -200,6 +205,8 @@ export function useOrderDetails(
     retry: 1,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -226,6 +233,33 @@ export function useOrderHistory(
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: Boolean(enabled && storeId && orderId),
     staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useOrderInternalNotes(
+  storeId: string | null,
+  authorizationScope: string,
+  orderId: string | null,
+  enabled: boolean,
+) {
+  return useInfiniteQuery({
+    queryKey: orderQueryKeys.internalNotes(storeId, authorizationScope, orderId),
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam, signal }) => {
+      if (!orderId) throw new Error('Pedido não selecionado.');
+      if (signal.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+      return actionData(
+        await getOrderInternalNotesAction({
+          orderId,
+          cursor: pageParam ?? undefined,
+          pageSize: 20,
+        }),
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: Boolean(enabled && storeId && orderId),
+    staleTime: 15_000,
     retry: 1,
   });
 }

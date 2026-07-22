@@ -29,9 +29,26 @@ export interface OrderQueueItemDTO {
   itemCount: number;
   createdAt: string;
   statusChangedAt: string;
+  stageStartedAt: string;
+  stageLabel: string;
+  stageAlerts: OrderOperationalAlertDTO[];
+  nextActionLabel: string | null;
   version: number;
   hasCustomerNotes: boolean;
-  hasInternalAlerts: boolean;
+  hasOperationalAlert: boolean;
+}
+
+export interface OrderOperationalAlertDTO {
+  code:
+    | 'ACCEPTANCE_OVERDUE'
+    | 'PREPARATION_OVERDUE'
+    | 'READY_WAITING_PICKUP'
+    | 'READY_WAITING_DISPATCH'
+    | 'DELIVERY_OVERDUE'
+    | 'PAYMENT_REVIEW_REQUIRED'
+    | 'PAYMENT_OVERDUE';
+  label: string;
+  severity: 'warning' | 'critical';
 }
 
 export interface OrderQueuePageDTO {
@@ -68,6 +85,22 @@ export interface OrderAllowedActionsDTO {
   retryPayment: boolean;
   refundPayment: boolean;
   undo: boolean;
+  viewCustomerContact: boolean;
+  viewPaymentDetails: boolean;
+  viewHistory: boolean;
+  addInternalNote: boolean;
+}
+
+export interface OrderInternalNoteDTO {
+  id: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+}
+
+export interface OrderInternalNotesPageDTO {
+  items: OrderInternalNoteDTO[];
+  nextCursor: string | null;
 }
 
 export interface PaymentHistoryItemDTO {
@@ -155,6 +188,19 @@ export interface OrderDetailsDTO {
   createdAt: string;
   statusChangedAt: string;
   lastChangedBy: string | null;
+  operational: {
+    stageLabel: string;
+    stageStartedAt: string;
+    elapsedMinutes: number;
+    alerts: OrderOperationalAlertDTO[];
+    durations: {
+      acceptanceMinutes: number | null;
+      preparationMinutes: number | null;
+      readyMinutes: number | null;
+      deliveryMinutes: number | null;
+      totalMinutes: number;
+    };
+  };
   allowedActions: OrderAllowedActionsDTO;
 }
 

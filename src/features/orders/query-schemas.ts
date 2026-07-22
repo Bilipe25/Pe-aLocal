@@ -74,6 +74,11 @@ export const orderHistoryInputSchema = orderDetailsInputSchema.extend({
   pageSize: z.number().int().min(1).max(50).default(20),
 });
 
+export const orderInternalNotesInputSchema = orderDetailsInputSchema.extend({
+  cursor: z.string().max(2_048).optional(),
+  pageSize: z.number().int().min(1).max(50).default(20),
+});
+
 export const dailyMetricsInputSchema = z.object({
   localDate: localDateSchema,
 });
@@ -86,4 +91,5 @@ export const orderNotificationSignalsInputSchema = z.object({
 export type OrderQueueFiltersInput = z.input<typeof orderQueueFiltersSchema>;
 export type ParsedOrderQueueFilters = z.output<typeof orderQueueFiltersSchema>;
 export type OrderHistoryInput = z.output<typeof orderHistoryInputSchema>;
+export type OrderInternalNotesInput = z.output<typeof orderInternalNotesInputSchema>;
 export type OrderNotificationSignalsInput = z.output<typeof orderNotificationSignalsInputSchema>;

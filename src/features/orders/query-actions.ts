@@ -6,12 +6,14 @@ import {
   dailyMetricsInputSchema,
   orderDetailsInputSchema,
   orderHistoryInputSchema,
+  orderInternalNotesInputSchema,
   orderNotificationSignalsInputSchema,
   orderQueueFiltersSchema,
 } from '@/features/orders/query-schemas';
 import { actionError, actionSuccess, ValidationError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import * as queryService from '@/server/services/order-query.service';
+import { getOrderInternalNotes } from '@/server/services/order-internal-note.service';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 function parseInput<T>(schema: z.ZodType<T>, input: unknown): T {
@@ -37,6 +39,7 @@ function queryContext(
     timeZone: context.store.timeZone,
     userId: context.session.userId,
     tenantRole: context.session.tenantRole,
+    estimatedTimeMaxMinutes: context.store.settings?.estimatedTimeMaxMinutes ?? 50,
   };
 }
 
@@ -54,9 +57,7 @@ export async function getOrderDetailsAction(rawInput: unknown) {
   try {
     const input = parseInput(orderDetailsInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.VIEW_ORDER_DETAILS);
-    return actionSuccess(
-      await queryService.getOrderDetails(queryContext(context), input.orderId),
-    );
+    return actionSuccess(await queryService.getOrderDetails(queryContext(context), input.orderId));
   } catch (error) {
     return actionError(error);
   }
@@ -69,6 +70,16 @@ export async function getOrderHistoryAction(rawInput: unknown) {
     return actionSuccess(
       await queryService.getOrderHistory(queryContext(context), input.orderId, input),
     );
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getOrderInternalNotesAction(rawInput: unknown) {
+  try {
+    const input = parseInput(orderInternalNotesInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.VIEW_ORDER_HISTORY);
+    return actionSuccess(await getOrderInternalNotes(queryContext(context), input.orderId, input));
   } catch (error) {
     return actionError(error);
   }

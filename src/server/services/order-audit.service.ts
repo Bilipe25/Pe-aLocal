@@ -129,3 +129,34 @@ export async function writeOrderCreatedAudit(
   );
   return audit.id;
 }
+
+export async function writeOrderInternalNoteAudit(
+  tx: Prisma.TransactionClient,
+  context: OrderAuditContext,
+  data: {
+    orderId: string;
+    noteId: string;
+    bodyLength: number;
+    previousVersion: number;
+    nextVersion: number;
+  },
+): Promise<string> {
+  const audit = await auditRepo.createAuditLog(
+    {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      userId: context.userId,
+      action: 'ORDER_INTERNAL_NOTE_ADDED',
+      entity: 'OrderInternalNote',
+      entityId: data.noteId,
+      metadata: {
+        orderId: data.orderId,
+        bodyLength: data.bodyLength,
+        previousVersion: data.previousVersion,
+        nextVersion: data.nextVersion,
+      },
+    },
+    tx,
+  );
+  return audit.id;
+}

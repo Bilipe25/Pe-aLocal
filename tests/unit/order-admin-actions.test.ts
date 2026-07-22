@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acceptOrderAction,
+  addInternalOrderNoteAction,
   cancelOrderAction,
   completeOrderAction,
   confirmPaymentAction,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   triggerOrderUpdated: vi.fn(),
   triggerPaymentUpdated: vi.fn(),
   dispatchCommittedOrderEvents: vi.fn(),
+  addOrderInternalNote: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({ getDb: vi.fn() }));
@@ -50,6 +52,9 @@ vi.mock('@/lib/pusher/server', () => ({
 }));
 vi.mock('@/server/services/order-event-dispatch.service', () => ({
   dispatchCommittedOrderEvents: mocks.dispatchCommittedOrderEvents,
+}));
+vi.mock('@/server/services/order-internal-note.service', () => ({
+  addOrderInternalNote: mocks.addOrderInternalNote,
 }));
 
 const input = {
@@ -105,6 +110,10 @@ describe('ações administrativas de pedidos', () => {
     mocks.triggerOrderUpdated.mockResolvedValue({});
     mocks.triggerPaymentUpdated.mockResolvedValue({});
     mocks.dispatchCommittedOrderEvents.mockResolvedValue({ notificationPending: false });
+    mocks.addOrderInternalNote.mockResolvedValue({
+      ...mutationResult,
+      noteId: 'note-a',
+    });
   });
 
   it('valida o input antes de consultar sessão ou banco', async () => {
@@ -169,6 +178,22 @@ describe('ações administrativas de pedidos', () => {
 
     expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(Permission.REFUND_PAYMENT);
     expect(mocks.refundPayment).toHaveBeenCalledOnce();
+  });
+
+  it('observação interna exige permissão específica e contexto confiável', async () => {
+    const result = await addInternalOrderNoteAction({
+      ...input,
+      body: 'Confirmar retirada com o cliente.',
+    });
+
+    expect(result).toMatchObject({ success: true, data: { noteId: 'note-a', version: 3 } });
+    expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(
+      Permission.ADD_INTERNAL_ORDER_NOTE,
+    );
+    expect(mocks.addOrderInternalNote).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a', userId: 'user-a' }),
+      expect.objectContaining({ orderId: input.orderId, expectedVersion: 2 }),
+    );
   });
 
   it('falha do Pusher não transforma uma operação persistida em erro', async () => {
