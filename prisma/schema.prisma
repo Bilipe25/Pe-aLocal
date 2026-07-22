@@ -1009,16 +1009,26 @@ model OrderStatusHistory {
 // =============================================================================
 
 model Payment {
-  id          String            @id @default(uuid())
-  orderId     String            @unique
-  method      PaymentMethodType
-  status      PaymentStatus     @default(PENDING)
-  amount      Int // Em centavos
-  paidAt      DateTime?
-  confirmedBy String? // userId que confirmou
-  notes       String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                String            @id @default(uuid())
+  orderId           String            @unique
+  method            PaymentMethodType
+  status            PaymentStatus     @default(PENDING)
+  amount            Int // Em centavos
+  paidAt            DateTime?
+  confirmedBy       String? // legado: userId que confirmou
+  reportedAt        DateTime?
+  failedAt          DateTime?
+  failureReasonCode String?            @db.VarChar(64)
+  failureNote       String?            @db.VarChar(500)
+  cancelledAt       DateTime?
+  refundedAt        DateTime?
+  refundedBy        String?
+  refundReasonCode  String?            @db.VarChar(64)
+  refundNote        String?            @db.VarChar(500)
+  refundAmount      Int?
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
