@@ -1,9 +1,12 @@
 'use client';
 
-import { Check, Copy, MessageCircle } from 'lucide-react';
-import { useState } from 'react';
+import { Check, CheckCircle2, Copy, Loader2, MessageCircle } from 'lucide-react';
+import { useState, useSyncExternalStore, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
+import { reportPixPaymentAction } from '@/features/orders/actions';
+import type { PaymentStatus } from '@/types';
 
 interface PixPaymentInfoProps {
   pixKeyType: string | null;
@@ -15,6 +18,18 @@ interface PixPaymentInfoProps {
   orderNumber: number;
   storeWhatsapp: string | null;
   storeName: string;
+  publicToken: string;
+  paymentStatus: PaymentStatus;
+}
+
+const subscribeToPaymentReportToken = () => () => {};
+
+function readPaymentReportToken(publicToken: string): string | null {
+  try {
+    return window.sessionStorage.getItem(`payment-report:${publicToken}`);
+  } catch {
+    return null;
+  }
 }
 
 export function PixPaymentInfo({
@@ -27,12 +42,68 @@ export function PixPaymentInfo({
   orderNumber,
   storeWhatsapp,
   storeName,
+  publicToken,
+  paymentStatus,
 }: PixPaymentInfoProps) {
   const [copied, setCopied] = useState(false);
+  const [reportedStatus, setReportedStatus] = useState<PaymentStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+  const reportToken = useSyncExternalStore(
+    subscribeToPaymentReportToken,
+    () => readPaymentReportToken(publicToken),
+    () => null,
+  );
+
+  const currentStatus =
+    paymentStatus === 'PENDING' ? (reportedStatus ?? paymentStatus) : paymentStatus;
+
+  function handleReportPayment() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (!reportToken) return;
+        const result = await reportPixPaymentAction({ reportToken });
+        if (!result.success) {
+          setError(result.error.message);
+          return;
+        }
+        setReportedStatus(result.data.paymentStatus);
+        router.refresh();
+      } catch {
+        setError('Não foi possível informar o pagamento agora. Tente novamente.');
+      }
+    });
+  }
+
+  if (currentStatus === 'CUSTOMER_REPORTED_PAID' || currentStatus === 'PAID') {
+    return (
+      <div
+        className="border-erva/30 bg-success-light text-tinta rounded-xl border p-4 text-sm"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="text-erva mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div>
+            <h3 className="font-display font-bold">
+              {currentStatus === 'PAID' ? 'Pagamento confirmado' : 'Pagamento informado'}
+            </h3>
+            <p className="text-text-muted mt-1">
+              {currentStatus === 'PAID'
+                ? 'A loja confirmou o recebimento do seu Pix.'
+                : 'A loja recebeu seu aviso e fará a conferência do Pix.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!pixKey) {
     return (
-      <div className="rounded-xl border border-pimenta/20 bg-pimenta/5 p-4 text-sm text-tinta">
+      <div className="border-pimenta/20 bg-pimenta/5 text-tinta rounded-xl border p-4 text-sm">
         Chave Pix não configurada. Entre em contato com a loja.
       </div>
     );
@@ -58,30 +129,30 @@ export function PixPaymentInfo({
     : null;
 
   return (
-    <div className="rounded-xl border border-tinta/10 bg-papel p-4 shadow-sm">
-      <h3 className="font-display text-base font-bold text-tinta">Pagamento via Pix</h3>
+    <div className="border-tinta/10 bg-papel rounded-xl border p-4 shadow-sm">
+      <h3 className="font-display text-tinta text-base font-bold">Pagamento via Pix</h3>
 
       <div className="mt-3 space-y-2 text-sm">
         {pixKeyType && (
           <div className="flex justify-between gap-3">
             <span className="text-text-muted">Tipo de chave</span>
-            <span className="break-words text-right text-tinta">{pixKeyType}</span>
+            <span className="text-tinta text-right break-words">{pixKeyType}</span>
           </div>
         )}
         <div className="flex items-center justify-between gap-2">
-          <span className="shrink-0 text-text-muted">Chave Pix</span>
+          <span className="text-text-muted shrink-0">Chave Pix</span>
           <div className="flex min-w-0 items-center gap-1">
-            <code className="min-w-0 break-all rounded bg-kraft/50 px-2 py-1 font-mono text-sm font-bold text-tinta">
+            <code className="bg-kraft/50 text-tinta min-w-0 rounded px-2 py-1 font-mono text-sm font-bold break-all">
               {pixKey}
             </code>
             <button
               type="button"
               onClick={handleCopy}
               aria-label={copied ? 'Chave Pix copiada' : 'Copiar chave Pix'}
-              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-tinta/5 hover:text-tinta"
+              className="text-text-muted hover:bg-tinta/5 hover:text-tinta flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md"
             >
               {copied ? (
-                <Check className="h-4 w-4 text-erva" aria-hidden="true" />
+                <Check className="text-erva h-4 w-4" aria-hidden="true" />
               ) : (
                 <Copy className="h-4 w-4" aria-hidden="true" />
               )}
@@ -94,13 +165,13 @@ export function PixPaymentInfo({
         {pixRecipient && (
           <div className="flex justify-between gap-3">
             <span className="text-text-muted">Beneficiário</span>
-            <span className="break-words text-right text-tinta">{pixRecipient}</span>
+            <span className="text-tinta text-right break-words">{pixRecipient}</span>
           </div>
         )}
         {pixBank && (
           <div className="flex justify-between gap-3">
             <span className="text-text-muted">Banco</span>
-            <span className="break-words text-right text-tinta">{pixBank}</span>
+            <span className="text-tinta text-right break-words">{pixBank}</span>
           </div>
         )}
         <div className="flex justify-between gap-3 font-semibold">
@@ -110,19 +181,45 @@ export function PixPaymentInfo({
       </div>
 
       {pixInstructions && (
-        <p className="mt-3 break-words text-sm text-text-muted italic">{pixInstructions}</p>
+        <p className="text-text-muted mt-3 text-sm break-words italic">{pixInstructions}</p>
       )}
 
       {whatsappUrl && (
         <Button
           asChild
-          className="mt-3 w-full bg-erva font-body font-medium text-white hover:bg-erva/90"
+          className="bg-erva font-body hover:bg-erva/90 mt-3 w-full font-medium text-white"
         >
           <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
             <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
             Enviar comprovante via WhatsApp
           </a>
         </Button>
+      )}
+
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-3 w-full"
+        disabled={isPending || !reportToken}
+        aria-busy={isPending}
+        onClick={handleReportPayment}
+      >
+        {isPending ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
+        )}
+        {isPending ? 'Informando pagamento…' : 'Já paguei'}
+      </Button>
+      <p className="text-text-muted mt-2 text-xs">
+        {reportToken
+          ? 'Use esta opção somente depois de concluir o Pix. A loja ainda verificará o recebimento.'
+          : 'Para informar o pagamento por aqui, use a mesma aba ou sessão em que o pedido foi realizado.'}
+      </p>
+      {error && (
+        <p className="bg-error-light text-error mt-2 rounded-lg px-3 py-2 text-sm" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

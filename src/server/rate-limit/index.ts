@@ -4,12 +4,14 @@ export interface RateLimitInput {
   identifier: string;
   maxAttempts: number;
   windowInSeconds: number;
+  strict?: boolean;
 }
 
 export interface RateLimitResult {
   allowed: boolean;
   remaining: number;
   resetAt: number;
+  unavailable?: boolean;
 }
 
 export interface RateLimiter {
@@ -18,6 +20,7 @@ export interface RateLimiter {
 }
 
 function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
+  if (identifier.startsWith('report-payment:')) return env.PAYMENT_REPORT_RATE_LIMITER;
   return identifier.startsWith('login:') || identifier.startsWith('password-recovery:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
@@ -39,9 +42,10 @@ class WorkersRateLimiter implements RateLimiter {
       // `next dev` e testes Node não possuem o binding. Supabase ainda aplica
       // seus limites; o limite distribuído é obrigatório no preview/deploy.
       return {
-        allowed: true,
+        allowed: !input.strict,
         remaining: input.maxAttempts,
         resetAt: Date.now() + input.windowInSeconds * 1000,
+        unavailable: input.strict,
       };
     }
   }

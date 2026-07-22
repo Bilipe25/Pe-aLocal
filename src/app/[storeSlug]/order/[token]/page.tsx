@@ -13,6 +13,12 @@ import { getOrderByPublicToken } from '@/server/repositories/order.repository';
 import { getCanonicalPublicStoreSlug } from '@/server/queries/public-store';
 import { formatCurrency } from '@/lib/utils';
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
+import { cache } from 'react';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const getTrackedOrder = cache(getOrderByPublicToken);
 
 interface OrderPageProps {
   params: Promise<{ storeSlug: string; token: string }>;
@@ -20,14 +26,20 @@ interface OrderPageProps {
 
 export async function generateMetadata({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
-  const order = await getOrderByPublicToken(token);
+  const order = await getTrackedOrder(token);
 
   if (!order || order.store.slug !== storeSlug) {
-    return { title: 'Pedido não encontrado' };
+    return {
+      title: 'Pedido não encontrado',
+      robots: { index: false, follow: false, nocache: true },
+      referrer: 'no-referrer',
+    };
   }
 
   return {
     title: `Pedido #${order.orderNumber} - ${order.store.name}`,
+    robots: { index: false, follow: false, nocache: true },
+    referrer: 'no-referrer',
   };
 }
 
@@ -65,9 +77,18 @@ const paymentMap = {
   CARD_ON_DELIVERY: 'Cartão na Entrega',
 };
 
+const paymentStatusMap = {
+  PENDING: 'Pagamento pendente',
+  CUSTOMER_REPORTED_PAID: 'Pagamento informado',
+  PAID: 'Pagamento confirmado',
+  FAILED: 'Pagamento não identificado',
+  CANCELLED: 'Pagamento cancelado',
+  REFUNDED: 'Pagamento reembolsado',
+};
+
 export default async function OrderPage({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
-  const order = await getOrderByPublicToken(token);
+  const order = await getTrackedOrder(token);
 
   if (!order || order.store.slug !== storeSlug) {
     const canonicalSlug = order ? await getCanonicalPublicStoreSlug(storeSlug) : null;
@@ -118,19 +139,22 @@ export default async function OrderPage({ params }: OrderPageProps) {
         </div>
 
         {/* Pix Instructions */}
-        {order.paymentMethod === 'PIX' && order.paymentStatus === 'PENDING' && (
-          <PixPaymentInfo
-            pixKeyType={order.store.settings?.pixKeyType ?? null}
-            pixKey={order.store.settings?.pixKey ?? null}
-            pixRecipient={order.store.settings?.pixRecipient ?? null}
-            pixBank={order.store.settings?.pixBank ?? null}
-            pixInstructions={order.store.settings?.pixInstructions ?? null}
-            total={order.total}
-            orderNumber={order.orderNumber}
-            storeWhatsapp={order.store.whatsapp}
-            storeName={order.store.name}
-          />
-        )}
+        {order.paymentMethod === 'PIX' &&
+          ['PENDING', 'CUSTOMER_REPORTED_PAID'].includes(order.paymentStatus) && (
+            <PixPaymentInfo
+              pixKeyType={order.store.settings?.pixKeyType ?? null}
+              pixKey={order.store.settings?.pixKey ?? null}
+              pixRecipient={order.store.settings?.pixRecipient ?? null}
+              pixBank={order.store.settings?.pixBank ?? null}
+              pixInstructions={order.store.settings?.pixInstructions ?? null}
+              total={order.total}
+              orderNumber={order.orderNumber}
+              storeWhatsapp={order.store.whatsapp}
+              storeName={order.store.name}
+              publicToken={order.publicToken}
+              paymentStatus={order.paymentStatus}
+            />
+          )}
 
         {/* Resumo dos Itens */}
         <section className="border-tinta/10 bg-papel rounded-xl border p-4 shadow-sm">
@@ -211,6 +235,9 @@ export default async function OrderPage({ params }: OrderPageProps) {
               </div>
               <p className="text-tinta text-sm leading-tight font-medium">
                 {paymentMap[order.paymentMethod]}
+              </p>
+              <p className="text-text-muted mt-1 text-sm">
+                {paymentStatusMap[order.paymentStatus]}
               </p>
               {order.paymentMethod === 'CASH' && order.changeFor && (
                 <p className="text-text-muted mt-1 text-sm">

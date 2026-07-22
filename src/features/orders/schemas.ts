@@ -68,8 +68,7 @@ export const markPaymentFailedInputSchema = orderVersionInputSchema
 
 export const paymentRefundReasonCodes = [
   'CUSTOMER_REQUEST',
-  'DUPLICATE_CHARGE',
-  'ORDER_CANCELLED',
+  'ORDER_CANCELLATION',
   'STORE_DECISION',
   'OTHER',
 ] as const;
@@ -90,7 +89,7 @@ export const refundPaymentInputSchema = orderVersionInputSchema
   });
 
 export const reportPixPaymentInputSchema = z.object({
-  publicToken: z.string().uuid('O código público do pedido é inválido.'),
+  reportToken: z.string().uuid('O código para informar o pagamento é inválido.'),
 });
 
 export type OrderVersionInput = z.infer<typeof orderVersionInputSchema>;

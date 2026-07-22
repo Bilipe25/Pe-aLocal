@@ -157,6 +157,42 @@ describe('disponibilidade na criação do pedido', () => {
     expect(mocks.createOrder).not.toHaveBeenCalled();
   });
 
+  it('rejeita totais que excedem o INTEGER do PostgreSQL antes da transação', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.productFindMany.mockResolvedValue([
+      {
+        id: checkout.items[0].productId,
+        name: 'Produto de alto valor',
+        basePrice: 100_000_000,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        category: { isActive: true, archivedAt: null },
+        optionGroups: [],
+      },
+    ]);
+
+    const result = await createOrderAction('loja-teste', {
+      ...checkout,
+      items: [{ ...checkout.items[0], quantity: 99 }],
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: 'BUSINESS_RULE_ERROR',
+        message: 'O valor do pedido excede o limite permitido.',
+      },
+    });
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
   it('retorna sucesso quando o pedido foi criado e o Pusher falha', async () => {
     mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
       acceptingOrders: true,
@@ -168,6 +204,7 @@ describe('disponibilidade na criação do pedido', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
       created: true,
       outboxEventIds: ['outbox-a'],
     });
@@ -177,7 +214,11 @@ describe('disponibilidade na criação do pedido', () => {
 
     expect(result).toEqual({
       success: true,
-      data: { publicToken: 'public-token', orderNumber: 10 },
+      data: {
+        publicToken: 'public-token',
+        orderNumber: 10,
+        paymentReportToken: 'payment-report-token',
+      },
     });
     expect(mocks.triggerNewOrder).toHaveBeenCalledWith('store-a', 'order-a', 10);
   });
@@ -193,6 +234,7 @@ describe('disponibilidade na criação do pedido', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
       created: false,
       outboxEventIds: [],
     });
@@ -207,6 +249,7 @@ describe('disponibilidade na criação do pedido', () => {
     mocks.orderFindUnique.mockResolvedValue({
       publicToken: 'public-token',
       orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
       idempotencyFingerprint: null,
     });
 
@@ -214,7 +257,11 @@ describe('disponibilidade na criação do pedido', () => {
 
     expect(result).toEqual({
       success: true,
-      data: { publicToken: 'public-token', orderNumber: 10 },
+      data: {
+        publicToken: 'public-token',
+        orderNumber: 10,
+        paymentReportToken: 'payment-report-token',
+      },
     });
     expect(mocks.rateLimitCheck).not.toHaveBeenCalled();
     expect(mocks.getEffectiveStoreAvailabilityForTenant).not.toHaveBeenCalled();
@@ -225,6 +272,7 @@ describe('disponibilidade na criação do pedido', () => {
     mocks.orderFindUnique.mockResolvedValue({
       publicToken: 'public-token',
       orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
       idempotencyFingerprint: 'fingerprint-diferente',
     });
 
