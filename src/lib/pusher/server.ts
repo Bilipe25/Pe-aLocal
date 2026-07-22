@@ -3,6 +3,8 @@ import 'server-only';
 import Pusher from 'pusher';
 
 import { storeEventChannels } from '@/lib/pusher/channels';
+import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
+import { getDb } from '@/server/database/client';
 
 // =============================================================================
 // Pusher Server — Instância singleton para disparar eventos
@@ -15,7 +17,7 @@ export function isPusherServerConfigured() {
     process.env.PUSHER_APP_ID &&
     process.env.PUSHER_KEY &&
     process.env.PUSHER_SECRET &&
-    process.env.PUSHER_CLUSTER
+    process.env.PUSHER_CLUSTER,
   );
 }
 
@@ -56,9 +58,30 @@ export function authorizePusherChannel(socketId: string, channelName: string) {
 }
 
 function eventChannels(storeId: string) {
-  return storeEventChannels(
-    storeId,
-    process.env.PUSHER_LEGACY_PUBLIC_CHANNELS === 'true',
+  return storeEventChannels(storeId, process.env.PUSHER_LEGACY_PUBLIC_CHANNELS === 'true');
+}
+
+async function triggerCustomerTracking(orderId: string) {
+  const order = await getDb().order.findUnique({
+    where: { id: orderId },
+    select: {
+      publicToken: true,
+      status: true,
+      paymentStatus: true,
+      version: true,
+      updatedAt: true,
+    },
+  });
+  if (!order) return null;
+  return pusherServer.trigger(
+    await privateCustomerOrderChannel(order.publicToken),
+    'tracking-updated',
+    {
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      version: order.version,
+      timestamp: order.updatedAt.getTime(),
+    },
   );
 }
 
@@ -67,25 +90,46 @@ function eventChannels(storeId: string) {
 // =============================================================================
 
 export async function triggerNewOrder(storeId: string, orderId: string, orderNumber: number) {
-  return pusherServer.trigger(eventChannels(storeId), 'new-order', {
-    orderId,
-    orderNumber,
-    timestamp: Date.now(),
-  });
+  return Promise.all([
+    pusherServer.trigger(eventChannels(storeId), 'new-order', {
+      orderId,
+      orderNumber,
+      timestamp: Date.now(),
+    }),
+    triggerCustomerTracking(orderId),
+  ]);
 }
 
-export async function triggerOrderUpdated(storeId: string, orderId: string, status: string) {
-  return pusherServer.trigger(eventChannels(storeId), 'order-updated', {
-    orderId,
-    status,
-    timestamp: Date.now(),
-  });
+export async function triggerOrderUpdated(
+  storeId: string,
+  orderId: string,
+  status: string,
+  options: { notifyCustomer?: boolean } = {},
+) {
+  const publications: Promise<unknown>[] = [
+    pusherServer.trigger(eventChannels(storeId), 'order-updated', {
+      orderId,
+      status,
+      timestamp: Date.now(),
+    }),
+  ];
+  if (options.notifyCustomer !== false) {
+    publications.push(triggerCustomerTracking(orderId));
+  }
+  return Promise.all(publications);
 }
 
-export async function triggerPaymentUpdated(storeId: string, orderId: string, paymentStatus: string) {
-  return pusherServer.trigger(eventChannels(storeId), 'payment-updated', {
-    orderId,
-    paymentStatus,
-    timestamp: Date.now(),
-  });
+export async function triggerPaymentUpdated(
+  storeId: string,
+  orderId: string,
+  paymentStatus: string,
+) {
+  return Promise.all([
+    pusherServer.trigger(eventChannels(storeId), 'payment-updated', {
+      orderId,
+      paymentStatus,
+      timestamp: Date.now(),
+    }),
+    triggerCustomerTracking(orderId),
+  ]);
 }

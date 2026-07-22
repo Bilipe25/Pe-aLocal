@@ -229,6 +229,13 @@ export async function getOrderByPublicToken(publicToken: string) {
       changeFor: true,
       status: true,
       paymentStatus: true,
+      version: true,
+      statusChangedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      updatedAt: true,
+      cancellationReasonCode: true,
       notes: true,
       createdAt: true,
       items: {
@@ -251,6 +258,7 @@ export async function getOrderByPublicToken(publicToken: string) {
         select: {
           name: true,
           slug: true,
+          timeZone: true,
           whatsapp: true,
           settings: {
             select: {
@@ -259,6 +267,38 @@ export async function getOrderByPublicToken(publicToken: string) {
               pixRecipient: true,
               pixBank: true,
               pixInstructions: true,
+              estimatedTimeMinMinutes: true,
+              estimatedTimeMaxMinutes: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function getOrderTrackingStateByPublicToken(publicToken: string, storeSlug: string) {
+  return getDb().order.findFirst({
+    where: { publicToken, store: { slug: storeSlug } },
+    select: {
+      orderNumber: true,
+      modality: true,
+      status: true,
+      paymentStatus: true,
+      version: true,
+      createdAt: true,
+      statusChangedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      updatedAt: true,
+      cancellationReasonCode: true,
+      store: {
+        select: {
+          settings: {
+            select: {
+              estimatedTimeMinMinutes: true,
+              estimatedTimeMaxMinutes: true,
             },
           },
         },

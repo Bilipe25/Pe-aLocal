@@ -73,13 +73,16 @@ function mutationContext(
 async function publishMutation(
   result: workflowService.OrderMutationResult,
   publishOrder: boolean,
+  notifyCustomer = true,
 ): Promise<boolean> {
   const dispatch = await dispatchCommittedOrderEvents({
     eventIds: result.outboxEventIds,
     publishDirect: async () => {
       const publications: Promise<unknown>[] = [];
       if (publishOrder) {
-        publications.push(triggerOrderUpdated(result.storeId, result.orderId, result.status));
+        publications.push(
+          triggerOrderUpdated(result.storeId, result.orderId, result.status, { notifyCustomer }),
+        );
       }
       if (result.paymentUpdated) {
         publications.push(
@@ -224,7 +227,7 @@ export async function addInternalOrderNoteAction(
     const input = parseActionInput(addInternalOrderNoteInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.ADD_INTERNAL_ORDER_NOTE);
     const result = await addOrderInternalNote(mutationContext(context), input);
-    const notificationPending = await publishMutation(result, true);
+    const notificationPending = await publishMutation(result, true, false);
     return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);

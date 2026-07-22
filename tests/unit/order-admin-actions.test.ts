@@ -181,6 +181,10 @@ describe('ações administrativas de pedidos', () => {
   });
 
   it('observação interna exige permissão específica e contexto confiável', async () => {
+    mocks.dispatchCommittedOrderEvents.mockImplementation(async ({ publishDirect }) => {
+      await publishDirect();
+      return { notificationPending: false };
+    });
     const result = await addInternalOrderNoteAction({
       ...input,
       body: 'Confirmar retirada com o cliente.',
@@ -194,6 +198,9 @@ describe('ações administrativas de pedidos', () => {
       expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a', userId: 'user-a' }),
       expect.objectContaining({ orderId: input.orderId, expectedVersion: 2 }),
     );
+    expect(mocks.triggerOrderUpdated).toHaveBeenCalledWith('store-a', input.orderId, 'CONFIRMED', {
+      notifyCustomer: false,
+    });
   });
 
   it('falha do Pusher não transforma uma operação persistida em erro', async () => {

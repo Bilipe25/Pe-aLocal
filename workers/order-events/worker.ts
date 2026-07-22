@@ -24,7 +24,7 @@ function database(env: OrderEventsEnv) {
   return createDatabaseClient(env.HYPERDRIVE.connectionString);
 }
 
-function publisher(env: OrderEventsEnv) {
+function publisher(env: OrderEventsEnv, db: PrismaClient) {
   if (!env.PUSHER_APP_ID || !env.PUSHER_KEY || !env.PUSHER_SECRET || !env.PUSHER_CLUSTER) {
     throw new Error('Pusher credentials are required by the order events worker.');
   }
@@ -34,6 +34,13 @@ function publisher(env: OrderEventsEnv) {
     secret: env.PUSHER_SECRET,
     cluster: env.PUSHER_CLUSTER,
     includeLegacyPublicChannel: env.PUSHER_LEGACY_PUBLIC_CHANNELS === 'true',
+    resolvePublicToken: async (orderId) => {
+      const order = await db.order.findUnique({
+        where: { id: orderId },
+        select: { publicToken: true },
+      });
+      return order?.publicToken ?? null;
+    },
   });
 }
 
@@ -51,7 +58,7 @@ export default {
   async queue(batch: MessageBatch<OrderOutboxQueueMessage>, env: OrderEventsEnv) {
     const db = database(env);
     try {
-      const eventPublisher = publisher(env);
+      const eventPublisher = publisher(env, db);
       for (const message of batch.messages) {
         try {
           const result = await processOrderOutboxMessage(
