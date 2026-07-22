@@ -56,6 +56,8 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     await expect(page).toHaveURL(new RegExp(`/${storeSlug}/order/[^/]+$`));
     await expect(page.getByRole('heading', { name: 'Acompanhar Pedido' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pedido recebido' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
     await expect(page.getByText('Itens do pedido')).toBeVisible();
   });
 });
