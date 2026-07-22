@@ -3,6 +3,7 @@ import 'server-only';
 import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
 import * as orderAudit from '@/server/services/order-audit.service';
+import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
 import { normalizePhone } from '@/lib/brazil';
 
 // =============================================================================
@@ -19,6 +20,7 @@ interface CreateOrderParams {
   deliveryZoneName: string | null;
   subtotal: number;
   total: number;
+  idempotencyFingerprint: string;
 }
 
 export interface ResolvedItem {
@@ -55,10 +57,14 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     deliveryZoneName,
     subtotal,
     total,
+    idempotencyFingerprint,
   } = params;
 
   return getDb().$transaction(async (tx) => {
-    // 1. Checar idempotência — se já existe, retornar o existente
+    const idempotencyLockKey = `${storeId}:${input.idempotencyKey}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyLockKey}, 0))`;
+
+    // The lock makes concurrent retries wait for the first transaction to finish.
     const existing = await tx.order.findUnique({
       where: {
         storeId_idempotencyKey: {
@@ -66,28 +72,26 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
           idempotencyKey: input.idempotencyKey,
         },
       },
-      select: { id: true, publicToken: true, orderNumber: true },
+      select: { id: true, publicToken: true, orderNumber: true, idempotencyFingerprint: true },
     });
 
     if (existing) {
-      return { ...existing, created: false };
+      assertMatchingOrderFingerprint(existing.idempotencyFingerprint, idempotencyFingerprint);
+      return {
+        id: existing.id,
+        publicToken: existing.publicToken,
+        orderNumber: existing.orderNumber,
+        created: false,
+      };
     }
 
-    // 2. Gerar orderNumber sequencial
-    const lastOrder = await tx.order.findFirst({
-      where: { storeId },
-      orderBy: { orderNumber: 'desc' },
-      select: { orderNumber: true },
-    });
-    const orderNumber = (lastOrder?.orderNumber ?? 0) + 1;
-
-    // 3. Criar o pedido
+    // The database trigger assigns the next number for this store atomically.
     const order = await tx.order.create({
       data: {
         tenantId,
         storeId,
-        orderNumber,
         idempotencyKey: input.idempotencyKey,
+        idempotencyFingerprint,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerPhoneNormalized: normalizePhone(input.customerPhone),

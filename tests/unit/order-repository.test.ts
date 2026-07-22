@@ -4,9 +4,9 @@ import { createOrder } from '@/server/repositories/order.repository';
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    $executeRaw: vi.fn(),
     order: {
       findUnique: vi.fn(),
-      findFirst: vi.fn(),
       create: vi.fn(),
     },
     auditLog: { create: vi.fn() },
@@ -56,13 +56,14 @@ const params = {
   deliveryZoneName: null,
   subtotal: 2000,
   total: 2000,
+  idempotencyFingerprint: 'fingerprint-a',
 };
 
 describe('OrderRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.order.findUnique.mockResolvedValue(null);
-    mocks.tx.order.findFirst.mockResolvedValue(null);
     mocks.tx.order.create.mockResolvedValue({
       id: 'order-a',
       publicToken: 'public-token',
@@ -94,6 +95,14 @@ describe('OrderRepository', () => {
         }),
       }),
     );
+    expect(mocks.tx.order.create.mock.calls[0][0].data).not.toHaveProperty('orderNumber');
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledOnce();
+    expect(mocks.tx.$executeRaw.mock.calls[0][1]).toBe(
+      `store-a:${params.input.idempotencyKey}`,
+    );
+    expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.order.findUnique.mock.invocationCallOrder[0],
+    );
   });
 
   it('retorna pedido idempotente sem criar nova auditoria', async () => {
@@ -101,13 +110,27 @@ describe('OrderRepository', () => {
       id: 'order-a',
       publicToken: 'public-token',
       orderNumber: 1,
+      idempotencyFingerprint: 'fingerprint-a',
     });
 
     const result = await createOrder(params);
 
     expect(result.created).toBe(false);
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledOnce();
     expect(mocks.tx.order.create).not.toHaveBeenCalled();
     expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita reuso da chave idempotente com payload diferente', async () => {
+    mocks.tx.order.findUnique.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 1,
+      idempotencyFingerprint: 'fingerprint-b',
+    });
+
+    await expect(createOrder(params)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(mocks.tx.order.create).not.toHaveBeenCalled();
   });
 
   it('não retorna sucesso quando a auditoria falha', async () => {

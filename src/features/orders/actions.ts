@@ -11,6 +11,10 @@ import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { validatePixKey } from '@/lib/brazil';
 import { validateCartItems } from '@/lib/checkout/cart-validator';
+import {
+  assertMatchingOrderFingerprint,
+  createOrderFingerprint,
+} from '@/server/services/order-idempotency.service';
 
 // =============================================================================
 // Checkout — Server Action
@@ -50,14 +54,7 @@ export async function createOrderAction(
     }
 
     const input: CheckoutInput = parsed.data;
-
-    const rateLimit = await getRateLimiter().check({
-      identifier: `order:${storeSlug}:${input.customerPhone}`,
-      ...RATE_LIMITS.createOrder,
-    });
-    if (!rateLimit.allowed) {
-      throw new BusinessRuleError('Muitos pedidos em sequência. Aguarde um minuto.');
-    }
+    const idempotencyFingerprint = createOrderFingerprint(input);
 
     // 2. Buscar loja pelo slug
     const store = await getDb().store.findUnique({
@@ -84,6 +81,35 @@ export async function createOrderAction(
 
     if (!store) {
       throw new BusinessRuleError('Loja não encontrada');
+    }
+
+    const existingOrder = await getDb().order.findUnique({
+      where: {
+        storeId_idempotencyKey: {
+          storeId: store.id,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+      select: {
+        publicToken: true,
+        orderNumber: true,
+        idempotencyFingerprint: true,
+      },
+    });
+    if (existingOrder) {
+      assertMatchingOrderFingerprint(existingOrder.idempotencyFingerprint, idempotencyFingerprint);
+      return actionSuccess({
+        publicToken: existingOrder.publicToken,
+        orderNumber: existingOrder.orderNumber,
+      });
+    }
+
+    const rateLimit = await getRateLimiter().check({
+      identifier: `order:${storeSlug}:${input.customerPhone}`,
+      ...RATE_LIMITS.createOrder,
+    });
+    if (!rateLimit.allowed) {
+      throw new BusinessRuleError('Muitos pedidos em sequência. Aguarde um minuto.');
     }
 
     const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
@@ -273,6 +299,7 @@ export async function createOrderAction(
       deliveryZoneName,
       subtotal,
       total,
+      idempotencyFingerprint,
     });
 
     if (order.created) {

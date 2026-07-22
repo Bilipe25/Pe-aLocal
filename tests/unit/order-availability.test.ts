@@ -4,6 +4,7 @@ import { createOrderAction } from '@/features/orders/actions';
 
 const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
+  orderFindUnique: vi.fn(),
   productFindMany: vi.fn(),
   getEffectiveStoreAvailabilityForTenant: vi.fn(),
   rateLimitCheck: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/server/database/client', () => ({
   getDb: () => ({
     store: { findUnique: mocks.storeFindUnique },
+    order: { findUnique: mocks.orderFindUnique },
     product: { findMany: mocks.productFindMany },
   }),
 }));
@@ -46,6 +48,7 @@ describe('disponibilidade na criação do pedido', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.rateLimitCheck.mockResolvedValue({ allowed: true });
+    mocks.orderFindUnique.mockResolvedValue(null);
     mocks.storeFindUnique.mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',
@@ -196,5 +199,40 @@ describe('disponibilidade na criação do pedido', () => {
 
     expect(result.success).toBe(true);
     expect(mocks.triggerNewOrder).not.toHaveBeenCalled();
+  });
+
+  it('recupera pedido confirmado antes de regras mutáveis e rate limit', async () => {
+    mocks.orderFindUnique.mockResolvedValue({
+      publicToken: 'public-token',
+      orderNumber: 10,
+      idempotencyFingerprint: null,
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toEqual({
+      success: true,
+      data: { publicToken: 'public-token', orderNumber: 10 },
+    });
+    expect(mocks.rateLimitCheck).not.toHaveBeenCalled();
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).not.toHaveBeenCalled();
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejeita fast-path idempotente quando o payload não corresponde', async () => {
+    mocks.orderFindUnique.mockResolvedValue({
+      publicToken: 'public-token',
+      orderNumber: 10,
+      idempotencyFingerprint: 'fingerprint-diferente',
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'CONFLICT' },
+    });
+    expect(mocks.rateLimitCheck).not.toHaveBeenCalled();
+    expect(mocks.createOrder).not.toHaveBeenCalled();
   });
 });

@@ -354,6 +354,7 @@ model Store {
   products           Product[]
   deliveryZones      DeliveryZone[]
   orders             Order[]
+  orderCounter       StoreOrderCounter?
   customization      StoreCustomization?
   auditLogs          AuditLog[]
   assets             StoreAsset[]
@@ -824,13 +825,23 @@ model CustomerAddress {
 // Pedidos
 // =============================================================================
 
+model StoreOrderCounter {
+  storeId    String @id
+  lastNumber Int    @default(0)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_order_counters")
+}
+
 model Order {
   id             String  @id @default(uuid())
   tenantId       String
   storeId        String
   customerId     String?
-  orderNumber    Int
+  orderNumber    Int     @default(0)
   idempotencyKey String
+  idempotencyFingerprint String?
   publicToken    String  @unique @default(uuid())
 
   // Dados do cliente (snapshot)
