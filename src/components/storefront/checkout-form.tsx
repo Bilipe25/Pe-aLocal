@@ -9,6 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { OrderSummary } from './order-summary';
 import { useCartStore } from '@/stores/cart-store';
 import { createOrderAction } from '@/features/orders/actions';
+import {
+  clearCheckoutIdempotency,
+  resolveCheckoutIdempotency,
+  type CheckoutIdempotencyRecord,
+} from '@/lib/orders/checkout-idempotency';
 import { formatCurrency } from '@/lib/utils';
 
 interface DeliveryZone {
@@ -63,6 +68,7 @@ export function CheckoutForm({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const idempotencyRef = useRef<CheckoutIdempotencyRecord | null>(null);
 
   useEffect(() => {
     if (error) errorRef.current?.focus();
@@ -89,7 +95,7 @@ export function CheckoutForm({
     }
 
     startTransition(async () => {
-      const result = await createOrderAction(storeSlug, {
+      const checkoutPayload = {
         customerName,
         customerPhone,
         modality,
@@ -98,13 +104,29 @@ export function CheckoutForm({
         paymentMethod,
         changeFor: paymentMethod === 'CASH' && changeFor ? Math.round(parseFloat(changeFor) * 100) : undefined,
         notes: notes || undefined,
-        idempotencyKey: crypto.randomUUID(),
         items: items.map((i) => ({
           productId: i.productId,
           quantity: i.quantity,
           notes: i.notes || undefined,
           optionIds: i.selectedOptions.map((o) => o.id),
         })),
+      };
+      let storage: Storage | null = null;
+      try {
+        storage = window.sessionStorage;
+      } catch {
+        // Restricted browsing contexts still retain the in-memory key.
+      }
+      const storageKey = `checkout-idempotency:${storeSlug}`;
+      idempotencyRef.current = await resolveCheckoutIdempotency(
+        checkoutPayload,
+        storage,
+        storageKey,
+        idempotencyRef.current,
+      );
+      const result = await createOrderAction(storeSlug, {
+        ...checkoutPayload,
+        idempotencyKey: idempotencyRef.current.key,
       });
 
       if (!result.success) {
@@ -112,6 +134,8 @@ export function CheckoutForm({
         return;
       }
 
+      idempotencyRef.current = null;
+      clearCheckoutIdempotency(storage, storageKey);
       clearCart();
       router.push(`/${storeSlug}/order/${result.data.publicToken}`);
     });
