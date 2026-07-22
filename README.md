@@ -67,6 +67,7 @@ Veja `.env.example` para todas as variáveis necessárias.
 | `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente     |
 | `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)       |
 | `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente    |
+| `PUSHER_LEGACY_PUBLIC_CHANNELS`                 | Compatibilidade temporária de rollout; veja `docs/order-realtime-rollout.md` |
 
 ## Scripts
 
