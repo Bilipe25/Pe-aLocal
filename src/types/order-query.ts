@@ -41,6 +41,21 @@ export interface OrderQueuePageDTO {
   hasAbnormalActiveVolume: boolean;
 }
 
+export interface OrderNotificationSignalDTO {
+  eventId: string;
+  orderId: string;
+  orderNumber: number;
+  isNew: boolean;
+  createdAt: string;
+}
+
+export interface OrderNotificationSignalsDTO {
+  items: OrderNotificationSignalDTO[];
+  processedEventIds: string[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+
 export interface OrderAllowedActionsDTO {
   accept: boolean;
   startPreparation: boolean;

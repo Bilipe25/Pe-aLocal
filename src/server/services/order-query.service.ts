@@ -26,6 +26,7 @@ import type {
   OrderDetailsDTO,
   OrderHistoryItemDTO,
   OrderHistoryPageDTO,
+  OrderNotificationSignalsDTO,
   OrderQueueFilters,
   OrderQueuePageDTO,
 } from '@/types/order-query';
@@ -40,6 +41,10 @@ const ACTIVE_STATUSES: OrderStatus[] = [
 const ABNORMAL_ACTIVE_ORDER_COUNT = 500;
 const MAX_UNDATED_SEARCH_DAYS = 90;
 const SLOW_QUERY_MS = 750;
+const NOTIFICATION_SIGNAL_PAGE_SIZE = 50;
+const NOTIFICATION_OVERLAP_MS = 5 * 60 * 1_000;
+const NOTIFICATION_SEEN_EVENT_LIMIT = 5_000;
+const MAX_NOTIFICATION_CURSOR_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 export interface OrderQueryContext {
   tenantId: string;
@@ -47,6 +52,129 @@ export interface OrderQueryContext {
   timeZone: string;
   userId: string;
   tenantRole: TenantRole;
+}
+
+function orderIdFromAudit(entry: {
+  entity: string;
+  entityId: string | null;
+  metadata: Prisma.JsonValue | null;
+}) {
+  if (entry.entity === 'Order') return entry.entityId;
+  if (
+    entry.entity === 'Payment' &&
+    entry.metadata &&
+    typeof entry.metadata === 'object' &&
+    !Array.isArray(entry.metadata) &&
+    typeof entry.metadata.orderId === 'string'
+  ) {
+    return entry.metadata.orderId;
+  }
+  return null;
+}
+
+export async function getOrderNotificationSignals(
+  context: OrderQueryContext,
+  cursor?: string,
+  seenEventIds: string[] = [],
+): Promise<OrderNotificationSignalsDTO> {
+  const auditScope = {
+    tenantId: context.tenantId,
+    storeId: context.storeId,
+    entity: { in: ['Order', 'Payment'] },
+  } satisfies Prisma.AuditLogWhereInput;
+
+  if (!cursor) {
+    const watermark = new Date();
+    const baseline = await measured('notification-baseline', context, () =>
+      getDb().auditLog.findMany({
+        where: {
+          ...auditScope,
+          createdAt: { gte: new Date(watermark.getTime() - NOTIFICATION_OVERLAP_MS) },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: NOTIFICATION_SEEN_EVENT_LIMIT,
+        select: { id: true, createdAt: true },
+      }),
+    );
+    const latest = baseline[0];
+    const baselineCursor = latest && latest.createdAt > watermark
+      ? { createdAt: latest.createdAt, id: latest.id }
+      : { createdAt: watermark, id: MAX_NOTIFICATION_CURSOR_ID };
+    return {
+      items: [],
+      processedEventIds: [...baseline].reverse().map((entry) => entry.id),
+      hasMore: false,
+      nextCursor: encodeOrderCursor(baselineCursor),
+    };
+  }
+
+  const after = decodeOrderCursor(cursor);
+  const overlapStart = new Date(after.createdAt.getTime() - NOTIFICATION_OVERLAP_MS);
+  const rows = await measured('notification-signals', context, () =>
+    getDb().auditLog.findMany({
+      where: {
+        ...auditScope,
+        id: seenEventIds.length ? { notIn: seenEventIds } : undefined,
+        OR: [
+          { createdAt: { gt: after.createdAt } },
+          { createdAt: after.createdAt, id: { gt: after.id } },
+          ...(seenEventIds.length && seenEventIds.length < NOTIFICATION_SEEN_EVENT_LIMIT
+            ? [{ createdAt: { gte: overlapStart } }]
+            : []),
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: NOTIFICATION_SIGNAL_PAGE_SIZE + 1,
+      select: {
+        id: true,
+        action: true,
+        entity: true,
+        entityId: true,
+        metadata: true,
+        createdAt: true,
+      },
+    }),
+  );
+  const page = rows.slice(0, NOTIFICATION_SIGNAL_PAGE_SIZE);
+  const orderIds = [...new Set(page.map(orderIdFromAudit).filter((id): id is string => Boolean(id)))];
+  const orders = orderIds.length
+    ? await measured('notification-orders', context, () =>
+        getDb().order.findMany({
+          where: {
+            id: { in: orderIds },
+            tenantId: context.tenantId,
+            storeId: context.storeId,
+          },
+          select: { id: true, orderNumber: true },
+        }))
+    : [];
+  const orderNumbers = new Map(orders.map((order) => [order.id, order.orderNumber]));
+  const latest = page.at(-1);
+  const latestIsAfterCursor = Boolean(latest && (
+    latest.createdAt > after.createdAt ||
+    (latest.createdAt.getTime() === after.createdAt.getTime() && latest.id > after.id)
+  ));
+
+  return {
+    items: page.flatMap((row) => {
+      const orderId = orderIdFromAudit(row);
+      const orderNumber = orderId ? orderNumbers.get(orderId) : undefined;
+      return orderId && orderNumber !== undefined
+        ? [{
+            eventId: row.id,
+            orderId,
+            orderNumber,
+            isNew: row.action === 'ORDER_CREATED',
+            createdAt: row.createdAt.toISOString(),
+          }]
+        : [];
+    }),
+    processedEventIds: page.map((row) => row.id),
+    hasMore: rows.length > NOTIFICATION_SIGNAL_PAGE_SIZE,
+    nextCursor: latestIsAfterCursor && latest
+      ? encodeOrderCursor({ createdAt: latest.createdAt, id: latest.id })
+      : cursor,
+  };
 }
 
 async function measured<T>(

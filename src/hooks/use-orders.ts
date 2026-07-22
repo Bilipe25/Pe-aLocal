@@ -3,17 +3,18 @@
 import {
   useInfiniteQuery,
   useQuery,
-  useQueryClient,
 } from '@tanstack/react-query';
 
 import {
   getDailyOrderMetricsAction,
   getOrderDetailsAction,
   getOrderHistoryAction,
+  getOrderNotificationSignalsAction,
   getOrderQueueAction,
 } from '@/features/orders/query-actions';
-import { usePusherChannel } from '@/hooks/use-pusher-channel';
-import type { OrderQueueFilters } from '@/types/order-query';
+import type { OrderRealtimeState } from '@/hooks/use-order-realtime';
+import type { OrderNotificationSignalsDTO, OrderQueueFilters } from '@/types/order-query';
+import { useEffect, useEffectEvent } from 'react';
 
 export const orderQueryKeys = {
   queue: (
@@ -30,7 +31,13 @@ export const orderQueryKeys = {
   metrics: (storeId: string | null, authorizationScope: string, localDate: string) =>
     ['order-metrics', storeId, authorizationScope, localDate] as const,
   metricsStore: (storeId: string | null) => ['order-metrics', storeId] as const,
+  notifications: (storeId: string | null, authorizationScope: string) =>
+    ['order-notification-signals', storeId, authorizationScope] as const,
 };
+
+export function orderPollingInterval(state: OrderRealtimeState) {
+  return state === 'connected' ? 60_000 : 20_000;
+}
 
 function safeFilterKey(filters: Omit<OrderQueueFilters, 'cursor'>) {
   const safeFilters = { ...filters };
@@ -49,9 +56,8 @@ export function useOrderQueue(
   filters: Omit<OrderQueueFilters, 'cursor'>,
   searchToken = 'none',
 ) {
-  const queryClient = useQueryClient();
   const queryKey = orderQueryKeys.queue(storeId, authorizationScope, filters, searchToken);
-  const query = useInfiniteQuery({
+  return useInfiniteQuery({
     queryKey,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam, signal }) => {
@@ -67,34 +73,114 @@ export function useOrderQueue(
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
+}
 
-  const channelName = storeId ? `store-${storeId}` : null;
-  const refreshStore = (orderId?: string) => {
-    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) });
-    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) });
-    if (orderId) {
-      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId) });
-      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.history(storeId, authorizationScope, orderId) });
-    }
-  };
+export function useOrderNotificationSignals(
+  storeId: string | null,
+  authorizationScope: string,
+  initialBaseline: OrderNotificationSignalsDTO,
+  pollingInterval: number,
+  onSignals: (signals: Array<{
+    eventId: string;
+    orderId: string;
+    orderNumber: number;
+    isNew: boolean;
+  }>) => void,
+  onReconcileRequired: () => void,
+) {
+  const emitSignals = useEffectEvent(onSignals);
+  const reconcile = useEffectEvent(onReconcileRequired);
+  const getPollingInterval = useEffectEvent(() => pollingInterval);
+  const getInitialBaseline = useEffectEvent(() => initialBaseline);
 
-  usePusherChannel<{ orderId: string; orderNumber: number }>(channelName, 'new-order', (event) => {
-    refreshStore(event.orderId);
-    try {
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(() => {});
-    } catch {
-      // Som continua opcional até as preferências da Fase 5.
-    }
-  });
-  usePusherChannel<{ orderId: string }>(channelName, 'order-updated', (event) => {
-    refreshStore(event.orderId);
-  });
-  usePusherChannel<{ orderId: string }>(channelName, 'payment-updated', (event) => {
-    refreshStore(event.orderId);
-  });
+  useEffect(() => {
+    if (!storeId) return;
+    const baseline = getInitialBaseline();
+    let cursor = baseline.nextCursor;
+    let initialized = true;
+    let stopped = false;
+    let running = false;
+    let consecutiveFailures = 0;
+    let timeout: number | undefined;
+    const processedEventIds = new Map(
+      baseline.processedEventIds.map((eventId) => [eventId, Date.now()]),
+    );
 
-  return query;
+    const poll = async () => {
+      if (stopped || running || document.visibilityState === 'hidden') return;
+      if (timeout !== undefined) {
+        window.clearTimeout(timeout);
+        timeout = undefined;
+      }
+      running = true;
+      const pendingSignals: Array<{
+        eventId: string;
+        orderId: string;
+        orderNumber: number;
+        isNew: boolean;
+      }> = [];
+      try {
+        let hasMore = false;
+        let pages = 0;
+        do {
+          const data = actionData(await getOrderNotificationSignalsAction({
+            cursor,
+            seenEventIds: [...processedEventIds.keys()],
+          }));
+          if (stopped) return;
+          cursor = data.nextCursor;
+          const observedAt = Date.now();
+          for (const eventId of data.processedEventIds) processedEventIds.set(eventId, observedAt);
+          for (const [eventId, firstObservedAt] of processedEventIds) {
+            if (firstObservedAt < observedAt - 6 * 60 * 1_000) processedEventIds.delete(eventId);
+          }
+          if (processedEventIds.size >= 5_000) {
+            while (processedEventIds.size > 5_000) {
+              const oldest = processedEventIds.keys().next().value;
+              if (!oldest) break;
+              processedEventIds.delete(oldest);
+            }
+            reconcile();
+          }
+          if (initialized && data.items.length) pendingSignals.push(...data.items);
+          initialized = true;
+          hasMore = data.hasMore;
+          pages += 1;
+        } while (hasMore && pages < 10 && !stopped);
+        if (hasMore && !stopped) {
+          timeout = window.setTimeout(poll, 0);
+          return;
+        }
+        consecutiveFailures = 0;
+      } catch {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= 3) {
+          consecutiveFailures = 0;
+          reconcile();
+        }
+      } finally {
+        running = false;
+        if (!stopped && pendingSignals.length) emitSignals(pendingSignals);
+        if (!stopped && timeout === undefined) {
+          timeout = window.setTimeout(poll, getPollingInterval());
+        }
+      }
+    };
+
+    const pollWhenVisible = () => {
+      if (document.visibilityState === 'visible') void poll();
+    };
+    void poll();
+    window.addEventListener('focus', pollWhenVisible);
+    document.addEventListener('visibilitychange', pollWhenVisible);
+    return () => {
+      stopped = true;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      window.removeEventListener('focus', pollWhenVisible);
+      document.removeEventListener('visibilitychange', pollWhenVisible);
+    };
+  }, [authorizationScope, storeId]);
+
 }
 
 export function useOrderDetails(
@@ -148,6 +234,7 @@ export function useOrderMetrics(
   storeId: string | null,
   authorizationScope: string,
   localDate: string,
+  pollingInterval = 20_000,
 ) {
   return useQuery({
     queryKey: orderQueryKeys.metrics(storeId, authorizationScope, localDate),
@@ -160,5 +247,7 @@ export function useOrderMetrics(
     retry: 2,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+    refetchInterval: pollingInterval,
+    refetchIntervalInBackground: false,
   });
 }

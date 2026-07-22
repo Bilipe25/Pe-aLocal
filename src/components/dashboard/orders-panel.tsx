@@ -1,20 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { BellRing, RefreshCw, Volume2, VolumeX, Wifi, X } from 'lucide-react';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
 import {
   orderQueryKeys,
+  orderPollingInterval,
   useOrderMetrics,
+  useOrderNotificationSignals,
   useOrderQueue,
 } from '@/hooks/use-orders';
-import { usePusherConnectionState } from '@/hooks/use-pusher-connection-state';
+import { useOrderNotificationSound } from '@/hooks/use-order-notification-sound';
+import { useOrderRealtime } from '@/hooks/use-order-realtime';
+import { collectOrderSignals, type IncomingOrderSignal } from '@/lib/orders/order-notifications';
 import { getNextStoreMidnight, getStoreLocalDate } from '@/lib/time/store-time';
 import { cn } from '@/lib/utils';
-import type { OrderQueueFilters, OrderQueueItemDTO } from '@/types/order-query';
+import type {
+  OrderNotificationSignalsDTO,
+  OrderQueueFilters,
+  OrderQueueItemDTO,
+} from '@/types/order-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { OrderCard } from './order-card';
 import { initialOrderFilters, OrderFilters } from './order-filters';
@@ -22,10 +30,10 @@ import { DailyMetrics } from './daily-metrics';
 import { OrderDetailModal } from './order-detail-modal';
 
 const CONNECTION_LABELS = {
-  unavailable: { label: 'Atualização manual', className: 'bg-surface-tertiary text-text-secondary', icon: WifiOff },
+  unavailable: { label: 'Atualização automática', className: 'bg-info-light text-info', icon: RefreshCw },
   connecting: { label: 'Conectando…', className: 'bg-warning-light text-warning', icon: Wifi },
   connected: { label: 'Tempo real ativo', className: 'bg-success-light text-success', icon: Wifi },
-  disconnected: { label: 'Reconectando…', className: 'bg-error-light text-error', icon: WifiOff },
+  degraded: { label: 'Atualização automática', className: 'bg-warning-light text-warning', icon: RefreshCw },
 } as const;
 
 const ALL_STATUSES: OrderStatus[] = [
@@ -127,12 +135,14 @@ export function OrdersPanel({
   timeZone,
   initialLocalDate,
   authorizationScope,
+  notificationBaseline,
 }: {
   storeId: string;
   storeName: string;
   timeZone: string;
   initialLocalDate: string;
   authorizationScope: string;
+  notificationBaseline: OrderNotificationSignalsDTO;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -162,12 +172,56 @@ export function OrdersPanel({
       : null;
   });
   const [now, setNow] = useState(0);
-  const connectionState = usePusherConnectionState();
+  const [recentNewOrders, setRecentNewOrders] = useState<Array<{
+    orderId: string;
+    orderNumber: number;
+  }>>([]);
+  const notifiedOrderIds = useRef(new Set<string>());
+  const sound = useOrderNotificationSound(`${authorizationScope}:${storeId}`);
+  const refreshStore = (orderIds: string[] = []) => {
+    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) });
+    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) });
+    for (const orderId of new Set(orderIds)) {
+      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId) });
+      void queryClient.invalidateQueries({ queryKey: orderQueryKeys.history(storeId, authorizationScope, orderId) });
+    }
+  };
+  const processSignals = (signals: IncomingOrderSignal[]) => {
+    const { changedOrderIds, unseenNewOrders } = collectOrderSignals(
+      signals,
+      notifiedOrderIds.current,
+    );
+    if (changedOrderIds.length) refreshStore(changedOrderIds);
+    if (unseenNewOrders.length) {
+      setRecentNewOrders((current) => {
+        const incomingIds = new Set(unseenNewOrders.map((order) => order.orderId));
+        return [
+          ...unseenNewOrders.toReversed(),
+          ...current.filter((order) => !incomingIds.has(order.orderId)),
+        ].slice(0, 5);
+      });
+      void sound.play();
+    }
+  };
+  const connectionState = useOrderRealtime(storeId, {
+    onNewOrder: (event) => processSignals([{ ...event, isNew: true }]),
+    onOrderUpdated: (event) => refreshStore([event.orderId]),
+    onPaymentUpdated: (event) => refreshStore([event.orderId]),
+  });
   const connection = CONNECTION_LABELS[connectionState];
   const ConnectionIcon = connection.icon;
+  const pollingInterval = orderPollingInterval(connectionState);
 
   const queueQuery = useOrderQueue(storeId, authorizationScope, filters, searchToken);
-  const metricsQuery = useOrderMetrics(storeId, authorizationScope, localDate);
+  const metricsQuery = useOrderMetrics(storeId, authorizationScope, localDate, pollingInterval);
+  useOrderNotificationSignals(
+    storeId,
+    authorizationScope,
+    notificationBaseline,
+    pollingInterval,
+    processSignals,
+    () => refreshStore(),
+  );
   const orders = useMemo(
     () => queueQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [queueQuery.data],
@@ -229,14 +283,70 @@ export function OrdersPanel({
           <span className={cn('inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium', connection.className)} aria-live="polite">
             <ConnectionIcon aria-hidden="true" /> {connection.label}
           </span>
+          <Button
+            variant="outline"
+            className="gap-2"
+            aria-pressed={sound.enabled}
+            onClick={() => void sound.toggle()}
+            disabled={sound.isActivating}
+          >
+            {sound.enabled ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
+            {sound.isActivating ? 'Ativando…' : sound.enabled ? 'Som ligado' : 'Ativar som'}
+          </Button>
           <Button variant="outline" size="icon" aria-label="Atualizar pedidos" onClick={refresh} disabled={queueQuery.isFetching || metricsQuery.isFetching}>
             <RefreshCw className={queueQuery.isFetching || metricsQuery.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
           </Button>
         </div>
       </div>
 
+      {sound.error && (
+        <p className="-mt-3 text-sm text-warning" role="status">{sound.error}</p>
+      )}
+
       <DailyMetrics metrics={metricsQuery.data} isLoading={metricsQuery.isLoading} hasError={Boolean(metricsQuery.error)} />
       <OrderFilters key={filters.query ?? 'no-query'} filters={filters} localDate={localDate} timeZone={timeZone} onChange={updateFilters} />
+
+      {recentNewOrders.length > 0 && (
+        <section
+          className="flex flex-col gap-3 rounded-xl border border-info/30 bg-info-light px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          aria-label="Pedidos recebidos agora"
+          aria-live="polite"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <BellRing className="mt-0.5 shrink-0 text-info" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-text-primary">
+                {recentNewOrders.length === 1 ? 'Novo pedido recebido' : 'Novos pedidos recebidos'}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {recentNewOrders.map((order) => (
+                  <Button
+                    key={order.orderId}
+                    variant="outline"
+                    size="sm"
+                    className="bg-surface font-mono"
+                    onClick={() => {
+                      setSelectedOrderId(order.orderId);
+                      setRecentNewOrders((current) => current.filter((item) => item.orderId !== order.orderId));
+                    }}
+                  >
+                    Abrir #{order.orderNumber}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 self-end sm:self-auto"
+            aria-label="Dispensar avisos de novos pedidos"
+            onClick={() => setRecentNewOrders([])}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </section>
+      )}
 
       {firstPage?.hasAbnormalActiveVolume && (
         <div className="rounded-xl border border-warning/40 bg-warning-light px-4 py-3 text-sm text-warning" role="status">

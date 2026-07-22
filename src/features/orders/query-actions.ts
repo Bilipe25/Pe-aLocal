@@ -6,6 +6,7 @@ import {
   dailyMetricsInputSchema,
   orderDetailsInputSchema,
   orderHistoryInputSchema,
+  orderNotificationSignalsInputSchema,
   orderQueueFiltersSchema,
 } from '@/features/orders/query-schemas';
 import { actionError, actionSuccess, ValidationError } from '@/server/errors';
@@ -89,6 +90,22 @@ export async function getActiveOrderCountsAction() {
   try {
     const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
     return actionSuccess(await queryService.getActiveOrderCounts(queryContext(context)));
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getOrderNotificationSignalsAction(rawInput: unknown) {
+  try {
+    const input = parseInput(orderNotificationSignalsInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
+    return actionSuccess(
+      await queryService.getOrderNotificationSignals(
+        queryContext(context),
+        input.cursor,
+        input.seenEventIds,
+      ),
+    );
   } catch (error) {
     return actionError(error);
   }

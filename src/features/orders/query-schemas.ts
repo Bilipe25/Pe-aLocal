@@ -78,6 +78,12 @@ export const dailyMetricsInputSchema = z.object({
   localDate: localDateSchema,
 });
 
+export const orderNotificationSignalsInputSchema = z.object({
+  cursor: z.string().max(2_048).optional(),
+  seenEventIds: z.array(z.string().uuid()).max(5_000).default([]),
+});
+
 export type OrderQueueFiltersInput = z.input<typeof orderQueueFiltersSchema>;
 export type ParsedOrderQueueFilters = z.output<typeof orderQueueFiltersSchema>;
 export type OrderHistoryInput = z.output<typeof orderHistoryInputSchema>;
+export type OrderNotificationSignalsInput = z.output<typeof orderNotificationSignalsInputSchema>;

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { decodeOrderCursor } from '@/lib/orders/cursor';
+import { decodeOrderCursor, encodeOrderCursor } from '@/lib/orders/cursor';
 import {
   getDailyOrderMetrics,
   getActiveOrderCounts,
   getOrderDetails,
   getOrderHistory,
+  getOrderNotificationSignals,
   getOrderQueue,
   type OrderQueryContext,
 } from '@/server/services/order-query.service';
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   orderGroupBy: vi.fn(),
   orderAggregate: vi.fn(),
   historyFindMany: vi.fn(),
+  auditFindMany: vi.fn(),
   queryRaw: vi.fn(),
 }));
 
@@ -30,6 +32,9 @@ vi.mock('@/server/database/client', () => ({
       aggregate: mocks.orderAggregate,
     },
     orderStatusHistory: { findMany: mocks.historyFindMany },
+    auditLog: {
+      findMany: mocks.auditFindMany,
+    },
     $queryRaw: mocks.queryRaw,
   }),
 }));
@@ -110,6 +115,121 @@ describe('OrderQueryService', () => {
         where: expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a' }),
       }),
     );
+  });
+
+  it('cria baseline sem notificar pedidos já existentes', async () => {
+    mocks.auditFindMany.mockResolvedValue([{
+      id: 'audit-existing',
+      createdAt: new Date('2026-07-21T12:00:00.000Z'),
+    }]);
+
+    const result = await getOrderNotificationSignals(context);
+
+    expect(result.items).toEqual([]);
+    expect(result.processedEventIds).toEqual(['audit-existing']);
+    expect(decodeOrderCursor(result.nextCursor)).toEqual(expect.objectContaining({
+      id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    }));
+  });
+
+  it('retorna novos sinais em ordem crescente e isolados por loja', async () => {
+    mocks.auditFindMany.mockResolvedValueOnce([{
+      id: 'audit-1',
+      createdAt: new Date('2026-07-21T12:00:00.000Z'),
+    }]);
+    const baseline = await getOrderNotificationSignals(context);
+    mocks.auditFindMany.mockResolvedValueOnce([
+      {
+        id: 'audit-2',
+        action: 'ORDER_CREATED',
+        entity: 'Order',
+        entityId: 'order-2',
+        metadata: null,
+        createdAt: new Date('2026-07-21T12:01:00.000Z'),
+      },
+    ]);
+    mocks.orderFindMany.mockResolvedValue([{ id: 'order-2', orderNumber: 2 }]);
+
+    const result = await getOrderNotificationSignals(context, baseline.nextCursor);
+
+    expect(result.items).toEqual([{
+      eventId: 'audit-2',
+      orderId: 'order-2',
+      orderNumber: 2,
+      isNew: true,
+      createdAt: '2026-07-21T12:01:00.000Z',
+    }]);
+    expect(result.hasMore).toBe(false);
+    expect(result.processedEventIds).toEqual(['audit-2']);
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a' }),
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 51,
+    }));
+  });
+
+  it('resolve mudanças de pagamento para o pedido sem expor metadata', async () => {
+    mocks.auditFindMany.mockResolvedValue([{
+      id: 'audit-payment',
+      action: 'PAYMENT_CONFIRMED_MANUALLY',
+      entity: 'Payment',
+      entityId: 'payment-a',
+      metadata: { orderId: 'order-a', previousStatus: 'PENDING', nextStatus: 'PAID' },
+      createdAt: new Date('2026-07-21T12:02:00.000Z'),
+    }]);
+    mocks.orderFindMany.mockResolvedValue([{ id: 'order-a', orderNumber: 12 }]);
+
+    const result = await getOrderNotificationSignals(
+      context,
+      encodeOrderCursor({
+        createdAt: new Date(0),
+        id: '00000000-0000-0000-0000-000000000000',
+      }),
+    );
+
+    expect(result.items).toEqual([{
+      eventId: 'audit-payment',
+      orderId: 'order-a',
+      orderNumber: 12,
+      isNew: false,
+      createdAt: '2026-07-21T12:02:00.000Z',
+    }]);
+    expect(result.items[0]).not.toHaveProperty('metadata');
+  });
+
+  it('recupera auditoria que ficou visível depois do avanço do cursor', async () => {
+    const cursor = encodeOrderCursor({
+      createdAt: new Date('2026-07-21T12:05:00.000Z'),
+      id: 'audit-latest',
+    });
+    mocks.auditFindMany.mockResolvedValue([{
+      id: 'audit-late',
+      action: 'ORDER_CREATED',
+      entity: 'Order',
+      entityId: 'order-late',
+      metadata: null,
+      createdAt: new Date('2026-07-21T12:04:00.000Z'),
+    }]);
+    mocks.orderFindMany.mockResolvedValue([{ id: 'order-late', orderNumber: 13 }]);
+
+    const result = await getOrderNotificationSignals(context, cursor, ['audit-latest']);
+
+    expect(result.items[0]).toEqual(expect.objectContaining({
+      eventId: 'audit-late',
+      orderId: 'order-late',
+      isNew: true,
+    }));
+    expect(result.nextCursor).toBe(cursor);
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            createdAt: { gte: new Date('2026-07-21T12:00:00.000Z') },
+          }),
+        ]),
+        id: { notIn: ['audit-latest'] },
+      }),
+    }));
   });
 
   it('aplica cursor composto e não repete a contagem de ativos', async () => {

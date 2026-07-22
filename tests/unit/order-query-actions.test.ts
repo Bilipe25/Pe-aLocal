@@ -5,6 +5,7 @@ import {
   getActiveOrderCountsAction,
   getOrderDetailsAction,
   getOrderHistoryAction,
+  getOrderNotificationSignalsAction,
   getOrderQueueAction,
 } from '@/features/orders/query-actions';
 import { Permission } from '@/server/permissions';
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getOrderHistory: vi.fn(),
   getDailyOrderMetrics: vi.fn(),
   getActiveOrderCounts: vi.fn(),
+  getOrderNotificationSignals: vi.fn(),
 }));
 
 vi.mock('@/server/services/store-context.service', () => ({
@@ -27,6 +29,7 @@ vi.mock('@/server/services/order-query.service', () => ({
   getOrderHistory: mocks.getOrderHistory,
   getDailyOrderMetrics: mocks.getDailyOrderMetrics,
   getActiveOrderCounts: mocks.getActiveOrderCounts,
+  getOrderNotificationSignals: mocks.getOrderNotificationSignals,
 }));
 
 const context = {
@@ -50,6 +53,12 @@ describe('actions de consulta de pedidos', () => {
     mocks.getOrderHistory.mockResolvedValue({ items: [], nextCursor: null });
     mocks.getDailyOrderMetrics.mockResolvedValue({ orderCount: 0 });
     mocks.getActiveOrderCounts.mockResolvedValue({ total: 0 });
+    mocks.getOrderNotificationSignals.mockResolvedValue({
+      items: [],
+      processedEventIds: [],
+      nextCursor: 'cursor',
+      hasMore: false,
+    });
   });
 
   it('protege fila e métricas com VIEW_ORDERS', async () => {
@@ -64,6 +73,9 @@ describe('actions de consulta de pedidos', () => {
     expect(mocks.requireActiveStoreContext).toHaveBeenLastCalledWith(Permission.VIEW_ORDERS);
 
     await getActiveOrderCountsAction();
+    expect(mocks.requireActiveStoreContext).toHaveBeenLastCalledWith(Permission.VIEW_ORDERS);
+
+    await getOrderNotificationSignalsAction({});
     expect(mocks.requireActiveStoreContext).toHaveBeenLastCalledWith(Permission.VIEW_ORDERS);
   });
 
