@@ -836,6 +836,7 @@ model Order {
   // Dados do cliente (snapshot)
   customerName  String
   customerPhone String
+  customerPhoneNormalized String?
 
   // Modalidade e endereço
   modality         OrderModality
@@ -899,6 +900,11 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([publicToken])
+  @@index([tenantId, storeId, createdAt, id])
+  @@index([storeId, status, createdAt, id])
+  @@index([storeId, paymentStatus, createdAt, id])
+  @@index([storeId, status, statusChangedAt, id])
+  @@index([storeId, customerPhoneNormalized, createdAt, id])
   @@map("orders")
 }
 
@@ -958,7 +964,7 @@ model OrderStatusHistory {
   changedByUser   User? @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([orderId])
-  @@index([orderId, createdAt])
+  @@index([orderId, createdAt, id])
   @@index([changedById, createdAt])
   @@index([createdAt])
   @@map("order_status_history")

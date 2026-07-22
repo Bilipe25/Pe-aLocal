@@ -1,6 +1,5 @@
 'use server';
 
-import { getDb } from '@/server/database/client';
 import { hasTenantPermission, Permission } from '@/server/permissions';
 import {
   actionSuccess,
@@ -24,72 +23,10 @@ import type {
   OrderMutationResult,
 } from '@/server/services/order-mutation.types';
 import type { z } from 'zod';
-import { getOrderCapabilities } from './capabilities';
-import { orderWithDetailsSelect } from '@/types/order';
 
 // =============================================================================
 // Ordens — Admin Server Actions
 // =============================================================================
-
-export interface GetOrdersParams {
-  status?: OrderStatus;
-  statuses?: OrderStatus[];
-  paymentStatus?: PaymentStatus;
-  dateFrom?: Date;
-  dateTo?: Date;
-  query?: string;
-}
-
-/**
- * Retorna os pedidos da loja atual (pode ser usado no useQuery)
- */
-export async function getOrdersAction(params?: GetOrdersParams) {
-  try {
-    const { session, store } = await requireActiveStoreContext(Permission.VIEW_ORDERS);
-
-    const query = params?.query?.trim();
-    const orderNumber = query && /^#?\d+$/.test(query) ? Number(query.replace('#', '')) : null;
-    const capabilities = getOrderCapabilities(session.tenantRole);
-
-    const orders = await getDb().order.findMany({
-      where: {
-        tenantId: session.tenantId,
-        storeId: store.id,
-        status: params?.statuses?.length ? { in: params.statuses } : params?.status,
-        paymentStatus: params?.paymentStatus,
-        createdAt: {
-          gte: params?.dateFrom,
-          lte: params?.dateTo,
-        },
-        OR: query
-          ? [
-              { customerName: { contains: query, mode: 'insensitive' } },
-              { customerPhone: { contains: query } },
-              ...(orderNumber === null ? [] : [{ orderNumber }]),
-            ]
-          : undefined,
-      },
-      orderBy: { createdAt: 'desc' },
-      select: orderWithDetailsSelect,
-    });
-
-    return actionSuccess(
-      orders.map((order) => ({
-        ...order,
-        customerPhone: capabilities.canViewCustomerContact ? order.customerPhone : '',
-        deliveryAddress: capabilities.canViewCustomerContact ? order.deliveryAddress : null,
-        changeFor: capabilities.canViewPaymentDetails ? order.changeFor : null,
-        cancellationReasonCode: capabilities.canViewHistory
-          ? order.cancellationReasonCode
-          : null,
-        cancellationNote: capabilities.canViewHistory ? order.cancellationNote : null,
-        statusHistory: capabilities.canViewHistory ? order.statusHistory : [],
-      })),
-    );
-  } catch (error) {
-    return actionError(error);
-  }
-}
 
 export interface OrderActionData {
   orderId: string;

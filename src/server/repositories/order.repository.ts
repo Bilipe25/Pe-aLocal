@@ -3,6 +3,7 @@ import 'server-only';
 import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
 import * as orderAudit from '@/server/services/order-audit.service';
+import { normalizePhone } from '@/lib/brazil';
 
 // =============================================================================
 // Order Repository — Criação atômica de pedidos
@@ -89,6 +90,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         idempotencyKey: input.idempotencyKey,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
+        customerPhoneNormalized: normalizePhone(input.customerPhone),
         modality: input.modality,
         deliveryAddress: input.deliveryAddress ?? null,
         deliveryZoneName,
