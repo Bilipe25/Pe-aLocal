@@ -275,8 +275,17 @@ export async function createOrderAction(
       total,
     });
 
-    // Disparar evento Pusher para o painel em tempo real
-    await triggerNewOrder(store.id, order.id, order.orderNumber);
+    if (order.created) {
+      try {
+        await triggerNewOrder(store.id, order.id, order.orderNumber);
+      } catch (error) {
+        console.error('[ORDER_CREATED_REALTIME_PUBLISH_FAILED]', {
+          orderId: order.id,
+          storeId: store.id,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
 
     return actionSuccess({
       publicToken: order.publicToken,

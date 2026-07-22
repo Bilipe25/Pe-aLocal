@@ -4,13 +4,18 @@ import { createOrderAction } from '@/features/orders/actions';
 
 const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
+  productFindMany: vi.fn(),
   getEffectiveStoreAvailabilityForTenant: vi.fn(),
   rateLimitCheck: vi.fn(),
   createOrder: vi.fn(),
+  triggerNewOrder: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({
-  getDb: () => ({ store: { findUnique: mocks.storeFindUnique } }),
+  getDb: () => ({
+    store: { findUnique: mocks.storeFindUnique },
+    product: { findMany: mocks.productFindMany },
+  }),
 }));
 vi.mock('@/server/services/store-availability.service', () => ({
   getEffectiveStoreAvailabilityForTenant: mocks.getEffectiveStoreAvailabilityForTenant,
@@ -20,7 +25,7 @@ vi.mock('@/server/rate-limit', () => ({
   getRateLimiter: () => ({ check: mocks.rateLimitCheck }),
 }));
 vi.mock('@/server/repositories/order.repository', () => ({ createOrder: mocks.createOrder }));
-vi.mock('@/lib/pusher/server', () => ({ triggerNewOrder: vi.fn() }));
+vi.mock('@/lib/pusher/server', () => ({ triggerNewOrder: mocks.triggerNewOrder }));
 
 const checkout = {
   customerName: 'Cliente Teste',
@@ -57,6 +62,19 @@ describe('disponibilidade na criação do pedido', () => {
         acceptsCardOnDelivery: true,
       },
     });
+    mocks.productFindMany.mockResolvedValue([
+      {
+        id: checkout.items[0].productId,
+        name: 'Produto teste',
+        basePrice: 2000,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        category: { isActive: true, archivedAt: null },
+        optionGroups: [],
+      },
+    ]);
   });
 
   it('bloqueia no servidor quando o tenant está suspenso, sem confiar no status OPEN', async () => {
@@ -134,5 +152,49 @@ describe('disponibilidade na criação do pedido', () => {
       },
     });
     expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('retorna sucesso quando o pedido foi criado e o Pusher falha', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.createOrder.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 10,
+      created: true,
+    });
+    mocks.triggerNewOrder.mockRejectedValue(new Error('Pusher indisponível'));
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toEqual({
+      success: true,
+      data: { publicToken: 'public-token', orderNumber: 10 },
+    });
+    expect(mocks.triggerNewOrder).toHaveBeenCalledWith('store-a', 'order-a', 10);
+  });
+
+  it('não publica novo evento ao recuperar pedido idempotente', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.createOrder.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 10,
+      created: false,
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result.success).toBe(true);
+    expect(mocks.triggerNewOrder).not.toHaveBeenCalled();
   });
 });

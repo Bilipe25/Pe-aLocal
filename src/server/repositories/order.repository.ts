@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
+import * as orderAudit from '@/server/services/order-audit.service';
 
 // =============================================================================
 // Order Repository — Criação atômica de pedidos
@@ -36,6 +37,7 @@ interface CreateOrderResult {
   id: string;
   publicToken: string;
   orderNumber: number;
+  created: boolean;
 }
 
 /**
@@ -67,7 +69,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     });
 
     if (existing) {
-      return existing;
+      return { ...existing, created: false };
     }
 
     // 2. Gerar orderNumber sequencial
@@ -137,6 +139,8 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
             changedBy: 'system',
             actorNameSnapshot: 'Cliente',
             source: 'CUSTOMER',
+            versionFrom: null,
+            versionTo: 0,
           },
         },
       },
@@ -147,7 +151,14 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       },
     });
 
-    return order;
+    await orderAudit.writeOrderCreatedAudit(tx, {
+      tenantId,
+      storeId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+    });
+
+    return { ...order, created: true };
   });
 }
 

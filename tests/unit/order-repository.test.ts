@@ -1,0 +1,118 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createOrder } from '@/server/repositories/order.repository';
+
+const mocks = vi.hoisted(() => {
+  const tx = {
+    order: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
+    auditLog: { create: vi.fn() },
+  };
+  return {
+    tx,
+    transaction: vi.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+  };
+});
+
+vi.mock('@/server/database/client', () => ({
+  getDb: () => ({ $transaction: mocks.transaction }),
+}));
+
+const params = {
+  input: {
+    customerName: 'Cliente',
+    customerPhone: '(85) 99999-9999',
+    modality: 'PICKUP' as const,
+    paymentMethod: 'PIX' as const,
+    notes: '',
+    idempotencyKey: '4da03571-bffd-45ef-8c44-20686c487838',
+    items: [
+      {
+        productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
+        quantity: 1,
+        notes: '',
+        optionIds: [],
+      },
+    ],
+  },
+  storeId: 'store-a',
+  tenantId: 'tenant-a',
+  resolvedItems: [
+    {
+      productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
+      productName: 'Produto',
+      basePrice: 2000,
+      quantity: 1,
+      notes: '',
+      options: [],
+      unitPrice: 2000,
+      itemTotal: 2000,
+    },
+  ],
+  deliveryFee: 0,
+  deliveryZoneName: null,
+  subtotal: 2000,
+  total: 2000,
+};
+
+describe('OrderRepository', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.tx.order.findUnique.mockResolvedValue(null);
+    mocks.tx.order.findFirst.mockResolvedValue(null);
+    mocks.tx.order.create.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 1,
+    });
+    mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-a' });
+  });
+
+  it('cria auditoria na mesma transação somente para pedido novo', async () => {
+    const result = await createOrder(params);
+
+    expect(result).toEqual({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 1,
+      created: true,
+    });
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'ORDER_CREATED', entityId: 'order-a' }),
+      }),
+    );
+    expect(mocks.tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          statusHistory: {
+            create: expect.objectContaining({ versionFrom: null, versionTo: 0 }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('retorna pedido idempotente sem criar nova auditoria', async () => {
+    mocks.tx.order.findUnique.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 1,
+    });
+
+    const result = await createOrder(params);
+
+    expect(result.created).toBe(false);
+    expect(mocks.tx.order.create).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('não retorna sucesso quando a auditoria falha', async () => {
+    mocks.tx.auditLog.create.mockRejectedValue(new Error('audit unavailable'));
+
+    await expect(createOrder(params)).rejects.toThrow('audit unavailable');
+  });
+});

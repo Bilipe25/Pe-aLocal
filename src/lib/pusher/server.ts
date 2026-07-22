@@ -29,6 +29,7 @@ function getPusherServer(): Pusher {
       secret,
       cluster,
       useTLS: true,
+      timeout: 5_000,
     });
   }
 
