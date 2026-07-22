@@ -88,6 +88,26 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum OrderChangeSource {
+  CUSTOMER
+  DASHBOARD
+  SYSTEM
+  WEBHOOK
+  SUPPORT
+  QUEUE
+}
+
+enum OrderCancellationReasonCode {
+  CUSTOMER_REQUEST
+  PRODUCT_UNAVAILABLE
+  STORE_UNABLE_TO_FULFILL
+  ADDRESS_PROBLEM
+  PAYMENT_NOT_IDENTIFIED
+  DUPLICATE_ORDER
+  FRAUD_SUSPECTED
+  OTHER
+}
+
 enum PixKeyType {
   CPF
   CNPJ
@@ -221,6 +241,8 @@ model User {
   storeAssetsCreated        StoreAsset[]                 @relation("StoreAssetCreatedBy")
   scheduleExceptionsCreated StoreScheduleException[]     @relation("StoreScheduleExceptionCreatedBy")
   slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
+  ordersCancelled           Order[]                      @relation("OrderCancelledBy")
+  orderStatusChanges        OrderStatusHistory[]         @relation("OrderStatusChangedBy")
 
   @@index([email])
   @@map("users")
@@ -818,8 +840,23 @@ model Order {
   changeFor     Int? // Troco para (em centavos)
 
   // Status
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  version         Int           @default(0)
+  statusChangedAt DateTime      @default(now())
+
+  acceptedAt   DateTime?
+  preparingAt  DateTime?
+  readyAt      DateTime?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+  cancelledAt  DateTime?
+
+  cancelledById                      String?
+  cancellationReasonCode             OrderCancellationReasonCode?
+  cancellationNote                   String?                     @db.VarChar(500)
+  cancellationSource                 OrderChangeSource?
+  customerCancellationNoticeRequired Boolean?
 
   // Observações
   notes String?
@@ -834,6 +871,7 @@ model Order {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy User?  @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
@@ -887,17 +925,26 @@ model OrderItemOption {
 }
 
 model OrderStatusHistory {
-  id         String       @id @default(uuid())
-  orderId    String
-  fromStatus OrderStatus?
-  toStatus   OrderStatus
-  note       String?
-  changedBy  String? // userId ou "system"
-  createdAt  DateTime     @default(now())
+  id                String                       @id @default(uuid())
+  orderId           String
+  fromStatus        OrderStatus?
+  toStatus          OrderStatus
+  note              String?
+  changedBy         String? // legado: userId ou "system"
+  changedById       String?
+  actorNameSnapshot String?
+  source            OrderChangeSource            @default(SYSTEM)
+  reasonCode        OrderCancellationReasonCode?
+  isUndo            Boolean                      @default(false)
+  revertsHistoryId  String?                      @unique
+  createdAt         DateTime                     @default(now())
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser   User? @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([orderId, createdAt])
+  @@index([changedById, createdAt])
   @@index([createdAt])
   @@map("order_status_history")
 }

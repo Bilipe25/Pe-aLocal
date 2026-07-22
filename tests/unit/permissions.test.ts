@@ -9,6 +9,7 @@ import {
   PlatformRole,
   TenantRole,
 } from '@/server/permissions';
+import { getOrderCapabilities } from '@/features/orders/capabilities';
 
 describe('Permissions', () => {
   it('separa permissões de plataforma das permissões de tenant', () => {
@@ -56,5 +57,26 @@ describe('Permissions', () => {
   it('reconhece somente o papel de plataforma SUPER_ADMIN', () => {
     expect(isSuperAdmin(PlatformRole.SUPER_ADMIN)).toBe(true);
     expect(isSuperAdmin(PlatformRole.USER)).toBe(false);
+  });
+
+  it('aplica a matriz operacional aprovada para pedidos', () => {
+    const owner = getOrderCapabilities(TenantRole.OWNER);
+    const manager = getOrderCapabilities(TenantRole.MANAGER);
+    const attendant = getOrderCapabilities(TenantRole.ATTENDANT);
+
+    expect(owner.canCancel).toBe(true);
+    expect(manager.canCancel).toBe(true);
+    expect(attendant.canCancel).toBe(false);
+
+    expect(owner.canComplete).toBe(true);
+    expect(manager.canComplete).toBe(true);
+    expect(attendant.canComplete).toBe(true);
+
+    expect(owner.canConfirmPayment).toBe(true);
+    expect(manager.canConfirmPayment).toBe(true);
+    expect(attendant.canConfirmPayment).toBe(true);
+
+    expect(attendant.canViewPaymentDetails).toBe(false);
+    expect(attendant.canViewCustomerContact).toBe(true);
   });
 });

@@ -135,6 +135,8 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
             toStatus: 'PENDING',
             note: 'Pedido criado pelo cliente',
             changedBy: 'system',
+            actorNameSnapshot: 'Cliente',
+            source: 'CUSTOMER',
           },
         },
       },
