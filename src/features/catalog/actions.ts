@@ -11,6 +11,7 @@ import {
   ConcurrencyError,
   type ActionResult,
 } from '@/server/errors';
+import { catalogValidationError } from '@/features/catalog/catalog-validation';
 import {
   createCategorySchema,
   createProductSchema,
@@ -19,6 +20,7 @@ import {
   productAvailabilitySchema,
   catalogMoveDirectionSchema,
   catalogOrderedIdsSchema,
+  updateProductSchema,
   updateOptionGroupSchema,
   updateOptionSchema,
 } from '@/schemas/catalog';
@@ -330,7 +332,7 @@ export async function createProductAction(
     const raw = Object.fromEntries(formData);
     const parsed = createProductSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError(new Error(parsed.error.issues.map((i) => i.message).join('; ')));
+      return actionError(catalogValidationError(parsed.error));
     }
 
     // Verificar que a categoria pertence à mesma loja
@@ -387,9 +389,9 @@ export async function updateProductAction(id: string, formData: FormData): Promi
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
 
     const raw = Object.fromEntries(formData);
-    const parsed = createProductSchema.safeParse(raw);
+    const parsed = updateProductSchema.safeParse(raw);
     if (!parsed.success) {
-      return actionError(new Error(parsed.error.issues.map((i) => i.message).join('; ')));
+      return actionError(catalogValidationError(parsed.error));
     }
 
     const product = await productRepo.findProductById(id, session.tenantId);

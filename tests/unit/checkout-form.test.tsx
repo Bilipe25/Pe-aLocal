@@ -288,3 +288,33 @@ describe('checkout público', () => {
     expect(window.sessionStorage.getItem(getCheckoutDraftStorageKey('store-1'))).toBeNull();
   });
 });
+
+describe('mensagens de validação do checkout', () => {
+  it('mostra o detalhe seguro retornado pelo servidor', async () => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    mocks.getCheckoutAvailabilityAction.mockResolvedValue({
+      success: true,
+      data: {
+        acceptingOrders: true,
+        state: 'OPEN',
+        reason: 'Aberta agora.',
+        nextTransitionAt: null,
+      },
+    });
+    mocks.createOrderAction.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Dados do checkout inválidos',
+        details: [{ path: 'items.0.productId', message: 'Produto inválido.' }],
+      },
+    });
+    renderCheckout();
+
+    fireEvent.submit(screen.getByRole('button', { name: /Confirmar pedido/ }).closest('form')!);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Produto inválido.');
+    expect(mocks.clearCart).not.toHaveBeenCalled();
+  });
+});

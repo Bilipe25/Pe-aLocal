@@ -302,7 +302,17 @@ export function CheckoutForm({
               reason: result.error.message,
             });
           } else {
-            setError(result.error.message);
+            const validationMessage =
+              result.error.code === 'VALIDATION_ERROR'
+                ? result.error.details?.find(
+                    (detail) => typeof detail.message === 'string',
+                  )?.message
+                : undefined;
+            setError(
+              typeof validationMessage === 'string'
+                ? validationMessage
+                : result.error.message,
+            );
           }
           return;
         }
