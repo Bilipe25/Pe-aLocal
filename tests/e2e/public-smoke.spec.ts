@@ -59,7 +59,10 @@ test.describe('experiência pública', () => {
       name: 'Preencher dados de demonstração',
     });
 
-    if (testInfo.project.name === 'workerd-chromium') {
+    if (
+      testInfo.project.name === 'workerd-chromium' ||
+      process.env.E2E_USE_PRODUCTION_BUILD === 'true'
+    ) {
       await expect(demoButton).toHaveCount(0);
       return;
     }
