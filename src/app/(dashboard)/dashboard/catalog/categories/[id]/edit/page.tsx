@@ -2,15 +2,18 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CategoryForm } from '@/features/catalog/components/category-form';
-import { getCategoryAction } from '@/features/catalog/actions';
+import { Permission } from '@/server/permissions';
+import * as categoryRepo from '@/server/repositories/category.repository';
+import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 export const metadata = { title: 'Editar Categoria' };
 
 export default async function EditCategoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const category = await getCategoryAction(id);
+  const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
+  const category = await categoryRepo.findCategoryById(id, session.tenantId);
 
-  if (!category) {
+  if (!category || category.storeId !== store.id) {
     notFound();
   }
 

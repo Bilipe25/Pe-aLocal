@@ -16,6 +16,9 @@ import {
   createProductSchema,
   createOptionGroupSchema,
   createOptionSchema,
+  productAvailabilitySchema,
+  catalogMoveDirectionSchema,
+  catalogOrderedIdsSchema,
   updateOptionGroupSchema,
   updateOptionSchema,
 } from '@/schemas/catalog';
@@ -29,6 +32,19 @@ import { requireActiveStoreContext } from '@/server/services/store-context.servi
 
 type MoveDirection = 'up' | 'down';
 
+function normalizeOptionGroupFormData(raw: Record<string, FormDataEntryValue>) {
+  const isRequired = raw.isRequired === 'true';
+  const isMultiple = raw.isMultiple === 'true';
+  if (!isMultiple) {
+    raw.minSelections = isRequired ? '1' : '0';
+    raw.maxSelections = '1';
+  } else if (isRequired && Number(raw.minSelections ?? 0) < 1) {
+    raw.minSelections = '1';
+  } else if (!isRequired) {
+    raw.minSelections = '0';
+  }
+  return raw;
+}
 
 // =============================================================================
 // Category Actions
@@ -92,10 +108,7 @@ export async function createCategoryAction(
   }
 }
 
-export async function updateCategoryAction(
-  id: string,
-  formData: FormData,
-): Promise<ActionResult> {
+export async function updateCategoryAction(id: string, formData: FormData): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
 
@@ -211,7 +224,7 @@ export async function restoreCategoryAction(id: string): Promise<ActionResult> {
       return actionError(new NotFoundError('Categoria'));
 
     await getDb().$transaction(async (tx) => {
-      await categoryRepo.restoreCategory(id, session.tenantId, tx);
+      await categoryRepo.restoreCategory(id, session.tenantId, store.id, tx);
 
       await auditRepo.createAuditLog(
         {
@@ -243,6 +256,8 @@ export async function moveCategoryAction(
   direction: MoveDirection,
 ): Promise<ActionResult> {
   try {
+    const parsedDirection = catalogMoveDirectionSchema.safeParse(direction);
+    if (!parsedDirection.success) return actionError(new Error('Direção de ordenação inválida.'));
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
     const category = await categoryRepo.findCategoryById(id, session.tenantId);
     if (!category || category.storeId !== store.id)
@@ -255,17 +270,34 @@ export async function moveCategoryAction(
     });
 
     const index = categories.findIndex((item) => item.id === id);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const targetIndex = parsedDirection.data === 'up' ? index - 1 : index + 1;
     if (index < 0 || targetIndex < 0 || targetIndex >= categories.length) return actionSuccess();
 
     const reordered = [...categories];
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
 
-    await getDb().$transaction(
-      reordered.map((item, sortOrder) =>
-        getDb().category.update({ where: { id: item.id }, data: { sortOrder: (sortOrder + 1) * 1000 } }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        reordered.map((item, sortOrder) =>
+          tx.category.update({
+            where: { id: item.id },
+            data: { sortOrder: (sortOrder + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'Category',
+          entityId: id,
+          metadata: { direction: parsedDirection.data, fromIndex: index, toIndex: targetIndex },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(category.storeId));
     return actionSuccess();
@@ -448,12 +480,16 @@ export async function setProductAvailabilityAction(
     const { session, store } = await requireActiveStoreContext(
       Permission.MANAGE_PRODUCT_AVAILABILITY,
     );
+    const parsed = productAvailabilitySchema.safeParse(data);
+    if (!parsed.success) {
+      return actionError(new Error(parsed.error.issues.map((issue) => issue.message).join('; ')));
+    }
 
     const product = await productRepo.findProductById(id, session.tenantId);
     if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
 
     await getDb().$transaction(async (tx) => {
-      await productRepo.setProductAvailability(id, session.tenantId, data, tx);
+      await productRepo.setProductAvailability(id, session.tenantId, parsed.data, tx);
 
       await auditRepo.createAuditLog(
         {
@@ -465,9 +501,9 @@ export async function setProductAvailabilityAction(
           entityId: id,
           metadata: {
             isAvailableBefore: product.isAvailable,
-            isAvailableAfter: data.isAvailable ?? product.isAvailable,
+            isAvailableAfter: parsed.data.isAvailable ?? product.isAvailable,
             isSoldOutBefore: product.isSoldOut,
-            isSoldOutAfter: data.isSoldOut ?? product.isSoldOut,
+            isSoldOutAfter: parsed.data.isSoldOut ?? product.isSoldOut,
           },
         },
         tx,
@@ -557,6 +593,8 @@ export async function moveProductAction(
   direction: MoveDirection,
 ): Promise<ActionResult> {
   try {
+    const parsedDirection = catalogMoveDirectionSchema.safeParse(direction);
+    if (!parsedDirection.success) return actionError(new Error('Direção de ordenação inválida.'));
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
     const product = await productRepo.findProductById(id, session.tenantId);
     if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
@@ -568,20 +606,34 @@ export async function moveProductAction(
     });
 
     const index = products.findIndex((item) => item.id === id);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const targetIndex = parsedDirection.data === 'up' ? index - 1 : index + 1;
     if (index < 0 || targetIndex < 0 || targetIndex >= products.length) return actionSuccess();
 
     const reordered = [...products];
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
 
-    await getDb().$transaction(
-      reordered.map((item, i) =>
-        getDb().product.update({
-          where: { id: item.id },
-          data: { sortOrder: (i + 1) * 1000 },
-        }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        reordered.map((item, sortOrder) =>
+          tx.product.update({
+            where: { id: item.id },
+            data: { sortOrder: (sortOrder + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'Product',
+          entityId: id,
+          metadata: { direction: parsedDirection.data, fromIndex: index, toIndex: targetIndex },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(product.storeId));
     return actionSuccess();
@@ -600,12 +652,7 @@ export async function createOptionGroupAction(
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
 
-    const raw = Object.fromEntries(formData);
-    // Normaliza minSelections/maxSelections para grupos não-múltiplos
-    if (raw.isMultiple !== 'true') {
-      raw.minSelections = raw.isRequired === 'true' ? '1' : '0';
-      raw.maxSelections = '1';
-    }
+    const raw = normalizeOptionGroupFormData(Object.fromEntries(formData));
 
     const parsed = createOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
@@ -663,11 +710,7 @@ export async function updateOptionGroupAction(
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
 
-    const raw = Object.fromEntries(formData);
-    if (raw.isMultiple !== 'true') {
-      raw.minSelections = raw.isRequired === 'true' ? '1' : '0';
-      raw.maxSelections = '1';
-    }
+    const raw = normalizeOptionGroupFormData(Object.fromEntries(formData));
 
     const parsed = updateOptionGroupSchema.safeParse(raw);
     if (!parsed.success) {
@@ -755,6 +798,8 @@ export async function moveOptionGroupAction(
   direction: MoveDirection,
 ): Promise<ActionResult> {
   try {
+    const parsedDirection = catalogMoveDirectionSchema.safeParse(direction);
+    if (!parsedDirection.success) return actionError(new Error('Direção de ordenação inválida.'));
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
     const group = await optionGroupRepo.findOptionGroupById(id);
     if (!group || group.product.tenantId !== session.tenantId || group.product.storeId !== store.id)
@@ -767,20 +812,34 @@ export async function moveOptionGroupAction(
     });
 
     const index = groups.findIndex((item) => item.id === id);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const targetIndex = parsedDirection.data === 'up' ? index - 1 : index + 1;
     if (index < 0 || targetIndex < 0 || targetIndex >= groups.length) return actionSuccess();
 
     const reordered = [...groups];
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
 
-    await getDb().$transaction(
-      reordered.map((item, i) =>
-        getDb().productOptionGroup.update({
-          where: { id: item.id },
-          data: { sortOrder: (i + 1) * 1000 },
-        }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        reordered.map((item, sortOrder) =>
+          tx.productOptionGroup.update({
+            where: { id: item.id },
+            data: { sortOrder: (sortOrder + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'ProductOptionGroup',
+          entityId: id,
+          metadata: { direction: parsedDirection.data, fromIndex: index, toIndex: targetIndex },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(group.product.storeId));
     return actionSuccess();
@@ -940,6 +999,8 @@ export async function moveOptionAction(
   direction: MoveDirection,
 ): Promise<ActionResult> {
   try {
+    const parsedDirection = catalogMoveDirectionSchema.safeParse(direction);
+    if (!parsedDirection.success) return actionError(new Error('Direção de ordenação inválida.'));
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
     const option = await optionGroupRepo.findOptionById(id);
     if (
@@ -956,20 +1017,34 @@ export async function moveOptionAction(
     });
 
     const index = options.findIndex((item) => item.id === id);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const targetIndex = parsedDirection.data === 'up' ? index - 1 : index + 1;
     if (index < 0 || targetIndex < 0 || targetIndex >= options.length) return actionSuccess();
 
     const reordered = [...options];
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
 
-    await getDb().$transaction(
-      reordered.map((item, i) =>
-        getDb().productOption.update({
-          where: { id: item.id },
-          data: { sortOrder: (i + 1) * 1000 },
-        }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        reordered.map((item, sortOrder) =>
+          tx.productOption.update({
+            where: { id: item.id },
+            data: { sortOrder: (sortOrder + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'ProductOption',
+          entityId: id,
+          metadata: { direction: parsedDirection.data, fromIndex: index, toIndex: targetIndex },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(option.group.product.storeId));
     return actionSuccess();
@@ -1000,32 +1075,46 @@ export async function listArchivedCatalogAction() {
  * Reordena categorias recebendo uma lista de IDs na nova ordem desejada.
  * Valida que todos os IDs pertencem ao tenant+store antes de gravar.
  */
-export async function reorderCategoriesAction(
-  orderedIds: string[],
-): Promise<ActionResult> {
+export async function reorderCategoriesAction(orderedIds: string[]): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
 
     if (orderedIds.length === 0) return actionSuccess();
+    const parsedIds = catalogOrderedIdsSchema.safeParse(orderedIds);
+    if (!parsedIds.success) return actionError(new Error(parsedIds.error.issues[0].message));
 
     // Verifica propriedade de todos os IDs
     const owned = await getDb().category.findMany({
-      where: { id: { in: orderedIds }, tenantId: session.tenantId, storeId: store.id },
+      where: { id: { in: parsedIds.data }, tenantId: session.tenantId, storeId: store.id },
       select: { id: true },
     });
 
-    if (owned.length !== orderedIds.length) {
+    if (owned.length !== parsedIds.data.length) {
       return actionError(new NotFoundError('Uma ou mais categorias'));
     }
 
-    await getDb().$transaction(
-      orderedIds.map((id, index) =>
-        getDb().category.update({
-          where: { id },
-          data: { sortOrder: (index + 1) * 1000 },
-        }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        parsedIds.data.map((categoryId, index) =>
+          tx.category.update({
+            where: { id: categoryId },
+            data: { sortOrder: (index + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'Category',
+          entityId: parsedIds.data[0],
+          metadata: { orderedIds: parsedIds.data },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(store.id));
     return actionSuccess();
@@ -1038,31 +1127,48 @@ export async function reorderCategoriesAction(
  * Reordena produtos dentro de uma categoria.
  * Valida que todos os IDs pertencem ao tenant+store antes de gravar.
  */
-export async function reorderProductsAction(
-  orderedIds: string[],
-): Promise<ActionResult> {
+export async function reorderProductsAction(orderedIds: string[]): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
 
     if (orderedIds.length === 0) return actionSuccess();
+    const parsedIds = catalogOrderedIdsSchema.safeParse(orderedIds);
+    if (!parsedIds.success) return actionError(new Error(parsedIds.error.issues[0].message));
 
     const owned = await getDb().product.findMany({
-      where: { id: { in: orderedIds }, tenantId: session.tenantId, storeId: store.id },
-      select: { id: true },
+      where: { id: { in: parsedIds.data }, tenantId: session.tenantId, storeId: store.id },
+      select: { id: true, categoryId: true },
     });
 
-    if (owned.length !== orderedIds.length) {
+    if (
+      owned.length !== parsedIds.data.length ||
+      new Set(owned.map((product) => product.categoryId)).size !== 1
+    ) {
       return actionError(new NotFoundError('Um ou mais produtos'));
     }
 
-    await getDb().$transaction(
-      orderedIds.map((id, index) =>
-        getDb().product.update({
-          where: { id },
-          data: { sortOrder: (index + 1) * 1000 },
-        }),
-      ),
-    );
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        parsedIds.data.map((productId, index) =>
+          tx.product.update({
+            where: { id: productId },
+            data: { sortOrder: (index + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'Product',
+          entityId: parsedIds.data[0],
+          metadata: { orderedIds: parsedIds.data },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(store.id));
     return actionSuccess();
@@ -1082,18 +1188,42 @@ export async function reorderOptionGroupsAction(
     const { session, store } = await requireActiveStoreContext(Permission.REORDER_CATALOG);
 
     if (orderedIds.length === 0) return actionSuccess();
+    const parsedIds = catalogOrderedIdsSchema.safeParse(orderedIds);
+    if (!parsedIds.success) return actionError(new Error(parsedIds.error.issues[0].message));
 
     const product = await productRepo.findProductById(productId, session.tenantId);
     if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
 
-    await getDb().$transaction(
-      orderedIds.map((id, index) =>
-        getDb().productOptionGroup.update({
-          where: { id },
-          data: { sortOrder: (index + 1) * 1000 },
-        }),
-      ),
-    );
+    const ownedGroups = await getDb().productOptionGroup.findMany({
+      where: { id: { in: parsedIds.data }, productId, archivedAt: null },
+      select: { id: true },
+    });
+    if (ownedGroups.length !== parsedIds.data.length) {
+      return actionError(new NotFoundError('Um ou mais grupos de opções'));
+    }
+
+    await getDb().$transaction(async (tx) => {
+      await Promise.all(
+        parsedIds.data.map((groupId, index) =>
+          tx.productOptionGroup.update({
+            where: { id: groupId },
+            data: { sortOrder: (index + 1) * 1000 },
+          }),
+        ),
+      );
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'CATALOG_REORDERED',
+          entity: 'ProductOptionGroup',
+          entityId: parsedIds.data[0],
+          metadata: { productId, orderedIds: parsedIds.data },
+        },
+        tx,
+      );
+    });
 
     updateTag(CACHE_TAGS.catalog(store.id));
     return actionSuccess();
@@ -1102,84 +1232,67 @@ export async function reorderOptionGroupsAction(
   }
 }
 
-/**
- * Associa um asset R2 existente como imagem de um produto.
- * O upload já deve ter sido feito via /api/admin/tenants/.../assets.
- * A URL pública (imageUrl) é passada pelo cliente pois não está armazenada no DB.
- */
-export async function setProductImageAction(
-  productId: string,
-  assetId: string | null,
-  imageUrl?: string | null,
-): Promise<ActionResult> {
+/** Desassocia a imagem e agenda o asset órfão para coleta segura. */
+export async function removeProductImageAction(productId: string): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_PRODUCT_IMAGES);
 
     const product = await productRepo.findProductById(productId, session.tenantId);
     if (!product || product.storeId !== store.id) return actionError(new NotFoundError('Produto'));
+    if (!product.imageAssetId && !product.imageUrl) return actionSuccess();
 
-    if (assetId !== null) {
-      // Verifica que o asset pertence à mesma loja e é do tipo PRODUCT_IMAGE
-      const asset = await getDb().storeAsset.findFirst({
+    await getDb().$transaction(async (tx) => {
+      const updated = await tx.product.updateMany({
         where: {
-          id: assetId,
+          id: productId,
           tenantId: session.tenantId,
           storeId: store.id,
-          assetType: 'PRODUCT_IMAGE',
-          deletedAt: null,
+          imageAssetId: product.imageAssetId,
         },
-        select: { id: true, objectKey: true },
+        data: { imageAssetId: null, imageUrl: null, version: { increment: 1 } },
       });
-      if (!asset) return actionError(new NotFoundError('Asset de imagem'));
+      if (updated.count !== 1) throw new ConcurrencyError('Imagem do produto');
 
-      await getDb().$transaction(async (tx) => {
-        await tx.product.update({
-          where: { id: productId },
-          data: {
-            imageAssetId: assetId,
-            // imageUrl recebido do cliente (URL pública retornada pelo upload)
-            imageUrl: imageUrl ?? null,
-            version: { increment: 1 },
+      await auditRepo.createAuditLog(
+        {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          userId: session.userId,
+          action: 'PRODUCT_UPDATED',
+          entity: 'Product',
+          entityId: productId,
+          metadata: {
+            changedFields: ['imageAssetId'],
+            assetId: null,
+            removedAssetId: product.imageAssetId,
           },
+        },
+        tx,
+      );
+
+      if (product.imageAssetId) {
+        const remainingReferences = await tx.product.count({
+          where: { imageAssetId: product.imageAssetId },
         });
-
-        await auditRepo.createAuditLog(
-          {
-            tenantId: session.tenantId,
-            storeId: store.id,
-            userId: session.userId,
-            action: 'PRODUCT_UPDATED',
-            entity: 'Product',
-            entityId: productId,
-            metadata: { changedFields: ['imageAssetId'], assetId, objectKey: asset.objectKey },
-          },
-          tx,
-        );
-      });
-    } else {
-      // Remove imagem
-      await getDb().$transaction(async (tx) => {
-        await tx.product.update({
-          where: { id: productId },
-          data: { imageAssetId: null, imageUrl: null, version: { increment: 1 } },
-        });
-
-        await auditRepo.createAuditLog(
-          {
-            tenantId: session.tenantId,
-            storeId: store.id,
-            userId: session.userId,
-            action: 'PRODUCT_UPDATED',
-            entity: 'Product',
-            entityId: productId,
-            metadata: { changedFields: ['imageAssetId'], assetId: null },
-          },
-          tx,
-        );
-      });
-    }
+        if (remainingReferences === 0) {
+          await tx.storeAsset.updateMany({
+            where: {
+              id: product.imageAssetId,
+              tenantId: session.tenantId,
+              storeId: store.id,
+              assetType: 'PRODUCT_IMAGE',
+              status: 'ACTIVE',
+              deletedAt: null,
+            },
+            data: { status: 'DELETED', deletedAt: new Date() },
+          });
+        }
+      }
+    });
 
     updateTag(CACHE_TAGS.catalog(product.storeId));
+    updateTag(CACHE_TAGS.assets(product.storeId));
+    if (product.imageAssetId) updateTag(CACHE_TAGS.asset(product.imageAssetId));
     return actionSuccess();
   } catch (error) {
     return actionError(error);

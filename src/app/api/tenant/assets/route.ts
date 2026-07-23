@@ -1,15 +1,18 @@
+import { updateTag } from 'next/cache';
+import { z } from 'zod';
+
+import { tenantStoreAssetUrl } from '@/features/assets/urls';
 import { storeAssetUploadMetadataSchema } from '@/schemas/store-asset';
+import { CACHE_TAGS } from '@/server/cache';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 import { errorToResponse, ValidationError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
-import { uploadStoreAssetAsTenantMember } from '@/server/services/store-asset.service';
+import { uploadProductImageAsTenantMember } from '@/server/services/store-asset.service';
 
 const MAX_MULTIPART_BYTES = 6 * 1024 * 1024;
 
 /**
- * Rota de upload de assets acessível a membros do tenant com permissão
- * MANAGE_PRODUCT_IMAGES (OWNER, MANAGER). Distinta da rota admin que exige
- * SUPER_ADMIN.
+ * Upload e associação atômica de imagem de produto para a loja ativa.
  */
 export async function POST(request: Request) {
   try {
@@ -19,18 +22,18 @@ export async function POST(request: Request) {
     }
 
     // Autoriza antes de materializar o multipart em memória
-    const { session, store } = await requireActiveStoreContext(
-      Permission.MANAGE_PRODUCT_IMAGES,
-    );
+    const { session, store } = await requireActiveStoreContext(Permission.MANAGE_PRODUCT_IMAGES);
 
     const formData = await request.formData();
     const file = formData.get('file');
     if (!(file instanceof File)) throw new ValidationError('Selecione um arquivo de imagem.');
 
+    const productId = z.uuid().safeParse(formData.get('productId'));
+    if (!productId.success) throw new ValidationError('O produto informado é inválido.');
+
     const metadata = storeAssetUploadMetadataSchema.safeParse({
-      assetType: formData.get('assetType'),
+      assetType: 'PRODUCT_IMAGE',
       altText: formData.get('altText'),
-      replaceAssetId: formData.get('replaceAssetId') || undefined,
     });
     if (!metadata.success) {
       throw new ValidationError(
@@ -42,15 +45,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const asset = await uploadStoreAssetAsTenantMember(
-      session.tenantId,
-      store.id,
+    const { asset, replacedAssetId } = await uploadProductImageAsTenantMember({
+      tenantId: session.tenantId,
+      storeId: store.id,
+      productId: productId.data,
+      userId: session.userId,
       file,
-      metadata.data,
-      session.userId,
-    );
+      altText: metadata.data.altText,
+    });
+
+    updateTag(CACHE_TAGS.catalog(store.id));
+    updateTag(CACHE_TAGS.assets(store.id));
+    updateTag(CACHE_TAGS.asset(asset.id));
+    if (replacedAssetId) updateTag(CACHE_TAGS.asset(replacedAssetId));
+
+    const serializedAsset = {
+      ...asset,
+      url: tenantStoreAssetUrl(asset.id, 768),
+      previewUrl: tenantStoreAssetUrl(asset.id, 384),
+    };
     return Response.json(
-      { asset },
+      { asset: serializedAsset },
       { status: 201, headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {

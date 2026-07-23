@@ -15,7 +15,7 @@ describe('StoreAssetRepository', () => {
     mocks.getDb.mockReturnValue({ $queryRaw: mocks.queryRaw });
   });
 
-  it('detecta referências exatas em publicado, draft, revisões e banners', async () => {
+  it('detecta referências exatas em publicado, draft, revisões, banners e produtos', async () => {
     mocks.queryRaw.mockResolvedValue([{ referenced: true }]);
     const assetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
 
@@ -25,6 +25,8 @@ describe('StoreAssetRepository', () => {
     expect(query.sql).toContain("'categoryImages'");
     expect(query.sql).toContain('store_customization_revisions');
     expect(query.sql).toContain('store_banners');
+    expect(query.sql).toContain('products');
+    expect(query.sql).toContain('imageAssetId');
     expect(query.values).toContain(assetId);
     expect(query.values).toContain('tenant-1');
     expect(query.values).toContain('store-1');

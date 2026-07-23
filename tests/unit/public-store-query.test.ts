@@ -292,7 +292,13 @@ describe('queries públicas da loja', () => {
         id: categoryId,
         name: 'Hambúrgueres',
         description: null,
-        products: [{ id: 'product-1' }],
+        products: [
+          {
+            id: 'product-1',
+            imageUrl: 'https://legacy.invalid/image.jpg',
+            imageAssetId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
+          },
+        ],
       },
     ]);
     const image = {
@@ -313,6 +319,19 @@ describe('queries públicas da loja', () => {
 
     expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
     expect(result).toEqual([expect.objectContaining({ id: categoryId, image })]);
+    expect(result[0].products[0].imageUrl).toBe(
+      '/api/store-assets/d665460d-b4be-48e6-8cb2-33ab2e5cc8a1?width=768',
+    );
+    expect(mocks.categoryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ archivedAt: null }),
+        select: expect.objectContaining({
+          products: expect.objectContaining({
+            where: expect.objectContaining({ archivedAt: null }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('isola as tags de store, catálogo e entrega', async () => {

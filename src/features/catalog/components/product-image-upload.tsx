@@ -1,19 +1,18 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ImagePlus, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { setProductImageAction } from '@/features/catalog/actions';
+import { removeProductImageAction } from '@/features/catalog/actions';
+import { tenantStoreAssetUrl } from '@/features/assets/urls';
 
 interface ProductImageUploadProps {
   productId: string;
-  tenantId: string;
-  storeId: string;
+  productName: string;
   currentImageUrl?: string | null;
-  currentAssetId?: string | null;
 }
 
 const MAX_MB = 3;
@@ -21,15 +20,22 @@ const ACCEPT = 'image/png,image/jpeg,image/webp,image/avif';
 
 export function ProductImageUpload({
   productId,
-  tenantId,
-  storeId,
+  productName,
   currentImageUrl,
-  currentAssetId,
 }: ProductImageUploadProps) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const localPreviewRef = useRef<string | null>(null);
   const [preview, setPreview] = useState<string | null>(currentImageUrl ?? null);
-  const [assetId, setAssetId] = useState<string | null>(currentAssetId ?? null);
   const [uploading, setUploading] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+
+  useEffect(
+    () => () => {
+      if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+    },
+    [],
+  );
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -38,51 +44,56 @@ export function ProductImageUpload({
     // Validação client-side rápida antes de enviar
     if (file.size > MAX_MB * 1024 * 1024) {
       toast.error(`A imagem deve ter no máximo ${MAX_MB} MB.`);
+      e.target.value = '';
       return;
     }
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.type)) {
       toast.error('Use PNG, JPEG, WebP ou AVIF.');
+      e.target.value = '';
       return;
     }
 
     // Preview local imediato
+    const previousPreview = preview;
     const localUrl = URL.createObjectURL(file);
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+    localPreviewRef.current = localUrl;
     setPreview(localUrl);
+    setImageLoadFailed(false);
     setUploading(true);
 
     try {
       // 1. Upload para R2 via rota de tenant (aceita OWNER/MANAGER)
       const formPayload = new FormData();
       formPayload.set('file', file);
-      formPayload.set('assetType', 'PRODUCT_IMAGE');
-      formPayload.set('altText', 'Imagem do produto');
-      if (assetId) formPayload.set('replaceAssetId', assetId);
+      formPayload.set('productId', productId);
+      formPayload.set('altText', `Imagem de ${productName}`);
 
       const uploadRes = await fetch('/api/tenant/assets', {
         method: 'POST',
         body: formPayload,
       });
-      const uploadBody = (await uploadRes.json()) as { asset?: { id: string; url?: string }; message?: string };
+      const responseText = await uploadRes.text();
+      let uploadBody: { asset?: { id: string; url?: string }; message?: string } = {};
+      try {
+        uploadBody = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(`O servidor não concluiu o upload (HTTP ${uploadRes.status}).`);
+      }
       if (!uploadRes.ok || !uploadBody.asset) {
         throw new Error(uploadBody.message ?? 'Não foi possível enviar a imagem.');
       }
       const uploaded = uploadBody.asset;
 
-      // 2. Associa o asset ao produto (passa URL pública do upload)
-      const result = await setProductImageAction(productId, uploaded.id, uploaded.url);
-      if (!result.success) {
-        toast.error(result.error.message);
-        setPreview(currentImageUrl ?? null); // reverte preview
-        return;
-      }
-
-      setAssetId(uploaded.id);
-      setPreview(uploaded.url ?? null);
+      setPreview(uploaded.url ?? tenantStoreAssetUrl(uploaded.id, 768));
       toast.success('Imagem do produto atualizada!');
+      router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagem.');
-      setPreview(currentImageUrl ?? null);
+      setPreview(previousPreview);
     } finally {
+      URL.revokeObjectURL(localUrl);
+      if (localPreviewRef.current === localUrl) localPreviewRef.current = null;
       setUploading(false);
       // Reset o input para permitir re-upload do mesmo arquivo
       if (inputRef.current) inputRef.current.value = '';
@@ -90,11 +101,12 @@ export function ProductImageUpload({
   }
 
   async function handleRemove(): Promise<boolean> {
-    const result = await setProductImageAction(productId, null);
+    const result = await removeProductImageAction(productId);
     if (result.success) {
       setPreview(null);
-      setAssetId(null);
+      setImageLoadFailed(false);
       toast.success('Imagem removida.');
+      router.refresh();
       return true;
     } else {
       toast.error(result.error.message);
@@ -108,24 +120,23 @@ export function ProductImageUpload({
 
       {/* Área de preview / upload */}
       <div className="relative">
-        {preview ? (
-          <div className="group relative h-48 w-full overflow-hidden rounded-xl border border-border">
-            <Image
+        {preview && !imageLoadFailed ? (
+          <div className="group border-border bg-surface-secondary relative h-48 w-full overflow-hidden rounded-xl border">
+            {/* A prévia autenticada deve ser carregada diretamente pelo navegador. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={preview}
-              alt="Foto do produto"
-              fill
-              className="object-cover"
-              unoptimized={preview.startsWith('blob:')}
-              sizes="(max-width: 768px) 100vw, 640px"
+              alt={`Imagem de ${productName}`}
+              className="h-full w-full object-cover"
+              onError={() => !uploading && setImageLoadFailed(true)}
             />
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                 <Loader2 className="h-8 w-8 animate-spin text-white" />
               </div>
             )}
-            {/* Overlay de ações no hover */}
             {!uploading && (
-              <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 opacity-0 transition-all group-hover:bg-black/40 group-hover:opacity-100">
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/70 to-transparent p-3 pt-10 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
                 <Button
                   type="button"
                   size="sm"
@@ -163,7 +174,11 @@ export function ProductImageUpload({
             ) : (
               <>
                 <ImagePlus className="h-8 w-8" />
-                <span className="text-sm font-medium">Adicionar foto do produto</span>
+                <span className="text-sm font-medium">
+                  {imageLoadFailed
+                    ? 'Imagem indisponível — enviar novamente'
+                    : 'Adicionar foto do produto'}
+                </span>
                 <span className="text-xs">PNG, JPEG, WebP ou AVIF — até {MAX_MB} MB</span>
               </>
             )}
@@ -176,6 +191,7 @@ export function ProductImageUpload({
         ref={inputRef}
         type="file"
         accept={ACCEPT}
+        disabled={uploading}
         className="hidden"
         aria-label="Selecionar imagem do produto"
         onChange={handleFileChange}

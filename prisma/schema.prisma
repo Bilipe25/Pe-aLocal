@@ -527,6 +527,7 @@ model StoreAsset {
   store     Store         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   createdBy User?         @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   banners   StoreBanner[]
+  productImages Product[] @relation("ProductImageAsset")
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, status, createdAt])
@@ -718,12 +719,14 @@ model Product {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   category     Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  imageAsset   StoreAsset?          @relation("ProductImageAsset", fields: [imageAssetId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   optionGroups ProductOptionGroup[]
 
   @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
   @@index([storeId, isAvailable, isSoldOut, archivedAt])
   @@index([categoryId, archivedAt, sortOrder])
   @@index([storeId, updatedAt])
+  @@index([imageAssetId, tenantId, storeId])
   @@index([tenantId])
   @@index([storeId])
   @@index([categoryId])

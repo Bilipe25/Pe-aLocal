@@ -41,6 +41,9 @@ interface CatalogClientViewProps {
   categories: Category[];
   products: Product[];
   readinessIssues: ReadinessIssue[];
+  canManageCatalog: boolean;
+  canReorderCatalog: boolean;
+  canManageAvailability: boolean;
 }
 
 function normalize(s: string) {
@@ -50,7 +53,14 @@ function normalize(s: string) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-export function CatalogClientView({ categories, products, readinessIssues }: CatalogClientViewProps) {
+export function CatalogClientView({
+  categories,
+  products,
+  readinessIssues,
+  canManageCatalog,
+  canReorderCatalog,
+  canManageAvailability,
+}: CatalogClientViewProps) {
   const [query, setQuery] = useState('');
 
   const handleSearch = useCallback((q: string) => setQuery(q), []);
@@ -98,19 +108,23 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
           {soldOutCount > 0 && (
             <>
               <span className="text-text-tertiary">·</span>
-              <span className="text-warning font-medium">{soldOutCount} esgotado{soldOutCount > 1 ? 's' : ''}</span>
+              <span className="text-warning font-medium">
+                {soldOutCount} esgotado{soldOutCount > 1 ? 's' : ''}
+              </span>
             </>
           )}
           {unavailableCount > 0 && (
             <>
               <span className="text-text-tertiary">·</span>
-              <span className="text-text-secondary">{unavailableCount} indisponível{unavailableCount > 1 ? 'is' : ''}</span>
+              <span className="text-text-secondary">
+                {unavailableCount} indisponível{unavailableCount > 1 ? 'is' : ''}
+              </span>
             </>
           )}
           {readinessIssues.length > 0 && (
             <>
               <span className="text-text-tertiary">·</span>
-              <span className="text-error font-medium flex items-center gap-1">
+              <span className="text-error flex items-center gap-1 font-medium">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {readinessIssues.length} {readinessIssues.length === 1 ? 'problema' : 'problemas'}
               </span>
@@ -122,7 +136,7 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
 
       {/* Alerta de readiness */}
       {readinessIssues.length > 0 && !normalizedQuery && (
-        <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
+        <div className="border-warning/30 bg-warning/5 rounded-xl border p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="text-warning mt-0.5 h-5 w-5 shrink-0" />
             <div>
@@ -135,16 +149,20 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                 {readinessIssues.map((issue) => (
                   <li key={`${issue.type}-${issue.entityId}`}>
                     {'→ '}
-                    <Link
-                      href={
-                        issue.type === 'empty_category'
-                          ? `/dashboard/catalog/categories/${issue.entityId}/edit`
-                          : `/dashboard/catalog/products/${issue.entityId}/edit`
-                      }
-                      className="text-brand-600 hover:underline"
-                    >
-                      {issue.message}
-                    </Link>
+                    {canManageCatalog ? (
+                      <Link
+                        href={
+                          issue.type === 'empty_category'
+                            ? `/dashboard/catalog/categories/${issue.entityId}/edit`
+                            : `/dashboard/catalog/products/${issue.entityId}/edit`
+                        }
+                        className="text-brand-700 rounded hover:underline"
+                      >
+                        {issue.message}
+                      </Link>
+                    ) : (
+                      issue.message
+                    )}
                   </li>
                 ))}
               </ul>
@@ -155,7 +173,7 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
 
       {/* Sem resultados de busca */}
       {normalizedQuery && filteredCategories.length === 0 && (
-        <div className="text-text-secondary rounded-xl border border-dashed border-border py-12 text-center text-sm">
+        <div className="text-text-secondary border-border rounded-xl border border-dashed py-12 text-center text-sm">
           Nenhum resultado para &ldquo;{query}&rdquo;
         </div>
       )}
@@ -186,7 +204,7 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                 </span>
               </div>
               <div className="flex items-center gap-1 self-start sm:self-auto">
-                {!normalizedQuery && (
+                {!normalizedQuery && canReorderCatalog && (
                   <CatalogOrderControls
                     id={category.id}
                     kind="category"
@@ -195,9 +213,11 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                     canMoveDown={categoryIndex < filteredCategories.length - 1}
                   />
                 )}
-                <Button asChild variant="ghost" size="sm">
-                  <Link href={`/dashboard/catalog/categories/${category.id}/edit`}>Editar</Link>
-                </Button>
+                {canManageCatalog && (
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href={`/dashboard/catalog/categories/${category.id}/edit`}>Editar</Link>
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -210,12 +230,9 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                   return (
                     <div
                       key={product.id}
-                      className={`hover:bg-surface-secondary flex min-h-16 flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center ${productIssues.length > 0 ? 'border-l-2 border-warning' : ''}`}
+                      className={`hover:bg-surface-secondary flex min-h-16 flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center ${productIssues.length > 0 ? 'border-warning border-l-2' : ''}`}
                     >
-                      <Link
-                        href={`/dashboard/catalog/products/${product.id}/edit`}
-                        className="focus-visible:ring-brand-500 flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg py-1 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      >
+                      <div className="flex min-h-11 min-w-0 flex-1 flex-col justify-center py-1">
                         <p className="text-text-primary font-medium">{product.name}</p>
                         {productIssues.length > 0 ? (
                           <p className="text-warning text-xs">{productIssues[0].message}</p>
@@ -227,7 +244,15 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                               : 'grupos de adicionais'}
                           </p>
                         ) : null}
-                      </Link>
+                        {canManageCatalog && (
+                          <Link
+                            href={`/dashboard/catalog/products/${product.id}/edit`}
+                            className="text-brand-700 mt-1 inline-flex min-h-11 w-fit items-center rounded text-xs font-medium hover:underline"
+                          >
+                            Editar produto
+                          </Link>
+                        )}
+                      </div>
 
                       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
                         <span className="text-text-primary font-mono font-semibold">
@@ -239,11 +264,13 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
                             <Badge variant="secondary">Indisp.</Badge>
                           )}
                         </div>
-                        <ProductAvailabilityToggle
-                          productId={product.id}
-                          isSoldOut={product.isSoldOut}
-                        />
-                        {!normalizedQuery && (
+                        {canManageAvailability && (
+                          <ProductAvailabilityToggle
+                            productId={product.id}
+                            isSoldOut={product.isSoldOut}
+                          />
+                        )}
+                        {!normalizedQuery && canReorderCatalog && (
                           <CatalogOrderControls
                             id={product.id}
                             kind="product"
@@ -264,9 +291,11 @@ export function CatalogClientView({ categories, products, readinessIssues }: Cat
             ) : (
               <div className="text-text-secondary flex flex-col gap-2 px-4 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span>Nenhum produto nesta categoria.</span>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/dashboard/catalog/products/new">Adicionar produto</Link>
-                </Button>
+                {canManageCatalog && (
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href="/dashboard/catalog/products/new">Adicionar produto</Link>
+                  </Button>
+                )}
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-import type { StoreAssetType } from '@prisma/client';
+import type { Prisma, StoreAssetType } from '@prisma/client';
 
 import { storeAssetUrl } from '@/features/assets/urls';
 import {
@@ -35,6 +35,13 @@ async function _runUpload(
   userId: string,
   file: File,
   rawMetadata: StoreAssetUploadMetadata,
+  options?: {
+    releasesReplacedAsset?: boolean;
+    afterCreate?: (
+      tx: Prisma.TransactionClient,
+      asset: { id: string; objectKey: string; assetType: StoreAssetType },
+    ) => Promise<void>;
+  },
 ) {
   const parsed = storeAssetUploadMetadataSchema.safeParse(rawMetadata);
   if (!parsed.success) {
@@ -47,14 +54,17 @@ async function _runUpload(
     );
   }
 
+  let replacedAsset: Awaited<ReturnType<typeof assetRepo.findScopedStoreAsset>> = null;
   if (parsed.data.replaceAssetId) {
-    const replaced = await assetRepo.findScopedStoreAsset(
+    replacedAsset = await assetRepo.findScopedStoreAsset(
       tenantId,
       storeId,
       parsed.data.replaceAssetId,
     );
-    if (!replaced || replaced.status !== 'ACTIVE') throw new NotFoundError('Asset substituído');
-    if (replaced.assetType !== parsed.data.assetType) {
+    if (!replacedAsset || replacedAsset.status !== 'ACTIVE' || replacedAsset.deletedAt) {
+      throw new NotFoundError('Asset substituído');
+    }
+    if (replacedAsset.assetType !== parsed.data.assetType) {
       throw new ValidationError('O asset substituído deve possuir o mesmo tipo.');
     }
   }
@@ -89,12 +99,18 @@ async function _runUpload(
         _count: { id: true },
         _sum: { sizeBytes: true },
       });
-      if (usage._count.id >= entitlement.maxAssetCount) {
+      const releasedCount = options?.releasesReplacedAsset && replacedAsset ? 1 : 0;
+      const releasedBytes =
+        options?.releasesReplacedAsset && replacedAsset ? replacedAsset.sizeBytes : 0;
+      if (usage._count.id - releasedCount >= entitlement.maxAssetCount) {
         throw new ConflictError(
           `Esta loja pode manter no máximo ${entitlement.maxAssetCount} assets ativos.`,
         );
       }
-      if ((usage._sum.sizeBytes ?? 0) + inspected.sizeBytes > entitlement.maxAssetStorageBytes) {
+      if (
+        (usage._sum.sizeBytes ?? 0) - releasedBytes + inspected.sizeBytes >
+        entitlement.maxAssetStorageBytes
+      ) {
         throw new ConflictError('O limite de armazenamento de assets desta loja foi atingido.');
       }
       const created = await tx.storeAsset.create({
@@ -131,6 +147,7 @@ async function _runUpload(
           },
         },
       });
+      await options?.afterCreate?.(tx, created);
       return created;
     });
     return serializeAsset(asset);
@@ -152,17 +169,106 @@ export async function uploadStoreAsset(
 }
 
 /**
- * Upload via membro do tenant (OWNER / MANAGER) com permissão MANAGE_PRODUCT_IMAGES.
- * A autorização já foi feita pelo chamador; userId validado via requireActiveStoreContext.
+ * Cria e associa a imagem ao produto na mesma transação. Se qualquer etapa
+ * falhar, o registro é revertido e o objeto recém-gravado é removido do R2.
  */
-export async function uploadStoreAssetAsTenantMember(
-  tenantId: string,
-  storeId: string,
-  file: File,
-  rawMetadata: StoreAssetUploadMetadata,
-  userId: string,
-) {
-  return _runUpload(tenantId, storeId, userId, file, rawMetadata);
+export async function uploadProductImageAsTenantMember(input: {
+  tenantId: string;
+  storeId: string;
+  productId: string;
+  userId: string;
+  file: File;
+  altText: string;
+}) {
+  const product = await getDb().product.findFirst({
+    where: {
+      id: input.productId,
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      archivedAt: null,
+    },
+    select: { id: true, imageAssetId: true },
+  });
+  if (!product) throw new NotFoundError('Produto');
+
+  const replacedAssetId = product.imageAssetId;
+  const releasesReplacedAsset = replacedAssetId
+    ? (await getDb().product.count({ where: { imageAssetId: replacedAssetId } })) === 1
+    : false;
+  const asset = await _runUpload(
+    input.tenantId,
+    input.storeId,
+    input.userId,
+    input.file,
+    {
+      assetType: 'PRODUCT_IMAGE',
+      altText: input.altText,
+      replaceAssetId: replacedAssetId ?? undefined,
+    },
+    {
+      releasesReplacedAsset,
+      afterCreate: async (tx, created) => {
+        const updated = await tx.product.updateMany({
+          where: {
+            id: input.productId,
+            tenantId: input.tenantId,
+            storeId: input.storeId,
+            archivedAt: null,
+            imageAssetId: replacedAssetId,
+          },
+          data: {
+            imageAssetId: created.id,
+            imageUrl: storeAssetUrl(created.id, 768),
+            version: { increment: 1 },
+          },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictError(
+            'A imagem do produto foi alterada por outro usuário. Tente novamente.',
+          );
+        }
+
+        await tx.auditLog.create({
+          data: {
+            tenantId: input.tenantId,
+            storeId: input.storeId,
+            userId: input.userId,
+            action: 'PRODUCT_UPDATED',
+            entity: 'Product',
+            entityId: input.productId,
+            metadata: {
+              changedFields: ['imageAssetId'],
+              assetId: created.id,
+              replacedAssetId,
+              objectKey: created.objectKey,
+            },
+          },
+        });
+
+        if (replacedAssetId) {
+          const remainingReferences = await tx.product.count({
+            where: { imageAssetId: replacedAssetId },
+          });
+          if (remainingReferences === 0) {
+            const deletedAt = new Date();
+            await tx.storeAsset.updateMany({
+              where: {
+                id: replacedAssetId,
+                tenantId: input.tenantId,
+                storeId: input.storeId,
+                assetType: 'PRODUCT_IMAGE',
+                status: 'ACTIVE',
+                deletedAt: null,
+              },
+              data: { status: 'DELETED', deletedAt },
+            });
+          }
+        }
+      },
+    },
+  );
+
+  return { asset, replacedAssetId };
 }
 
 export async function deleteStoreAsset(tenantId: string, storeId: string, assetId: string) {

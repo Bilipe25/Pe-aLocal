@@ -134,19 +134,20 @@ export async function archiveCategory(
 export async function restoreCategory(
   id: string,
   tenantId: string,
+  storeId: string,
   tx?: Prisma.TransactionClient,
 ) {
   const db = tx ?? getDb();
 
   // Recalcula sortOrder para evitar conflito com posições existentes
   const last = await db.category.findFirst({
-    where: { tenantId, archivedAt: null },
+    where: { tenantId, storeId, archivedAt: null },
     orderBy: { sortOrder: 'desc' },
-    select: { sortOrder: true, storeId: true },
+    select: { sortOrder: true },
   });
 
   return db.category.updateMany({
-    where: { id, tenantId },
+    where: { id, tenantId, storeId },
     data: {
       archivedAt: null,
       archivedById: null,

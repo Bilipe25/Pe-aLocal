@@ -47,9 +47,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
   const isEditing = !!product;
   const [error, setError] = useState<string | null>(null);
   const [isSoldOut, setIsSoldOut] = useState(product?.isSoldOut ?? false);
-  const [isAvailableOptimistic, setIsAvailableOptimistic] = useState(
-    product?.isAvailable ?? true,
-  );
+  const [isAvailableOptimistic, setIsAvailableOptimistic] = useState(product?.isAvailable ?? true);
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
   const isConcurrencyError = error?.includes('foi alterado por outro usuário');
 
@@ -104,7 +102,10 @@ export function ProductForm({ categories, product }: ProductFormProps) {
       setIsSoldOut(!newSoldOut); // reverter
       toast.error(result.error.message);
     } else {
-      toast.success(newSoldOut ? 'Produto marcado como esgotado.' : 'Produto disponível novamente.');
+      toast.success(
+        newSoldOut ? 'Produto marcado como esgotado.' : 'Produto disponível novamente.',
+      );
+      router.refresh();
     }
   }
 
@@ -120,6 +121,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
       toast.success(
         newAvailable ? 'Produto marcado como disponível.' : 'Produto marcado como indisponível.',
       );
+      router.refresh();
     }
   }
 
@@ -129,12 +131,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
         message={error}
         action={
           isConcurrencyError ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => router.refresh()}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>
               Recarregar
             </Button>
           ) : undefined
@@ -146,14 +143,14 @@ export function ProductForm({ categories, product }: ProductFormProps) {
 
       {/* Status rápido — disponível fora do form para ATTENDANT */}
       {isEditing && (
-        <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-surface-secondary p-3">
+        <div className="border-border bg-surface-secondary flex flex-wrap gap-2 rounded-lg border p-3">
           <button
             type="button"
             onClick={handleToggleAvailable}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               isAvailableOptimistic
                 ? 'bg-success text-white'
-                : 'bg-surface text-text-secondary border border-border hover:bg-surface-secondary'
+                : 'bg-surface text-text-secondary border-border hover:bg-surface-secondary border'
             }`}
           >
             <span
@@ -164,10 +161,10 @@ export function ProductForm({ categories, product }: ProductFormProps) {
           <button
             type="button"
             onClick={handleToggleSoldOut}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               isSoldOut
                 ? 'bg-warning text-white'
-                : 'bg-surface text-text-secondary border border-border hover:bg-surface-secondary'
+                : 'bg-surface text-text-secondary border-border hover:bg-surface-secondary border'
             }`}
           >
             <span
@@ -186,7 +183,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
           required
-          className="flex h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 flex h-11 w-full rounded-lg border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <option value="">Selecione...</option>
           {categories.map((c) => (
@@ -231,7 +228,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <div className="space-y-0.5">
             <Label htmlFor="isAvailable">Visível no cardápio</Label>
             <p className="text-text-secondary text-xs">
@@ -242,11 +239,12 @@ export function ProductForm({ categories, product }: ProductFormProps) {
           <Switch
             id="isAvailable"
             name="isAvailable"
-            defaultChecked={product?.isAvailable ?? true}
+            checked={isAvailableOptimistic}
+            onCheckedChange={setIsAvailableOptimistic}
             value="true"
           />
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <div className="space-y-0.5">
             <Label htmlFor="isFeatured">Destaque</Label>
             <p className="text-text-secondary text-xs">
@@ -261,7 +259,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
             value="true"
           />
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div className="border-border flex items-center justify-between rounded-lg border p-3">
           <div className="space-y-0.5">
             <Label htmlFor="allowNotes">Aceita observações</Label>
             <p className="text-text-secondary text-xs">
@@ -299,9 +297,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
         ) : (
           <div />
         )}
-        <FormSubmitButton>
-          {isEditing ? 'Salvar produto' : 'Criar produto'}
-        </FormSubmitButton>
+        <FormSubmitButton>{isEditing ? 'Salvar produto' : 'Criar produto'}</FormSubmitButton>
       </div>
     </form>
   );
