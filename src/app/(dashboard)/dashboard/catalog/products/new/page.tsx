@@ -1,14 +1,17 @@
 import { PageHeader } from '@/components/shared/page-header';
 import { ProductForm } from '@/features/catalog/components/product-form';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
-import { listCategoriesAction } from '@/features/catalog/actions';
 import { EmptyState } from '@/components/shared/empty-state';
 import { UtensilsCrossed } from 'lucide-react';
+import { Permission } from '@/server/permissions';
+import * as categoryRepo from '@/server/repositories/category.repository';
+import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 export const metadata = { title: 'Novo produto' };
 
 export default async function NewProductPage() {
-  const categories = await listCategoriesAction();
+  const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
+  const categories = await categoryRepo.listCategories(session.tenantId, store.id);
 
   return (
     <div>

@@ -43,14 +43,14 @@ O módulo de catálogo opera sob um modelo **Multi-Tenant e Multi-Loja estrito**
 
 ## 3. Matriz de Permissões
 
-| Permissão | OWNER | MANAGER | ATTENDANT |
-|---|:---:|:---:|:---:|
-| `VIEW_CATALOG` | ✅ | ✅ | ✅ |
-| `MANAGE_CATALOG` | ✅ | ✅ | ❌ |
-| `MANAGE_PRODUCT_AVAILABILITY` | ✅ | ✅ | ✅ |
-| `MANAGE_PRODUCT_IMAGES` | ✅ | ✅ | ❌ |
-| `REORDER_CATALOG` | ✅ | ✅ | ❌ |
-| `ARCHIVE_CATALOG_ITEMS` | ✅ | ✅ | ❌ |
+| Permissão                     | OWNER | MANAGER | ATTENDANT |
+| ----------------------------- | :---: | :-----: | :-------: |
+| `VIEW_CATALOG`                |  ✅   |   ✅    |    ✅     |
+| `MANAGE_CATALOG`              |  ✅   |   ✅    |    ❌     |
+| `MANAGE_PRODUCT_AVAILABILITY` |  ✅   |   ✅    |    ✅     |
+| `MANAGE_PRODUCT_IMAGES`       |  ✅   |   ✅    |    ❌     |
+| `REORDER_CATALOG`             |  ✅   |   ✅    |    ❌     |
+| `ARCHIVE_CATALOG_ITEMS`       |  ✅   |   ✅    |    ❌     |
 
 ---
 
@@ -67,5 +67,8 @@ A integridade do cardápio e checkout é garantida no servidor por `validateCart
 ## 5. Storage de Imagens (Cloudflare R2 & StoreAssets)
 
 - As imagens de produtos são validadas (dimensões mínimas 200x200px, tipos PNG, JPEG, WebP, AVIF, tamanho máx. 3MB).
-- O upload cria um registro `StoreAsset` (tipo `PRODUCT_IMAGE`) e armazena o hash/objeto no R2.
-- A exclusão ou substituição de foto desvincula o `imageAssetId` e atualiza a auditoria.
+- O endpoint autenticado `/api/tenant/assets` valida o produto no escopo da loja e cria o `StoreAsset` (tipo `PRODUCT_IMAGE`) no mesmo fluxo que associa o `imageAssetId`.
+- A gravação do asset, a associação ao produto, a atualização de versão e a auditoria são atômicas no banco; se falharem, o objeto recém-enviado é removido do R2.
+- A prévia do painel usa `/api/tenant/assets/[assetId]`, com sessão e escopo de loja. A vitrine usa somente `/api/store-assets/[assetId]`, que exige tenant e loja publicamente ativos.
+- A FK composta `imageAssetId + tenantId + storeId` impede referências a assets inexistentes ou pertencentes a outro estabelecimento.
+- A exclusão ou substituição desvincula a imagem, mantém auditoria e agenda assets órfãos para coleta posterior; assets ainda referenciados por produtos não podem ser apagados.

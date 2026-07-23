@@ -229,26 +229,27 @@ export async function getCanonicalPublicStoreSlug(slug: string) {
 
 async function getCatalogFromDb(storeId: string, tenantId: string) {
   const categories = await getDb().category.findMany({
-    where: { storeId, tenantId, isActive: true },
+    where: { storeId, tenantId, isActive: true, archivedAt: null },
     orderBy: { sortOrder: 'asc' },
     select: {
       id: true,
       name: true,
       description: true,
       products: {
-        where: { isAvailable: true },
+        where: { isAvailable: true, archivedAt: null },
         orderBy: { sortOrder: 'asc' },
         select: {
           id: true,
           name: true,
           description: true,
           imageUrl: true,
+          imageAssetId: true,
           basePrice: true,
           isFeatured: true,
           isSoldOut: true,
           allowNotes: true,
           optionGroups: {
-            where: { isActive: true },
+            where: { isActive: true, archivedAt: null },
             orderBy: { sortOrder: 'asc' },
             select: {
               id: true,
@@ -259,7 +260,7 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
               minSelections: true,
               maxSelections: true,
               options: {
-                where: { isAvailable: true },
+                where: { isAvailable: true, archivedAt: null },
                 orderBy: { sortOrder: 'asc' },
                 select: {
                   id: true,
@@ -274,7 +275,17 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
     },
   });
 
-  return categories.filter((category) => category.products.length > 0);
+  return categories
+    .filter((category) => category.products.length > 0)
+    .map((category) => ({
+      ...category,
+      products: category.products.map((product) => ({
+        ...product,
+        imageUrl: product.imageAssetId
+          ? storeAssetUrl(product.imageAssetId, 768)
+          : product.imageUrl,
+      })),
+    }));
 }
 
 export async function getPublicCatalog(

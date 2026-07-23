@@ -1,23 +1,26 @@
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { ProductForm } from '@/features/catalog/components/product-form';
-import { getProductAction, listCategoriesAction } from '@/features/catalog/actions';
 import { ProductOptionGroupsEditor } from '@/features/catalog/components/product-option-groups-editor';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
 import { ProductImageUpload } from '@/features/catalog/components/product-image-upload';
+import { tenantStoreAssetUrl } from '@/features/assets/urls';
+import { Permission } from '@/server/permissions';
+import * as categoryRepo from '@/server/repositories/category.repository';
+import * as productRepo from '@/server/repositories/product.repository';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 export const metadata = { title: 'Editar produto' };
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ session, store }, product, categories] = await Promise.all([
-    requireActiveStoreContext(),
-    getProductAction(id),
-    listCategoriesAction(),
+  const { session, store } = await requireActiveStoreContext(Permission.MANAGE_CATALOG);
+  const [product, categories] = await Promise.all([
+    productRepo.findProductById(id, session.tenantId),
+    categoryRepo.listCategories(session.tenantId, store.id),
   ]);
 
-  if (!product) {
+  if (!product || product.storeId !== store.id) {
     notFound();
   }
 
@@ -41,10 +44,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         <div className="mb-6">
           <ProductImageUpload
             productId={product.id}
-            tenantId={session.tenantId!}
-            storeId={store.id}
-            currentImageUrl={product.imageUrl}
-            currentAssetId={product.imageAssetId}
+            productName={product.name}
+            currentImageUrl={
+              product.imageAssetId
+                ? tenantStoreAssetUrl(product.imageAssetId, 768)
+                : product.imageUrl
+            }
           />
         </div>
 

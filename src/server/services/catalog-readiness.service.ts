@@ -16,23 +16,62 @@ export async function analyzeCatalogReadiness(
   storeId: string,
 ): Promise<CatalogReadinessIssue[]> {
   const issues: CatalogReadinessIssue[] = [];
-
-  // 1. Categorias ativas sem nenhum produto ativo
-  const emptyCategories = await getDb().category.findMany({
-    where: {
-      tenantId,
-      storeId,
-      isActive: true,
-      archivedAt: null,
-      products: {
-        none: {
-          archivedAt: null,
-          isAvailable: true,
+  const [emptyCategories, productsWithRequiredGroups] = await Promise.all([
+    // 1. Categorias ativas sem nenhum produto ativo
+    getDb().category.findMany({
+      where: {
+        tenantId,
+        storeId,
+        isActive: true,
+        archivedAt: null,
+        products: {
+          none: {
+            archivedAt: null,
+            isAvailable: true,
+          },
         },
       },
-    },
-    select: { id: true, name: true },
-  });
+      select: { id: true, name: true },
+    }),
+    // 2. Produtos disponíveis com grupos obrigatórios sem opções ativas
+    getDb().product.findMany({
+      where: {
+        tenantId,
+        storeId,
+        archivedAt: null,
+        isAvailable: true,
+        optionGroups: {
+          some: {
+            isRequired: true,
+            isActive: true,
+            archivedAt: null,
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        optionGroups: {
+          where: {
+            isRequired: true,
+            isActive: true,
+            archivedAt: null,
+          },
+          select: {
+            id: true,
+            title: true,
+            _count: {
+              select: {
+                options: {
+                  where: { isAvailable: true, archivedAt: null },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
 
   for (const cat of emptyCategories) {
     issues.push({
@@ -42,45 +81,6 @@ export async function analyzeCatalogReadiness(
       message: `Categoria "${cat.name}" está ativa mas não tem produtos disponíveis.`,
     });
   }
-
-  // 2. Produtos disponíveis com grupos obrigatórios que não têm opções ativas
-  const productsWithRequiredGroups = await getDb().product.findMany({
-    where: {
-      tenantId,
-      storeId,
-      archivedAt: null,
-      isAvailable: true,
-      optionGroups: {
-        some: {
-          isRequired: true,
-          isActive: true,
-          archivedAt: null,
-        },
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-      optionGroups: {
-        where: {
-          isRequired: true,
-          isActive: true,
-          archivedAt: null,
-        },
-        select: {
-          id: true,
-          title: true,
-          _count: {
-            select: {
-              options: {
-                where: { isAvailable: true, archivedAt: null },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
 
   for (const product of productsWithRequiredGroups) {
     for (const group of product.optionGroups) {

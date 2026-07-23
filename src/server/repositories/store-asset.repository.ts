@@ -103,6 +103,12 @@ export async function isStoreAssetReferenced(
       WHERE banner."tenantId" = ${tenantId}
         AND banner."storeId" = ${storeId}
         AND banner."assetId" = ${assetId}
+      UNION ALL
+      SELECT 1
+      FROM "products" product
+      WHERE product."tenantId" = ${tenantId}
+        AND product."storeId" = ${storeId}
+        AND product."imageAssetId" = ${assetId}
     ) AS "referenced"
   `);
   return rows[0]?.referenced ?? false;
