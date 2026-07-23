@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { setProductImageAction } from '@/features/catalog/actions';
-import { uploadAdminStoreAsset } from '@/components/admin/store-asset-upload';
 
 interface ProductImageUploadProps {
   productId: string;
@@ -52,15 +51,22 @@ export function ProductImageUpload({
     setUploading(true);
 
     try {
-      // 1. Upload para R2 via API de assets
-      const uploaded = await uploadAdminStoreAsset({
-        tenantId,
-        storeId,
-        file,
-        assetType: 'PRODUCT_IMAGE',
-        altText: `Imagem do produto`,
-        replaceAssetId: assetId ?? undefined,
+      // 1. Upload para R2 via rota de tenant (aceita OWNER/MANAGER)
+      const formPayload = new FormData();
+      formPayload.set('file', file);
+      formPayload.set('assetType', 'PRODUCT_IMAGE');
+      formPayload.set('altText', 'Imagem do produto');
+      if (assetId) formPayload.set('replaceAssetId', assetId);
+
+      const uploadRes = await fetch('/api/tenant/assets', {
+        method: 'POST',
+        body: formPayload,
       });
+      const uploadBody = (await uploadRes.json()) as { asset?: { id: string; url?: string }; message?: string };
+      if (!uploadRes.ok || !uploadBody.asset) {
+        throw new Error(uploadBody.message ?? 'Não foi possível enviar a imagem.');
+      }
+      const uploaded = uploadBody.asset;
 
       // 2. Associa o asset ao produto (passa URL pública do upload)
       const result = await setProductImageAction(productId, uploaded.id, uploaded.url);
@@ -71,7 +77,7 @@ export function ProductImageUpload({
       }
 
       setAssetId(uploaded.id);
-      setPreview(uploaded.url);
+      setPreview(uploaded.url ?? null);
       toast.success('Imagem do produto atualizada!');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagem.');

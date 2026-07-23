@@ -50,6 +50,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
   const [isAvailableOptimistic, setIsAvailableOptimistic] = useState(
     product?.isAvailable ?? true,
   );
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
   const isConcurrencyError = error?.includes('foi alterado por outro usuário');
 
   async function handleSubmit(formData: FormData) {
@@ -182,7 +183,8 @@ export function ProductForm({ categories, product }: ProductFormProps) {
         <select
           id="categoryId"
           name="categoryId"
-          defaultValue={product?.categoryId ?? ''}
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
           required
           className="flex h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
         >

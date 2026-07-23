@@ -29,13 +29,13 @@ export async function listAdminStoreAssets(tenantId: string, storeId: string) {
   return assets.map(serializeAsset);
 }
 
-export async function uploadStoreAsset(
+async function _runUpload(
   tenantId: string,
   storeId: string,
+  userId: string,
   file: File,
   rawMetadata: StoreAssetUploadMetadata,
 ) {
-  const context = await requireSuperAdminStoreAccess(tenantId, storeId);
   const parsed = storeAssetUploadMetadataSchema.safeParse(rawMetadata);
   if (!parsed.success) {
     throw new ValidationError(
@@ -109,7 +109,7 @@ export async function uploadStoreAsset(
           height: inspected.height,
           sizeBytes: inspected.sizeBytes,
           altText: parsed.data.altText,
-          createdById: context.session.userId,
+          createdById: userId,
         },
         select: assetRepo.assetSelect,
       });
@@ -117,7 +117,7 @@ export async function uploadStoreAsset(
         data: {
           tenantId,
           storeId,
-          userId: context.session.userId,
+          userId,
           action: parsed.data.replaceAssetId ? 'ASSET_REPLACED' : 'ASSET_UPLOADED',
           entity: 'StoreAsset',
           entityId: created.id,
@@ -138,6 +138,31 @@ export async function uploadStoreAsset(
     await runtime.bucket.delete(objectKey).catch(() => undefined);
     throw error;
   }
+}
+
+/** Upload via SUPER_ADMIN (rota /api/admin/...) */
+export async function uploadStoreAsset(
+  tenantId: string,
+  storeId: string,
+  file: File,
+  rawMetadata: StoreAssetUploadMetadata,
+) {
+  const context = await requireSuperAdminStoreAccess(tenantId, storeId);
+  return _runUpload(tenantId, storeId, context.session.userId, file, rawMetadata);
+}
+
+/**
+ * Upload via membro do tenant (OWNER / MANAGER) com permissão MANAGE_PRODUCT_IMAGES.
+ * A autorização já foi feita pelo chamador; userId validado via requireActiveStoreContext.
+ */
+export async function uploadStoreAssetAsTenantMember(
+  tenantId: string,
+  storeId: string,
+  file: File,
+  rawMetadata: StoreAssetUploadMetadata,
+  userId: string,
+) {
+  return _runUpload(tenantId, storeId, userId, file, rawMetadata);
 }
 
 export async function deleteStoreAsset(tenantId: string, storeId: string, assetId: string) {
