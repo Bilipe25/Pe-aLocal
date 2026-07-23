@@ -65,3 +65,23 @@ describe('checkout payment rules', () => {
     );
   });
 });
+
+describe('checkout com dados determinísticos do seed', () => {
+  it('aceita produtos, adicionais e zonas persistidos pela loja de demonstração', () => {
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        modality: 'DELIVERY',
+        deliveryZoneId: '00000000-0000-0000-0005-000000000001',
+        deliveryAddress: 'Rua Demonstração, 100',
+        items: [
+          {
+            productId: '00000000-0000-0000-0002-000000000001',
+            quantity: 1,
+            optionIds: ['00000000-0000-0000-0004-000000000001'],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+});

@@ -7,10 +7,12 @@ import { formatPhone, normalizePhone, validateBrazilianPhone } from '@/lib/brazi
 // =============================================================================
 
 export const checkoutItemSchema = z.object({
-  productId: z.string().uuid(),
+  // IDs persistidos podem vir do seed determinístico. z.guid() acompanha o
+  // formato UUID aceito pelo PostgreSQL sem relaxar para strings arbitrárias.
+  productId: z.guid(),
   quantity: z.number().int().min(1).max(99),
   notes: z.string().max(500).optional().default(''),
-  optionIds: z.array(z.string().uuid()).default([]),
+  optionIds: z.array(z.guid()).default([]),
 });
 
 export const checkoutSchema = z
@@ -22,7 +24,7 @@ export const checkoutSchema = z
       .refine(validateBrazilianPhone, 'Telefone inválido. Ex: (11) 99999-9999')
       .transform((value) => formatPhone(normalizePhone(value))),
     modality: z.enum(['DELIVERY', 'PICKUP']),
-    deliveryZoneId: z.string().uuid().optional(),
+    deliveryZoneId: z.guid().optional(),
     deliveryAddress: z.string().max(500).optional(),
     paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
     changeFor: z.number().int().min(0).optional(),
