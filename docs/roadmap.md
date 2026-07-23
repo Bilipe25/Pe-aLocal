@@ -20,7 +20,7 @@
 ## Fase 2 — Autenticação e Tenants ✅
 
 - [x] Modelo de sessão com cookies httpOnly
-- [x] Login com Argon2
+- [x] Login com Argon2 ...
 - [x] Logout com revogação de sessão
 - [x] Proteção de rotas (middleware)
 - [x] Registro de tenant
