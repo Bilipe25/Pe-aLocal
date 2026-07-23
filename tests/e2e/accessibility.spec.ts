@@ -85,6 +85,24 @@ test.describe('acessibilidade WCAG', () => {
     await expect(page.getByText('Ver sacola')).toBeHidden();
   });
 
+  test('acompanhamento público permanece acessível e sem overflow no celular', async ({ page }) => {
+    const storeSlug = process.env.E2E_STORE_SLUG;
+    const trackingToken = process.env.E2E_ORDER_TRACKING_TOKEN;
+    test.skip(
+      !storeSlug || !trackingToken,
+      'Pedido descartável de acompanhamento não configurado.',
+    );
+
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`/${storeSlug}/order/${trackingToken}`);
+    await expect(page.getByRole('heading', { name: 'Acompanhar Pedido' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await expectNoHighImpactViolations(page);
+  });
+
   test('administração geral permanece acessível e responsiva', async ({ page }) => {
     const credentials = credentialsFromEnv('SUPER_ADMIN');
     const tenantId = process.env.E2E_TENANT_ID;
@@ -147,6 +165,15 @@ test.describe('acessibilidade WCAG', () => {
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
       await expectNoHighImpactViolations(page);
+    }
+
+    await page.goto('/dashboard/orders');
+    const firstOrder = page.getByRole('button', { name: /Abrir pedido/ }).first();
+    if ((await firstOrder.count()) > 0) {
+      await firstOrder.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await expectNoHighImpactViolations(page);
+      await page.keyboard.press('Escape');
     }
 
     await page.goto('/dashboard/catalog');
