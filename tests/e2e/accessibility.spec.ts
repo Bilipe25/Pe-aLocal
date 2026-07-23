@@ -39,7 +39,13 @@ test.describe('acessibilidade WCAG', () => {
 
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`/${storeSlug}`);
-    await page.evaluate(() => localStorage.removeItem('pedidolocal-cart'));
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (key === 'pedidolocal-cart' || key.startsWith('pedidolocal-cart:')) {
+          localStorage.removeItem(key);
+        }
+      }
+    });
     await page.reload();
     await expect(page.locator('.storefront-theme')).toBeVisible();
     await expect(page.getByLabel('Informações para pedir')).toBeVisible();

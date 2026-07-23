@@ -84,6 +84,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
       <main className="mx-auto max-w-md p-4">
         {store.availability.acceptingOrders ? (
           <CheckoutForm
+            storeId={store.id}
             storeSlug={store.slug}
             minOrderValue={store.settings.minOrderValue}
             deliveryEnabled={store.settings.deliveryEnabled}

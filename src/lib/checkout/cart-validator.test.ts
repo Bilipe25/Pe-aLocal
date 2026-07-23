@@ -55,16 +55,16 @@ describe('cart-validator', () => {
 
     it('rejeita se produto estiver indisponível', () => {
       const prod = { ...baseProduct, isAvailable: false };
-      expect(() =>
-        validateCartItem(prod, { productId: 'prod-1', optionIds: ['opt-1'] }),
-      ).toThrow(BusinessRuleError);
+      expect(() => validateCartItem(prod, { productId: 'prod-1', optionIds: ['opt-1'] })).toThrow(
+        BusinessRuleError,
+      );
     });
 
     it('rejeita se produto estiver esgotado', () => {
       const prod = { ...baseProduct, isSoldOut: true };
-      expect(() =>
-        validateCartItem(prod, { productId: 'prod-1', optionIds: ['opt-1'] }),
-      ).toThrow(BusinessRuleError);
+      expect(() => validateCartItem(prod, { productId: 'prod-1', optionIds: ['opt-1'] })).toThrow(
+        BusinessRuleError,
+      );
     });
 
     it('rejeita se o produto não aceita observação mas uma é informada', () => {
@@ -139,14 +139,32 @@ describe('cart-validator', () => {
   });
 
   describe('validateCartItems', () => {
-    it('rejeita carrinho com produtos duplicados', () => {
+    it('aceita o mesmo produto com opções diferentes', () => {
       const productMap = new Map([['prod-1', baseProduct]]);
       const items = [
         { productId: 'prod-1', optionIds: ['opt-1'] },
         { productId: 'prod-1', optionIds: ['opt-2'] },
       ];
+      expect(() => validateCartItems(productMap, items)).not.toThrow();
+    });
+
+    it('aceita o mesmo produto com observações diferentes', () => {
+      const productMap = new Map([['prod-1', baseProduct]]);
+      const items = [
+        { productId: 'prod-1', optionIds: ['opt-1'], notes: 'Sem cebola' },
+        { productId: 'prod-1', optionIds: ['opt-1'], notes: 'Com bacon' },
+      ];
+      expect(() => validateCartItems(productMap, items)).not.toThrow();
+    });
+
+    it('rejeita configuração equivalente mesmo com optionIds em outra ordem', () => {
+      const productMap = new Map([['prod-1', baseProduct]]);
+      const items = [
+        { productId: 'prod-1', optionIds: ['opt-1', 'opt-3'], notes: ' Sem cebola ' },
+        { productId: 'prod-1', optionIds: ['opt-3', 'opt-1'], notes: 'Sem cebola' },
+      ];
       expect(() => validateCartItems(productMap, items)).toThrow(
-        'O produto "prod-1" aparece mais de uma vez no pedido.',
+        'O produto "prod-1" possui uma configuração repetida no pedido.',
       );
     });
   });

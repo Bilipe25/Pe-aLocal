@@ -1,17 +1,7 @@
 import { storeAssetSrcSet } from '@/features/assets/urls';
+import type { PublicStorefrontBannerDto } from '@/types/storefront';
 
-export interface PublicStoreBanner {
-  id: string;
-  title: string;
-  subtitle: string | null;
-  buttonText: string | null;
-  href: string | null;
-  imageAssetId: string | null;
-  imageUrl: string | null;
-  imageAlt: string;
-}
-
-export function StoreBanners({ banners }: { banners: PublicStoreBanner[] }) {
+export function StoreBanners({ banners }: { banners: PublicStorefrontBannerDto[] }) {
   if (banners.length === 0) return null;
 
   return (

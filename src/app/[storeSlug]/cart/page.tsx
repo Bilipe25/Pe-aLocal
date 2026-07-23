@@ -11,6 +11,7 @@ export default async function CartPage({ params }: { params: Promise<{ storeSlug
 
   return (
     <CartView
+      storeId={store.id}
       storeSlug={store.slug}
       acceptingOrders={store.availability.acceptingOrders}
       unavailableReason={store.availability.reason}

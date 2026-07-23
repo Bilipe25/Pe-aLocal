@@ -41,6 +41,7 @@ export function normalizePhone(value: string) {
 }
 
 export function validateBrazilianPhone(value: string) {
+  if (!/^\+?[\d\s().-]+$/.test(value.trim())) return false;
   const normalized = normalizePhone(value);
   if (!/^55\d{10,11}$/.test(normalized)) return false;
   const local = normalized.slice(2);
@@ -56,6 +57,25 @@ export function formatPhone(value: string) {
   return number.length === 9
     ? `(${areaCode}) ${number.slice(0, 5)}-${number.slice(5)}`
     : `(${areaCode}) ${number.slice(0, 4)}-${number.slice(4)}`;
+}
+
+/** Formata progressivamente um telefone nacional durante a digitação. */
+export function formatPhoneInput(value: string) {
+  let local = digits(value);
+  if (local.startsWith('55') && local.length > 11) {
+    local = local.slice(2);
+  }
+  local = local.slice(0, 11);
+
+  if (!local) return '';
+  if (local.length <= 2) return `(${local}`;
+
+  const areaCode = local.slice(0, 2);
+  const number = local.slice(2);
+  if (number.length <= 4) return `(${areaCode}) ${number}`;
+
+  const prefixLength = number.length > 8 ? 5 : 4;
+  return `(${areaCode}) ${number.slice(0, prefixLength)}-${number.slice(prefixLength)}`;
 }
 
 export function normalizeZipCode(value: string) {

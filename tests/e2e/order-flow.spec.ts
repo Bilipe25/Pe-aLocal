@@ -23,7 +23,13 @@ test.describe.serial('compra publica e acompanhamento', () => {
     );
 
     await page.goto(`/${storeSlug}`);
-    await page.evaluate(() => localStorage.removeItem('pedidolocal-cart'));
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (key === 'pedidolocal-cart' || key.startsWith('pedidolocal-cart:')) {
+          localStorage.removeItem(key);
+        }
+      }
+    });
     await page.reload();
 
     const productCard = page.locator('.storefront-product-card:not(:disabled)').first();

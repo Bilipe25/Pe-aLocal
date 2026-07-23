@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
+import { formatPhone, normalizePhone, validateBrazilianPhone } from '@/lib/brazil';
+
 // =============================================================================
 // Checkout Schema — PedidoLocal
 // =============================================================================
-
-const phoneRegex = /^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$/;
 
 export const checkoutItemSchema = z.object({
   productId: z.string().uuid(),
@@ -16,7 +16,11 @@ export const checkoutItemSchema = z.object({
 export const checkoutSchema = z
   .object({
     customerName: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
-    customerPhone: z.string().regex(phoneRegex, 'Telefone inválido. Ex: (11) 99999-9999'),
+    customerPhone: z
+      .string()
+      .trim()
+      .refine(validateBrazilianPhone, 'Telefone inválido. Ex: (11) 99999-9999')
+      .transform((value) => formatPhone(normalizePhone(value))),
     modality: z.enum(['DELIVERY', 'PICKUP']),
     deliveryZoneId: z.string().uuid().optional(),
     deliveryAddress: z.string().max(500).optional(),

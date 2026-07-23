@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
@@ -9,6 +10,12 @@ import { getDb } from '@/server/database/client';
 import * as bannerRepo from '@/server/repositories/store-banner.repository';
 import * as domainRepo from '@/server/repositories/store-domain.repository';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
+import type {
+  PublicDeliveryZoneDto,
+  PublicStorefrontBannerDto,
+  PublicStorefrontCategoryDto,
+  PublicStorefrontCategoryImageDto,
+} from '@/types/storefront';
 
 const PUBLIC_CACHE_SECONDS = 60;
 
@@ -147,6 +154,17 @@ async function getStoreFromDb(slug: string) {
     if (type === 'COUPON') return `/${store.slug}?coupon=${encodeURIComponent(value)}`;
     return value;
   };
+  const publicBanners = banners.map((banner): PublicStorefrontBannerDto => ({
+    id: banner.id,
+    title: banner.title,
+    subtitle: banner.subtitle,
+    buttonText: banner.buttonText,
+    href: resolveBannerHref(banner.destinationType, banner.destinationValue),
+    priority: banner.priority,
+    imageAssetId: banner.asset?.id ?? null,
+    imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
+    imageAlt: banner.asset?.altText ?? banner.title,
+  }));
 
   return {
     ...publicStore,
@@ -183,24 +201,14 @@ async function getStoreFromDb(slug: string) {
           },
         ];
       }),
-      banners: banners.map((banner) => ({
-        id: banner.id,
-        title: banner.title,
-        subtitle: banner.subtitle,
-        buttonText: banner.buttonText,
-        href: resolveBannerHref(banner.destinationType, banner.destinationValue),
-        priority: banner.priority,
-        imageAssetId: banner.asset?.id ?? null,
-        imageUrl: banner.asset ? storeAssetUrl(banner.asset.id, 1280) : null,
-        imageAlt: banner.asset?.altText ?? banner.title,
-      })),
+      banners: publicBanners,
       primaryDomain,
     },
   };
 }
 
 /** Busca os dados públicos da loja e somente sua personalização publicada. */
-export async function getPublicStoreBySlug(slug: string) {
+async function getPublicStoreBySlugForRequest(slug: string) {
   const store = await unstable_cache(() => getStoreFromDb(slug), ['public-store', slug], {
     revalidate: PUBLIC_CACHE_SECONDS,
     tags: [CACHE_TAGS.storeSlug(slug)],
@@ -212,6 +220,13 @@ export async function getPublicStoreBySlug(slug: string) {
   const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
   return { ...store, availability };
 }
+
+/**
+ * Deduplica layout, metadata e page somente dentro do request RSC atual.
+ * O snapshot visual continua com cache persistente, enquanto a disponibilidade
+ * é recalculada em cada novo request.
+ */
+export const getPublicStoreBySlug = cache(getPublicStoreBySlugForRequest);
 
 export async function getCanonicalPublicStoreSlug(slug: string) {
   const current = await getDb().store.findUnique({
@@ -227,7 +242,10 @@ export async function getCanonicalPublicStoreSlug(slug: string) {
   return redirect?.store.slug ?? null;
 }
 
-async function getCatalogFromDb(storeId: string, tenantId: string) {
+async function getCatalogFromDb(
+  storeId: string,
+  tenantId: string,
+): Promise<Omit<PublicStorefrontCategoryDto, 'image'>[]> {
   const categories = await getDb().category.findMany({
     where: { storeId, tenantId, isActive: true, archivedAt: null },
     orderBy: { sortOrder: 'asc' },
@@ -282,7 +300,7 @@ async function getCatalogFromDb(storeId: string, tenantId: string) {
       products: category.products.map((product) => ({
         ...product,
         imageUrl: product.imageAssetId
-          ? storeAssetUrl(product.imageAssetId, 768)
+          ? storeAssetUrl(product.imageAssetId, 384)
           : product.imageUrl,
       })),
     }));
@@ -293,15 +311,9 @@ export async function getPublicCatalog(
   tenantId: string,
   categoryImages: {
     categoryId: string;
-    image: {
-      id: string;
-      url: string;
-      altText: string;
-      width: number;
-      height: number;
-    };
+    image: PublicStorefrontCategoryImageDto;
   }[] = [],
-) {
+): Promise<PublicStorefrontCategoryDto[]> {
   const catalog = await unstable_cache(
     () => getCatalogFromDb(storeId, tenantId),
     ['public-catalog', storeId, tenantId],
@@ -319,7 +331,7 @@ export async function getPublicCatalog(
   }));
 }
 
-async function getDeliveryZonesFromDb(storeId: string) {
+async function getDeliveryZonesFromDb(storeId: string): Promise<PublicDeliveryZoneDto[]> {
   return getDb().deliveryZone.findMany({
     where: { storeId, isActive: true },
     orderBy: { sortOrder: 'asc' },
@@ -333,7 +345,7 @@ async function getDeliveryZonesFromDb(storeId: string) {
   });
 }
 
-export async function getPublicDeliveryZones(storeId: string) {
+export async function getPublicDeliveryZones(storeId: string): Promise<PublicDeliveryZoneDto[]> {
   return unstable_cache(() => getDeliveryZonesFromDb(storeId), ['public-delivery-zones', storeId], {
     revalidate: PUBLIC_CACHE_SECONDS,
     tags: [CACHE_TAGS.delivery(storeId)],

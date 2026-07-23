@@ -18,6 +18,28 @@ const validCheckout = {
 };
 
 describe('checkout payment rules', () => {
+  it.each(['11999999999', '(11) 99999-9999', '11 99999-9999', '+55 11 99999-9999'])(
+    'normaliza telefone celular %s no servidor',
+    (customerPhone) => {
+      const result = checkoutSchema.parse({ ...validCheckout, customerPhone });
+      expect(result.customerPhone).toBe('(11) 99999-9999');
+    },
+  );
+
+  it('aceita telefone fixo e rejeita letras, DDI inválido e tamanhos incorretos', () => {
+    expect(
+      checkoutSchema.parse({ ...validCheckout, customerPhone: '11 3333-4444' }).customerPhone,
+    ).toBe('(11) 3333-4444');
+    for (const customerPhone of [
+      '1199999',
+      '551199999999999',
+      'abc11999999999',
+      '+54 11 99999-9999',
+    ]) {
+      expect(checkoutSchema.safeParse({ ...validCheckout, customerPhone }).success).toBe(false);
+    }
+  });
+
   it('aceita troco positivo somente para dinheiro', () => {
     expect(
       checkoutSchema.safeParse({

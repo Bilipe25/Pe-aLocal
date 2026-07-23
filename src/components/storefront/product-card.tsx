@@ -1,5 +1,6 @@
 import { Ban, Star } from 'lucide-react';
 
+import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
 import { formatCurrency } from '@/lib/utils';
 
 interface ProductCardProps {
@@ -10,6 +11,7 @@ interface ProductCardProps {
   isFeatured: boolean;
   isSoldOut: boolean;
   imageUrl: string | null;
+  imageAssetId: string | null;
   onClick: () => void;
   disabled?: boolean;
   showImage: boolean;
@@ -25,6 +27,7 @@ export function ProductCard({
   isFeatured,
   isSoldOut,
   imageUrl,
+  imageAssetId,
   onClick,
   disabled,
   showImage,
@@ -32,6 +35,13 @@ export function ProductCard({
   presentation,
 }: ProductCardProps) {
   const isDisabled = disabled || isSoldOut;
+  const resolvedImageUrl = imageAssetId
+    ? storeAssetUrl(imageAssetId, presentation === 'LIST' ? 192 : 384)
+    : imageUrl;
+  const imageSizes =
+    presentation === 'LIST'
+      ? '64px'
+      : '(max-width: 479px) calc(100vw - 2rem), (max-width: 767px) calc(50vw - 1.5rem), 360px';
 
   return (
     <button
@@ -45,17 +55,23 @@ export function ProductCard({
     >
       {showImage && (
         <div className="storefront-product-image-wrap">
-          {imageUrl ? (
-            // A origem das imagens será normalizada pelo pipeline de assets na Fase 3.
+          {resolvedImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className="storefront-product-image"
-              src={imageUrl}
+              src={resolvedImageUrl}
+              srcSet={
+                imageAssetId ? storeAssetSrcSet(imageAssetId, [96, 192, 384, 768]) : undefined
+              }
+              sizes={imageAssetId ? imageSizes : undefined}
               alt=""
               width={384}
               height={384}
               loading="lazy"
               decoding="async"
+              onError={(event) => {
+                event.currentTarget.hidden = true;
+              }}
             />
           ) : (
             <div className="storefront-product-image-placeholder" aria-hidden="true" />

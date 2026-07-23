@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  clipboardWriteText: vi.fn(),
   reportPixPaymentAction: vi.fn(),
   refresh: vi.fn(),
 }));
@@ -32,6 +33,15 @@ const props = {
 describe('PixPaymentInfo', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mocks.clipboardWriteText },
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => false),
+    });
+    mocks.clipboardWriteText.mockResolvedValue(undefined);
     window.sessionStorage.setItem(`payment-report:${props.publicToken}`, 'report-token-a');
     mocks.reportPixPaymentAction.mockResolvedValue({
       success: true,
@@ -41,6 +51,50 @@ describe('PixPaymentInfo', () => {
         notificationPending: false,
       },
     });
+  });
+
+  it('copia a chave com feedback acessível', async () => {
+    render(<PixPaymentInfo {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar chave Pix' }));
+
+    expect(
+      await screen.findByText('Chave Pix copiada para a área de transferência.'),
+    ).toBeInTheDocument();
+    expect(mocks.clipboardWriteText).toHaveBeenCalledWith('financeiro@loja.test');
+  });
+
+  it('usa fallback por seleção quando a Clipboard API não está disponível', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
+    render(<PixPaymentInfo {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar chave Pix' }));
+
+    expect(
+      await screen.findByText('Chave Pix copiada para a área de transferência.'),
+    ).toBeInTheDocument();
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(document.querySelector('textarea[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('orienta seleção manual quando Clipboard e fallback falham', async () => {
+    mocks.clipboardWriteText.mockRejectedValue(new Error('Permissão negada'));
+    render(<PixPaymentInfo {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar chave Pix' }));
+
+    expect(
+      await screen.findByText('Não foi possível copiar. Selecione a chave manualmente.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('textarea[aria-hidden="true"]')).toBeNull();
   });
 
   it('informa pagamento e apresenta estado aguardando conferência', async () => {

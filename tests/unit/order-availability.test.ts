@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createOrderAction } from '@/features/orders/actions';
+import { createOrderAction, getCheckoutAvailabilityAction } from '@/features/orders/actions';
 
 const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
@@ -78,6 +78,32 @@ describe('disponibilidade na criação do pedido', () => {
         optionGroups: [],
       },
     ]);
+  });
+
+  it('expõe preflight público sem substituir a validação da criação', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: false,
+      state: 'PAUSED',
+      reason: 'A loja pausou os pedidos.',
+      nextTransitionAt: null,
+    });
+
+    const result = await getCheckoutAvailabilityAction('loja-a');
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        acceptingOrders: false,
+        state: 'PAUSED',
+        reason: 'A loja pausou os pedidos.',
+        nextTransitionAt: null,
+      },
+    });
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledWith(
+      'tenant-a',
+      'store-a',
+    );
+    expect(mocks.createOrder).not.toHaveBeenCalled();
   });
 
   it('bloqueia no servidor quando o tenant está suspenso, sem confiar no status OPEN', async () => {

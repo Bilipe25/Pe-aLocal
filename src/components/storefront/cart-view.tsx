@@ -2,26 +2,37 @@
 
 import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
-import { useCartStore } from '@/stores/cart-store';
+import { MAX_CART_ITEM_QUANTITY, useCartStore } from '@/stores/cart-store';
 
 interface CartViewProps {
+  storeId: string;
   storeSlug: string;
   acceptingOrders: boolean;
   unavailableReason: string;
 }
 
-export function CartView({ storeSlug, acceptingOrders, unavailableReason }: CartViewProps) {
+export function CartView({
+  storeId,
+  storeSlug,
+  acceptingOrders,
+  unavailableReason,
+}: CartViewProps) {
   const items = useCartStore((state) => state.items);
+  const activeStoreId = useCartStore((state) => state.storeId);
+  const setStore = useCartStore((state) => state.setStore);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const removeItem = useCartStore((state) => state.removeItem);
   const clearCart = useCartStore((state) => state.clearCart);
   const restoreItems = useCartStore((state) => state.restoreItems);
   const getTotal = useCartStore((state) => state.getTotal);
   const total = getTotal();
+
+  useEffect(() => setStore(storeId, storeSlug), [setStore, storeId, storeSlug]);
 
   function handleClearCart() {
     const snapshot = items.map((item) => ({ ...item, selectedOptions: [...item.selectedOptions] }));
@@ -42,6 +53,18 @@ export function CartView({ storeSlug, acceptingOrders, unavailableReason }: Cart
       action: { label: 'Desfazer', onClick: () => restoreItems(snapshot) },
       duration: 6000,
     });
+  }
+
+  if (activeStoreId !== storeId) {
+    return (
+      <main
+        className="text-text-muted mx-auto max-w-2xl px-4 py-12 text-center text-sm"
+        role="status"
+        aria-live="polite"
+      >
+        Carregando sua sacola…
+      </main>
+    );
   }
 
   if (items.length === 0) {
@@ -112,27 +135,44 @@ export function CartView({ storeSlug, acceptingOrders, unavailableReason }: Cart
             </div>
 
             <div className="mt-2 flex items-center justify-between">
-              <div className="border-tinta/15 flex items-center gap-1 rounded-full border px-1">
-                <button
-                  type="button"
-                  aria-label={`Diminuir quantidade de ${item.productName}`}
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                  disabled={item.quantity <= 1}
-                  className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
-                >
-                  <Minus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-                <span className="text-tinta w-5 text-center font-mono text-sm font-bold">
-                  {item.quantity}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Aumentar quantidade de ${item.productName}`}
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+              <div>
+                <div className="border-tinta/15 flex items-center gap-1 rounded-full border px-1">
+                  <button
+                    type="button"
+                    aria-label={`Diminuir quantidade de ${item.productName}`}
+                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                    disabled={item.quantity <= 1}
+                    className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
+                  >
+                    <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  <span className="text-tinta w-5 text-center font-mono text-sm font-bold">
+                    {item.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Aumentar quantidade de ${item.productName}`}
+                    aria-describedby={
+                      item.quantity >= MAX_CART_ITEM_QUANTITY
+                        ? `cart-quantity-limit-${item.id}`
+                        : undefined
+                    }
+                    onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                    disabled={item.quantity >= MAX_CART_ITEM_QUANTITY}
+                    className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+                {item.quantity >= MAX_CART_ITEM_QUANTITY && (
+                  <p
+                    id={`cart-quantity-limit-${item.id}`}
+                    role="status"
+                    className="text-text-muted mt-1 text-xs"
+                  >
+                    Limite de {MAX_CART_ITEM_QUANTITY}
+                  </p>
+                )}
               </div>
 
               <span className="text-tinta font-mono text-sm font-bold">

@@ -21,13 +21,7 @@ vi.mock('@/components/storefront/product-card', () => ({
   ),
 }));
 vi.mock('@/components/storefront/product-modal', () => ({
-  ProductModal: ({
-    product,
-    storeOpen,
-  }: {
-    product: { name: string };
-    storeOpen: boolean;
-  }) => (
+  ProductModal: ({ product, storeOpen }: { product: { name: string }; storeOpen: boolean }) => (
     <div role="dialog" data-store-open={String(storeOpen)}>
       {product.name}
     </div>
@@ -46,6 +40,7 @@ const categories = [
         name: 'Burger da casa',
         description: 'Pão, carne e queijo',
         imageUrl: null,
+        imageAssetId: null,
         basePrice: 2500,
         isFeatured: false,
         isSoldOut: false,
@@ -101,7 +96,10 @@ describe('catálogo público', () => {
     const search = screen.getByRole('searchbox', { name: 'Buscar no cardápio' });
     fireEvent.change(search, { target: { value: 'pizza' } });
 
-    expect(screen.getByText('Nenhum resultado para “pizza”')).toBeInTheDocument();
+    expect(search).toHaveValue('pizza');
+    await waitFor(() =>
+      expect(screen.getByText('Nenhum resultado para “pizza”')).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Limpar busca' }));
 
     expect(search).toHaveValue('');
