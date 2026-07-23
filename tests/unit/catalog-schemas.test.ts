@@ -18,6 +18,16 @@ describe('schemas do catálogo', () => {
     ).toBe('X-Burger');
   });
 
+  it('aceita os UUIDs canônicos determinísticos usados pelo seed', () => {
+    const result = createProductSchema.safeParse({
+      categoryId: '00000000-0000-0000-0001-000000000001',
+      name: 'X-Burger',
+      basePrice: '24.90',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('aceita somente os campos de disponibilidade autorizados', () => {
     expect(productAvailabilitySchema.parse({ isSoldOut: true })).toEqual({ isSoldOut: true });
     expect(productAvailabilitySchema.safeParse({}).success).toBe(false);

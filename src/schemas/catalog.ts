@@ -30,7 +30,10 @@ export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const createProductSchema = z.object({
-  categoryId: z.string().uuid('Categoria inválida.'),
+  // O PostgreSQL aceita UUIDs canônicos sem bits RFC de versão, formato usado
+  // pelos IDs determinísticos do seed. z.guid() valida o formato armazenável
+  // sem rejeitar categorias que já existem no banco.
+  categoryId: z.guid('Categoria inválida.'),
   name: z
     .string()
     .trim()
@@ -70,7 +73,7 @@ export const productAvailabilitySchema = z
 export const catalogMoveDirectionSchema = z.enum(['up', 'down']);
 
 export const catalogOrderedIdsSchema = z
-  .array(z.uuid('Identificador de catálogo inválido.'))
+  .array(z.guid('Identificador de catálogo inválido.'))
   .min(1)
   .max(500, 'Não é possível reordenar mais de 500 itens por operação.')
   .refine((ids) => new Set(ids).size === ids.length, {
@@ -78,7 +81,7 @@ export const catalogOrderedIdsSchema = z
   });
 
 const optionGroupSchema = z.object({
-  productId: z.string().uuid('Produto inválido.'),
+  productId: z.guid('Produto inválido.'),
   title: z
     .string()
     .trim()
@@ -147,7 +150,7 @@ export type CreateOptionGroupInput = z.infer<typeof createOptionGroupSchema>;
 export type UpdateOptionGroupInput = z.infer<typeof updateOptionGroupSchema>;
 
 export const createOptionSchema = z.object({
-  groupId: z.string().uuid('Grupo inválido.'),
+  groupId: z.guid('Grupo inválido.'),
   name: z
     .string()
     .trim()
