@@ -26,6 +26,11 @@ pnpm test:workerd
 E2E mutável exige `E2E_ALLOW_MUTATIONS=true`, credenciais exclusivas e uma loja descartável. Sem
 essa confirmação, os cenários preservam dados e são ignorados com justificativa explícita.
 
+O job `workerd-smoke` da CI é opt-in. Defina a variável do repositório
+`RUN_WORKERD_SMOKE=true` somente depois de configurar todas as variáveis e secrets de Pusher e E2E
+validados pelo próprio job. Se a ativação estiver ausente, o job é ignorado; se estiver ativa com
+configuração incompleta, a CI falha antes de iniciar o smoke autenticado.
+
 ## Cobertura crítica
 
 | Risco                                 | Gate principal                                               |

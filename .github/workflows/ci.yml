@@ -52,7 +52,7 @@ jobs:
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
 
   workerd-smoke:
-    if: ${{ vars.NEXT_PUBLIC_SUPABASE_URL != '' }}
+    if: ${{ vars.RUN_WORKERD_SMOKE == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
