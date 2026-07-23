@@ -2,20 +2,10 @@
 
 import { formatCurrency } from '@/lib/utils';
 import type { SelectedOption } from '@/stores/cart-store';
-
-interface OptionGroup {
-  id: string;
-  title: string;
-  description: string | null;
-  isRequired: boolean;
-  isMultiple: boolean;
-  minSelections: number;
-  maxSelections: number;
-  options: { id: string; name: string; price: number }[];
-}
+import type { PublicStorefrontOptionGroupDto } from '@/types/storefront';
 
 interface OptionGroupSelectorProps {
-  group: OptionGroup;
+  group: PublicStorefrontOptionGroupDto;
   selected: SelectedOption[];
   onChange: (selected: SelectedOption[]) => void;
 }
@@ -42,11 +32,11 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
     <section className="py-3" aria-labelledby={titleId}>
       <div className="mb-2 flex items-center justify-between">
         <div className="min-w-0 pr-2">
-          <h3 id={titleId} className="text-sm font-semibold text-tinta">
+          <h3 id={titleId} className="text-tinta text-sm font-semibold">
             {group.title}
           </h3>
           {group.description && (
-            <p className="break-words text-sm text-text-muted">{group.description}</p>
+            <p className="text-text-muted text-sm break-words">{group.description}</p>
           )}
         </div>
         {group.isRequired ? (
@@ -54,12 +44,12 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
             Obrigatório
           </span>
         ) : (
-          <span className="shrink-0 text-sm text-text-muted">Opcional</span>
+          <span className="text-text-muted shrink-0 text-sm">Opcional</span>
         )}
       </div>
 
       {group.isMultiple && (
-        <p id={helpId} className="mb-1.5 text-sm text-text-muted">
+        <p id={helpId} className="text-text-muted mb-1.5 text-sm">
           Escolha até {group.maxSelections}
           {group.minSelections > 0 && ` (mín. ${group.minSelections})`}
         </p>
@@ -101,10 +91,10 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
                     />
                   )}
                 </span>
-                <span className="break-words text-left">{option.name}</span>
+                <span className="text-left break-words">{option.name}</span>
               </span>
               {option.price > 0 && (
-                <span className="shrink-0 pl-2 font-mono text-sm font-bold text-text-muted">
+                <span className="text-text-muted shrink-0 pl-2 font-mono text-sm font-bold">
                   +{formatCurrency(option.price)}
                 </span>
               )}

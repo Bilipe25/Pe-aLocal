@@ -196,6 +196,7 @@ export const StorefrontPreview = memo(function StorefrontPreview({
                     key={product.name}
                     {...product}
                     imageUrl={null}
+                    imageAssetId={null}
                     isSoldOut={false}
                     onClick={() => undefined}
                     showImage={config.layout.showProductImages}

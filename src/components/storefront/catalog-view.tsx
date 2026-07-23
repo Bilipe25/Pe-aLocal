@@ -1,67 +1,29 @@
 'use client';
 
 import { Search, SearchX } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
-import { StoreBanners, type PublicStoreBanner } from '@/components/storefront/store-banners';
+import { StoreBanners } from '@/components/storefront/store-banners';
 import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
-
-interface Option {
-  id: string;
-  name: string;
-  price: number;
-}
-
-interface OptionGroup {
-  id: string;
-  title: string;
-  description: string | null;
-  isRequired: boolean;
-  isMultiple: boolean;
-  minSelections: number;
-  maxSelections: number;
-  options: Option[];
-}
-
-interface Product {
-  id: string;
-  name: string;
-  description: string | null;
-  imageUrl: string | null;
-  basePrice: number;
-  isFeatured: boolean;
-  isSoldOut: boolean;
-  allowNotes: boolean;
-  optionGroups: OptionGroup[];
-}
-
-interface Category {
-  id: string;
-  name: string;
-  description: string | null;
-  image: {
-    id: string;
-    url: string;
-    altText: string;
-    width: number;
-    height: number;
-  } | null;
-  products: Product[];
-}
+import type {
+  PublicStorefrontBannerDto,
+  PublicStorefrontCategoryDto,
+  PublicStorefrontProductDto,
+} from '@/types/storefront';
 
 interface CatalogViewProps {
-  categories: Category[];
+  categories: PublicStorefrontCategoryDto[];
   storeId: string;
   storeSlug: string;
   storeOpen: boolean;
   customization: StoreCustomizationConfig;
-  banners: PublicStoreBanner[];
+  banners: PublicStorefrontBannerDto[];
 }
 
 export function CatalogView({
@@ -76,15 +38,16 @@ export function CatalogView({
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     categories[0]?.id ?? null,
   );
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductDto | null>(null);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
 
   const visibleCategories = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('pt-BR');
+    const term = deferredSearch.trim().toLocaleLowerCase('pt-BR');
     if (!term) return categories;
 
     return categories
@@ -95,7 +58,7 @@ export function CatalogView({
         ),
       }))
       .filter((category) => category.products.length > 0);
-  }, [categories, search]);
+  }, [categories, deferredSearch]);
 
   const featuredProducts = useMemo(
     () =>
@@ -114,7 +77,7 @@ export function CatalogView({
     });
   }
 
-  function openProduct(product: Product) {
+  function openProduct(product: PublicStorefrontProductDto) {
     lastFocusedProductRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelectedProduct(product);
@@ -148,7 +111,7 @@ export function CatalogView({
     return () => observer.disconnect();
   }, [visibleCategories]);
 
-  const productCard = (product: Product, withAnchor = false) => (
+  const productCard = (product: PublicStorefrontProductDto, withAnchor = false) => (
     <ProductCard
       key={product.id}
       id={withAnchor ? `product-${product.id}` : undefined}
@@ -158,6 +121,7 @@ export function CatalogView({
       isFeatured={product.isFeatured}
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
+      imageAssetId={product.imageAssetId}
       onClick={() => openProduct(product)}
       showImage={customization.layout.showProductImages}
       showBadges={customization.layout.showProductBadges}
@@ -206,21 +170,21 @@ export function CatalogView({
 
     if (section === 'CATALOG') {
       return (
-        <main key={section} className="storefront-catalog">
+        <main key={section} className="storefront-catalog" aria-busy={search !== deferredSearch}>
           {visibleCategories.length === 0 ? (
             <section className="storefront-empty" role="status" aria-live="polite">
               <SearchX className="storefront-empty-icon" aria-hidden="true" />
               <h2 className="storefront-empty-title">
-                {search.trim()
-                  ? `Nenhum resultado para “${search.trim()}”`
+                {deferredSearch.trim()
+                  ? `Nenhum resultado para “${deferredSearch.trim()}”`
                   : 'Cardápio em atualização'}
               </h2>
               <p>
-                {search.trim()
+                {deferredSearch.trim()
                   ? 'Tente outro nome ou limpe a busca para navegar pelas categorias.'
                   : 'A loja ainda não publicou produtos disponíveis. Volte em breve.'}
               </p>
-              {search.trim() && (
+              {deferredSearch.trim() && (
                 <button type="button" onClick={clearSearch} className="storefront-empty-action">
                   Limpar busca
                 </button>
@@ -303,14 +267,10 @@ export function CatalogView({
       {customization.layout.sectionOrder.map(renderSection)}
 
       {selectedProduct && (
-        <ProductModal
-          product={selectedProduct}
-          onClose={closeProduct}
-          storeOpen={storeOpen}
-        />
+        <ProductModal product={selectedProduct} onClose={closeProduct} storeOpen={storeOpen} />
       )}
 
-      <CartFab />
+      <CartFab storeId={storeId} />
     </>
   );
 }

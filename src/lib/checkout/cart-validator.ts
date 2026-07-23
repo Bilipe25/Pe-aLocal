@@ -42,6 +42,14 @@ interface CartItem {
   notes?: string;
 }
 
+export function createCartItemFingerprint(cartItem: CartItem): string {
+  return JSON.stringify({
+    productId: cartItem.productId,
+    optionIds: [...cartItem.optionIds].sort(),
+    notes: cartItem.notes?.trim() ?? '',
+  });
+}
+
 /**
  * Valida um item do carrinho contra os dados reais do banco.
  * Lança BusinessRuleError em caso de violação das regras de negócio.
@@ -62,9 +70,7 @@ export function validateCartItem(product: ValidatedProduct, cartItem: CartItem):
 
   // 2. Observações — respeitar allowNotes
   if (!product.allowNotes && cartItem.notes && cartItem.notes.trim().length > 0) {
-    throw new BusinessRuleError(
-      `O produto "${cartItem.productId}" não aceita observações.`,
-    );
+    throw new BusinessRuleError(`O produto "${cartItem.productId}" não aceita observações.`);
   }
 
   // 3. Verificar duplicatas em optionIds
@@ -89,9 +95,7 @@ export function validateCartItem(product: ValidatedProduct, cartItem: CartItem):
   // 5. Verifica que todos os optionIds enviados são válidos
   for (const optionId of cartItem.optionIds) {
     if (!availableOptionMap.has(optionId)) {
-      throw new BusinessRuleError(
-        `Adicional "${optionId}" não está disponível.`,
-      );
+      throw new BusinessRuleError(`Adicional "${optionId}" não está disponível.`);
     }
   }
 
@@ -114,9 +118,7 @@ export function validateCartItem(product: ValidatedProduct, cartItem: CartItem):
 
     // Grupo obrigatório e mínimo de seleções
     if (group.isRequired && count === 0) {
-      throw new BusinessRuleError(
-        `O grupo de adicionais "${group.title}" é obrigatório.`,
-      );
+      throw new BusinessRuleError(`O grupo de adicionais "${group.title}" é obrigatório.`);
     }
 
     if (count > 0 && count < group.minSelections) {
@@ -127,9 +129,7 @@ export function validateCartItem(product: ValidatedProduct, cartItem: CartItem):
 
     // Grupo não-múltiplo: apenas 1 opção
     if (!group.isMultiple && count > 1) {
-      throw new BusinessRuleError(
-        `Selecione apenas 1 opção em "${group.title}".`,
-      );
+      throw new BusinessRuleError(`Selecione apenas 1 opção em "${group.title}".`);
     }
 
     // Limite máximo (grupos múltiplos)
@@ -149,15 +149,18 @@ export function validateCartItems(
   productMap: Map<string, ValidatedProduct>,
   cartItems: CartItem[],
 ): void {
-  // Verifica itens duplicados no carrinho (mesmo produto duas vezes)
-  const productIdsSeen = new Set<string>();
+  // Configurações diferentes do mesmo produto são linhas válidas. Rejeitar
+  // apenas linhas semanticamente equivalentes impede contornar o limite por
+  // linha sem bloquear customizações distintas.
+  const fingerprintsSeen = new Set<string>();
   for (const item of cartItems) {
-    if (productIdsSeen.has(item.productId)) {
+    const fingerprint = createCartItemFingerprint(item);
+    if (fingerprintsSeen.has(fingerprint)) {
       throw new BusinessRuleError(
-        `O produto "${item.productId}" aparece mais de uma vez no pedido.`,
+        `O produto "${item.productId}" possui uma configuração repetida no pedido.`,
       );
     }
-    productIdsSeen.add(item.productId);
+    fingerprintsSeen.add(fingerprint);
   }
 
   for (const cartItem of cartItems) {

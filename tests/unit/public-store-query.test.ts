@@ -9,6 +9,7 @@ import {
 } from '@/server/queries/public-store';
 
 const mocks = vi.hoisted(() => ({
+  requestId: 0,
   getDb: vi.fn(),
   unstableCache: vi.fn(),
   storeFindUnique: vi.fn(),
@@ -22,6 +23,25 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('server-only', () => ({}));
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return {
+    ...actual,
+    cache: <Args extends unknown[], Result>(callback: (...args: Args) => Result) => {
+      let activeRequestId = -1;
+      let values = new Map<string, Result>();
+      return (...args: Args) => {
+        if (activeRequestId !== mocks.requestId) {
+          activeRequestId = mocks.requestId;
+          values = new Map();
+        }
+        const key = JSON.stringify(args);
+        if (!values.has(key)) values.set(key, callback(...args));
+        return values.get(key)!;
+      };
+    },
+  };
+});
 vi.mock('next/cache', () => ({ unstable_cache: mocks.unstableCache }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 vi.mock('@/server/repositories/store-banner.repository', () => ({
@@ -74,6 +94,7 @@ function publicStore() {
 describe('queries públicas da loja', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.requestId += 1;
     mocks.unstableCache.mockImplementation((callback: () => Promise<unknown>) => callback);
     mocks.storeFindUnique.mockResolvedValue(publicStore());
     mocks.storeSlugRedirectFindUnique.mockResolvedValue(null);
@@ -95,6 +116,61 @@ describe('queries públicas da loja', () => {
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
       storeAsset: { findMany: mocks.storeAssetFindMany },
     });
+  });
+
+  it('deduplica duas chamadas do mesmo slug no mesmo request', async () => {
+    const [first, second] = await Promise.all([
+      getPublicStoreBySlug('loja-1'),
+      getPublicStoreBySlug('loja-1'),
+    ]);
+
+    expect(first).toBe(second);
+    expect(mocks.storeFindUnique).toHaveBeenCalledTimes(1);
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('não compartilha resultado entre slugs no mesmo request', async () => {
+    mocks.storeFindUnique.mockImplementation(({ where }: { where: { slug: string } }) =>
+      Promise.resolve({
+        ...publicStore(),
+        id: `store-${where.slug}`,
+        slug: where.slug,
+      }),
+    );
+
+    const [storeA, storeB] = await Promise.all([
+      getPublicStoreBySlug('loja-a'),
+      getPublicStoreBySlug('loja-b'),
+    ]);
+
+    expect(storeA?.id).toBe('store-loja-a');
+    expect(storeB?.id).toBe('store-loja-b');
+    expect(mocks.storeFindUnique).toHaveBeenCalledTimes(2);
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledTimes(2);
+  });
+
+  it('recalcula disponibilidade dinâmica em requests diferentes', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant
+      .mockResolvedValueOnce({
+        acceptingOrders: true,
+        state: 'OPEN',
+        reason: 'Aberta agora.',
+        nextTransitionAt: null,
+      })
+      .mockResolvedValueOnce({
+        acceptingOrders: false,
+        state: 'PAUSED',
+        reason: 'Loja pausada.',
+        nextTransitionAt: null,
+      });
+
+    const firstRequest = await getPublicStoreBySlug('loja-1');
+    mocks.requestId += 1;
+    const secondRequest = await getPublicStoreBySlug('loja-1');
+
+    expect(firstRequest?.availability.state).toBe('OPEN');
+    expect(secondRequest?.availability.state).toBe('PAUSED');
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledTimes(2);
   });
 
   it('resolve apenas assets publicados, ativos e pertencentes à mesma loja', async () => {
@@ -320,7 +396,7 @@ describe('queries públicas da loja', () => {
     expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
     expect(result).toEqual([expect.objectContaining({ id: categoryId, image })]);
     expect(result[0].products[0].imageUrl).toBe(
-      '/api/store-assets/d665460d-b4be-48e6-8cb2-33ab2e5cc8a1?width=768',
+      '/api/store-assets/d665460d-b4be-48e6-8cb2-33ab2e5cc8a1?width=384',
     );
     expect(mocks.categoryFindMany).toHaveBeenCalledWith(
       expect.objectContaining({

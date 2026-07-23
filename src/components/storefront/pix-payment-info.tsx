@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, CheckCircle2, Copy, Loader2, MessageCircle } from 'lucide-react';
-import { useState, useSyncExternalStore, useTransition } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,24 @@ function readPaymentReportToken(publicToken: string): string | null {
   }
 }
 
+function copyWithSelectionFallback(value: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.readOnly = true;
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.inset = '0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+
+  try {
+    textarea.select();
+    return typeof document.execCommand === 'function' && document.execCommand('copy');
+  } finally {
+    textarea.remove();
+  }
+}
+
 export function PixPaymentInfo({
   pixKeyType,
   pixKey,
@@ -45,10 +63,11 @@ export function PixPaymentInfo({
   publicToken,
   paymentStatus,
 }: PixPaymentInfoProps) {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [reportedStatus, setReportedStatus] = useState<PaymentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const copyStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const reportToken = useSyncExternalStore(
     subscribeToPaymentReportToken,
@@ -58,6 +77,13 @@ export function PixPaymentInfo({
 
   const currentStatus =
     paymentStatus === 'PENDING' ? (reportedStatus ?? paymentStatus) : paymentStatus;
+
+  useEffect(
+    () => () => {
+      if (copyStatusTimerRef.current) clearTimeout(copyStatusTimerRef.current);
+    },
+    [],
+  );
 
   function handleReportPayment() {
     setError(null);
@@ -110,9 +136,24 @@ export function PixPaymentInfo({
   }
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(pixKey!);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    if (copyStatusTimerRef.current) clearTimeout(copyStatusTimerRef.current);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(pixKey!);
+      } else if (!copyWithSelectionFallback(pixKey!)) {
+        throw new Error('Clipboard indisponível');
+      }
+      setCopyStatus('success');
+      copyStatusTimerRef.current = setTimeout(() => setCopyStatus('idle'), 2500);
+    } catch {
+      try {
+        if (!copyWithSelectionFallback(pixKey!)) throw new Error('Fallback indisponível');
+        setCopyStatus('success');
+        copyStatusTimerRef.current = setTimeout(() => setCopyStatus('idle'), 2500);
+      } catch {
+        setCopyStatus('error');
+      }
+    }
   }
 
   const totalFormatted = (total / 100).toLocaleString('pt-BR', {
@@ -148,20 +189,34 @@ export function PixPaymentInfo({
             <button
               type="button"
               onClick={handleCopy}
-              aria-label={copied ? 'Chave Pix copiada' : 'Copiar chave Pix'}
+              aria-label={copyStatus === 'success' ? 'Chave Pix copiada' : 'Copiar chave Pix'}
               className="text-text-muted hover:bg-tinta/5 hover:text-tinta flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md"
             >
-              {copied ? (
+              {copyStatus === 'success' ? (
                 <Check className="text-erva h-4 w-4" aria-hidden="true" />
               ) : (
                 <Copy className="h-4 w-4" aria-hidden="true" />
               )}
             </button>
-            <span className="sr-only" role="status" aria-live="polite">
-              {copied ? 'Chave Pix copiada para a área de transferência.' : ''}
-            </span>
           </div>
         </div>
+        <p
+          className={`text-xs ${
+            copyStatus === 'error'
+              ? 'text-error'
+              : copyStatus === 'success'
+                ? 'text-success'
+                : 'sr-only'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {copyStatus === 'success'
+            ? 'Chave Pix copiada para a área de transferência.'
+            : copyStatus === 'error'
+              ? 'Não foi possível copiar. Selecione a chave manualmente.'
+              : ''}
+        </p>
         {pixRecipient && (
           <div className="flex justify-between gap-3">
             <span className="text-text-muted">Beneficiário</span>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatPhone,
+  formatPhoneInput,
   formatZipCode,
   maskPixKey,
   normalizePhone,
@@ -21,6 +22,7 @@ describe('normalizacao brasileira', () => {
     expect(normalizePhone('(85) 99999-9999')).toBe('5585999999999');
     expect(formatPhone('5585999999999')).toBe('(85) 99999-9999');
     expect(validateBrazilianPhone('+55 (85) 99999-9999')).toBe(true);
+    expect(formatPhoneInput('+55 85 99999-9999')).toBe('(85) 99999-9999');
 
     expect(normalizeZipCode('60.000-000')).toBe('60000000');
     expect(formatZipCode('60000000')).toBe('60000-000');
@@ -28,6 +30,29 @@ describe('normalizacao brasileira', () => {
     expect(normalizeState(' ce ')).toBe('CE');
     expect(validateBrazilianState('CE')).toBe(true);
     expect(validateBrazilianState('XX')).toBe(false);
+  });
+
+  it.each([
+    ['11999999999', '5511999999999'],
+    ['(11) 99999-9999', '5511999999999'],
+    ['11 99999-9999', '5511999999999'],
+    ['+55 11 99999-9999', '5511999999999'],
+    ['(11) 3333-4444', '551133334444'],
+  ])('aceita e normaliza telefone brasileiro %s', (value, normalized) => {
+    expect(validateBrazilianPhone(value)).toBe(true);
+    expect(normalizePhone(value)).toBe(normalized);
+    expect(normalizePhone(normalizePhone(value))).toBe(normalized);
+  });
+
+  it.each([
+    '1199999',
+    '551199999999999',
+    'abc11999999999',
+    '+54 11 99999-9999',
+    '(00) 99999-9999',
+    '(11) 19999-9999',
+  ])('rejeita telefone brasileiro inválido %s', (value) => {
+    expect(validateBrazilianPhone(value)).toBe(false);
   });
 
   it('valida CPF e CNPJ com digitos verificadores reais', () => {

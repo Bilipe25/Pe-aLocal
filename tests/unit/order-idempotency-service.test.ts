@@ -18,10 +18,7 @@ const input: CheckoutInput = {
       productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
       quantity: 1,
       notes: '',
-      optionIds: [
-        '3d78178d-af83-4a72-8215-dcb24d3df903',
-        'fdd28ba4-e805-48a7-89db-f374ee985109',
-      ],
+      optionIds: ['3d78178d-af83-4a72-8215-dcb24d3df903', 'fdd28ba4-e805-48a7-89db-f374ee985109'],
     },
   ],
 };
@@ -37,9 +34,32 @@ describe('order idempotency fingerprint', () => {
     expect(createOrderFingerprint(equivalent)).toBe(createOrderFingerprint(input));
   });
 
+  it('permanece determinístico com customizações distintas do mesmo produto', () => {
+    const customized: CheckoutInput = {
+      ...input,
+      items: [
+        { ...input.items[0], notes: 'Sem cebola' },
+        {
+          ...input.items[0],
+          notes: 'Com bacon',
+          optionIds: [input.items[0].optionIds[1]],
+        },
+      ],
+    };
+    const reordered: CheckoutInput = {
+      ...customized,
+      items: [...customized.items]
+        .reverse()
+        .map((item) => ({ ...item, optionIds: [...item.optionIds].reverse() })),
+    };
+
+    expect(createOrderFingerprint(reordered)).toBe(createOrderFingerprint(customized));
+  });
+
   it('changes when order content changes', () => {
-    expect(createOrderFingerprint({ ...input, customerName: 'Outra pessoa' }))
-      .not.toBe(createOrderFingerprint(input));
+    expect(createOrderFingerprint({ ...input, customerName: 'Outra pessoa' })).not.toBe(
+      createOrderFingerprint(input),
+    );
   });
 
   it('rejects reuse with a different fingerprint but accepts legacy rows', () => {

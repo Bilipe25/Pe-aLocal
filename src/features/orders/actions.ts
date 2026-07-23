@@ -20,6 +20,7 @@ import {
   assertMatchingOrderFingerprint,
   createOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
+import type { EffectiveStoreAvailabilityState } from '@/features/stores/availability';
 
 // =============================================================================
 // Checkout — Server Action
@@ -37,7 +38,40 @@ interface ReportPixPaymentData {
   notificationPending: boolean;
 }
 
+interface CheckoutAvailabilityData {
+  acceptingOrders: boolean;
+  state: EffectiveStoreAvailabilityState;
+  reason: string;
+  nextTransitionAt: string | null;
+}
+
 const MAX_POSTGRES_INTEGER_CENTS = 2_147_483_647;
+
+/**
+ * Preflight público para atualizar a UX do checkout. A criação do pedido
+ * repete esta validação e continua sendo a fonte autoritativa.
+ */
+export async function getCheckoutAvailabilityAction(
+  storeSlug: string,
+): Promise<ActionResult<CheckoutAvailabilityData>> {
+  try {
+    const store = await getDb().store.findUnique({
+      where: { slug: storeSlug },
+      select: { id: true, tenantId: true },
+    });
+    if (!store) throw new BusinessRuleError('Loja não encontrada');
+
+    const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+    return actionSuccess({
+      acceptingOrders: availability.acceptingOrders,
+      state: availability.state,
+      reason: availability.reason,
+      nextTransitionAt: availability.nextTransitionAt?.toISOString() ?? null,
+    });
+  } catch (error) {
+    return actionError(error);
+  }
+}
 
 async function reportTokenRateLimitKey(reportToken: string) {
   const bytes = new TextEncoder().encode(reportToken);
