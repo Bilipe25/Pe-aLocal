@@ -53,15 +53,22 @@ Aplicar somente por `prisma migrate deploy`, nesta ordem já registrada no ledge
 1. `20260721223000_order_operational_safety`;
 2. `20260721233000_order_atomic_audit`;
 3. `20260722003000_order_query_indexes`;
-4. `20260722013000_order_number_counter_expand`;
-5. `20260722014000_order_number_counter_backfill`;
-6. `20260722015000_order_number_counter_cutover`;
-7. `20260722023000_order_transactional_outbox`;
-8. `20260722170000_payment_lifecycle_expand`;
-9. `20260722170500_payment_history_expand`;
-10. `20260722171000_payment_lifecycle_backfill`;
-11. `20260722172000_payment_consistency_guard`;
-12. `20260722213000_order_internal_notes`.
+4. `20260722003100_order_tenant_store_created_index`;
+5. `20260722003200_order_store_status_created_index`;
+6. `20260722003300_order_store_payment_created_index`;
+7. `20260722003400_order_store_status_changed_index`;
+8. `20260722003500_order_store_phone_created_index`;
+9. `20260722003600_order_status_history_created_index`;
+10. `20260722003700_drop_legacy_order_status_history_index`;
+11. `20260722013000_order_number_counter_expand`;
+12. `20260722014000_order_number_counter_backfill`;
+13. `20260722015000_order_number_counter_cutover`;
+14. `20260722023000_order_transactional_outbox`;
+15. `20260722170000_payment_lifecycle_expand`;
+16. `20260722170500_payment_history_expand`;
+17. `20260722171000_payment_lifecycle_backfill`;
+18. `20260722172000_payment_consistency_guard`;
+19. `20260722213000_order_internal_notes`.
 
 Não use `prisma db push`. Antes da aplicação, faça backup, confira o ledger, valide privilégios do
 runtime e execute o preflight financeiro. As fases 9 e 10 não adicionam migration.
