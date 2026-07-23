@@ -33,6 +33,10 @@ export function getPusherClient(): PusherClient {
 
     pusherClientInstance = new PusherClient(key, {
       cluster,
+      channelAuthorization: {
+        endpoint: '/dashboard/api/pusher/auth',
+        transport: 'ajax',
+      },
     });
   }
 

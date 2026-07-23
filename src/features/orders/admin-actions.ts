@@ -1,224 +1,234 @@
 'use server';
 
-import { getDb } from '@/server/database/client';
-import { Permission } from '@/server/permissions';
-import { actionSuccess, actionError, type ActionResult, BusinessRuleError } from '@/server/errors';
+import { hasTenantPermission, Permission } from '@/server/permissions';
+import { actionSuccess, actionError, type ActionResult, ValidationError } from '@/server/errors';
 import { triggerOrderUpdated, triggerPaymentUpdated } from '@/lib/pusher/server';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
+import {
+  cancelOrderInputSchema,
+  addInternalOrderNoteInputSchema,
+  markPaymentFailedInputSchema,
+  orderVersionInputSchema,
+  refundPaymentInputSchema,
+  type CancelOrderInput,
+  type OrderVersionInput,
+} from './schemas';
+import * as workflowService from '@/server/services/order-workflow.service';
+import * as paymentService from '@/server/services/order-payment.service';
+import type {
+  OrderMutationContext,
+  OrderMutationResult,
+} from '@/server/services/order-mutation.types';
+import type { z } from 'zod';
+import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
+import { addOrderInternalNote } from '@/server/services/order-internal-note.service';
 
 // =============================================================================
 // Ordens — Admin Server Actions
 // =============================================================================
 
-export interface GetOrdersParams {
-  status?: OrderStatus;
-  statuses?: OrderStatus[];
-  paymentStatus?: PaymentStatus;
-  dateFrom?: Date;
-  dateTo?: Date;
-  query?: string;
+export interface OrderActionData {
+  orderId: string;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  version: number;
+  notificationPending: boolean;
 }
 
-/**
- * Retorna os pedidos da loja atual (pode ser usado no useQuery)
- */
-export async function getOrdersAction(params?: GetOrdersParams) {
+export interface InternalOrderNoteActionData extends OrderActionData {
+  noteId: string;
+}
+
+function parseActionInput<T>(schema: z.ZodType<T>, input: unknown): T {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError(
+      'Os dados enviados para atualizar o pedido são inválidos.',
+      parsed.error.issues.map((issue) => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+      })),
+    );
+  }
+  return parsed.data;
+}
+
+function mutationContext(
+  context: Awaited<ReturnType<typeof requireActiveStoreContext>>,
+): OrderMutationContext {
+  return {
+    tenantId: context.session.tenantId,
+    storeId: context.store.id,
+    userId: context.session.userId,
+    userName: context.session.name,
+    canConfirmPayment: hasTenantPermission(
+      context.session.tenantRole,
+      Permission.CONFIRM_MANUAL_PAYMENT,
+    ),
+    canRefundPayment: hasTenantPermission(context.session.tenantRole, Permission.REFUND_PAYMENT),
+  };
+}
+
+async function publishMutation(
+  result: workflowService.OrderMutationResult,
+  publishOrder: boolean,
+  notifyCustomer = true,
+): Promise<boolean> {
+  const dispatch = await dispatchCommittedOrderEvents({
+    eventIds: result.outboxEventIds,
+    publishDirect: async () => {
+      const publications: Promise<unknown>[] = [];
+      if (publishOrder) {
+        publications.push(
+          triggerOrderUpdated(result.storeId, result.orderId, result.status, { notifyCustomer }),
+        );
+      }
+      if (result.paymentUpdated) {
+        publications.push(
+          triggerPaymentUpdated(result.storeId, result.orderId, result.paymentStatus),
+        );
+      }
+      const outcomes = await Promise.allSettled(publications);
+      const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
+    },
+  });
+  return dispatch.notificationPending;
+}
+
+async function runStatusAction(
+  rawInput: unknown,
+  permission: Permission,
+  operation: (
+    context: OrderMutationContext,
+    input: OrderVersionInput,
+  ) => Promise<OrderMutationResult>,
+): Promise<ActionResult<OrderActionData>> {
   try {
-    const { session, store } = await requireActiveStoreContext(Permission.VIEW_ORDERS);
-
-    const query = params?.query?.trim();
-    const orderNumber = query && /^#?\d+$/.test(query) ? Number(query.replace('#', '')) : null;
-
-    const orders = await getDb().order.findMany({
-      where: {
-        tenantId: session.tenantId,
-        storeId: store.id,
-        status: params?.statuses?.length ? { in: params.statuses } : params?.status,
-        paymentStatus: params?.paymentStatus,
-        createdAt: {
-          gte: params?.dateFrom,
-          lte: params?.dateTo,
-        },
-        OR: query
-          ? [
-              { customerName: { contains: query, mode: 'insensitive' } },
-              { customerPhone: { contains: query } },
-              ...(orderNumber === null ? [] : [{ orderNumber }]),
-            ]
-          : undefined,
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        items: {
-          include: {
-            options: true,
-          },
-        },
-        payment: true,
-        statusHistory: {
-          orderBy: { createdAt: 'desc' },
-          take: 8,
-        },
-      },
-    });
-
-    return actionSuccess(orders);
+    const input = parseActionInput(orderVersionInputSchema, rawInput);
+    const context = await requireActiveStoreContext(permission);
+    const result = await operation(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, true);
+    return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);
   }
 }
 
-/**
- * Desfaz somente a transição mais recente feita pelo próprio usuário e dentro
- * de uma janela curta. Isso oferece recuperação sem liberar saltos arbitrários
- * entre estados do pedido.
- */
-export async function undoOrderStatusAction(
-  orderId: string,
-  expectedCurrentStatus: OrderStatus,
-  previousStatus: OrderStatus,
-): Promise<ActionResult> {
+export async function acceptOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(input, Permission.ACCEPT_ORDERS, workflowService.acceptOrder);
+}
+
+export async function startOrderPreparationAction(
+  input: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(
+    input,
+    Permission.UPDATE_ORDER_STATUS,
+    workflowService.startOrderPreparation,
+  );
+}
+
+export async function markOrderReadyAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.markOrderReady);
+}
+
+export async function dispatchOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.dispatchOrder);
+}
+
+export async function completeOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(input, Permission.COMPLETE_ORDERS, workflowService.completeOrder);
+}
+
+export async function cancelOrderAction(rawInput: unknown): Promise<ActionResult<OrderActionData>> {
   try {
-    const { session, store } = await requireActiveStoreContext(Permission.UPDATE_ORDER_STATUS);
-    const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
-      select: {
-        id: true,
-        storeId: true,
-        status: true,
-        statusHistory: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-    });
-
-    const latestChange = order?.statusHistory[0];
-    const undoWindowMs = 2 * 60 * 1000;
-    const isRecent = latestChange
-      ? Date.now() - latestChange.createdAt.getTime() <= undoWindowMs
-      : false;
-
-    if (
-      !order ||
-      order.status !== expectedCurrentStatus ||
-      !latestChange ||
-      latestChange.toStatus !== expectedCurrentStatus ||
-      latestChange.fromStatus !== previousStatus ||
-      latestChange.changedBy !== session.userId ||
-      !isRecent
-    ) {
-      throw new BusinessRuleError(
-        'Esta alteração não pode mais ser desfeita. Atualize a fila e revise o pedido.',
-      );
-    }
-
-    await getDb().$transaction(async (tx) => {
-      await tx.order.update({ where: { id: orderId }, data: { status: previousStatus } });
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          fromStatus: expectedCurrentStatus,
-          toStatus: previousStatus,
-          changedBy: session.userId,
-          note: 'Alteração desfeita pelo painel',
-        },
-      });
-    });
-
-    await triggerOrderUpdated(order.storeId, orderId, previousStatus);
-    return actionSuccess();
+    const input: CancelOrderInput = parseActionInput(cancelOrderInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CANCEL_ORDERS);
+    const result = await workflowService.cancelOrder(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, true);
+    return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);
   }
 }
 
-/**
- * Atualiza o status de um pedido
- */
-export async function updateOrderStatusAction(
-  orderId: string,
-  newStatus: OrderStatus,
-): Promise<ActionResult> {
+export async function undoLastOrderTransitionAction(
+  input: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  return runStatusAction(
+    input,
+    Permission.UPDATE_ORDER_STATUS,
+    workflowService.undoLastOrderTransition,
+  );
+}
+
+export async function confirmPaymentAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
   try {
-    const { session, store } = await requireActiveStoreContext(Permission.UPDATE_ORDER_STATUS);
-
-    const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
-      select: { id: true, storeId: true, status: true },
-    });
-
-    if (!order) {
-      throw new BusinessRuleError('Pedido não encontrado');
-    }
-
-    if (order.status === newStatus) {
-      return actionSuccess();
-    }
-
-    await getDb().$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: newStatus },
-      });
-
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          fromStatus: order.status,
-          toStatus: newStatus,
-          changedBy: session.userId,
-        },
-      });
-    });
-
-    // Disparar evento Pusher
-    await triggerOrderUpdated(order.storeId, orderId, newStatus);
-
-    return actionSuccess();
+    const input = parseActionInput(orderVersionInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const result = await paymentService.confirmManualPayment(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);
   }
 }
 
-/**
- * Confirma o pagamento de um pedido
- */
-export async function confirmPaymentAction(orderId: string): Promise<ActionResult> {
+export async function markPaymentFailedAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
   try {
-    const { session, store } = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const input = parseActionInput(markPaymentFailedInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const result = await paymentService.markPaymentFailed(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
 
-    const order = await getDb().order.findUnique({
-      where: { id: orderId, tenantId: session.tenantId, storeId: store.id },
-      select: { id: true, storeId: true, paymentStatus: true },
-    });
+export async function retryFailedPaymentAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  try {
+    const input = parseActionInput(orderVersionInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.CONFIRM_MANUAL_PAYMENT);
+    const result = await paymentService.retryFailedPayment(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
 
-    if (!order) {
-      throw new BusinessRuleError('Pedido não encontrado');
-    }
+export async function refundPaymentAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderActionData>> {
+  try {
+    const input = parseActionInput(refundPaymentInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.REFUND_PAYMENT);
+    const result = await paymentService.refundPayment(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, false);
+    return actionSuccess({ ...result, notificationPending });
+  } catch (error) {
+    return actionError(error);
+  }
+}
 
-    if (order.paymentStatus === 'PAID') {
-      throw new BusinessRuleError('Este pedido já está pago');
-    }
-
-    await getDb().$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: 'PAID' },
-      });
-
-      await tx.payment.update({
-        where: { orderId },
-        data: {
-          status: 'PAID',
-          paidAt: new Date(),
-          confirmedBy: session.userId,
-        },
-      });
-    });
-
-    // Disparar evento Pusher
-    await triggerPaymentUpdated(order.storeId, orderId, 'PAID');
-
-    return actionSuccess();
+export async function addInternalOrderNoteAction(
+  rawInput: unknown,
+): Promise<ActionResult<InternalOrderNoteActionData>> {
+  try {
+    const input = parseActionInput(addInternalOrderNoteInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.ADD_INTERNAL_ORDER_NOTE);
+    const result = await addOrderInternalNote(mutationContext(context), input);
+    const notificationPending = await publishMutation(result, true, false);
+    return actionSuccess({ ...result, notificationPending });
   } catch (error) {
     return actionError(error);
   }

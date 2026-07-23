@@ -15,13 +15,8 @@ export const checkoutItemSchema = z.object({
 
 export const checkoutSchema = z
   .object({
-    customerName: z
-      .string()
-      .min(2, 'Nome deve ter pelo menos 2 caracteres')
-      .max(100),
-    customerPhone: z
-      .string()
-      .regex(phoneRegex, 'Telefone inválido. Ex: (11) 99999-9999'),
+    customerName: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+    customerPhone: z.string().regex(phoneRegex, 'Telefone inválido. Ex: (11) 99999-9999'),
     modality: z.enum(['DELIVERY', 'PICKUP']),
     deliveryZoneId: z.string().uuid().optional(),
     deliveryAddress: z.string().max(500).optional(),
@@ -54,7 +49,11 @@ export const checkoutSchema = z
       message: 'Valor do troco deve ser maior que zero',
       path: ['changeFor'],
     },
-  );
+  )
+  .refine((data) => data.paymentMethod === 'CASH' || data.changeFor == null, {
+    message: 'Troco é permitido somente para pagamento em dinheiro',
+    path: ['changeFor'],
+  });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type CheckoutItemInput = z.infer<typeof checkoutItemSchema>;

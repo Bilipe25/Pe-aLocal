@@ -33,8 +33,53 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
+      - name: Verify order event queues
+        run: |
+          pnpm exec wrangler queues info "pedidolocal-order-events-${{ inputs.environment }}"
+          pnpm exec wrangler queues info "pedidolocal-order-events-${{ inputs.environment }}-dlq"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify payment consistency
+        run: pnpm db:payment:preflight
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Apply database migrations
+        run: pnpm db:deploy
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Verify outbox runtime access
+        run: pnpm db:outbox:preflight
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Deploy order event worker
+        run: |
+          : "${PUSHER_APP_ID:?Missing PUSHER_APP_ID}"
+          : "${PUSHER_KEY:?Missing PUSHER_KEY}"
+          : "${PUSHER_SECRET:?Missing PUSHER_SECRET}"
+          : "${PUSHER_CLUSTER:?Missing PUSHER_CLUSTER}"
+          secrets_file="$(mktemp)"
+          trap 'rm -f "$secrets_file"' EXIT
+          jq -n \
+            --arg app_id "$PUSHER_APP_ID" \
+            --arg key "$PUSHER_KEY" \
+            --arg secret "$PUSHER_SECRET" \
+            --arg cluster "$PUSHER_CLUSTER" \
+            '{PUSHER_APP_ID: $app_id, PUSHER_KEY: $key, PUSHER_SECRET: $secret, PUSHER_CLUSTER: $cluster}' \
+            > "$secrets_file"
+          pnpm exec wrangler deploy --config wrangler.order-events.jsonc --env "${{ inputs.environment }}" --secrets-file "$secrets_file" --strict
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
       - run: pnpm exec opennextjs-cloudflare deploy --env "${{ inputs.environment }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -42,4 +87,9 @@ jobs:
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
       - name: Rollback hint
         if: failure()
-        run: echo "Use 'pnpm exec wrangler rollback --env ${{ inputs.environment }}' após revisar a versão anterior."
+        run: |
+          echo "As migrations podem já estar ativas; identifique a etapa que falhou antes do rollback."
+          echo "O código da Fase 6 mantém dual-write compatível. Não remova triggers nem dados automaticamente."
+          echo "Para a aplicação, revise 'wrangler rollback --env ${{ inputs.environment }}'."
+          echo "Para o consumer, revise 'wrangler rollback --config wrangler.order-events.jsonc --env ${{ inputs.environment }}'."
+          echo "Siga o runbook em docs/payment-lifecycle.md."

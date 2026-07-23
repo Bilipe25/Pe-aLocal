@@ -17,6 +17,9 @@ pnpm test:workerd  # smoke contra preview OpenNext/workerd
 pnpm lint          # ESLint
 pnpm typecheck     # TypeScript strict
 pnpm cf:build      # build Cloudflare Workers via OpenNext
+pnpm cf:dry-run:staging # empacotamento Wrangler sem publicar
+pnpm perf:orders:load   # concorrência HTTP somente em localhost/staging
+pnpm perf:orders:queries # EXPLAIN ANALYZE somente leitura em staging
 ```
 
 Na primeira execução do Playwright, instale o navegador usado pelos projetos desktop e mobile:
@@ -71,10 +74,40 @@ E2E_OWNER_PASSWORD=
 E2E_TENANT_ID=
 E2E_STORE_ID=
 E2E_STORE_SLUG=
+E2E_ORDER_TRACKING_TOKEN=
 E2E_CATEGORY_NAME=
 E2E_CATEGORY_IMAGE_PATH=
 E2E_ALLOW_MUTATIONS=false
 ```
+
+`E2E_ORDER_TRACKING_TOKEN` deve apontar para um pedido descartável e permite auditar a página de
+acompanhamento sem criar um novo pedido. O fluxo completo de retirada exige simultaneamente OWNER,
+slug da loja e `E2E_ALLOW_MUTATIONS=true`; ele cria e conclui um pedido real somente na loja de
+teste.
+
+## Carga e consultas
+
+Os benchmarks possuem travas contra execução acidental. Fora de localhost, a carga HTTP exige
+`ORDER_LOAD_ACKNOWLEDGE_STAGING=true`. O benchmark SQL exige
+`ORDER_PERF_ACKNOWLEDGE_STAGING=true` e `ORDER_PERF_STORE_ID`; abre uma transação `READ ONLY`, usa
+`statement_timeout` de 10 segundos e executa apenas `EXPLAIN ANALYZE` sobre consultas `SELECT`.
+
+```bash
+ORDER_LOAD_BASE_URL=https://staging.example.com \
+ORDER_LOAD_COOKIE='cookie-de-sessao-descartavel' \
+ORDER_LOAD_ACKNOWLEDGE_STAGING=true \
+pnpm perf:orders:load
+
+ORDER_PERF_STORE_ID=loja-descartavel \
+ORDER_PERF_ACKNOWLEDGE_STAGING=true \
+pnpm perf:orders:queries
+```
+
+Prepare volumes de 500 pedidos ativos e 10 mil históricos na base descartável antes da medição.
+Não use seed de carga nem cookie de produção. Registre p50/p95/p99, throughput, tamanho de resposta,
+índices escolhidos, buffers e quantidade real de linhas. A meta inicial é p95 abaixo de 1 segundo
+para a página e abaixo de 750 ms para cada consulta; isso é um orçamento, não evidência até a
+execução no ambiente alvo.
 
 Sem essas variáveis, os cenários dependentes de autenticação, loja ou banco são ignorados com uma
 justificativa explícita. As jornadas de publicação, upload, checkout real e mudança de status só
@@ -87,6 +120,11 @@ connection string local do Hyperdrive apontando para `DATABASE_URL`; não imprim
 No Windows com PNPM, o OpenNext pode concluir o `next build` e falhar no empacotamento final por
 permissão ao ler links de `node_modules` dentro de `.open-next`. Quando isso ocorrer, valide em CI,
 Linux ou WSL antes de liberar staging.
+
+O Playwright também pode concluir os testes e aguardar indefinidamente o encerramento do servidor
+filho no Windows. Nesse caso, inicie `node node_modules/next/dist/bin/next dev` separadamente, aguarde
+`/api/health` e execute o Playwright reutilizando o servidor. A CI Linux continua sendo o gate
+definitivo de teardown e workerd.
 
 ```bash
 pnpm cf:typegen

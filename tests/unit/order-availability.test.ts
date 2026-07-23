@@ -4,13 +4,20 @@ import { createOrderAction } from '@/features/orders/actions';
 
 const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
+  orderFindUnique: vi.fn(),
+  productFindMany: vi.fn(),
   getEffectiveStoreAvailabilityForTenant: vi.fn(),
   rateLimitCheck: vi.fn(),
   createOrder: vi.fn(),
+  triggerNewOrder: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({
-  getDb: () => ({ store: { findUnique: mocks.storeFindUnique } }),
+  getDb: () => ({
+    store: { findUnique: mocks.storeFindUnique },
+    order: { findUnique: mocks.orderFindUnique },
+    product: { findMany: mocks.productFindMany },
+  }),
 }));
 vi.mock('@/server/services/store-availability.service', () => ({
   getEffectiveStoreAvailabilityForTenant: mocks.getEffectiveStoreAvailabilityForTenant,
@@ -20,7 +27,7 @@ vi.mock('@/server/rate-limit', () => ({
   getRateLimiter: () => ({ check: mocks.rateLimitCheck }),
 }));
 vi.mock('@/server/repositories/order.repository', () => ({ createOrder: mocks.createOrder }));
-vi.mock('@/lib/pusher/server', () => ({ triggerNewOrder: vi.fn() }));
+vi.mock('@/lib/pusher/server', () => ({ triggerNewOrder: mocks.triggerNewOrder }));
 
 const checkout = {
   customerName: 'Cliente Teste',
@@ -41,6 +48,7 @@ describe('disponibilidade na criação do pedido', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.rateLimitCheck.mockResolvedValue({ allowed: true });
+    mocks.orderFindUnique.mockResolvedValue(null);
     mocks.storeFindUnique.mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',
@@ -57,6 +65,19 @@ describe('disponibilidade na criação do pedido', () => {
         acceptsCardOnDelivery: true,
       },
     });
+    mocks.productFindMany.mockResolvedValue([
+      {
+        id: checkout.items[0].productId,
+        name: 'Produto teste',
+        basePrice: 2000,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        category: { isActive: true, archivedAt: null },
+        optionGroups: [],
+      },
+    ]);
   });
 
   it('bloqueia no servidor quando o tenant está suspenso, sem confiar no status OPEN', async () => {
@@ -133,6 +154,135 @@ describe('disponibilidade na criação do pedido', () => {
         message: 'O Pix está temporariamente indisponível. Escolha outra forma de pagamento.',
       },
     });
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejeita totais que excedem o INTEGER do PostgreSQL antes da transação', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.productFindMany.mockResolvedValue([
+      {
+        id: checkout.items[0].productId,
+        name: 'Produto de alto valor',
+        basePrice: 100_000_000,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        category: { isActive: true, archivedAt: null },
+        optionGroups: [],
+      },
+    ]);
+
+    const result = await createOrderAction('loja-teste', {
+      ...checkout,
+      items: [{ ...checkout.items[0], quantity: 99 }],
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: 'BUSINESS_RULE_ERROR',
+        message: 'O valor do pedido excede o limite permitido.',
+      },
+    });
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('retorna sucesso quando o pedido foi criado e o Pusher falha', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.createOrder.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
+      created: true,
+      outboxEventIds: ['outbox-a'],
+    });
+    mocks.triggerNewOrder.mockRejectedValue(new Error('Pusher indisponível'));
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        publicToken: 'public-token',
+        orderNumber: 10,
+        paymentReportToken: 'payment-report-token',
+      },
+    });
+    expect(mocks.triggerNewOrder).toHaveBeenCalledWith('store-a', 'order-a', 10);
+  });
+
+  it('não publica novo evento ao recuperar pedido idempotente', async () => {
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: true,
+      state: 'OPEN',
+      reason: 'Aberta',
+      nextTransitionAt: null,
+    });
+    mocks.createOrder.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
+      created: false,
+      outboxEventIds: [],
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result.success).toBe(true);
+    expect(mocks.triggerNewOrder).not.toHaveBeenCalled();
+  });
+
+  it('recupera pedido confirmado antes de regras mutáveis e rate limit', async () => {
+    mocks.orderFindUnique.mockResolvedValue({
+      publicToken: 'public-token',
+      orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
+      idempotencyFingerprint: null,
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        publicToken: 'public-token',
+        orderNumber: 10,
+        paymentReportToken: 'payment-report-token',
+      },
+    });
+    expect(mocks.rateLimitCheck).not.toHaveBeenCalled();
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).not.toHaveBeenCalled();
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejeita fast-path idempotente quando o payload não corresponde', async () => {
+    mocks.orderFindUnique.mockResolvedValue({
+      publicToken: 'public-token',
+      orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
+      idempotencyFingerprint: 'fingerprint-diferente',
+    });
+
+    const result = await createOrderAction('loja-teste', checkout);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'CONFLICT' },
+    });
+    expect(mocks.rateLimitCheck).not.toHaveBeenCalled();
     expect(mocks.createOrder).not.toHaveBeenCalled();
   });
 });

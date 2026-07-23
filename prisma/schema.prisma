@@ -88,6 +88,46 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum OrderChangeSource {
+  CUSTOMER
+  DASHBOARD
+  SYSTEM
+  WEBHOOK
+  SUPPORT
+  QUEUE
+}
+
+enum OrderOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum OrderOutboxEventType {
+  ORDER_CREATED
+  ORDER_ACCEPTED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_DISPATCHED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+  ORDER_TRANSITION_UNDONE
+  ORDER_INTERNAL_NOTE_ADDED
+  PAYMENT_UPDATED
+}
+
+enum OrderCancellationReasonCode {
+  CUSTOMER_REQUEST
+  PRODUCT_UNAVAILABLE
+  STORE_UNABLE_TO_FULFILL
+  ADDRESS_PROBLEM
+  PAYMENT_NOT_IDENTIFIED
+  DUPLICATE_ORDER
+  FRAUD_SUSPECTED
+  OTHER
+}
+
 enum PixKeyType {
   CPF
   CNPJ
@@ -110,6 +150,19 @@ enum AuditAction {
   LOGOUT
   STATUS_CHANGE
   PAYMENT_CONFIRMED
+  ORDER_CREATED
+  ORDER_ACCEPTED
+  ORDER_PREPARATION_STARTED
+  ORDER_READY
+  ORDER_DISPATCHED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+  ORDER_TRANSITION_UNDONE
+  PAYMENT_REPORTED
+  PAYMENT_FAILED
+  PAYMENT_CANCELLED
+  PAYMENT_REFUNDED
+  ORDER_INTERNAL_NOTE_ADDED
   TENANT_SUSPENDED
   TENANT_ACTIVATED
   CUSTOMIZATION_DRAFT_SAVED
@@ -221,6 +274,10 @@ model User {
   storeAssetsCreated        StoreAsset[]                 @relation("StoreAssetCreatedBy")
   scheduleExceptionsCreated StoreScheduleException[]     @relation("StoreScheduleExceptionCreatedBy")
   slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
+  ordersCancelled           Order[]                      @relation("OrderCancelledBy")
+  orderStatusChanges        OrderStatusHistory[]         @relation("OrderStatusChangedBy")
+  orderInternalNotes        OrderInternalNote[]          @relation("OrderInternalNoteAuthor")
+  paymentStatusChanges      PaymentStatusHistory[]       @relation("PaymentStatusChangedBy")
 
   @@index([email])
   @@map("users")
@@ -254,17 +311,19 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members            TenantMember[]
-  stores             Store[]
-  categories         Category[]
-  products           Product[]
-  deliveryZones      DeliveryZone[]
-  customers          Customer[]
-  orders             Order[]
-  coupons            Coupon[]
-  auditLogs          AuditLog[]
-  slugRedirects      StoreSlugRedirect[]
-  scheduleExceptions StoreScheduleException[]
+  members              TenantMember[]
+  stores               Store[]
+  categories           Category[]
+  products             Product[]
+  deliveryZones        DeliveryZone[]
+  customers            Customer[]
+  orders               Order[]
+  coupons              Coupon[]
+  auditLogs            AuditLog[]
+  orderOutboxEvents    OrderOutboxEvent[]
+  paymentStatusHistory PaymentStatusHistory[]
+  slugRedirects        StoreSlugRedirect[]
+  scheduleExceptions   StoreScheduleException[]
 
   @@map("tenants")
 }
@@ -312,20 +371,23 @@ model Store {
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   settings StoreSettings?
 
-  address            StoreAddress?
-  openingHours       OpeningHour[]
-  scheduleExceptions StoreScheduleException[]
-  categories         Category[]
-  products           Product[]
-  deliveryZones      DeliveryZone[]
-  orders             Order[]
-  customization      StoreCustomization?
-  auditLogs          AuditLog[]
-  assets             StoreAsset[]
-  banners            StoreBanner[]
-  domains            StoreDomain[]
-  entitlement        StoreEntitlement?
-  slugRedirects      StoreSlugRedirect[]
+  address              StoreAddress?
+  openingHours         OpeningHour[]
+  scheduleExceptions   StoreScheduleException[]
+  categories           Category[]
+  products             Product[]
+  deliveryZones        DeliveryZone[]
+  orders               Order[]
+  orderCounter         StoreOrderCounter?
+  customization        StoreCustomization?
+  auditLogs            AuditLog[]
+  orderOutboxEvents    OrderOutboxEvent[]
+  paymentStatusHistory PaymentStatusHistory[]
+  assets               StoreAsset[]
+  banners              StoreBanner[]
+  domains              StoreDomain[]
+  entitlement          StoreEntitlement?
+  slugRedirects        StoreSlugRedirect[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -638,9 +700,9 @@ model Product {
   categoryId    String
   name          String
   description   String?
-  imageUrl      String?   // Legado — preferir imageAssetId
-  imageAssetId  String?   // FK para StoreAsset (PRODUCT_IMAGE)
-  basePrice     Int       // Em centavos
+  imageUrl      String? // Legado — preferir imageAssetId
+  imageAssetId  String? // FK para StoreAsset (PRODUCT_IMAGE)
+  basePrice     Int // Em centavos
   isAvailable   Boolean   @default(true)
   isFeatured    Boolean   @default(false)
   isSoldOut     Boolean   @default(false)
@@ -789,18 +851,31 @@ model CustomerAddress {
 // Pedidos
 // =============================================================================
 
+model StoreOrderCounter {
+  storeId    String @id
+  lastNumber Int    @default(0)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_order_counters")
+}
+
 model Order {
-  id             String  @id @default(uuid())
-  tenantId       String
-  storeId        String
-  customerId     String?
-  orderNumber    Int
-  idempotencyKey String
-  publicToken    String  @unique @default(uuid())
+  id                     String   @id @default(uuid())
+  tenantId               String
+  storeId                String
+  customerId             String?
+  orderNumber            Int      @default(0)
+  idempotencyKey         String
+  idempotencyFingerprint String?
+  publicToken            String   @unique @default(uuid())
+  paymentReportToken     String   @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  paymentReportExpiresAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
   // Dados do cliente (snapshot)
-  customerName  String
-  customerPhone String
+  customerName            String
+  customerPhone           String
+  customerPhoneNormalized String?
 
   // Modalidade e endereço
   modality         OrderModality
@@ -818,8 +893,23 @@ model Order {
   changeFor     Int? // Troco para (em centavos)
 
   // Status
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  version         Int           @default(0)
+  statusChangedAt DateTime      @default(now())
+
+  acceptedAt   DateTime?
+  preparingAt  DateTime?
+  readyAt      DateTime?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+  cancelledAt  DateTime?
+
+  cancelledById                      String?
+  cancellationReasonCode             OrderCancellationReasonCode?
+  cancellationNote                   String?                      @db.VarChar(500)
+  cancellationSource                 OrderChangeSource?
+  customerCancellationNoticeRequired Boolean?
 
   // Observações
   notes String?
@@ -831,16 +921,21 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
-  payment       Payment?
+  items          OrderItem[]
+  statusHistory  OrderStatusHistory[]
+  internalNotes  OrderInternalNote[]
+  payment        Payment?
+  outboxEvents   OrderOutboxEvent[]
+  paymentHistory PaymentStatusHistory[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
+  @@unique([id, tenantId, storeId])
   @@index([tenantId])
   @@index([storeId])
   @@index([status])
@@ -848,7 +943,30 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([publicToken])
+  @@index([tenantId, storeId, createdAt, id])
+  @@index([storeId, status, createdAt, id])
+  @@index([storeId, paymentStatus, createdAt, id])
+  @@index([storeId, status, statusChangedAt, id])
+  @@index([storeId, customerPhoneNormalized, createdAt, id])
   @@map("orders")
+}
+
+model OrderInternalNote {
+  id           String   @id @default(uuid())
+  tenantId     String
+  storeId      String
+  orderId      String
+  authorUserId String
+  body         String   @db.VarChar(1000)
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  order  Order @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  author User  @relation("OrderInternalNoteAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt, id])
+  @@index([tenantId, storeId, createdAt, id])
+  @@map("order_internal_notes")
 }
 
 model OrderItem {
@@ -887,17 +1005,28 @@ model OrderItemOption {
 }
 
 model OrderStatusHistory {
-  id         String       @id @default(uuid())
-  orderId    String
-  fromStatus OrderStatus?
-  toStatus   OrderStatus
-  note       String?
-  changedBy  String? // userId ou "system"
-  createdAt  DateTime     @default(now())
+  id                String                       @id @default(uuid())
+  orderId           String
+  fromStatus        OrderStatus?
+  toStatus          OrderStatus
+  note              String?
+  changedBy         String? // legado: userId ou "system"
+  changedById       String?
+  actorNameSnapshot String?
+  source            OrderChangeSource            @default(SYSTEM)
+  reasonCode        OrderCancellationReasonCode?
+  versionFrom       Int?
+  versionTo         Int?
+  isUndo            Boolean                      @default(false)
+  revertsHistoryId  String?                      @unique
+  createdAt         DateTime                     @default(now())
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser User? @relation("OrderStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([orderId, createdAt, id])
+  @@index([changedById, createdAt])
   @@index([createdAt])
   @@map("order_status_history")
 }
@@ -907,21 +1036,100 @@ model OrderStatusHistory {
 // =============================================================================
 
 model Payment {
-  id          String            @id @default(uuid())
-  orderId     String            @unique
-  method      PaymentMethodType
-  status      PaymentStatus     @default(PENDING)
-  amount      Int // Em centavos
-  paidAt      DateTime?
-  confirmedBy String? // userId que confirmou
-  notes       String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                String            @id @default(uuid())
+  orderId           String            @unique
+  method            PaymentMethodType
+  status            PaymentStatus     @default(PENDING)
+  amount            Int // Em centavos
+  paidAt            DateTime?
+  confirmedBy       String? // legado: userId que confirmou
+  reportedAt        DateTime?
+  failedAt          DateTime?
+  failureReasonCode String?           @db.VarChar(64)
+  failureNote       String?           @db.VarChar(500)
+  cancelledAt       DateTime?
+  refundedAt        DateTime?
+  refundedBy        String?
+  refundReasonCode  String?           @db.VarChar(64)
+  refundNote        String?           @db.VarChar(500)
+  refundAmount      Int?
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  statusHistory PaymentStatusHistory[]
 
+  @@unique([id, orderId])
   @@index([status])
   @@map("payments")
+}
+
+model PaymentStatusHistory {
+  id                String            @id @default(uuid())
+  tenantId          String
+  storeId           String
+  orderId           String
+  paymentId         String
+  fromStatus        PaymentStatus?
+  toStatus          PaymentStatus
+  changedById       String?
+  actorNameSnapshot String?
+  source            OrderChangeSource
+  reasonCode        String?           @db.VarChar(64)
+  note              String?           @db.VarChar(500)
+  orderVersionFrom  Int?
+  orderVersionTo    Int?
+  createdAt         DateTime          @default(now())
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order     Order   @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  payment   Payment @relation(fields: [paymentId, orderId], references: [id, orderId], onDelete: Cascade)
+  changedBy User?   @relation("PaymentStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@unique([paymentId, orderVersionTo, toStatus])
+  @@index([paymentId, createdAt, id])
+  @@index([orderId, createdAt, id])
+  @@index([changedById, createdAt])
+  @@index([tenantId, storeId])
+  @@map("payment_status_history")
+}
+
+model OrderOutboxEvent {
+  id               String               @id @default(uuid())
+  tenantId         String
+  storeId          String
+  orderId          String
+  auditLogId       String?              @unique
+  eventType        OrderOutboxEventType
+  aggregateVersion Int
+  schemaVersion    Int                  @default(1)
+  payload          Json
+  status           OrderOutboxStatus    @default(PENDING)
+  attempts         Int                  @default(0)
+  availableAt      DateTime             @default(now())
+  queuedAt         DateTime?
+  lockedAt         DateTime?
+  lockToken        String?              @db.Uuid
+  processedAt      DateTime?
+  failedAt         DateTime?
+  lastError        String?              @db.VarChar(1000)
+  occurredAt       DateTime
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order    Order     @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  auditLog AuditLog? @relation(fields: [auditLogId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, eventType, aggregateVersion])
+  @@index([status, availableAt, createdAt])
+  @@index([storeId, createdAt, id])
+  @@index([orderId, createdAt, id])
+  @@index([queuedAt, processedAt])
+  @@map("order_outbox_events")
 }
 
 // =============================================================================
@@ -984,15 +1192,19 @@ model AuditLog {
   userAgent String?
   createdAt DateTime    @default(now())
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  store  Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  store       Store?            @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outboxEvent OrderOutboxEvent?
 
   @@index([tenantId])
+  @@index([tenantId, createdAt, id])
   @@index([storeId])
+  @@index([storeId, createdAt, id])
   @@index([userId])
   @@index([action])
   @@index([entity])
+  @@index([entity, entityId, createdAt, id])
   @@index([createdAt])
   @@map("audit_logs")
 }

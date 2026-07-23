@@ -47,7 +47,7 @@ quando o adaptador declarar suporte ao runtime Node nessa camada.
 2. No dashboard Cloudflare, crie primeiro a configuração Hyperdrive de staging apontando para a conexão PostgreSQL direta do Supabase com TLS obrigatório.
 3. Substitua somente o ID `00000000000000000000000000000000` do ambiente correspondente no `wrangler.jsonc`.
 4. Prefira um usuário PostgreSQL dedicado. Como as tabelas usam RLS deny-by-default para a Data API, documente explicitamente se o usuário do Prisma é proprietário das tabelas ou possui `BYPASSRLS`; não conceda acesso a schemas fora do necessário.
-5. Crie os secrets com o prompt seguro do Wrangler: `SUPABASE_SECRET_KEY`, chaves Pusher e outros valores privados. Nunca use `NEXT_PUBLIC_` em secrets.
+5. Crie os secrets com o prompt seguro do Wrangler: `SUPABASE_SECRET_KEY`, chaves Pusher e outros valores privados. O Worker companion de eventos possui secrets próprios; consulte `docs/order-realtime-rollout.md`. Nunca use `NEXT_PUBLIC_` em secrets.
 6. Configure como build variables as duas variáveis públicas do Supabase, pois o Next.js precisa delas durante o build.
 7. Gere novamente os tipos: `pnpm cf:typegen`.
 
@@ -66,6 +66,7 @@ pnpm deploy       build e deploy explícito
 ```
 
 Migrations, seed e Studio rodam fora do Worker e usam `DIRECT_URL`. O runtime nunca deve receber `DIRECT_URL`.
+O workflow manual aplica migrations antes dos Workers e exige `DIRECT_URL` no environment protegido do GitHub; essa variável não é enviada ao runtime.
 
 ## Cache e consistência
 

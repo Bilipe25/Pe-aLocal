@@ -23,22 +23,36 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      - run: pnpm cf:typegen
+      - run: git diff --exit-code -- cloudflare-env.d.ts
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm db:validate
-      - run: pnpm cf:typegen
+      - run: pnpm cf:order-events:dry-run:staging
+      - run: pnpm cf:order-events:dry-run:production
+      - run: pnpm build
         env:
-          CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
       - run: pnpm cf:build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
+      - run: pnpm cf:dry-run:staging
+        env:
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
 
   workerd-smoke:
-    if: ${{ vars.NEXT_PUBLIC_SUPABASE_URL != '' }}
+    if: ${{ vars.RUN_WORKERD_SMOKE == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -53,8 +67,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Validate authenticated realtime smoke configuration
+        env:
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+          E2E_STORE_ID: ${{ vars.E2E_STORE_ID }}
+          E2E_STORE_SLUG: ${{ vars.E2E_STORE_SLUG }}
+          E2E_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_ORDER_TRACKING_TOKEN }}
+        run: node -e "const required=['NEXT_PUBLIC_PUSHER_KEY','NEXT_PUBLIC_PUSHER_CLUSTER','PUSHER_APP_ID','PUSHER_KEY','PUSHER_SECRET','PUSHER_CLUSTER','E2E_OWNER_EMAIL','E2E_OWNER_PASSWORD','E2E_STORE_ID','E2E_STORE_SLUG','E2E_ORDER_TRACKING_TOKEN']; const missing=required.filter((name)=>!process.env[name]); if(missing.length){console.error('Missing realtime smoke configuration:',missing.join(', ')); process.exit(1)}"
       - run: pnpm test:workerd
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+          E2E_STORE_ID: ${{ vars.E2E_STORE_ID }}
+          E2E_STORE_SLUG: ${{ vars.E2E_STORE_SLUG }}
+          E2E_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_ORDER_TRACKING_TOKEN }}
+          E2E_ALLOW_MUTATIONS: 'false'
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}

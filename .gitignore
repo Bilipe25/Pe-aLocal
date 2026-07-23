@@ -40,6 +40,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.dev.vars
+.dev.vars.*
 
 # Keep .env.example tracked
 !.env.example
@@ -64,3 +66,5 @@ Thumbs.db
 
 # Scripts temporários
 /scripts/
+
+deploy-evidence/

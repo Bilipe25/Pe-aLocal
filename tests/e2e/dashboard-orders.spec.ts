@@ -3,6 +3,13 @@ import { expect, test } from '@playwright/test';
 import { credentialsFromEnv, loginAs, mutationsAllowed } from './helpers';
 
 const owner = credentialsFromEnv('OWNER');
+const realtimeConfigured = Boolean(
+  process.env.PUSHER_APP_ID &&
+  process.env.PUSHER_KEY &&
+  process.env.PUSHER_SECRET &&
+  process.env.PUSHER_CLUSTER &&
+  process.env.E2E_STORE_ID
+);
 
 test.describe('painel operacional autenticado', () => {
   test('OWNER navega, filtra e abre detalhes de pedido sem vazamento responsivo', async ({
@@ -56,6 +63,36 @@ test.describe('painel operacional autenticado', () => {
     await pendingOrder.click();
 
     await page.getByRole('button', { name: 'Aceitar Pedido' }).click();
-    await expect(page.getByText('Status do pedido atualizado.')).toBeVisible();
+    await expect(page.getByText('Pedido aceito.')).toBeVisible();
+  });
+
+  test('autoriza o canal privado da loja ativa no runtime', async ({ page, context }) => {
+    test.skip(!owner, 'Credenciais E2E de OWNER nao foram configuradas.');
+    test.skip(!realtimeConfigured, 'Pusher e E2E_STORE_ID nao estao configurados.');
+
+    await loginAs(page, owner!);
+    const origin = new URL(page.url()).origin;
+    await context.addCookies([{
+      name: 'pedidolocal-active-store',
+      value: process.env.E2E_STORE_ID!,
+      url: `${origin}/dashboard`,
+      httpOnly: true,
+      sameSite: 'Lax',
+    }]);
+    const authorization = await page.evaluate(async (storeId) => {
+      const body = new URLSearchParams({
+        socket_id: '123.456',
+        channel_name: `private-store-${storeId}`,
+      });
+      const response = await fetch('/dashboard/api/pusher/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      return { status: response.status, body: await response.json() as { auth?: string } };
+    }, process.env.E2E_STORE_ID!);
+
+    expect(authorization.status).toBe(200);
+    expect(authorization.body.auth).toEqual(expect.any(String));
   });
 });

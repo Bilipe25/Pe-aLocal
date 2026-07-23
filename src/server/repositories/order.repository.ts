@@ -2,6 +2,11 @@ import 'server-only';
 
 import { getDb } from '@/server/database/client';
 import type { CheckoutInput } from '@/schemas/checkout';
+import * as orderAudit from '@/server/services/order-audit.service';
+import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
+import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
+import { normalizePhone } from '@/lib/brazil';
+import { OrderPaymentConsistencyError } from '@/server/errors';
 
 // =============================================================================
 // Order Repository — Criação atômica de pedidos
@@ -17,6 +22,7 @@ interface CreateOrderParams {
   deliveryZoneName: string | null;
   subtotal: number;
   total: number;
+  idempotencyFingerprint: string;
 }
 
 export interface ResolvedItem {
@@ -36,6 +42,9 @@ interface CreateOrderResult {
   id: string;
   publicToken: string;
   orderNumber: number;
+  paymentReportToken: string;
+  created: boolean;
+  outboxEventIds: string[];
 }
 
 /**
@@ -52,10 +61,14 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     deliveryZoneName,
     subtotal,
     total,
+    idempotencyFingerprint,
   } = params;
 
   return getDb().$transaction(async (tx) => {
-    // 1. Checar idempotência — se já existe, retornar o existente
+    const idempotencyLockKey = `${storeId}:${input.idempotencyKey}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyLockKey}, 0))`;
+
+    // The lock makes concurrent retries wait for the first transaction to finish.
     const existing = await tx.order.findUnique({
       where: {
         storeId_idempotencyKey: {
@@ -63,30 +76,39 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
           idempotencyKey: input.idempotencyKey,
         },
       },
-      select: { id: true, publicToken: true, orderNumber: true },
+      select: {
+        id: true,
+        publicToken: true,
+        orderNumber: true,
+        paymentReportToken: true,
+        idempotencyFingerprint: true,
+      },
     });
 
     if (existing) {
-      return existing;
+      assertMatchingOrderFingerprint(existing.idempotencyFingerprint, idempotencyFingerprint);
+      return {
+        id: existing.id,
+        publicToken: existing.publicToken,
+        orderNumber: existing.orderNumber,
+        paymentReportToken: existing.paymentReportToken,
+        created: false,
+        outboxEventIds: [],
+      };
     }
 
-    // 2. Gerar orderNumber sequencial
-    const lastOrder = await tx.order.findFirst({
-      where: { storeId },
-      orderBy: { orderNumber: 'desc' },
-      select: { orderNumber: true },
-    });
-    const orderNumber = (lastOrder?.orderNumber ?? 0) + 1;
-
-    // 3. Criar o pedido
+    // The database trigger assigns the next number for this store atomically.
     const order = await tx.order.create({
       data: {
         tenantId,
         storeId,
-        orderNumber,
         idempotencyKey: input.idempotencyKey,
+        idempotencyFingerprint,
+        paymentReportToken: crypto.randomUUID(),
+        paymentReportExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000),
         customerName: input.customerName,
         customerPhone: input.customerPhone,
+        customerPhoneNormalized: normalizePhone(input.customerPhone),
         modality: input.modality,
         deliveryAddress: input.deliveryAddress ?? null,
         deliveryZoneName,
@@ -135,6 +157,10 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
             toStatus: 'PENDING',
             note: 'Pedido criado pelo cliente',
             changedBy: 'system',
+            actorNameSnapshot: 'Cliente',
+            source: 'CUSTOMER',
+            versionFrom: null,
+            versionTo: 0,
           },
         },
       },
@@ -142,10 +168,41 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         id: true,
         publicToken: true,
         orderNumber: true,
+        paymentReportToken: true,
+        createdAt: true,
+        payment: { select: { id: true } },
       },
     });
 
-    return order;
+    if (!order.payment) throw new OrderPaymentConsistencyError();
+
+    const auditLogId = await orderAudit.writeOrderCreatedAudit(tx, {
+      tenantId,
+      storeId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+    });
+    const outboxEvent = await appendOrderOutboxEvent(tx, {
+      tenantId,
+      storeId,
+      orderId: order.id,
+      auditLogId,
+      eventType: 'ORDER_CREATED',
+      orderNumber: order.orderNumber,
+      status: 'PENDING',
+      paymentStatus: 'PENDING',
+      aggregateVersion: 0,
+      occurredAt: order.createdAt,
+    });
+
+    return {
+      id: order.id,
+      publicToken: order.publicToken,
+      orderNumber: order.orderNumber,
+      paymentReportToken: order.paymentReportToken,
+      created: true,
+      outboxEventIds: [outboxEvent.id],
+    };
   });
 }
 
@@ -172,6 +229,13 @@ export async function getOrderByPublicToken(publicToken: string) {
       changeFor: true,
       status: true,
       paymentStatus: true,
+      version: true,
+      statusChangedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      updatedAt: true,
+      cancellationReasonCode: true,
       notes: true,
       createdAt: true,
       items: {
@@ -194,6 +258,7 @@ export async function getOrderByPublicToken(publicToken: string) {
         select: {
           name: true,
           slug: true,
+          timeZone: true,
           whatsapp: true,
           settings: {
             select: {
@@ -202,6 +267,38 @@ export async function getOrderByPublicToken(publicToken: string) {
               pixRecipient: true,
               pixBank: true,
               pixInstructions: true,
+              estimatedTimeMinMinutes: true,
+              estimatedTimeMaxMinutes: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function getOrderTrackingStateByPublicToken(publicToken: string, storeSlug: string) {
+  return getDb().order.findFirst({
+    where: { publicToken, store: { slug: storeSlug } },
+    select: {
+      orderNumber: true,
+      modality: true,
+      status: true,
+      paymentStatus: true,
+      version: true,
+      createdAt: true,
+      statusChangedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      updatedAt: true,
+      cancellationReasonCode: true,
+      store: {
+        select: {
+          settings: {
+            select: {
+              estimatedTimeMinMinutes: true,
+              estimatedTimeMaxMinutes: true,
             },
           },
         },

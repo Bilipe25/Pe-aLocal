@@ -136,6 +136,24 @@ export class BusinessRuleError extends DomainError {
   }
 }
 
+export class OrderPaymentConsistencyError extends DomainError {
+  readonly statusCode = 422;
+  readonly code = 'ORDER_PAYMENT_INCONSISTENT';
+
+  constructor() {
+    super('Os dados de pagamento deste pedido estão inconsistentes. A operação foi bloqueada.');
+  }
+}
+
+export class OrderUndoNotAllowedError extends DomainError {
+  readonly statusCode = 422;
+  readonly code = 'ORDER_UNDO_NOT_ALLOWED';
+
+  constructor() {
+    super('Esta alteração não pode mais ser desfeita. Atualize a central e revise o pedido.');
+  }
+}
+
 /**
  * 429 — Muitas requisições.
  */

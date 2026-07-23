@@ -1,0 +1,146 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pedidolocal-order-events-staging",
+  "main": "workers/order-events/worker.ts",
+  "compatibility_date": "2026-05-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "workers_dev": false,
+  "preview_urls": false,
+  "secrets": {
+    "required": ["PUSHER_APP_ID", "PUSHER_KEY", "PUSHER_SECRET", "PUSHER_CLUSTER"],
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05,
+    },
+  },
+  "vars": {
+    "APP_ENV": "staging",
+    "ORDER_OUTBOX_RELAY_ENABLED": "true",
+    "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
+  },
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "db9213cd1b214074928647719ddff805",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ORDER_OUTBOX_QUEUE",
+        "queue": "pedidolocal-order-events-staging",
+      },
+      {
+        "binding": "ORDER_OUTBOX_DLQ",
+        "queue": "pedidolocal-order-events-staging-dlq",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "pedidolocal-order-events-staging",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "pedidolocal-order-events-staging-dlq",
+        "max_concurrency": 3,
+      },
+    ],
+  },
+  "env": {
+    "staging": {
+      "name": "pedidolocal-order-events-staging",
+      "secrets": {
+        "required": ["PUSHER_APP_ID", "PUSHER_KEY", "PUSHER_SECRET", "PUSHER_CLUSTER"],
+      },
+      "vars": {
+        "APP_ENV": "staging",
+        "ORDER_OUTBOX_RELAY_ENABLED": "true",
+        "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
+      },
+      "triggers": {
+        "crons": ["* * * * *"],
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "db9213cd1b214074928647719ddff805",
+        },
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ORDER_OUTBOX_QUEUE",
+            "queue": "pedidolocal-order-events-staging",
+          },
+          {
+            "binding": "ORDER_OUTBOX_DLQ",
+            "queue": "pedidolocal-order-events-staging-dlq",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "pedidolocal-order-events-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "pedidolocal-order-events-staging-dlq",
+            "max_concurrency": 3,
+          },
+        ],
+      },
+    },
+    "production": {
+      "name": "pedidolocal-order-events-production",
+      "secrets": {
+        "required": ["PUSHER_APP_ID", "PUSHER_KEY", "PUSHER_SECRET", "PUSHER_CLUSTER"],
+      },
+      "vars": {
+        "APP_ENV": "production",
+        "ORDER_OUTBOX_RELAY_ENABLED": "true",
+        "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
+      },
+      "triggers": {
+        "crons": ["* * * * *"],
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "4e8ea7785f6443a682350235f432d380",
+        },
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ORDER_OUTBOX_QUEUE",
+            "queue": "pedidolocal-order-events-production",
+          },
+          {
+            "binding": "ORDER_OUTBOX_DLQ",
+            "queue": "pedidolocal-order-events-production-dlq",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "pedidolocal-order-events-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "pedidolocal-order-events-production-dlq",
+            "max_concurrency": 5,
+          },
+        ],
+      },
+    },
+  },
+}
