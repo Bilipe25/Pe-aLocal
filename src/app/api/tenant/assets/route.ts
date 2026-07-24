@@ -1,4 +1,4 @@
-import { updateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { z } from 'zod';
 
 import { tenantStoreAssetUrl } from '@/features/assets/urls';
@@ -10,6 +10,23 @@ import { Permission } from '@/server/permissions';
 import { uploadProductImageAsTenantMember } from '@/server/services/store-asset.service';
 
 const MAX_MULTIPART_BYTES = 6 * 1024 * 1024;
+
+function revalidateProductAssetCaches(
+  storeId: string,
+  assetId: string,
+  replacedAssetId: string | null,
+) {
+  try {
+    revalidateTag(CACHE_TAGS.catalog(storeId), { expire: 0 });
+    revalidateTag(CACHE_TAGS.assets(storeId), { expire: 0 });
+    revalidateTag(CACHE_TAGS.asset(assetId), { expire: 0 });
+    if (replacedAssetId) revalidateTag(CACHE_TAGS.asset(replacedAssetId), { expire: 0 });
+  } catch (error) {
+    // A mutação já foi confirmada no banco e no R2. Não induza o cliente a
+    // repetir um upload concluído por causa de uma falha secundária de cache.
+    console.error('[ASSET_CACHE_REVALIDATION_ERROR]', error);
+  }
+}
 
 /**
  * Upload e associação atômica de imagem de produto para a loja ativa.
@@ -56,10 +73,7 @@ export async function POST(request: Request) {
       altText: metadata.data.altText,
     });
 
-    updateTag(CACHE_TAGS.catalog(store.id));
-    updateTag(CACHE_TAGS.assets(store.id));
-    updateTag(CACHE_TAGS.asset(asset.id));
-    if (replacedAssetId) updateTag(CACHE_TAGS.asset(replacedAssetId));
+    revalidateProductAssetCaches(store.id, asset.id, replacedAssetId);
 
     const serializedAsset = {
       ...asset,
