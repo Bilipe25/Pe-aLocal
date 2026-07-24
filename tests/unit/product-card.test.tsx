@@ -47,6 +47,20 @@ describe('imagem responsiva do produto', () => {
     expect(
       container.querySelector('[aria-label="Imagem indisponível para Burger da casa"]'),
     ).toHaveClass('storefront-product-image-frame', 'is-error');
+    expect(screen.getByText('Imagem indisponível')).toBeVisible();
+  });
+
+  it('explica o estado sem imagem sem remover o produto do catálogo', () => {
+    const { container } = render(
+      <ProductCard {...baseProps} imageUrl={null} imageAssetId={null} />,
+    );
+
+    expect(container.querySelector('[aria-label="Burger da casa está sem imagem"]')).toHaveClass(
+      'storefront-product-image-frame',
+      'is-missing',
+    );
+    expect(screen.getByText('Sem imagem')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Ver produto: Burger da casa' })).toBeEnabled();
   });
 
   it('preserva URL legada sem gerar srcSet incompatível', () => {

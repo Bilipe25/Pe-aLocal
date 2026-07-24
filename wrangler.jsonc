@@ -11,6 +11,7 @@
   },
   "images": {
     "binding": "IMAGES",
+    "remote": true,
   },
   "placement": {
     "mode": "smart",
@@ -44,6 +45,7 @@
     {
       "binding": "STORE_ASSETS_R2",
       "bucket_name": "pedidolocal-staging-store-assets",
+      "remote": true,
     },
   ],
   "hyperdrive": [
@@ -86,6 +88,7 @@
       },
       "images": {
         "binding": "IMAGES",
+        "remote": true,
       },
       "services": [
         {
@@ -101,6 +104,7 @@
         {
           "binding": "STORE_ASSETS_R2",
           "bucket_name": "pedidolocal-staging-store-assets",
+          "remote": true,
         },
       ],
       "hyperdrive": [
