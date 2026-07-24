@@ -183,7 +183,7 @@ export function CartView({
         ))}
       </div>
 
-      <div className="storefront-fixed-bottom-safe bg-papel border-tinta/10 fixed right-0 bottom-0 left-0 border-t px-4 py-3 shadow-md">
+      <div className="storefront-cart-summary storefront-fixed-bottom-safe bg-papel border-tinta/10 fixed right-0 bottom-0 left-0 border-t px-4 py-3 shadow-md">
         <div className="mx-auto max-w-2xl">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-text-muted text-sm">Total</span>

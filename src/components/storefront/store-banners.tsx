@@ -1,4 +1,4 @@
-import { storeAssetSrcSet } from '@/features/assets/urls';
+import { StorefrontBannerImage } from '@/components/storefront/storefront-banner-image';
 import type { PublicStorefrontBannerDto } from '@/types/storefront';
 
 export function StoreBanners({ banners }: { banners: PublicStorefrontBannerDto[] }) {
@@ -9,21 +9,10 @@ export function StoreBanners({ banners }: { banners: PublicStorefrontBannerDto[]
       {banners.map((banner) => (
         <article key={banner.id} className="storefront-banner">
           {banner.imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={banner.imageUrl}
-              srcSet={
-                banner.imageAssetId
-                  ? storeAssetSrcSet(banner.imageAssetId, [384, 768, 1280])
-                  : undefined
-              }
-              sizes="(min-width: 768px) 33vw, 100vw"
+            <StorefrontBannerImage
+              imageUrl={banner.imageUrl}
+              imageAssetId={banner.imageAssetId}
               alt={banner.imageAlt}
-              width={1280}
-              height={640}
-              className="storefront-banner-image"
-              loading="lazy"
-              decoding="async"
             />
           )}
           <div className="storefront-banner-content">

@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, SearchX } from 'lucide-react';
+import { SearchX } from 'lucide-react';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CartFab } from '@/components/storefront/cart-fab';
@@ -8,7 +8,10 @@ import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
 import { StoreBanners } from '@/components/storefront/store-banners';
+import { StorefrontFilters } from '@/components/storefront/storefront-filters';
+import { StorefrontSearch } from '@/components/storefront/storefront-search';
 import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
+import { filterCatalog, type CatalogSort } from '@/features/storefront/catalog-filter';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 import type {
@@ -16,6 +19,7 @@ import type {
   PublicStorefrontCategoryDto,
   PublicStorefrontProductDto,
 } from '@/types/storefront';
+import { useFavoritesStore } from '@/stores/favorites-store';
 
 interface CatalogViewProps {
   categories: PublicStorefrontCategoryDto[];
@@ -35,30 +39,38 @@ export function CatalogView({
   banners,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
+  const setFavoriteStore = useFavoritesStore((state) => state.setStore);
+  const favoriteProductIds = useFavoritesStore((state) => state.productIds);
+  const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     categories[0]?.id ?? null,
   );
   const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductDto | null>(null);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<CatalogSort>('RELEVANCE');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
+  const availableProductIds = useMemo(
+    () => categories.flatMap((category) => category.products.map((product) => product.id)),
+    [categories],
+  );
+  useEffect(
+    () => setFavoriteStore(storeId, availableProductIds),
+    [availableProductIds, setFavoriteStore, storeId],
+  );
 
   const visibleCategories = useMemo(() => {
-    const term = deferredSearch.trim().toLocaleLowerCase('pt-BR');
-    if (!term) return categories;
-
-    return categories
-      .map((category) => ({
-        ...category,
-        products: category.products.filter((product) =>
-          `${product.name} ${product.description ?? ''}`.toLocaleLowerCase('pt-BR').includes(term),
-        ),
-      }))
-      .filter((category) => category.products.length > 0);
-  }, [categories, deferredSearch]);
+    return filterCatalog(categories, {
+      query: deferredSearch,
+      sort,
+      onlyAvailable,
+    });
+  }, [categories, deferredSearch, onlyAvailable, sort]);
 
   const featuredProducts = useMemo(
     () =>
@@ -66,6 +78,30 @@ export function CatalogView({
         .flatMap((category) => category.products)
         .filter((product) => product.isFeatured),
     [visibleCategories],
+  );
+  const favoriteProductIdSet = useMemo(() => new Set(favoriteProductIds), [favoriteProductIds]);
+  const stickyCategoryNavigation = customization.layout.categoryNavigation === 'HORIZONTAL_STICKY';
+  const resolvedActiveCategoryId = visibleCategories.some(
+    (category) => category.id === activeCategoryId,
+  )
+    ? activeCategoryId
+    : (visibleCategories[0]?.id ?? null);
+  const activeFilterCount = Number(sort !== 'RELEVANCE') + Number(onlyAvailable);
+
+  const categoryNavigation = visibleCategories.length > 0 && (
+    <CategoryNav
+      categories={visibleCategories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        imageAssetId: category.image?.id ?? null,
+        imageUrl: category.image ? storeAssetUrl(category.image.id, 96) : null,
+        imageAlt: category.image?.altText ?? null,
+      }))}
+      activeCategoryId={resolvedActiveCategoryId}
+      onCategoryClick={handleCategoryClick}
+      variant={customization.layout.categoryNavigation}
+      showImages={customization.layout.showCategoryImages}
+    />
   );
 
   function handleCategoryClick(id: string) {
@@ -93,6 +129,13 @@ export function CatalogView({
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
+  function clearCatalogFilters() {
+    setSearch('');
+    setSort('RELEVANCE');
+    setOnlyAvailable(false);
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -111,7 +154,11 @@ export function CatalogView({
     return () => observer.disconnect();
   }, [visibleCategories]);
 
-  const productCard = (product: PublicStorefrontProductDto, withAnchor = false) => (
+  const productCard = (
+    product: PublicStorefrontProductDto,
+    variant: 'featured' | 'horizontal' | 'compact',
+    withAnchor = false,
+  ) => (
     <ProductCard
       key={product.id}
       id={withAnchor ? `product-${product.id}` : undefined}
@@ -125,28 +172,15 @@ export function CatalogView({
       onClick={() => openProduct(product)}
       showImage={customization.layout.showProductImages}
       showBadges={customization.layout.showProductBadges}
-      presentation={customization.layout.productPresentation}
+      variant={variant}
+      isFavorite={favoriteProductIdSet.has(product.id)}
+      onFavoriteToggle={() => toggleFavorite(product.id)}
     />
   );
 
   function renderSection(section: StoreSection) {
     if (section === 'CATEGORIES' && visibleCategories.length > 0) {
-      return (
-        <CategoryNav
-          key={section}
-          categories={visibleCategories.map((category) => ({
-            id: category.id,
-            name: category.name,
-            imageAssetId: category.image?.id ?? null,
-            imageUrl: category.image ? storeAssetUrl(category.image.id, 96) : null,
-            imageAlt: category.image?.altText ?? null,
-          }))}
-          activeCategoryId={activeCategoryId}
-          onCategoryClick={handleCategoryClick}
-          variant={customization.layout.categoryNavigation}
-          showImages={customization.layout.showCategoryImages}
-        />
-      );
+      return stickyCategoryNavigation ? null : <div key={section}>{categoryNavigation}</div>;
     }
 
     if (section === 'BANNERS') {
@@ -161,8 +195,8 @@ export function CatalogView({
       return (
         <section key={section} className="storefront-featured-section">
           <h2 className="storefront-section-title">Destaques</h2>
-          <div className="storefront-product-grid">
-            {featuredProducts.map((product) => productCard(product))}
+          <div className="storefront-featured-track" aria-label="Produtos em destaque">
+            {featuredProducts.map((product) => productCard(product, 'featured'))}
           </div>
         </section>
       );
@@ -177,16 +211,24 @@ export function CatalogView({
               <h2 className="storefront-empty-title">
                 {deferredSearch.trim()
                   ? `Nenhum resultado para “${deferredSearch.trim()}”`
-                  : 'Cardápio em atualização'}
+                  : activeFilterCount > 0
+                    ? 'Nenhum produto com esses filtros'
+                    : 'Cardápio em atualização'}
               </h2>
               <p>
                 {deferredSearch.trim()
                   ? 'Tente outro nome ou limpe a busca para navegar pelas categorias.'
-                  : 'A loja ainda não publicou produtos disponíveis. Volte em breve.'}
+                  : activeFilterCount > 0
+                    ? 'Remova os filtros para voltar a ver todos os itens do cardápio.'
+                    : 'A loja ainda não publicou produtos disponíveis. Volte em breve.'}
               </p>
-              {deferredSearch.trim() && (
-                <button type="button" onClick={clearSearch} className="storefront-empty-action">
-                  Limpar busca
+              {(deferredSearch.trim() || activeFilterCount > 0) && (
+                <button
+                  type="button"
+                  onClick={activeFilterCount > 0 ? clearCatalogFilters : clearSearch}
+                  className="storefront-empty-action"
+                >
+                  {activeFilterCount > 0 ? 'Limpar busca e filtros' : 'Limpar busca'}
                 </button>
               )}
             </section>
@@ -223,8 +265,22 @@ export function CatalogView({
                 {customization.layout.showCategoryDescription && category.description && (
                   <p className="storefront-category-description">{category.description}</p>
                 )}
-                <div className="storefront-product-grid">
-                  {category.products.map((product) => productCard(product, true))}
+                <div
+                  className={`storefront-product-grid ${
+                    customization.layout.productPresentation === 'GRID'
+                      ? 'storefront-product-grid-compact'
+                      : ''
+                  }`}
+                >
+                  {category.products.map((product) =>
+                    productCard(
+                      product,
+                      customization.layout.productPresentation === 'GRID'
+                        ? 'compact'
+                        : 'horizontal',
+                      true,
+                    ),
+                  )}
                 </div>
               </section>
             ))
@@ -248,27 +304,39 @@ export function CatalogView({
   return (
     <>
       {customization.layout.showSearch && (
-        <div className="storefront-search-wrap">
-          <Search className="h-4 w-4" aria-hidden="true" />
-          <label htmlFor="storefront-search" className="sr-only">
-            Buscar no cardápio
-          </label>
-          <input
-            ref={searchInputRef}
-            id="storefront-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar no cardápio"
-          />
-        </div>
+        <StorefrontSearch
+          value={search}
+          onChange={setSearch}
+          inputRef={searchInputRef}
+          onFilterClick={() => setFiltersOpen(true)}
+          activeFilterCount={activeFilterCount}
+        />
       )}
+
+      {stickyCategoryNavigation && categoryNavigation}
 
       {customization.layout.sectionOrder.map(renderSection)}
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct} onClose={closeProduct} storeOpen={storeOpen} />
+        <ProductModal
+          product={selectedProduct}
+          onClose={closeProduct}
+          storeOpen={storeOpen}
+          isFavorite={favoriteProductIdSet.has(selectedProduct.id)}
+          onFavoriteToggle={() => toggleFavorite(selectedProduct.id)}
+        />
       )}
+
+      <StorefrontFilters
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        sort={sort}
+        onlyAvailable={onlyAvailable}
+        onApply={(filters) => {
+          setSort(filters.sort);
+          setOnlyAvailable(filters.onlyAvailable);
+        }}
+      />
 
       <CartFab storeId={storeId} />
     </>

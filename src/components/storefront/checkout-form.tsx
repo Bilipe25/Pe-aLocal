@@ -25,6 +25,7 @@ import {
 import { formatPhoneInput } from '@/lib/brazil';
 import { formatCurrency } from '@/lib/utils';
 import type { PublicDeliveryZoneDto } from '@/types/storefront';
+import { useLastOrderStore } from '@/stores/last-order-store';
 
 interface CheckoutFormProps {
   storeId: string;
@@ -304,14 +305,11 @@ export function CheckoutForm({
           } else {
             const validationMessage =
               result.error.code === 'VALIDATION_ERROR'
-                ? result.error.details?.find(
-                    (detail) => typeof detail.message === 'string',
-                  )?.message
+                ? result.error.details?.find((detail) => typeof detail.message === 'string')
+                    ?.message
                 : undefined;
             setError(
-              typeof validationMessage === 'string'
-                ? validationMessage
-                : result.error.message,
+              typeof validationMessage === 'string' ? validationMessage : result.error.message,
             );
           }
           return;
@@ -333,6 +331,12 @@ export function CheckoutForm({
             // O acompanhamento continua disponível; apenas o relato pelo navegador é desativado.
           }
         }
+        useLastOrderStore.getState().registerOrder({
+          trackingToken: result.data.publicToken,
+          storeId,
+          storeSlug,
+          createdAt: new Date().toISOString(),
+        });
         clearCart();
         router.push(`/${storeSlug}/order/${result.data.publicToken}`);
       } catch {

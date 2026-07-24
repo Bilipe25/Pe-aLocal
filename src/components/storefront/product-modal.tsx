@@ -1,7 +1,7 @@
 'use client';
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { Minus, Plus, X } from 'lucide-react';
+import { Heart, Minus, Plus, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -17,9 +17,17 @@ interface ProductModalProps {
   product: PublicStorefrontProductDto;
   onClose: () => void;
   storeOpen: boolean;
+  isFavorite?: boolean;
+  onFavoriteToggle?: () => void;
 }
 
-export function ProductModal({ product, onClose, storeOpen }: ProductModalProps) {
+export function ProductModal({
+  product,
+  onClose,
+  storeOpen,
+  isFavorite = false,
+  onFavoriteToggle,
+}: ProductModalProps) {
   const addItem = useCartStore((state) => state.addItem);
   const removeQuantity = useCartStore((state) => state.removeQuantity);
   const [quantity, setQuantity] = useState(1);
@@ -99,12 +107,29 @@ export function ProductModal({ product, onClose, storeOpen }: ProductModalProps)
                 {formatCurrency(product.basePrice)}
               </p>
             </div>
-            <Dialog.Close
-              aria-label={`Fechar detalhes de ${product.name}`}
-              className="text-text-muted hover:bg-tinta/5 hover:text-tinta flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full transition-colors"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </Dialog.Close>
+            <div className="flex shrink-0 items-center">
+              {onFavoriteToggle && (
+                <button
+                  type="button"
+                  onClick={onFavoriteToggle}
+                  aria-label={
+                    isFavorite
+                      ? `Remover ${product.name} dos favoritos`
+                      : `Favoritar ${product.name}`
+                  }
+                  aria-pressed={isFavorite}
+                  className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''}`}
+                >
+                  <Heart className="h-5 w-5" aria-hidden="true" />
+                </button>
+              )}
+              <Dialog.Close
+                aria-label={`Fechar detalhes de ${product.name}`}
+                className="text-text-muted hover:bg-tinta/5 hover:text-tinta flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full transition-colors"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </Dialog.Close>
+            </div>
           </div>
 
           {product.optionGroups.length > 0 && (
