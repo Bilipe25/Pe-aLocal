@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShoppingBag } from 'lucide-react';
+import { ChevronRight, ShoppingBag } from 'lucide-react';
 import {
   selectCartItemCount,
   selectCartStoreId,
@@ -20,21 +20,28 @@ export function CartFab({ storeId }: { storeId: string }) {
   if (activeStoreId !== storeId || count === 0 || !storeSlug) return null;
 
   return (
-    <div className="storefront-cart-fab fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-40 mx-auto max-w-2xl">
+    <div className="storefront-cart-fab">
       <Link
         href={`/${storeSlug}/cart`}
-        className="storefront-primary-action flex items-center justify-between rounded-xl px-4 py-3 shadow-md transition-transform active:scale-[0.98]"
+        className="storefront-cart-fab-link"
+        aria-label={`Ver carrinho com ${count} ${count === 1 ? 'item' : 'itens'}, total ${formatCurrency(total)}`}
       >
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <ShoppingBag className="h-5 w-5" aria-hidden="true" />
-            <span className="storefront-cart-count absolute -top-2.5 -right-2.5 flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm font-bold">
+        <span className="storefront-cart-fab-leading">
+          <span className="storefront-cart-fab-icon">
+            <ShoppingBag aria-hidden="true" />
+            <span key={count} className="storefront-cart-count" aria-hidden="true">
               {count}
             </span>
-          </div>
-          <span className="font-body font-medium">Ver sacola</span>
-        </div>
-        <span className="font-mono font-bold">{formatCurrency(total)}</span>
+          </span>
+          <span className="storefront-cart-fab-copy">
+            <strong>Ver carrinho</strong>
+            <span>
+              {count} {count === 1 ? 'item' : 'itens'}
+            </span>
+          </span>
+        </span>
+        <span className="storefront-cart-fab-total">{formatCurrency(total)}</span>
+        <ChevronRight className="storefront-cart-fab-chevron" aria-hidden="true" />
       </Link>
     </div>
   );

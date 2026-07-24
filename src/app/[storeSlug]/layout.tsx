@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
-import { StoreHeader } from '@/components/storefront/store-header';
 import { StoreHeaderVisibility } from '@/components/storefront/store-header-visibility';
+import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
+import { StorefrontHero } from '@/components/storefront/storefront-hero';
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
@@ -68,7 +68,6 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
   if (!store) notFound();
 
   const config = store.customization.config;
-  const storeOpen = store.availability.acceptingOrders;
   const deliveryZones = store.settings?.deliveryEnabled
     ? await getPublicDeliveryZones(store.id)
     : [];
@@ -83,7 +82,7 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
       data-customization-source={store.customization.source}
     >
       <StoreHeaderVisibility>
-        <StoreHeader
+        <StorefrontHero
           name={store.name}
           description={store.description}
           availability={store.availability}
@@ -107,8 +106,6 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
         />
       </StoreHeaderVisibility>
 
-      {!storeOpen && <StoreClosedBanner availability={store.availability} />}
-
       {children}
 
       {config.platformBranding.showPedidoLocalBranding && (
@@ -116,6 +113,8 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
           Tecnologia por PedidoLocal
         </footer>
       )}
+
+      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </div>
   );
 }

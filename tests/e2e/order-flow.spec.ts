@@ -108,6 +108,11 @@ test.describe.serial('compra publica e acompanhamento', () => {
       /Cliente E2E|99999-9999|customerPhone|deliveryAddress|orderId|internal/i,
     );
 
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/${storeSlug}`);
+    await page.getByRole('button', { name: 'Meu pedido' }).click();
+    await expect(page).toHaveURL(new RegExp(`/${storeSlug}/order/${token}$`));
+
     const orderLabel = await page
       .getByText(/^Pedido #\d+$/)
       .first()

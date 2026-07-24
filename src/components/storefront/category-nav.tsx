@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
@@ -28,6 +28,17 @@ export function CategoryNav({
 }: CategoryNavProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
+  const [overflow, setOverflow] = useState({ start: false, end: false });
+
+  const updateOverflow = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const hasOverflow = container.scrollWidth > container.clientWidth + 1;
+    setOverflow({
+      start: hasOverflow && container.scrollLeft > 2,
+      end: hasOverflow && container.scrollLeft + container.clientWidth < container.scrollWidth - 2,
+    });
+  }, []);
 
   useEffect(() => {
     if (variant === 'HORIZONTAL_STICKY' && activeRef.current && scrollRef.current) {
@@ -39,7 +50,16 @@ export function CategoryNav({
         container.scrollTo({ left, behavior: reduceMotion ? 'auto' : 'smooth' });
       }
     }
-  }, [activeCategoryId, variant]);
+    updateOverflow();
+  }, [activeCategoryId, updateOverflow, variant]);
+
+  useEffect(() => {
+    updateOverflow();
+    if (typeof ResizeObserver === 'undefined' || !scrollRef.current) return;
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(scrollRef.current);
+    return () => observer.disconnect();
+  }, [categories, updateOverflow]);
 
   if (variant === 'DROPDOWN') {
     return (
@@ -65,9 +85,15 @@ export function CategoryNav({
   return (
     <nav
       aria-label="Categorias do cardápio"
-      className={`storefront-category-nav ${variant === 'VERTICAL' ? 'storefront-category-nav-vertical' : ''}`}
+      className={`storefront-category-nav ${
+        variant === 'VERTICAL' ? 'storefront-category-nav-vertical' : ''
+      } ${overflow.start ? 'can-scroll-start' : ''} ${overflow.end ? 'can-scroll-end' : ''}`}
     >
-      <div ref={scrollRef} className="storefront-category-list scrollbar-hide">
+      <div
+        ref={scrollRef}
+        className="storefront-category-list scrollbar-hide"
+        onScroll={updateOverflow}
+      >
         {categories.map((category) => {
           const isActive = category.id === activeCategoryId;
           return (
@@ -76,7 +102,7 @@ export function CategoryNav({
               key={category.id}
               ref={isActive ? activeRef : undefined}
               onClick={() => onCategoryClick(category.id)}
-              aria-current={isActive ? 'true' : undefined}
+              aria-current={isActive ? 'page' : undefined}
               className={`storefront-category-button ${showImages && category.imageUrl ? 'has-image' : ''} ${isActive ? 'is-active' : ''}`}
             >
               {showImages && category.imageUrl && (

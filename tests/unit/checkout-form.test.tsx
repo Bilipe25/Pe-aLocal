@@ -4,6 +4,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm } from '@/components/storefront/checkout-form';
 import { getCheckoutDraftStorageKey, writeCheckoutDraft } from '@/lib/checkout/checkout-draft';
 import type { CartItem } from '@/stores/cart-store';
+import { getLastOrderStorageKey, useLastOrderStore } from '@/stores/last-order-store';
+
+const PUBLIC_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    getItem: (key) => data.get(key) ?? null,
+    key: (index) => [...data.keys()][index] ?? null,
+    removeItem: (key) => {
+      data.delete(key);
+    },
+    setItem: (key, value) => {
+      data.set(key, value);
+    },
+  };
+}
 
 const mocks = vi.hoisted(() => ({
   clearCart: vi.fn(),
@@ -66,6 +87,12 @@ describe('checkout público', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: createMemoryStorage(),
+    });
+    window.localStorage.clear();
+    useLastOrderStore.setState({ storeId: null, storeSlug: null, record: null });
     mocks.getCheckoutAvailabilityAction.mockResolvedValue({
       success: true,
       data: {
@@ -78,7 +105,7 @@ describe('checkout público', () => {
     mocks.createOrderAction.mockResolvedValue({
       success: true,
       data: {
-        publicToken: 'public-token',
+        publicToken: PUBLIC_TOKEN,
         orderNumber: 1,
         paymentReportToken: null,
       },
@@ -282,8 +309,16 @@ describe('checkout público', () => {
     );
     fireEvent.submit(screen.getByRole('button', { name: /Confirmar pedido/ }).closest('form')!);
 
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/loja-1/order/public-token'));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`));
     expect(window.sessionStorage.getItem(getCheckoutDraftStorageKey('store-1'))).toBeNull();
+    expect(
+      JSON.parse(window.localStorage.getItem(getLastOrderStorageKey('store-1')) ?? '{}'),
+    ).toMatchObject({
+      version: 1,
+      trackingToken: PUBLIC_TOKEN,
+      storeId: 'store-1',
+      storeSlug: 'loja-1',
+    });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(window.sessionStorage.getItem(getCheckoutDraftStorageKey('store-1'))).toBeNull();
   });

@@ -1,7 +1,9 @@
-import { Ban, Star } from 'lucide-react';
+import { Ban, Heart, Plus, Star } from 'lucide-react';
 
-import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
+import { ProductImage } from '@/components/storefront/product-image';
 import { formatCurrency } from '@/lib/utils';
+
+export type ProductCardVariant = 'featured' | 'horizontal' | 'compact';
 
 interface ProductCardProps {
   id?: string;
@@ -16,7 +18,10 @@ interface ProductCardProps {
   disabled?: boolean;
   showImage: boolean;
   showBadges: boolean;
-  presentation: 'LIST' | 'GRID';
+  variant?: ProductCardVariant;
+  presentation?: 'LIST' | 'GRID';
+  isFavorite?: boolean;
+  onFavoriteToggle?: () => void;
 }
 
 export function ProductCard({
@@ -32,68 +37,87 @@ export function ProductCard({
   disabled,
   showImage,
   showBadges,
+  variant,
   presentation,
+  isFavorite = false,
+  onFavoriteToggle,
 }: ProductCardProps) {
   const isDisabled = disabled || isSoldOut;
-  const resolvedImageUrl = imageAssetId
-    ? storeAssetUrl(imageAssetId, presentation === 'LIST' ? 192 : 384)
-    : imageUrl;
+  const resolvedVariant =
+    variant ?? (presentation === 'GRID' ? ('compact' as const) : ('horizontal' as const));
   const imageSizes =
-    presentation === 'LIST'
-      ? '64px'
-      : '(max-width: 479px) calc(100vw - 2rem), (max-width: 767px) calc(50vw - 1.5rem), 360px';
+    resolvedVariant === 'horizontal'
+      ? '(max-width: 639px) 104px, 128px'
+      : resolvedVariant === 'featured'
+        ? '(max-width: 639px) 72vw, 19rem'
+        : '(max-width: 479px) calc(50vw - 1.5rem), 240px';
+  const imageWidth = resolvedVariant === 'horizontal' ? 192 : 384;
 
   return (
-    <button
+    <article
       id={id}
-      type="button"
-      onClick={onClick}
-      disabled={isDisabled}
-      className={`storefront-product-card storefront-product-presentation-${presentation.toLowerCase()} ${
+      className={`storefront-product-card storefront-product-variant-${resolvedVariant} ${
         isDisabled ? 'is-disabled' : ''
       }`}
     >
-      {showImage && (
-        <div className="storefront-product-image-wrap">
-          {resolvedImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              className="storefront-product-image"
-              src={resolvedImageUrl}
-              srcSet={
-                imageAssetId ? storeAssetSrcSet(imageAssetId, [96, 192, 384, 768]) : undefined
-              }
-              sizes={imageAssetId ? imageSizes : undefined}
-              alt=""
-              width={384}
-              height={384}
-              loading="lazy"
-              decoding="async"
-              onError={(event) => {
-                event.currentTarget.hidden = true;
-              }}
-            />
-          ) : (
-            <div className="storefront-product-image-placeholder" aria-hidden="true" />
-          )}
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={isDisabled}
+        className="storefront-product-main"
+        aria-label={`${isSoldOut ? 'Produto esgotado' : 'Ver produto'}: ${name}`}
+      >
+        {showImage && (
+          <ProductImage
+            name={name}
+            imageUrl={imageUrl}
+            imageAssetId={imageAssetId}
+            sizes={imageSizes}
+            width={imageWidth}
+          />
+        )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="storefront-product-name">{name}</h3>
+        <span className="storefront-product-copy">
+          <span className="storefront-product-heading">
+            <h3 className="storefront-product-name">{name}</h3>
+          </span>
           {showBadges && isFeatured && (
-            <Star className="storefront-featured-icon h-3.5 w-3.5 shrink-0" aria-label="Destaque" />
+            <span className="storefront-featured-badge">
+              <Star aria-hidden="true" />
+              Destaque
+            </span>
           )}
           {showBadges && isSoldOut && (
             <span className="storefront-sold-out">
-              <Ban className="h-2.5 w-2.5" /> Esgotado
+              <Ban aria-hidden="true" /> Esgotado
             </span>
           )}
-        </div>
-        {description && <p className="storefront-product-description">{description}</p>}
-        <p className="storefront-product-price">{formatCurrency(basePrice)}</p>
-      </div>
-    </button>
+          {description && <span className="storefront-product-description">{description}</span>}
+          <span className="storefront-product-price">{formatCurrency(basePrice)}</span>
+        </span>
+      </button>
+
+      {onFavoriteToggle && (
+        <button
+          type="button"
+          onClick={onFavoriteToggle}
+          className={`storefront-product-favorite ${isFavorite ? 'is-active' : ''}`}
+          aria-label={isFavorite ? `Remover ${name} dos favoritos` : `Favoritar ${name}`}
+          aria-pressed={isFavorite}
+        >
+          <Heart aria-hidden="true" />
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={isDisabled}
+        className="storefront-product-add"
+        aria-label={isSoldOut ? `${name} está esgotado` : `Ver opções de ${name}`}
+      >
+        {isSoldOut ? <Ban aria-hidden="true" /> : <Plus aria-hidden="true" />}
+      </button>
+    </article>
   );
 }

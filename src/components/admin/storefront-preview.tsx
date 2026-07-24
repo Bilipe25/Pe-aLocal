@@ -5,7 +5,8 @@ import { ChevronDown } from 'lucide-react';
 
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
-import { StoreHeader } from '@/components/storefront/store-header';
+import { StorefrontHero } from '@/components/storefront/storefront-hero';
+import { StorefrontSearch } from '@/components/storefront/storefront-search';
 import type { AdminStoreAssetItem } from '@/components/admin/store-assets-manager';
 import type { AdminStoreCategoryItem } from '@/components/admin/store-category-images-manager';
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
@@ -55,6 +56,7 @@ export const StorefrontPreview = memo(function StorefrontPreview({
 }: StorefrontPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('mobile');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState('');
   const previewCategories = useMemo(() => {
     const assetById = new Map(assets.map((asset) => [asset.id, asset]));
     const associationByCategoryId = new Map(
@@ -136,7 +138,7 @@ export const StorefrontPreview = memo(function StorefrontPreview({
           aria-hidden="true"
           inert
         >
-          <StoreHeader
+          <StorefrontHero
             name={storeName}
             description="Cardápio demonstrativo para revisar a personalização."
             availability={{
@@ -162,6 +164,14 @@ export const StorefrontPreview = memo(function StorefrontPreview({
             coverUrl={coverUrl}
             config={config}
           />
+
+          {config.layout.showSearch && (
+            <StorefrontSearch
+              value={previewSearch}
+              onChange={setPreviewSearch}
+              onFilterClick={() => undefined}
+            />
+          )}
 
           <CategoryNav
             categories={previewCategories}
@@ -201,7 +211,9 @@ export const StorefrontPreview = memo(function StorefrontPreview({
                     onClick={() => undefined}
                     showImage={config.layout.showProductImages}
                     showBadges={config.layout.showProductBadges}
-                    presentation={config.layout.productPresentation}
+                    variant={
+                      config.layout.productPresentation === 'GRID' ? 'compact' : 'horizontal'
+                    }
                   />
                 ))}
               </div>
