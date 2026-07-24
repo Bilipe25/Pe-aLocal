@@ -1,7 +1,6 @@
 import type { NextConfig } from 'next';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
 import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
-
-initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@prisma/client', '.prisma/client', 'pg-cloudflare'],
@@ -63,4 +62,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default function configureNext(phase: string): NextConfig {
+  if (phase === PHASE_DEVELOPMENT_SERVER) {
+    void initOpenNextCloudflareForDev();
+  }
+
+  return nextConfig;
+}

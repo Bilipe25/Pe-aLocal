@@ -25,6 +25,12 @@ export function ProductImage({ name, imageUrl, imageAssetId, sizes, width }: Pro
       : loadedUrl === resolvedImageUrl
         ? 'loaded'
         : 'loading';
+  const unavailableLabel =
+    status === 'error'
+      ? `Imagem indisponível para ${name}`
+      : status === 'missing'
+        ? `${name} está sem imagem`
+        : undefined;
 
   useEffect(() => {
     if (!resolvedImageUrl || !imageRef.current?.complete || imageRef.current.naturalWidth > 0) {
@@ -35,10 +41,7 @@ export function ProductImage({ name, imageUrl, imageAssetId, sizes, width }: Pro
   }, [resolvedImageUrl]);
 
   return (
-    <div
-      className={`storefront-product-image-frame is-${status}`}
-      aria-label={status === 'error' ? `Imagem indisponível para ${name}` : undefined}
-    >
+    <div className={`storefront-product-image-frame is-${status}`} aria-label={unavailableLabel}>
       {resolvedImageUrl && status !== 'error' && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -59,6 +62,9 @@ export function ProductImage({ name, imageUrl, imageAssetId, sizes, width }: Pro
       {status !== 'loaded' && (
         <span className="storefront-product-image-placeholder" aria-hidden="true">
           <ImageOff />
+          {(status === 'error' || status === 'missing') && (
+            <span>{status === 'error' ? 'Imagem indisponível' : 'Sem imagem'}</span>
+          )}
         </span>
       )}
     </div>

@@ -66,8 +66,42 @@ describe('limite de quantidade no storefront', () => {
     const increase = screen.getByRole('button', { name: 'Aumentar quantidade' });
     for (let count = 1; count < 99; count += 1) fireEvent.click(increase);
 
+    expect(document.querySelector('.storefront-product-modal-media')).toBeNull();
     expect(increase).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Limite de 99 unidades');
+    expect(screen.getByText('Limite de 99 unidades por item atingido.')).toBeVisible();
+  });
+
+  it('destaca a imagem, o preço base e atualiza o total do CTA', () => {
+    render(
+      <ProductModal
+        product={{
+          id: 'product-1',
+          name: 'Burger da casa',
+          description: 'Pão, carne e queijo',
+          imageUrl: '/imagem-legada.jpg',
+          imageAssetId: '4da03571-bffd-45ef-8c44-20686c487838',
+          basePrice: 2_500,
+          isFeatured: true,
+          isSoldOut: false,
+          allowNotes: true,
+          optionGroups: [],
+        }}
+        onClose={vi.fn()}
+        storeOpen
+      />,
+    );
+
+    expect(document.querySelector('.storefront-product-modal-media')).not.toBeNull();
+    expect(document.querySelector('.storefront-product-modal-media img')).toHaveAttribute(
+      'src',
+      '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838?width=768',
+    );
+    expect(screen.getByText('A partir de')).toBeVisible();
+    expect(screen.getByRole('button', { name: /Adicionar/ })).toHaveTextContent('R$ 25,00');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar quantidade' }));
+
+    expect(screen.getByRole('button', { name: /Adicionar/ })).toHaveTextContent('R$ 50,00');
   });
 
   it('desabilita o incremento e anuncia o limite na sacola', () => {

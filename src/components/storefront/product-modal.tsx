@@ -5,6 +5,7 @@ import { Heart, Minus, Plus, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency } from '@/lib/utils';
@@ -46,6 +47,7 @@ export function ProductModal({
   const optionsPrice = allSelectedOptions.reduce((sum, option) => sum + option.price, 0);
   const unitPrice = product.basePrice + optionsPrice;
   const totalPrice = unitPrice * quantity;
+  const hasProductImage = Boolean(product.imageAssetId || product.imageUrl);
 
   const missingRequired = product.optionGroups
     .filter((group) => group.isRequired)
@@ -84,18 +86,53 @@ export function ProductModal({
     onClose();
   }
 
+  const modalActions = (
+    <div className="storefront-product-modal-actions">
+      {onFavoriteToggle && (
+        <button
+          type="button"
+          onClick={onFavoriteToggle}
+          aria-label={
+            isFavorite ? `Remover ${product.name} dos favoritos` : `Favoritar ${product.name}`
+          }
+          aria-pressed={isFavorite}
+          className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''}`}
+        >
+          <Heart aria-hidden="true" />
+        </button>
+      )}
+      <Dialog.Close
+        aria-label={`Fechar detalhes de ${product.name}`}
+        className="storefront-product-modal-close"
+      >
+        <X aria-hidden="true" />
+      </Dialog.Close>
+    </div>
+  );
+
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="bg-tinta/40 fixed inset-0 z-50 backdrop-blur-sm" />
-        <Dialog.Content className="bg-papel fixed inset-x-0 bottom-0 z-50 mx-auto max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl shadow-lg focus:outline-none sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2 sm:rounded-2xl">
-          <div className="border-tinta/10 bg-papel sticky top-0 z-10 flex items-start justify-between border-b px-4 py-3">
-            <div className="min-w-0 pr-2">
-              <Dialog.Title className="font-display text-tinta text-lg font-bold break-words">
-                {product.name}
-              </Dialog.Title>
+        <Dialog.Overlay className="storefront-product-modal-overlay" />
+        <Dialog.Content className="storefront-product-modal">
+          {hasProductImage && (
+            <div className="storefront-product-modal-media">
+              <ProductImage
+                name={product.name}
+                imageUrl={product.imageUrl}
+                imageAssetId={product.imageAssetId}
+                sizes="(max-width: 639px) 100vw, 32rem"
+                width={768}
+              />
+              {modalActions}
+            </div>
+          )}
+
+          <div className={`storefront-product-modal-header ${hasProductImage ? 'has-media' : ''}`}>
+            <div className="storefront-product-modal-heading">
+              <Dialog.Title className="storefront-product-modal-title">{product.name}</Dialog.Title>
               {product.description ? (
-                <Dialog.Description className="text-text-muted mt-0.5 text-sm break-words">
+                <Dialog.Description className="storefront-product-modal-description">
                   {product.description}
                 </Dialog.Description>
               ) : (
@@ -103,37 +140,16 @@ export function ProductModal({
                   Configure as opções e a quantidade antes de adicionar o produto à sacola.
                 </Dialog.Description>
               )}
-              <p className="storefront-action-text mt-1 font-mono text-base font-bold">
+              <p className="storefront-product-modal-price">
+                <span>A partir de</span>
                 {formatCurrency(product.basePrice)}
               </p>
             </div>
-            <div className="flex shrink-0 items-center">
-              {onFavoriteToggle && (
-                <button
-                  type="button"
-                  onClick={onFavoriteToggle}
-                  aria-label={
-                    isFavorite
-                      ? `Remover ${product.name} dos favoritos`
-                      : `Favoritar ${product.name}`
-                  }
-                  aria-pressed={isFavorite}
-                  className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''}`}
-                >
-                  <Heart className="h-5 w-5" aria-hidden="true" />
-                </button>
-              )}
-              <Dialog.Close
-                aria-label={`Fechar detalhes de ${product.name}`}
-                className="text-text-muted hover:bg-tinta/5 hover:text-tinta flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full transition-colors"
-              >
-                <X className="h-5 w-5" aria-hidden="true" />
-              </Dialog.Close>
-            </div>
+            {!hasProductImage && modalActions}
           </div>
 
           {product.optionGroups.length > 0 && (
-            <div className="divide-tinta/5 divide-y px-4">
+            <div className="storefront-product-modal-options">
               {product.optionGroups.map((group) => (
                 <OptionGroupSelector
                   key={group.id}
@@ -146,27 +162,25 @@ export function ProductModal({
           )}
 
           {product.allowNotes && (
-            <div className="border-tinta/5 border-t px-4 py-3">
-              <label htmlFor="product-notes" className="text-text-muted text-sm font-medium">
-                Observações
-              </label>
+            <div className="storefront-product-modal-notes">
+              <label htmlFor="product-notes">Alguma observação?</label>
               <Textarea
                 id="product-notes"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Ex: Sem cebola, molho à parte..."
                 rows={2}
-                className="border-tinta/15 bg-papel text-tinta placeholder:text-text-muted focus-visible:ring-pimenta focus-visible:ring-offset-papel mt-1 min-h-11"
+                className="storefront-product-modal-textarea"
               />
             </div>
           )}
 
-          <div className="storefront-safe-bottom border-tinta/10 bg-papel sticky bottom-0 border-t px-4 py-3">
+          <div className="storefront-product-modal-footer">
             {!storeOpen && (
               <p
                 id="store-closed-product-message"
                 role="status"
-                className="text-text-muted mb-2 text-sm"
+                className="storefront-product-modal-message"
               >
                 A loja está fechada agora. Consulte o produto e volte quando os pedidos reabrirem.
               </p>
@@ -175,30 +189,31 @@ export function ProductModal({
               <p
                 id="required-options-message"
                 role="status"
-                className="text-text-muted mb-2 text-sm"
+                className="storefront-product-modal-message"
               >
                 Selecione os complementos obrigatórios para continuar.
               </p>
             )}
             {quantity >= MAX_CART_ITEM_QUANTITY && (
-              <p id="product-quantity-limit" role="status" className="text-text-muted mb-2 text-sm">
+              <p
+                id="product-quantity-limit"
+                role="status"
+                className="storefront-product-modal-message"
+              >
                 Limite de {MAX_CART_ITEM_QUANTITY} unidades por item atingido.
               </p>
             )}
-            <div className="flex items-center gap-4">
-              <div className="border-tinta/15 flex items-center gap-1 rounded-full border px-1">
+            <div className="storefront-product-modal-purchase">
+              <div className="storefront-product-quantity" aria-label="Quantidade do produto">
                 <button
                   type="button"
                   aria-label="Diminuir quantidade"
                   onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                  className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
                   disabled={quantity <= 1}
                 >
-                  <Minus className="h-4 w-4" aria-hidden="true" />
+                  <Minus aria-hidden="true" />
                 </button>
-                <span className="text-tinta w-6 text-center font-mono text-sm font-bold">
-                  {quantity}
-                </span>
+                <output aria-live="polite">{quantity}</output>
                 <button
                   type="button"
                   aria-label="Aumentar quantidade"
@@ -209,9 +224,8 @@ export function ProductModal({
                     setQuantity((current) => Math.min(MAX_CART_ITEM_QUANTITY, current + 1))
                   }
                   disabled={quantity >= MAX_CART_ITEM_QUANTITY}
-                  className="text-text-muted hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full"
                 >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <Plus aria-hidden="true" />
                 </button>
               </div>
 
@@ -225,7 +239,7 @@ export function ProductModal({
                       ? 'required-options-message'
                       : undefined
                 }
-                className="storefront-primary-action font-body flex-1 font-medium shadow-sm disabled:opacity-50"
+                className="storefront-primary-action storefront-product-modal-cta"
               >
                 {storeOpen ? `Adicionar · ${formatCurrency(totalPrice)}` : 'Loja fechada'}
               </Button>
