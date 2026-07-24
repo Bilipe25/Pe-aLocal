@@ -28,7 +28,9 @@ export async function POST(request: Request) {
     const file = formData.get('file');
     if (!(file instanceof File)) throw new ValidationError('Selecione um arquivo de imagem.');
 
-    const productId = z.uuid().safeParse(formData.get('productId'));
+    // IDs determinísticos do seed seguem o formato GUID, mas não carregam
+    // necessariamente os bits de versão exigidos por z.uuid().
+    const productId = z.guid().safeParse(formData.get('productId'));
     if (!productId.success) throw new ValidationError('O produto informado é inválido.');
 
     const metadata = storeAssetUploadMetadataSchema.safeParse({
