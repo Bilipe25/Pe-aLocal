@@ -28,7 +28,7 @@ describe('CategoryNav', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByRole('button', { name: 'Hambúrgueres' })).toHaveAttribute(
       'aria-current',
-      'true',
+      'page',
     );
   });
 
