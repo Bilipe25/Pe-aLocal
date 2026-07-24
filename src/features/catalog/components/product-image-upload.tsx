@@ -26,6 +26,7 @@ export function ProductImageUpload({
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const localPreviewRef = useRef<string | null>(null);
+  const uploadInFlightRef = useRef(false);
   const [preview, setPreview] = useState<string | null>(currentImageUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
@@ -40,6 +41,10 @@ export function ProductImageUpload({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (uploadInFlightRef.current) {
+      e.target.value = '';
+      return;
+    }
 
     // Validação client-side rápida antes de enviar
     if (file.size > MAX_MB * 1024 * 1024) {
@@ -58,6 +63,7 @@ export function ProductImageUpload({
     const localUrl = URL.createObjectURL(file);
     if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
     localPreviewRef.current = localUrl;
+    uploadInFlightRef.current = true;
     setPreview(localUrl);
     setImageLoadFailed(false);
     setUploading(true);
@@ -94,6 +100,7 @@ export function ProductImageUpload({
     } finally {
       URL.revokeObjectURL(localUrl);
       if (localPreviewRef.current === localUrl) localPreviewRef.current = null;
+      uploadInFlightRef.current = false;
       setUploading(false);
       // Reset o input para permitir re-upload do mesmo arquivo
       if (inputRef.current) inputRef.current.value = '';
