@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StoreHeader } from '@/components/storefront/store-header';
+import { StoreHeaderVisibility } from '@/components/storefront/store-header-visibility';
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
@@ -81,28 +82,30 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
       data-customization-version={store.customization.publishedVersion}
       data-customization-source={store.customization.source}
     >
-      <StoreHeader
-        name={store.name}
-        description={store.description}
-        availability={store.availability}
-        estimatedTime={
-          store.settings
-            ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
-            : undefined
-        }
-        minOrderValue={store.settings?.minOrderValue}
-        deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
-        pickupEnabled={store.settings?.pickupEnabled}
-        minDeliveryFee={minDeliveryFee}
-        openingHours={store.openingHours}
-        neighborhood={store.address?.neighborhood}
-        city={store.address?.city}
-        logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
-        logoAssetId={store.customization.assets.logo?.id}
-        coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
-        coverAssetId={store.customization.assets.cover?.id}
-        config={config}
-      />
+      <StoreHeaderVisibility>
+        <StoreHeader
+          name={store.name}
+          description={store.description}
+          availability={store.availability}
+          estimatedTime={
+            store.settings
+              ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
+              : undefined
+          }
+          minOrderValue={store.settings?.minOrderValue}
+          deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
+          pickupEnabled={store.settings?.pickupEnabled}
+          minDeliveryFee={minDeliveryFee}
+          openingHours={store.openingHours}
+          neighborhood={store.address?.neighborhood}
+          city={store.address?.city}
+          logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+          logoAssetId={store.customization.assets.logo?.id}
+          coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
+          coverAssetId={store.customization.assets.cover?.id}
+          config={config}
+        />
+      </StoreHeaderVisibility>
 
       {!storeOpen && <StoreClosedBanner availability={store.availability} />}
 
