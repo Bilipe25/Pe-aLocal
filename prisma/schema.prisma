@@ -180,6 +180,7 @@ enum AuditAction {
   DOMAIN_STATUS_CHANGED
   ENTITLEMENT_UPDATED
   BRANDING_VISIBILITY_CHANGED
+  STOREFRONT_DISPLAY_UPDATED
   CATEGORY_CREATED
   CATEGORY_UPDATED
   CATEGORY_ARCHIVED
@@ -412,6 +413,13 @@ model StoreSettings {
   estimatedTimeMaxMinutes Int     @default(50)
   deliveryEnabled         Boolean @default(true)
   pickupEnabled           Boolean @default(true)
+
+  // Exibição no cardápio público
+  showEstimatedTimeInHero    Boolean @default(true)
+  showFulfillmentInHero      Boolean @default(false)
+  showMinOrderValueInHero    Boolean @default(true)
+  showOpeningHoursInHero     Boolean @default(false)
+  showFullAddressInStoreInfo Boolean @default(false)
 
   // Formas de pagamento aceitas
   acceptsPix            Boolean @default(true)

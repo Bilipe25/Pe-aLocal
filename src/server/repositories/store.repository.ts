@@ -149,6 +149,47 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
   });
 }
 
+export async function findStorefrontDisplaySettingsById(id: string, tenantId: string) {
+  return getDb().store.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      name: true,
+      configurationVersion: true,
+      settings: {
+        select: {
+          estimatedTimeMinMinutes: true,
+          estimatedTimeMaxMinutes: true,
+          minOrderValue: true,
+          deliveryEnabled: true,
+          pickupEnabled: true,
+          showEstimatedTimeInHero: true,
+          showFulfillmentInHero: true,
+          showMinOrderValueInHero: true,
+          showOpeningHoursInHero: true,
+          showFullAddressInStoreInfo: true,
+        },
+      },
+      openingHours: {
+        where: { isActive: true },
+        take: 1,
+        select: { id: true },
+      },
+      address: {
+        select: {
+          street: true,
+          number: true,
+          complement: true,
+          neighborhood: true,
+          city: true,
+          state: true,
+          zipCode: true,
+        },
+      },
+    },
+  });
+}
+
 export async function findStorePaymentSettingsById(id: string, tenantId: string) {
   return getDb().store.findFirst({
     where: { id, tenantId },
@@ -185,7 +226,14 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       timeZone: true,
       configurationVersion: true,
       settings: {
-        select: { estimatedTimeMaxMinutes: true },
+        select: {
+          estimatedTimeMaxMinutes: true,
+          showEstimatedTimeInHero: true,
+          showFulfillmentInHero: true,
+          showMinOrderValueInHero: true,
+          showOpeningHoursInHero: true,
+          showFullAddressInStoreInfo: true,
+        },
       },
       tenant: {
         select: { id: true, name: true, status: true },

@@ -5,6 +5,7 @@ import {
   updatePixConfigSchema,
   updateStoreSchema,
   updateStoreSettingsSchema,
+  updateStorefrontDisplaySchema,
 } from '@/schemas/store';
 
 describe('schemas de configuracao da loja', () => {
@@ -108,6 +109,35 @@ describe('schemas de configuracao da loja', () => {
         city: 'Fortaleza',
         state: 'ZZ',
         zipCode: '123',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('aceita somente os cinco booleanos de exibição pública', () => {
+    expect(
+      updateStorefrontDisplaySchema.parse({
+        showEstimatedTimeInHero: 'true',
+        showFulfillmentInHero: 'false',
+        showMinOrderValueInHero: 'true',
+        showOpeningHoursInHero: 'false',
+        showFullAddressInStoreInfo: 'false',
+      }),
+    ).toEqual({
+      showEstimatedTimeInHero: true,
+      showFulfillmentInHero: false,
+      showMinOrderValueInHero: true,
+      showOpeningHoursInHero: false,
+      showFullAddressInStoreInfo: false,
+    });
+
+    expect(
+      updateStorefrontDisplaySchema.safeParse({
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: false,
+        showMinOrderValueInHero: true,
+        showOpeningHoursInHero: false,
+        showFullAddressInStoreInfo: false,
+        tenantId: 'tenant-injetado',
       }).success,
     ).toBe(false);
   });

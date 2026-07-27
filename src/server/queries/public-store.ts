@@ -45,6 +45,11 @@ const publicStoreSelect = {
       acceptsPix: true,
       acceptsCash: true,
       acceptsCardOnDelivery: true,
+      showEstimatedTimeInHero: true,
+      showFulfillmentInHero: true,
+      showMinOrderValueInHero: true,
+      showOpeningHoursInHero: true,
+      showFullAddressInStoreInfo: true,
     },
   },
   customization: {
@@ -57,9 +62,13 @@ const publicStoreSelect = {
   },
   address: {
     select: {
+      street: true,
+      number: true,
+      complement: true,
       neighborhood: true,
       city: true,
       state: true,
+      zipCode: true,
     },
   },
   openingHours: {
@@ -90,7 +99,16 @@ async function getStoreFromDb(slug: string) {
 
   if (!store) return null;
 
-  const { customization, ...publicStore } = store;
+  const { customization, address, ...publicStore } = store;
+  const publicAddress = address
+    ? store.settings?.showFullAddressInStoreInfo
+      ? address
+      : {
+          neighborhood: address.neighborhood,
+          city: address.city,
+          state: address.state,
+        }
+    : null;
   const resolvedCustomization = resolvePublicCustomization({
     publishedConfig: customization?.publishedConfig,
     publishedVersion: customization?.publishedVersion,
@@ -168,6 +186,7 @@ async function getStoreFromDb(slug: string) {
 
   return {
     ...publicStore,
+    address: publicAddress,
     customization: {
       ...resolvedCustomization,
       assets: {

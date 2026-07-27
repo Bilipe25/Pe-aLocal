@@ -6,6 +6,7 @@ import {
   getStoreOperationalSettings,
   getStoreOverview,
   getStorePaymentSettings,
+  getStorefrontDisplaySettings,
 } from '@/server/services/store-settings.service';
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   findStoreOverviewById: vi.fn(),
   findStoreOperationalSettingsById: vi.fn(),
   findStorePaymentSettingsById: vi.fn(),
+  findStorefrontDisplaySettingsById: vi.fn(),
   getStoreAvailabilityStateForTenant: vi.fn(),
 }));
 
@@ -23,6 +25,7 @@ vi.mock('@/server/repositories/store.repository', () => ({
   findStoreOverviewById: mocks.findStoreOverviewById,
   findStoreOperationalSettingsById: mocks.findStoreOperationalSettingsById,
   findStorePaymentSettingsById: mocks.findStorePaymentSettingsById,
+  findStorefrontDisplaySettingsById: mocks.findStorefrontDisplaySettingsById,
 }));
 vi.mock('@/server/services/store-availability.service', () => ({
   getStoreAvailabilityStateForTenant: mocks.getStoreAvailabilityStateForTenant,
@@ -80,6 +83,33 @@ describe('StoreSettingsService', () => {
       'store-a',
       Permission.VIEW_STORE_OPERATIONS,
     );
+  });
+
+  it('retorna preferências da vitrine ao MANAGER somente para leitura', async () => {
+    const store = {
+      id: 'store-a',
+      configurationVersion: 3,
+      settings: {
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: false,
+        showMinOrderValueInHero: true,
+        showOpeningHoursInHero: false,
+        showFullAddressInStoreInfo: false,
+      },
+      openingHours: [],
+      address: null,
+    };
+    mocks.findStorefrontDisplaySettingsById.mockResolvedValue(store);
+
+    await expect(getStorefrontDisplaySettings('store-a')).resolves.toEqual({
+      store,
+      canEdit: false,
+    });
+    expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
+      'store-a',
+      Permission.VIEW_STOREFRONT_DISPLAY,
+    );
+    expect(mocks.findStorefrontDisplaySettingsById).toHaveBeenCalledWith('store-a', 'tenant-a');
   });
 
   it('exige permissÃ£o de pagamentos antes de consultar qualquer chave Pix', async () => {

@@ -186,12 +186,15 @@ async function main() {
   // 6. Store
   const store = await prisma.store.upsert({
     where: { slug: 'burger-do-ze' },
-    update: {},
+    update: {
+      phone: '5511999999999',
+    },
     create: {
       tenantId: tenant.id,
       name: 'Burger do Zé',
       slug: 'burger-do-ze',
       description: 'Os melhores hambúrgueres artesanais da cidade.',
+      phone: '5511999999999',
       status: 'OPEN',
       isActive: true,
     },
@@ -199,13 +202,14 @@ async function main() {
 
   await prisma.storeSettings.upsert({
     where: { storeId: store.id },
-    update: {},
+    update: { showFullAddressInStoreInfo: true },
     create: {
       storeId: store.id,
       minOrderValue: 2000,
       estimatedTime: '30-50 min',
       deliveryEnabled: true,
       pickupEnabled: true,
+      showFullAddressInStoreInfo: true,
       pixKeyType: 'PHONE',
       pixKey: '(11) 99999-9999',
       pixRecipient: 'José da Silva',

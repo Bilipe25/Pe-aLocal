@@ -80,6 +80,11 @@ function publicStore() {
       acceptsPix: true,
       acceptsCash: true,
       acceptsCardOnDelivery: true,
+      showEstimatedTimeInHero: true,
+      showFulfillmentInHero: false,
+      showMinOrderValueInHero: true,
+      showOpeningHoursInHero: false,
+      showFullAddressInStoreInfo: false,
     },
     customization: {
       publishedConfig: createDefaultCustomization(),
@@ -292,6 +297,61 @@ describe('queries públicas da loja', () => {
       'tenant-1',
       'store-1',
     );
+  });
+
+  it('não serializa rua, número, complemento ou CEP sem autorização explícita', async () => {
+    const store = {
+      ...publicStore(),
+      address: {
+        street: 'Rua Privada',
+        number: '123',
+        complement: 'Sala 2',
+        neighborhood: 'Centro',
+        city: 'Fortaleza',
+        state: 'CE',
+        zipCode: '60000000',
+      },
+    };
+    mocks.storeFindUnique.mockResolvedValue(store);
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(result?.address).toEqual({
+      neighborhood: 'Centro',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+    expect(result?.address).not.toHaveProperty('street');
+    expect(result?.address).not.toHaveProperty('number');
+    expect(result?.address).not.toHaveProperty('complement');
+    expect(result?.address).not.toHaveProperty('zipCode');
+  });
+
+  it('serializa o endereço completo somente após autorização do estabelecimento', async () => {
+    const current = publicStore();
+    const store = {
+      ...current,
+      settings: { ...current.settings, showFullAddressInStoreInfo: true },
+      address: {
+        street: 'Rua Pública',
+        number: '321',
+        complement: null,
+        neighborhood: 'Centro',
+        city: 'Fortaleza',
+        state: 'CE',
+        zipCode: '60000000',
+      },
+    };
+    mocks.storeFindUnique.mockResolvedValue(store);
+
+    const result = await getPublicStoreBySlug('loja-1');
+
+    expect(result?.address).toMatchObject({
+      street: 'Rua Pública',
+      number: '321',
+      neighborhood: 'Centro',
+      zipCode: '60000000',
+    });
   });
 
   it('resolve slug antigo pelo histórico e retorna a loja canônica', async () => {
