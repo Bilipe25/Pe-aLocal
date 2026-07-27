@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { Prisma, type StoreStatus } from '@prisma/client';
+import { Prisma, type AuditAction, type StoreStatus } from '@prisma/client';
 import { z } from 'zod';
 
 import { maskPixKey, normalizeSlug, validatePixKey } from '@/lib/brazil';
@@ -12,6 +12,7 @@ import {
   updatePixConfigSchema,
   updateStoreSchema,
   updateStoreSettingsSchema,
+  updateStorefrontDisplaySchema,
 } from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
@@ -49,6 +50,8 @@ export interface StorePageCapabilities {
   editHours: boolean;
   viewOperations: boolean;
   editOperations: boolean;
+  viewDisplay: boolean;
+  editDisplay: boolean;
   viewPayments: boolean;
   editPayments: boolean;
   changeStatus: boolean;
@@ -64,6 +67,8 @@ export function getStorePageCapabilities(role: TenantRole): StorePageCapabilitie
     editHours: hasTenantPermission(role, Permission.EDIT_STORE_HOURS),
     viewOperations: hasTenantPermission(role, Permission.VIEW_STORE_OPERATIONS),
     editOperations: hasTenantPermission(role, Permission.EDIT_STORE_OPERATIONS),
+    viewDisplay: hasTenantPermission(role, Permission.VIEW_STOREFRONT_DISPLAY),
+    editDisplay: hasTenantPermission(role, Permission.EDIT_STOREFRONT_DISPLAY),
     viewPayments: hasTenantPermission(role, Permission.VIEW_PAYMENT_SETTINGS),
     editPayments: hasTenantPermission(role, Permission.EDIT_PAYMENT_SETTINGS),
     changeStatus: hasTenantPermission(role, Permission.CHANGE_STORE_STATUS),
@@ -139,7 +144,7 @@ async function writeStoreAudit(
     tenantId: string;
     storeId: string;
     userId: string;
-    action?: 'UPDATE' | 'STATUS_CHANGE';
+    action?: AuditAction;
     section: string;
     expectedConfigurationVersion: number;
     metadata: Prisma.InputJsonObject;
@@ -226,6 +231,17 @@ export async function getStoreOperationalSettings(storeId: string) {
   return {
     store,
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_STORE_OPERATIONS),
+  };
+}
+
+export async function getStorefrontDisplaySettings(storeId: string) {
+  const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_STOREFRONT_DISPLAY);
+  const store = await storeRepo.findStorefrontDisplaySettingsById(storeId, session.tenantId);
+  if (!store) missingStore();
+
+  return {
+    store,
+    canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_STOREFRONT_DISPLAY),
   };
 }
 
@@ -444,6 +460,62 @@ export async function updateStoreOperationalSettings(
       metadata: {
         changedFields: changedFields(previousValues, settingsData),
         previousValues,
+        nextValues: settingsData,
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function updateStorefrontDisplaySettings(
+  storeId: string,
+  expectedVersion: unknown,
+  input: RawFormInput,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(
+    storeId,
+    Permission.EDIT_STOREFRONT_DISPLAY,
+  );
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+  const settingsData = parseInput(
+    updateStorefrontDisplaySchema,
+    asRecord(input),
+    'As preferências de exibição são inválidas.',
+  );
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeSettings.findUnique({
+      where: { storeId: store.id },
+      select: {
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: true,
+        showMinOrderValueInHero: true,
+        showOpeningHoursInHero: true,
+        showFullAddressInStoreInfo: true,
+      },
+    });
+
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeSettings.upsert({
+      where: { storeId: store.id },
+      update: settingsData,
+      create: { storeId: store.id, ...settingsData },
+    });
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      action: 'STOREFRONT_DISPLAY_UPDATED',
+      section: 'storefront-display',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        changedFields: changedFields(previous, settingsData),
+        previousValues: previous,
         nextValues: settingsData,
       },
     });

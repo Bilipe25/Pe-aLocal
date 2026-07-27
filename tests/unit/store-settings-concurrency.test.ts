@@ -9,6 +9,7 @@ import {
   updateStoreAddressSettings,
   updateStoreOperationalSettings,
   updateStorePaymentSettings,
+  updateStorefrontDisplaySettings,
   updateStoreStatus,
 } from '@/server/services/store-settings.service';
 
@@ -149,6 +150,86 @@ describe('concorrência das configurações da loja', () => {
       }),
       mocks.tx,
     );
+  });
+
+  it('atualiza somente a exibição pública, com versão, tenant e auditoria específica', async () => {
+    mocks.tx.storeSettings.findUnique.mockResolvedValueOnce({
+      showEstimatedTimeInHero: true,
+      showFulfillmentInHero: false,
+      showMinOrderValueInHero: true,
+      showOpeningHoursInHero: false,
+      showFullAddressInStoreInfo: false,
+    });
+
+    await expect(
+      updateStorefrontDisplaySettings('store-a', 7, {
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: true,
+        showMinOrderValueInHero: false,
+        showOpeningHoursInHero: true,
+        showFullAddressInStoreInfo: false,
+      }),
+    ).resolves.toMatchObject({ storeId: 'store-a', configurationVersion: 8 });
+
+    expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
+      'store-a',
+      Permission.EDIT_STOREFRONT_DISPLAY,
+    );
+    expect(mocks.tx.store.updateMany).toHaveBeenCalledWith({
+      where: { id: 'store-a', tenantId: 'tenant-a', configurationVersion: 7 },
+      data: { configurationVersion: { increment: 1 } },
+    });
+    expect(mocks.tx.storeSettings.upsert).toHaveBeenCalledWith({
+      where: { storeId: 'store-a' },
+      update: {
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: true,
+        showMinOrderValueInHero: false,
+        showOpeningHoursInHero: true,
+        showFullAddressInStoreInfo: false,
+      },
+      create: {
+        storeId: 'store-a',
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: true,
+        showMinOrderValueInHero: false,
+        showOpeningHoursInHero: true,
+        showFullAddressInStoreInfo: false,
+      },
+    });
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        action: 'STOREFRONT_DISPLAY_UPDATED',
+        metadata: expect.objectContaining({
+          section: 'storefront-display',
+          changedFields: expect.arrayContaining([
+            'showFulfillmentInHero',
+            'showMinOrderValueInHero',
+            'showOpeningHoursInHero',
+          ]),
+        }),
+      }),
+      mocks.tx,
+    );
+  });
+
+  it('não grava preferências públicas quando a versão ficou obsoleta', async () => {
+    mocks.tx.store.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      updateStorefrontDisplaySettings('store-a', 4, {
+        showEstimatedTimeInHero: false,
+        showFulfillmentInHero: false,
+        showMinOrderValueInHero: false,
+        showOpeningHoursInHero: false,
+        showFullAddressInStoreInfo: false,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(mocks.tx.storeSettings.upsert).not.toHaveBeenCalled();
+    expect(mocks.createAuditLog).not.toHaveBeenCalled();
   });
 
   it('altera slug com lock transacional, historico e auditoria segura', async () => {

@@ -3,6 +3,7 @@
 import { Banknote, CalendarDays, ChevronDown, Clock, Package, Store } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { StoreInfoSheet, type StoreInfoAddress } from '@/components/storefront/store-info-sheet';
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
@@ -25,8 +26,16 @@ export interface StorefrontHeroProps {
   pickupEnabled?: boolean;
   minDeliveryFee?: number | null;
   openingHours?: OpeningHour[];
-  neighborhood?: string;
-  city?: string;
+  acceptsPix?: boolean;
+  acceptsCash?: boolean;
+  acceptsCardOnDelivery?: boolean;
+  phone?: string | null;
+  whatsapp?: string | null;
+  fullAddress?: StoreInfoAddress | null;
+  showEstimatedTimeInHero?: boolean;
+  showFulfillmentInHero?: boolean;
+  showMinOrderValueInHero?: boolean;
+  showOpeningHoursInHero?: boolean;
   logoUrl: string | null;
   logoAssetId?: string | null;
   coverUrl: string | null;
@@ -105,6 +114,16 @@ export function StorefrontHero({
   pickupEnabled = false,
   minDeliveryFee,
   openingHours = [],
+  acceptsPix = false,
+  acceptsCash = false,
+  acceptsCardOnDelivery = false,
+  phone = null,
+  whatsapp = null,
+  fullAddress = null,
+  showEstimatedTimeInHero = true,
+  showFulfillmentInHero = false,
+  showMinOrderValueInHero = true,
+  showOpeningHoursInHero = false,
   logoUrl,
   logoAssetId,
   coverUrl,
@@ -138,12 +157,19 @@ export function StorefrontHero({
         : pickupEnabled
           ? 'Retirada disponível'
           : null;
-  const hasOperationalInfo = Boolean(
-    estimatedTime || fulfillmentLabel || minOrderValue > 0 || openingHours.length > 0,
-  );
+  const heroOperationalItems = [
+    showEstimatedTimeInHero && estimatedTime,
+    showFulfillmentInHero && fulfillmentLabel,
+    showMinOrderValueInHero && minOrderValue > 0,
+    showOpeningHoursInHero && openingHours.length > 0,
+  ].filter(Boolean);
+  const hasOperationalInfo = heroOperationalItems.length > 0;
+  const compactHero = heroOperationalItems.length <= 2;
 
   return (
-    <header className={`storefront-hero ${coverAvailable ? 'has-cover' : 'has-cover-fallback'}`}>
+    <header
+      className={`storefront-hero ${compactHero ? 'is-compact' : 'is-expanded'} ${coverAvailable ? 'has-cover' : 'has-cover-fallback'}`}
+    >
       <div className="storefront-hero-media" aria-hidden="true">
         {coverAvailable && coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -166,6 +192,27 @@ export function StorefrontHero({
         <div className="storefront-hero-overlay" />
       </div>
 
+      <StoreInfoSheet
+        name={name}
+        description={description}
+        slogan={config.identity.slogan}
+        aboutText={config.identity.aboutText}
+        logoUrl={logoUrl}
+        logoAssetId={logoAssetId}
+        availability={availability}
+        estimatedTime={estimatedTime ?? null}
+        minOrderValue={minOrderValue}
+        deliveryEnabled={deliveryEnabled}
+        pickupEnabled={pickupEnabled}
+        minDeliveryFee={minDeliveryFee ?? null}
+        openingHours={openingHours}
+        address={fullAddress}
+        acceptsPix={acceptsPix}
+        acceptsCash={acceptsCash}
+        acceptsCardOnDelivery={acceptsCardOnDelivery}
+        phone={phone}
+        whatsapp={whatsapp}
+      />
       <StorefrontShareButton storeName={name} shareUrl={shareUrl} />
 
       <div className="storefront-hero-content">
@@ -194,7 +241,7 @@ export function StorefrontHero({
 
         {hasOperationalInfo && (
           <div className="storefront-operational-info" aria-label="Informações para pedir">
-            {estimatedTime && (
+            {showEstimatedTimeInHero && estimatedTime && (
               <span
                 className="storefront-operational-item"
                 aria-label={`Preparo estimado: ${estimatedTime}`}
@@ -204,7 +251,7 @@ export function StorefrontHero({
                 <span>{estimatedTime}</span>
               </span>
             )}
-            {fulfillmentLabel && (
+            {showFulfillmentInHero && fulfillmentLabel && (
               <span
                 className="storefront-operational-item"
                 aria-label={fulfillmentLabel}
@@ -214,7 +261,7 @@ export function StorefrontHero({
                 <span>{fulfillmentLabel}</span>
               </span>
             )}
-            {minOrderValue > 0 && (
+            {showMinOrderValueInHero && minOrderValue > 0 && (
               <span
                 className="storefront-operational-item"
                 aria-label={`Pedido mínimo: ${formatCurrency(minOrderValue)}`}
@@ -224,7 +271,7 @@ export function StorefrontHero({
                 <span>Mín. {formatCurrency(minOrderValue)}</span>
               </span>
             )}
-            {openingHours.length > 0 && (
+            {showOpeningHoursInHero && openingHours.length > 0 && (
               <details className="storefront-hours">
                 <summary aria-label="Ver horários">
                   <CalendarDays aria-hidden="true" />

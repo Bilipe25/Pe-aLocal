@@ -4,6 +4,7 @@ import {
   toggleStoreStatusAction,
   updatePixConfigAction,
   updateStoreSettingsAction,
+  updateStorefrontDisplaySettingsAction,
 } from '@/features/stores/actions';
 import { AuthorizationError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
@@ -45,6 +46,19 @@ describe('autorizaÃ§Ã£o das aÃ§Ãµes de configuraÃ§Ã£o', () => {
     expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
       'store-a',
       Permission.EDIT_PAYMENT_SETTINGS,
+    );
+  });
+
+  it('protege preferências públicas com permissão específica no servidor', async () => {
+    await expect(
+      updateStorefrontDisplaySettingsAction('store-a', 0, new FormData()),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: 'AUTHORIZATION_ERROR' },
+    });
+    expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
+      'store-a',
+      Permission.EDIT_STOREFRONT_DISPLAY,
     );
   });
 

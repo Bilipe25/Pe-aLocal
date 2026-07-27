@@ -91,6 +91,87 @@ describe('storefront mobile — fase 1', () => {
     expect(screen.getByLabelText('Pedido mínimo: R$ 25,00')).toBeVisible();
     expect(screen.getByLabelText('Sabor da Vila')).toBeVisible();
     expect(screen.queryByText('Centro, Fortaleza')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Entrega R$ 5,00 · Retirada')).not.toBeInTheDocument();
+    expect(screen.queryByText('Horários')).not.toBeInTheDocument();
+  });
+
+  it('mantém informações completas no painel mesmo quando estão ocultas da hero', async () => {
+    render(
+      <StorefrontHero
+        {...baseHeroProps}
+        acceptsPix
+        acceptsCash
+        acceptsCardOnDelivery
+        phone="(85) 99999-9999"
+        whatsapp="(85) 98888-7777"
+        fullAddress={{
+          street: 'Rua das Flores',
+          number: '123',
+          complement: null,
+          neighborhood: 'Centro',
+          city: 'Fortaleza',
+          state: 'CE',
+          zipCode: '60000000',
+        }}
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Sobre a loja' });
+    fireEvent.click(trigger);
+
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Sobre a loja' })).toBeVisible();
+    expect(screen.getByText('Entrega')).toBeVisible();
+    expect(screen.getByText('Retirada no local')).toBeVisible();
+    expect(screen.getByText('Horário de funcionamento')).toBeVisible();
+    expect(screen.getByText('Rua das Flores, 123')).toBeVisible();
+    expect(screen.getByRole('link', { name: /Abrir endereço no mapa/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('query=Rua%20das%20Flores'),
+    );
+    expect(screen.getByText('Pix')).toBeVisible();
+    expect(screen.getByText('Pix').querySelector('svg')).toHaveAttribute('stroke', '#168f83');
+    expect(screen.getByText('Dinheiro').querySelector('svg')).toHaveAttribute('stroke', '#3f7d58');
+    expect(screen.getByText('Cartão na entrega').querySelector('svg')).toHaveAttribute(
+      'stroke',
+      '#c77a00',
+    );
+    expect(screen.getByRole('link', { name: 'Ligar para (85) 99999-9999' })).toHaveAttribute(
+      'href',
+      'tel:+5585999999999',
+    );
+    expect(screen.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute(
+      'href',
+      'https://wa.me/5585988887777',
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    const overlay = document.querySelector<HTMLElement>('.store-info-overlay');
+    expect(overlay).not.toBeNull();
+    fireEvent.pointerDown(overlay!, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(overlay!);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('aplica cada preferência da hero de forma independente', () => {
+    render(
+      <StorefrontHero
+        {...baseHeroProps}
+        showEstimatedTimeInHero={false}
+        showFulfillmentInHero
+        showMinOrderValueInHero={false}
+        showOpeningHoursInHero
+      />,
+    );
+
+    expect(screen.queryByLabelText('Preparo estimado: 30–45 min')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('R$ 5,00 · Retirada')).toBeVisible();
+    expect(screen.queryByLabelText('Pedido mínimo: R$ 25,00')).not.toBeInTheDocument();
+    expect(screen.getByText('Horários')).toBeVisible();
   });
 
   it.each([

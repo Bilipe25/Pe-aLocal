@@ -157,6 +157,16 @@ export const updateStoreSettingsSchema = z
     }
   });
 
+export const updateStorefrontDisplaySchema = z
+  .object({
+    showEstimatedTimeInHero: formBooleanSchema.default(true),
+    showFulfillmentInHero: formBooleanSchema.default(false),
+    showMinOrderValueInHero: formBooleanSchema.default(true),
+    showOpeningHoursInHero: formBooleanSchema.default(false),
+    showFullAddressInStoreInfo: formBooleanSchema.default(false),
+  })
+  .strict();
+
 export type UpdateStoreSettingsInput = z.infer<typeof updateStoreSettingsSchema>;
 
 export const updatePixConfigSchema = z

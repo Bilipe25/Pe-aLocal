@@ -15,6 +15,7 @@ import {
   updateStoreHoursSettings,
   updateStoreOperationalSettings,
   updateStorePaymentSettings,
+  updateStorefrontDisplaySettings,
   updateStoreStatus,
   type StoreConfigurationMutationResult,
 } from '@/server/services/store-settings.service';
@@ -74,6 +75,16 @@ export async function updateStoreSettingsAction(
 ) {
   return executeStoreMutation(() =>
     updateStoreOperationalSettings(storeId, expectedConfigurationVersion, formData),
+  );
+}
+
+export async function updateStorefrontDisplaySettingsAction(
+  storeId: string,
+  expectedConfigurationVersion: number,
+  formData: FormData,
+) {
+  return executeStoreMutation(() =>
+    updateStorefrontDisplaySettings(storeId, expectedConfigurationVersion, formData),
   );
 }
 

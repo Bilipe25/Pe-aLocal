@@ -62,6 +62,12 @@ export default async function AdminStoreCustomizationPage({
         storeSlug={store.slug}
         storeName={store.name}
         storeStatus={store.status}
+        displaySettings={{
+          showEstimatedTimeInHero: store.settings?.showEstimatedTimeInHero ?? true,
+          showFulfillmentInHero: store.settings?.showFulfillmentInHero ?? false,
+          showMinOrderValueInHero: store.settings?.showMinOrderValueInHero ?? true,
+          showOpeningHoursInHero: store.settings?.showOpeningHoursInHero ?? false,
+        }}
         initialConfig={customization.effectiveConfig}
         initialPublishedConfig={customization.publishedConfig}
         initialDraftVersion={customization.draftVersion}
