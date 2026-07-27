@@ -1056,7 +1056,7 @@ body {
 
 .storefront-hero {
   position: relative;
-  min-height: clamp(17.5rem, 74vw, 20rem);
+  min-height: clamp(17rem, 70vw, 19rem);
   isolation: isolate;
   color: #fff;
   background: var(--store-secondary);
@@ -1104,7 +1104,7 @@ body {
 .storefront-hero-content {
   display: flex;
   width: min(100%, var(--storefront-content-width));
-  min-height: clamp(17.5rem, 74vw, 20rem);
+  min-height: clamp(17rem, 70vw, 19rem);
   margin-inline: auto;
   flex-direction: column;
   justify-content: flex-end;
@@ -1202,28 +1202,6 @@ body {
   text-wrap: pretty;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
-}
-
-.storefront-hero-location {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-  color: rgb(255 255 255 / 0.86);
-  font-size: 0.8125rem;
-}
-
-.storefront-hero-location svg {
-  width: 0.95rem;
-  height: 0.95rem;
-  flex: none;
-}
-
-.storefront-hero-location span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .storefront-hero-status-row {
@@ -2453,11 +2431,11 @@ body {
   }
 
   .storefront-hero {
-    min-height: 25rem;
+    min-height: 24rem;
   }
 
   .storefront-hero-content {
-    min-height: 25rem;
+    min-height: 24rem;
     padding-bottom: 4rem;
   }
 
@@ -2520,11 +2498,11 @@ body {
   }
 
   .storefront-hero {
-    min-height: 18rem;
+    min-height: 17rem;
   }
 
   .storefront-hero-content {
-    min-height: 18rem;
+    min-height: 17rem;
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-left: max(0.75rem, env(safe-area-inset-left));
   }
@@ -2587,7 +2565,7 @@ body {
 @media (orientation: landscape) and (max-height: 560px) {
   .storefront-hero,
   .storefront-hero-content {
-    min-height: 19rem;
+    min-height: 18rem;
   }
 
   .storefront-hero-content {

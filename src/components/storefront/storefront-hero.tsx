@@ -1,6 +1,6 @@
 'use client';
 
-import { Banknote, CalendarDays, ChevronDown, Clock, MapPin, Package, Store } from 'lucide-react';
+import { Banknote, CalendarDays, ChevronDown, Clock, Package, Store } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
@@ -105,8 +105,6 @@ export function StorefrontHero({
   pickupEnabled = false,
   minDeliveryFee,
   openingHours = [],
-  neighborhood,
-  city,
   logoUrl,
   logoAssetId,
   coverUrl,
@@ -182,13 +180,6 @@ export function StorefrontHero({
         </div>
 
         {summary && <p className="storefront-hero-description">{summary}</p>}
-
-        {(neighborhood || city) && (
-          <p className="storefront-hero-location">
-            <MapPin aria-hidden="true" />
-            <span>{[neighborhood, city].filter(Boolean).join(', ')}</span>
-          </p>
-        )}
 
         <div className="storefront-hero-status-row">
           <span className={`storefront-status ${statusInfo.classes}`} title={availability.reason}>
