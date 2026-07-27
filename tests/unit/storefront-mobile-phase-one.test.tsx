@@ -90,6 +90,7 @@ describe('storefront mobile — fase 1', () => {
     expect(screen.getByLabelText('Preparo estimado: 30–45 min')).toBeVisible();
     expect(screen.getByLabelText('Pedido mínimo: R$ 25,00')).toBeVisible();
     expect(screen.getByLabelText('Sabor da Vila')).toBeVisible();
+    expect(screen.queryByText('Centro, Fortaleza')).not.toBeInTheDocument();
   });
 
   it.each([
