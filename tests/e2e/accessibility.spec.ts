@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { credentialsFromEnv, loginAs } from './helpers';
+import { chooseRequiredOptionsInProductDialog, credentialsFromEnv, loginAs } from './helpers';
 
 async function expectNoHighImpactViolations(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -60,7 +60,7 @@ test.describe('acessibilidade WCAG', () => {
     const search = page.getByRole('searchbox', { name: 'Buscar no cardápio' });
     await search.fill('produto que não existe');
     await expect(page.getByText('Nenhum resultado para “produto que não existe”')).toBeVisible();
-    await page.getByRole('button', { name: 'Limpar busca' }).click();
+    await page.getByRole('search').getByRole('button', { name: 'Limpar busca' }).click();
     await expect(search).toHaveValue('');
     await expect(search).toBeFocused();
 
@@ -78,12 +78,7 @@ test.describe('acessibilidade WCAG', () => {
 
     await productCard.click();
     const dialog = page.getByRole('dialog');
-    const requiredGroups = dialog.locator('section').filter({ hasText: 'Obrigatório' });
-    for (let index = 0; index < (await requiredGroups.count()); index += 1) {
-      const group = requiredGroups.nth(index);
-      const firstOption = group.locator('[role="radio"], [role="checkbox"]').first();
-      if (await firstOption.count()) await firstOption.click();
-    }
+    await chooseRequiredOptionsInProductDialog(page);
 
     await dialog.getByRole('button', { name: /Adicionar ·/ }).click();
     await expect(page.getByText('Adicionado à sacola')).toBeVisible();

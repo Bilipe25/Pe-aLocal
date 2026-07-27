@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import StorefrontLoading from '@/app/[storeSlug]/loading';
@@ -67,6 +68,25 @@ describe('filtros do storefront', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir filtros, 2 ativos' }));
     expect(onFilterClick).toHaveBeenCalledOnce();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('indica processamento e permite limpar a busca mantendo o foco', async () => {
+    const onChange = vi.fn();
+    const inputRef = createRef<HTMLInputElement>();
+    const { rerender } = render(
+      <StorefrontSearch value="pizza" onChange={onChange} inputRef={inputRef} isBusy />,
+    );
+    const searchRegion = screen.getByRole('search');
+    const searchbox = within(searchRegion).getByRole('searchbox');
+
+    expect(searchbox.parentElement).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(within(searchRegion).getByRole('button', { name: 'Limpar busca' }));
+
+    expect(onChange).toHaveBeenCalledWith('');
+    await waitFor(() => expect(searchbox).toHaveFocus());
+
+    rerender(<StorefrontSearch value="" onChange={onChange} inputRef={inputRef} />);
+    expect(within(searchRegion).queryByRole('button', { name: 'Limpar busca' })).toBeNull();
   });
 
   it('oferece skeletons para busca, filtros, categorias, destaques e produtos', () => {

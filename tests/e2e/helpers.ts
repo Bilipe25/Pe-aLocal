@@ -25,6 +25,7 @@ export function mutationsAllowed() {
 
 export async function chooseRequiredOptionsInProductDialog(page: Page) {
   const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.storefront-product-modal-load-state')).toBeHidden();
   const requiredGroups = dialog.locator('section').filter({ hasText: 'Obrigatório' });
   for (let index = 0; index < (await requiredGroups.count()); index += 1) {
     const group = requiredGroups.nth(index);

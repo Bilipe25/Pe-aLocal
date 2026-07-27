@@ -1,4 +1,7 @@
-import type { PublicStorefrontCategoryDto, PublicStorefrontProductDto } from '@/types/storefront';
+import type {
+  PublicStorefrontCategoryDto,
+  PublicStorefrontProductSummaryDto,
+} from '@/types/storefront';
 
 export type CatalogSort = 'RELEVANCE' | 'PRICE_ASC' | 'PRICE_DESC';
 
@@ -16,7 +19,10 @@ function normalizeSearchText(value: string) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function compareText(left: PublicStorefrontProductDto, right: PublicStorefrontProductDto) {
+function compareText(
+  left: PublicStorefrontProductSummaryDto,
+  right: PublicStorefrontProductSummaryDto,
+) {
   return (
     left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' }) ||
     left.id.localeCompare(right.id)
@@ -24,9 +30,9 @@ function compareText(left: PublicStorefrontProductDto, right: PublicStorefrontPr
 }
 
 export function sortCatalogProducts(
-  products: PublicStorefrontProductDto[],
+  products: readonly PublicStorefrontProductSummaryDto[],
   sort: CatalogSort,
-): PublicStorefrontProductDto[] {
+): PublicStorefrontProductSummaryDto[] {
   const order = new Map(products.map((product, index) => [product.id, index]));
 
   return [...products].sort((left, right) => {
@@ -51,30 +57,74 @@ export function sortCatalogProducts(
   });
 }
 
-export function filterCatalog(
-  categories: PublicStorefrontCategoryDto[],
+export interface CatalogIndex {
+  filter(filters: CatalogFilterState): PublicStorefrontCategoryDto[];
+}
+
+export function createCatalogIndex(
+  categories: readonly PublicStorefrontCategoryDto[],
+): CatalogIndex {
+  const indexedCategories = categories.map((category) => {
+    const normalizedProductText = new Map(
+      category.products.map(
+        (product) =>
+          [product, normalizeSearchText(`${product.name} ${product.description ?? ''}`)] as const,
+      ),
+    );
+    const sortedProducts = new Map<CatalogSort, readonly PublicStorefrontProductSummaryDto[]>();
+
+    return {
+      source: category,
+      normalizedName: normalizeSearchText(category.name),
+      normalizedProductText,
+      sortedProducts,
+    };
+  });
+
+  return {
+    filter(filters) {
+      const normalizedQuery = normalizeSearchText(filters.query);
+
+      return indexedCategories.flatMap((category) => {
+        let orderedProducts = category.sortedProducts.get(filters.sort);
+        if (!orderedProducts) {
+          orderedProducts = sortCatalogProducts(category.source.products, filters.sort);
+          category.sortedProducts.set(filters.sort, orderedProducts);
+        }
+
+        const categoryMatches = category.normalizedName.includes(normalizedQuery);
+        const products = orderedProducts.filter((product) => {
+          if (filters.onlyAvailable && product.isSoldOut) return false;
+          if (!normalizedQuery) return true;
+          return (
+            categoryMatches ||
+            category.normalizedProductText.get(product)?.includes(normalizedQuery) === true
+          );
+        });
+
+        return products.length > 0
+          ? [
+              {
+                ...category.source,
+                products,
+              },
+            ]
+          : [];
+      });
+    },
+  };
+}
+
+export function filterIndexedCatalog(
+  index: CatalogIndex,
   filters: CatalogFilterState,
 ): PublicStorefrontCategoryDto[] {
-  const normalizedQuery = normalizeSearchText(filters.query);
+  return index.filter(filters);
+}
 
-  return categories
-    .map((category) => {
-      const categoryMatches = normalizeSearchText(category.name).includes(normalizedQuery);
-      const products = category.products.filter((product) => {
-        if (filters.onlyAvailable && product.isSoldOut) return false;
-        if (!normalizedQuery) return true;
-        return (
-          categoryMatches ||
-          normalizeSearchText(`${product.name} ${product.description ?? ''}`).includes(
-            normalizedQuery,
-          )
-        );
-      });
-
-      return {
-        ...category,
-        products: sortCatalogProducts(products, filters.sort),
-      };
-    })
-    .filter((category) => category.products.length > 0);
+export function filterCatalog(
+  categories: readonly PublicStorefrontCategoryDto[],
+  filters: CatalogFilterState,
+): PublicStorefrontCategoryDto[] {
+  return createCatalogIndex(categories).filter(filters);
 }

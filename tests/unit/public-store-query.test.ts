@@ -5,6 +5,7 @@ import {
   getPublicCatalog,
   getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
+  getPublicProductDetail,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
 
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   storeFindUnique: vi.fn(),
   storeSlugRedirectFindUnique: vi.fn(),
   categoryFindMany: vi.fn(),
+  productFindFirst: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
   storeAssetFindMany: vi.fn(),
   listPublicStoreBanners: vi.fn(),
@@ -104,6 +106,7 @@ describe('queries públicas da loja', () => {
     mocks.storeFindUnique.mockResolvedValue(publicStore());
     mocks.storeSlugRedirectFindUnique.mockResolvedValue(null);
     mocks.categoryFindMany.mockResolvedValue([]);
+    mocks.productFindFirst.mockResolvedValue(null);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
     mocks.storeAssetFindMany.mockResolvedValue([]);
     mocks.listPublicStoreBanners.mockResolvedValue([]);
@@ -118,6 +121,7 @@ describe('queries públicas da loja', () => {
       store: { findUnique: mocks.storeFindUnique },
       storeSlugRedirect: { findUnique: mocks.storeSlugRedirectFindUnique },
       category: { findMany: mocks.categoryFindMany },
+      product: { findFirst: mocks.productFindFirst },
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
       storeAsset: { findMany: mocks.storeAssetFindMany },
     });
@@ -467,6 +471,118 @@ describe('queries públicas da loja', () => {
           }),
         }),
       }),
+    );
+  });
+
+  it('mantém o catálogo inicial leve e escopa produtos por tenant e loja', async () => {
+    mocks.categoryFindMany.mockResolvedValue([
+      {
+        id: 'category-1',
+        name: 'Hambúrgueres',
+        description: null,
+        products: [
+          {
+            id: '4da03571-bffd-45ef-8c44-20686c487838',
+            name: 'Burger da casa',
+            description: 'Pão, carne e queijo',
+            imageUrl: null,
+            imageAssetId: null,
+            basePrice: 2_500,
+            isFeatured: true,
+            isSoldOut: false,
+          },
+        ],
+      },
+    ]);
+
+    const result = await getPublicCatalog('store-1', 'tenant-1');
+    const query = mocks.categoryFindMany.mock.calls[0][0];
+
+    expect(query.select.products.where).toEqual({
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      isAvailable: true,
+      archivedAt: null,
+    });
+    expect(query.select.products.select).not.toHaveProperty('allowNotes');
+    expect(query.select.products.select).not.toHaveProperty('optionGroups');
+    expect(result[0].products[0]).not.toHaveProperty('allowNotes');
+    expect(result[0].products[0]).not.toHaveProperty('optionGroups');
+  });
+
+  it('busca o detalhe sob demanda com isolamento e somente opções públicas ativas', async () => {
+    const productId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const imageAssetId = 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1';
+    mocks.productFindFirst.mockResolvedValue({
+      id: productId,
+      name: 'Burger da casa',
+      description: 'Pão, carne e queijo',
+      imageUrl: 'https://legacy.invalid/burger.jpg',
+      imageAssetId,
+      basePrice: 2_500,
+      isFeatured: true,
+      isSoldOut: false,
+      allowNotes: true,
+      optionGroups: [
+        {
+          id: 'group-1',
+          title: 'Adicionais',
+          description: null,
+          isRequired: false,
+          isMultiple: true,
+          minSelections: 0,
+          maxSelections: 3,
+          options: [{ id: 'option-1', name: 'Bacon', price: 400 }],
+        },
+      ],
+    });
+
+    const result = await getPublicProductDetail('store-1', 'tenant-1', productId);
+    const query = mocks.productFindFirst.mock.calls[0][0];
+
+    expect(query.where).toEqual({
+      id: productId,
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      isAvailable: true,
+      archivedAt: null,
+      category: {
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        isActive: true,
+        archivedAt: null,
+      },
+    });
+    expect(query.select.optionGroups).toMatchObject({
+      where: { isActive: true, archivedAt: null },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        options: {
+          where: { isAvailable: true, archivedAt: null },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: productId,
+        allowNotes: true,
+        imageUrl: `/api/store-assets/${imageAssetId}?width=768`,
+        optionGroups: [
+          expect.objectContaining({
+            id: 'group-1',
+            options: [{ id: 'option-1', name: 'Bacon', price: 400 }],
+          }),
+        ],
+      }),
+    );
+    expect(mocks.unstableCache).toHaveBeenCalledWith(
+      expect.any(Function),
+      ['public-product-detail', 'store-1', 'tenant-1', productId],
+      {
+        revalidate: 60,
+        tags: ['catalog:store-1'],
+      },
     );
   });
 
