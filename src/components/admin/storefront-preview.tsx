@@ -43,6 +43,12 @@ interface StorefrontPreviewProps {
   coverUrl: string | null;
   categories: AdminStoreCategoryItem[];
   assets: AdminStoreAssetItem[];
+  displaySettings?: {
+    showEstimatedTimeInHero: boolean;
+    showFulfillmentInHero: boolean;
+    showMinOrderValueInHero: boolean;
+    showOpeningHoursInHero: boolean;
+  };
 }
 
 export const StorefrontPreview = memo(function StorefrontPreview({
@@ -53,6 +59,7 @@ export const StorefrontPreview = memo(function StorefrontPreview({
   coverUrl,
   categories,
   assets,
+  displaySettings,
 }: StorefrontPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('mobile');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -158,8 +165,17 @@ export const StorefrontPreview = memo(function StorefrontPreview({
               nextTransitionAt: null,
             }}
             estimatedTime="30–45 min"
-            neighborhood="Centro"
-            city="Sua cidade"
+            minOrderValue={2000}
+            deliveryEnabled
+            pickupEnabled
+            openingHours={[
+              { dayOfWeek: 'MONDAY', openTime: '18:00', closeTime: '23:00' },
+              { dayOfWeek: 'FRIDAY', openTime: '18:00', closeTime: '00:00' },
+            ]}
+            showEstimatedTimeInHero={displaySettings?.showEstimatedTimeInHero ?? true}
+            showFulfillmentInHero={displaySettings?.showFulfillmentInHero ?? false}
+            showMinOrderValueInHero={displaySettings?.showMinOrderValueInHero ?? true}
+            showOpeningHoursInHero={displaySettings?.showOpeningHoursInHero ?? false}
             logoUrl={logoUrl}
             coverUrl={coverUrl}
             config={config}

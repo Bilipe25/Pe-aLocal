@@ -73,6 +73,18 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
     : [];
   const minDeliveryFee =
     deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
+  const fullAddress =
+    store.address && 'street' in store.address
+      ? {
+          street: store.address.street,
+          number: store.address.number,
+          complement: store.address.complement,
+          neighborhood: store.address.neighborhood,
+          city: store.address.city,
+          state: store.address.state,
+          zipCode: store.address.zipCode,
+        }
+      : null;
 
   return (
     <div
@@ -96,8 +108,16 @@ export default async function StoreLayout({ children, params }: StoreLayoutProps
           pickupEnabled={store.settings?.pickupEnabled}
           minDeliveryFee={minDeliveryFee}
           openingHours={store.openingHours}
-          neighborhood={store.address?.neighborhood}
-          city={store.address?.city}
+          acceptsPix={store.settings?.acceptsPix}
+          acceptsCash={store.settings?.acceptsCash}
+          acceptsCardOnDelivery={store.settings?.acceptsCardOnDelivery}
+          phone={store.phone}
+          whatsapp={store.whatsapp}
+          fullAddress={fullAddress}
+          showEstimatedTimeInHero={store.settings?.showEstimatedTimeInHero}
+          showFulfillmentInHero={store.settings?.showFulfillmentInHero}
+          showMinOrderValueInHero={store.settings?.showMinOrderValueInHero}
+          showOpeningHoursInHero={store.settings?.showOpeningHoursInHero}
           logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
           logoAssetId={store.customization.assets.logo?.id}
           coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}

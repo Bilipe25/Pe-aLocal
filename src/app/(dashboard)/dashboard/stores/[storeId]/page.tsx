@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Clock, CreditCard, MapPin, Settings, Store, Truck } from 'lucide-react';
+import { ArrowRight, Clock, CreditCard, Eye, MapPin, Settings, Store, Truck } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,13 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
       href: `${basePath}/operations`,
       icon: Truck,
       visible: capabilities.viewOperations,
+    },
+    {
+      title: 'Exibição no cardápio',
+      description: 'Informações da capa e privacidade do painel Sobre a loja',
+      href: `${basePath}/display`,
+      icon: Eye,
+      visible: capabilities.viewDisplay,
     },
   ];
 

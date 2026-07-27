@@ -80,6 +80,12 @@ interface CustomizationEditorProps {
   storeSlug: string;
   storeName: string;
   storeStatus: 'OPEN' | 'CLOSED' | 'PAUSED';
+  displaySettings?: {
+    showEstimatedTimeInHero: boolean;
+    showFulfillmentInHero: boolean;
+    showMinOrderValueInHero: boolean;
+    showOpeningHoursInHero: boolean;
+  };
 }
 
 type Feedback = { tone: 'success' | 'error'; message: string } | null;
@@ -162,6 +168,7 @@ export function CustomizationEditor({
   storeSlug,
   storeName,
   storeStatus,
+  displaySettings,
 }: CustomizationEditorProps) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
@@ -820,6 +827,7 @@ export function CustomizationEditor({
           coverUrl={coverUrl}
           categories={destinations.categories}
           assets={assets}
+          displaySettings={displaySettings}
         />
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">

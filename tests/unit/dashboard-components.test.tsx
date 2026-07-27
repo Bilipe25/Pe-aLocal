@@ -6,11 +6,13 @@ import { HoursForm } from '@/features/stores/components/hours-form';
 import { ProductOptionGroupsEditor } from '@/features/catalog/components/product-option-groups-editor';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
 import { StoreSettingsForm } from '@/features/stores/components/store-settings-form';
+import { StorefrontDisplaySettingsForm } from '@/features/stores/components/storefront-display-settings-form';
 import { StoreReadinessChecklist } from '@/features/stores/components/store-readiness-checklist';
 
 const mocks = vi.hoisted(() => ({
   pathname: '/dashboard/catalog',
   refresh: vi.fn(),
+  updateStorefrontDisplaySettingsAction: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -22,6 +24,7 @@ vi.mock('@/features/stores/actions', () => ({
   selectStoreAction: vi.fn(),
   updateHoursAction: vi.fn(),
   updateStoreSettingsAction: vi.fn(),
+  updateStorefrontDisplaySettingsAction: mocks.updateStorefrontDisplaySettingsAction,
 }));
 
 vi.mock('@/features/catalog/actions', () => ({
@@ -182,6 +185,51 @@ describe('componentes do painel do tenant', () => {
 
     expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Entrega habilitada' })).toBeDisabled();
+  });
+
+  it('mantém preferências da vitrine independentes, restauráveis e somente leitura para manager', () => {
+    const settings = {
+      showEstimatedTimeInHero: true,
+      showFulfillmentInHero: false,
+      showMinOrderValueInHero: true,
+      showOpeningHoursInHero: false,
+      showFullAddressInStoreInfo: false,
+    };
+    const preview = {
+      estimatedTime: '30–50 min',
+      minOrderValue: 2000,
+      fulfillment: 'Entrega · Retirada',
+      hasOpeningHours: true,
+      fullAddress: 'Rua A, 10 · Centro, Fortaleza - CE · CEP 60000-000',
+    };
+    const { rerender } = render(
+      <StorefrontDisplaySettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={2}
+        settings={settings}
+        preview={preview}
+      />,
+    );
+
+    const fulfillment = screen.getByRole('switch', { name: 'Entrega e retirada' });
+    expect(fulfillment).not.toBeChecked();
+    fireEvent.click(fulfillment);
+    expect(fulfillment).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Salvar exibição' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar valores' }));
+    expect(fulfillment).not.toBeChecked();
+
+    rerender(
+      <StorefrontDisplaySettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={2}
+        settings={settings}
+        preview={preview}
+        readOnly
+      />,
+    );
+    expect(screen.getByRole('switch', { name: 'Prazo estimado' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Salvar exibição' })).not.toBeInTheDocument();
   });
 
   it('apresenta grupos e opções existentes do produto', () => {
