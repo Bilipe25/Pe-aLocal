@@ -33,6 +33,23 @@ const cartState = {
   ...mocks,
 };
 
+const productSummary = {
+  id: 'product-1',
+  name: 'Burger da casa',
+  description: null,
+  imageUrl: null,
+  imageAssetId: null,
+  basePrice: 2_500,
+  isFeatured: false,
+  isSoldOut: false,
+};
+
+const productDetail = {
+  ...productSummary,
+  allowNotes: false,
+  optionGroups: [],
+};
+
 vi.mock('@/stores/cart-store', () => ({
   MAX_CART_ITEM_QUANTITY: 99,
   useCartStore: (selector: (state: typeof cartState) => unknown) => selector(cartState),
@@ -46,18 +63,10 @@ describe('limite de quantidade no storefront', () => {
   it('desabilita o incremento e anuncia o limite no modal do produto', () => {
     render(
       <ProductModal
-        product={{
-          id: 'product-1',
-          name: 'Burger da casa',
-          description: null,
-          imageUrl: null,
-          imageAssetId: null,
-          basePrice: 2_500,
-          isFeatured: false,
-          isSoldOut: false,
-          allowNotes: false,
-          optionGroups: [],
-        }}
+        product={productSummary}
+        detail={productDetail}
+        detailStatus="success"
+        onRetry={vi.fn()}
         onClose={vi.fn()}
         storeOpen
       />,
@@ -75,17 +84,22 @@ describe('limite de quantidade no storefront', () => {
     render(
       <ProductModal
         product={{
-          id: 'product-1',
-          name: 'Burger da casa',
+          ...productSummary,
           description: 'Pão, carne e queijo',
           imageUrl: '/imagem-legada.jpg',
           imageAssetId: '4da03571-bffd-45ef-8c44-20686c487838',
-          basePrice: 2_500,
           isFeatured: true,
-          isSoldOut: false,
-          allowNotes: true,
-          optionGroups: [],
         }}
+        detail={{
+          ...productDetail,
+          description: 'Pão, carne e queijo',
+          imageUrl: '/imagem-legada.jpg',
+          imageAssetId: '4da03571-bffd-45ef-8c44-20686c487838',
+          isFeatured: true,
+          allowNotes: true,
+        }}
+        detailStatus="success"
+        onRetry={vi.fn()}
         onClose={vi.fn()}
         storeOpen
       />,
@@ -102,6 +116,42 @@ describe('limite de quantidade no storefront', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aumentar quantidade' }));
 
     expect(screen.getByRole('button', { name: /Adicionar/ })).toHaveTextContent('R$ 50,00');
+  });
+
+  it('bloqueia o CTA durante o carregamento do detalhe', () => {
+    render(
+      <ProductModal
+        product={productSummary}
+        detail={null}
+        detailStatus="loading"
+        onRetry={vi.fn()}
+        onClose={vi.fn()}
+        storeOpen
+      />,
+    );
+
+    expect(screen.getByText('Carregando adicionais e opções do produto.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Carregando...' })).toBeDisabled();
+  });
+
+  it('permite tentar novamente quando o detalhe falha', () => {
+    const onRetry = vi.fn();
+    render(
+      <ProductModal
+        product={productSummary}
+        detail={null}
+        detailStatus="error"
+        detailError="Falha ao consultar o produto."
+        onRetry={onRetry}
+        onClose={vi.fn()}
+        storeOpen
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Falha ao consultar o produto.');
+    expect(screen.getByRole('button', { name: 'Detalhes indisponíveis' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it('desabilita o incremento e anuncia o limite na sacola', () => {

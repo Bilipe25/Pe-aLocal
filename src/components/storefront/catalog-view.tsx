@@ -7,17 +7,24 @@ import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
+import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
 import { StorefrontSearch } from '@/components/storefront/storefront-search';
 import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
-import { filterCatalog, type CatalogSort } from '@/features/storefront/catalog-filter';
+import {
+  createCatalogIndex,
+  filterIndexedCatalog,
+  type CatalogSort,
+} from '@/features/storefront/catalog-filter';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 import type {
   PublicStorefrontBannerDto,
   PublicStorefrontCategoryDto,
-  PublicStorefrontProductDto,
+  PublicStorefrontProductDetailDto,
+  PublicStorefrontProductDetailResponseDto,
+  PublicStorefrontProductSummaryDto,
 } from '@/types/storefront';
 import { useFavoritesStore } from '@/stores/favorites-store';
 
@@ -28,6 +35,41 @@ interface CatalogViewProps {
   storeOpen: boolean;
   customization: StoreCustomizationConfig;
   banners: PublicStorefrontBannerDto[];
+}
+
+const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
+
+type ProductDetailState =
+  | { productId: string; status: 'loading' }
+  | { productId: string; status: 'success'; detail: PublicStorefrontProductDetailDto }
+  | { productId: string; status: 'error'; message: string };
+
+function isProductDetailResponse(
+  value: unknown,
+  productId: string,
+): value is PublicStorefrontProductDetailResponseDto {
+  if (!value || typeof value !== 'object' || !('product' in value)) return false;
+  const product = value.product;
+  if (!product || typeof product !== 'object') return false;
+  return (
+    'id' in product &&
+    product.id === productId &&
+    'optionGroups' in product &&
+    Array.isArray(product.optionGroups)
+  );
+}
+
+function getProductDetailErrorMessage(payload: unknown, status: number) {
+  if (status === 404) return 'Este produto não está mais disponível.';
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'message' in payload &&
+    typeof payload.message === 'string'
+  ) {
+    return payload.message;
+  }
+  return 'Não foi possível carregar os detalhes. Tente novamente.';
 }
 
 export function CatalogView({
@@ -45,7 +87,10 @@ export function CatalogView({
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     categories[0]?.id ?? null,
   );
-  const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductDto | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductSummaryDto | null>(
+    null,
+  );
+  const [productDetailState, setProductDetailState] = useState<ProductDetailState | null>(null);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<CatalogSort>('RELEVANCE');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
@@ -53,6 +98,15 @@ export function CatalogView({
   const deferredSearch = useDeferredValue(search);
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const catalogRef = useRef<HTMLElement>(null);
+  const selectedProductIdRef = useRef<string | null>(null);
+  const productDetailRequestRef = useRef<AbortController | null>(null);
+  const productDetailCacheRef = useRef(
+    new Map<
+      string,
+      { detail: PublicStorefrontProductDetailDto; expirationTimer: ReturnType<typeof setTimeout> }
+    >(),
+  );
 
   useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
   const availableProductIds = useMemo(
@@ -64,19 +118,24 @@ export function CatalogView({
     [availableProductIds, setFavoriteStore, storeId],
   );
 
+  const catalogIndex = useMemo(() => createCatalogIndex(categories), [categories]);
   const visibleCategories = useMemo(() => {
-    return filterCatalog(categories, {
+    return filterIndexedCatalog(catalogIndex, {
       query: deferredSearch,
       sort,
       onlyAvailable,
     });
-  }, [categories, deferredSearch, onlyAvailable, sort]);
+  }, [catalogIndex, deferredSearch, onlyAvailable, sort]);
 
   const featuredProducts = useMemo(
     () =>
       visibleCategories
         .flatMap((category) => category.products)
         .filter((product) => product.isFeatured),
+    [visibleCategories],
+  );
+  const visibleProductCount = useMemo(
+    () => visibleCategories.reduce((count, category) => count + category.products.length, 0),
     [visibleCategories],
   );
   const favoriteProductIdSet = useMemo(() => new Set(favoriteProductIds), [favoriteProductIds]);
@@ -113,16 +172,103 @@ export function CatalogView({
     });
   }
 
-  function openProduct(product: PublicStorefrontProductDto) {
+  async function loadProductDetail(
+    product: PublicStorefrontProductSummaryDto,
+    bypassCache = false,
+  ) {
+    const cached = productDetailCacheRef.current.get(product.id);
+    if (!bypassCache && cached) {
+      setProductDetailState({ productId: product.id, status: 'success', detail: cached.detail });
+      return;
+    }
+    if (cached) {
+      clearTimeout(cached.expirationTimer);
+      productDetailCacheRef.current.delete(product.id);
+    }
+
+    productDetailRequestRef.current?.abort();
+    const controller = new AbortController();
+    productDetailRequestRef.current = controller;
+    setProductDetailState({ productId: product.id, status: 'loading' });
+
+    try {
+      const response = await fetch(
+        `/api/storefront/${encodeURIComponent(storeSlug)}/products/${encodeURIComponent(product.id)}`,
+        {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        },
+      );
+      const payload: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(getProductDetailErrorMessage(payload, response.status));
+      }
+      if (!isProductDetailResponse(payload, product.id)) {
+        throw new Error('Os detalhes recebidos são inválidos. Tente novamente.');
+      }
+
+      const expirationTimer = setTimeout(() => {
+        const current = productDetailCacheRef.current.get(product.id);
+        if (current?.expirationTimer === expirationTimer) {
+          productDetailCacheRef.current.delete(product.id);
+        }
+      }, PRODUCT_DETAIL_CACHE_TTL_MS);
+      productDetailCacheRef.current.set(product.id, {
+        detail: payload.product,
+        expirationTimer,
+      });
+      if (selectedProductIdRef.current === product.id) {
+        setProductDetailState({
+          productId: product.id,
+          status: 'success',
+          detail: payload.product,
+        });
+      }
+    } catch (error) {
+      if (controller.signal.aborted || selectedProductIdRef.current !== product.id) return;
+      setProductDetailState({
+        productId: product.id,
+        status: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar os detalhes. Tente novamente.',
+      });
+    } finally {
+      if (productDetailRequestRef.current === controller) {
+        productDetailRequestRef.current = null;
+      }
+    }
+  }
+
+  function openProduct(product: PublicStorefrontProductSummaryDto) {
     lastFocusedProductRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    selectedProductIdRef.current = product.id;
     setSelectedProduct(product);
+    void loadProductDetail(product);
   }
 
   function closeProduct() {
+    selectedProductIdRef.current = null;
+    productDetailRequestRef.current?.abort();
+    productDetailRequestRef.current = null;
     setSelectedProduct(null);
     requestAnimationFrame(() => lastFocusedProductRef.current?.focus());
   }
+
+  useEffect(
+    () => () => {
+      selectedProductIdRef.current = null;
+      productDetailRequestRef.current?.abort();
+      for (const cached of productDetailCacheRef.current.values()) {
+        clearTimeout(cached.expirationTimer);
+      }
+      productDetailCacheRef.current.clear();
+    },
+    [],
+  );
 
   function clearSearch() {
     setSearch('');
@@ -149,13 +295,13 @@ export function CatalogView({
       { rootMargin: '-100px 0px -60% 0px', threshold: 0 },
     );
 
-    const sections = document.querySelectorAll('[data-category-id]');
+    const sections = catalogRef.current?.querySelectorAll('[data-category-id]') ?? [];
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
   }, [visibleCategories]);
 
   const productCard = (
-    product: PublicStorefrontProductDto,
+    product: PublicStorefrontProductSummaryDto,
     variant: 'featured' | 'horizontal' | 'compact',
     withAnchor = false,
   ) => (
@@ -204,10 +350,23 @@ export function CatalogView({
 
     if (section === 'CATALOG') {
       return (
-        <main key={section} className="storefront-catalog" aria-busy={search !== deferredSearch}>
+        <main
+          key={section}
+          ref={catalogRef}
+          className="storefront-catalog"
+          aria-busy={search !== deferredSearch}
+        >
+          {visibleCategories.length > 0 && (deferredSearch.trim() || activeFilterCount > 0) && (
+            <p className="sr-only" role="status" aria-live="polite">
+              {visibleProductCount}{' '}
+              {visibleProductCount === 1 ? 'produto encontrado' : 'produtos encontrados'}
+            </p>
+          )}
           {visibleCategories.length === 0 ? (
             <section className="storefront-empty" role="status" aria-live="polite">
-              <SearchX className="storefront-empty-icon" aria-hidden="true" />
+              <div className="storefront-empty-icon" aria-hidden="true">
+                <SearchX aria-hidden="true" />
+              </div>
               <h2 className="storefront-empty-title">
                 {deferredSearch.trim()
                   ? `Nenhum resultado para “${deferredSearch.trim()}”`
@@ -238,7 +397,7 @@ export function CatalogView({
                 key={category.id}
                 id={`category-${category.id}`}
                 data-category-id={category.id}
-                className="storefront-category-section"
+                className="storefront-category-section storefront-section-reveal"
               >
                 <div className="storefront-category-heading">
                   {customization.layout.showCategoryImages &&
@@ -301,6 +460,23 @@ export function CatalogView({
     return null;
   }
 
+  const selectedProductDetail =
+    selectedProduct &&
+    productDetailState?.productId === selectedProduct.id &&
+    productDetailState.status === 'success'
+      ? productDetailState.detail
+      : null;
+  const selectedProductDetailStatus =
+    selectedProduct && productDetailState?.productId === selectedProduct.id
+      ? productDetailState.status
+      : 'loading';
+  const selectedProductDetailError =
+    selectedProduct &&
+    productDetailState?.productId === selectedProduct.id &&
+    productDetailState.status === 'error'
+      ? productDetailState.message
+      : undefined;
+
   return (
     <>
       {customization.layout.showSearch && (
@@ -310,6 +486,7 @@ export function CatalogView({
           inputRef={searchInputRef}
           onFilterClick={() => setFiltersOpen(true)}
           activeFilterCount={activeFilterCount}
+          isBusy={search !== deferredSearch}
         />
       )}
 
@@ -320,6 +497,10 @@ export function CatalogView({
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
+          detail={selectedProductDetail}
+          detailStatus={selectedProductDetailStatus}
+          detailError={selectedProductDetailError}
+          onRetry={() => void loadProductDetail(selectedProduct, true)}
           onClose={closeProduct}
           storeOpen={storeOpen}
           isFavorite={favoriteProductIdSet.has(selectedProduct.id)}
@@ -338,6 +519,7 @@ export function CatalogView({
         }}
       />
 
+      <ScrollToTop />
       <CartFab storeId={storeId} />
     </>
   );

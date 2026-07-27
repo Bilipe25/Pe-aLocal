@@ -15,6 +15,7 @@ import type {
   PublicStorefrontBannerDto,
   PublicStorefrontCategoryDto,
   PublicStorefrontCategoryImageDto,
+  PublicStorefrontProductDetailDto,
 } from '@/types/storefront';
 
 const PUBLIC_CACHE_SECONDS = 60;
@@ -247,6 +248,28 @@ async function getPublicStoreBySlugForRequest(slug: string) {
  */
 export const getPublicStoreBySlug = cache(getPublicStoreBySlugForRequest);
 
+async function getPublicStoreScopeFromDb(slug: string) {
+  const select = { id: true, tenantId: true, slug: true } as const;
+  const store = await getDb().store.findUnique({
+    where: { slug },
+    select,
+  });
+  if (store) return store;
+
+  const redirect = await getDb().storeSlugRedirect.findUnique({
+    where: { oldSlug: slug },
+    select: { store: { select } },
+  });
+  return redirect?.store ?? null;
+}
+
+export async function getPublicStoreScopeBySlug(slug: string) {
+  return unstable_cache(() => getPublicStoreScopeFromDb(slug), ['public-store-scope', slug], {
+    revalidate: PUBLIC_CACHE_SECONDS,
+    tags: [CACHE_TAGS.storeSlug(slug)],
+  })();
+}
+
 export async function getCanonicalPublicStoreSlug(slug: string) {
   const current = await getDb().store.findUnique({
     where: { slug },
@@ -273,7 +296,12 @@ async function getCatalogFromDb(
       name: true,
       description: true,
       products: {
-        where: { isAvailable: true, archivedAt: null },
+        where: {
+          tenantId,
+          storeId,
+          isAvailable: true,
+          archivedAt: null,
+        },
         orderBy: { sortOrder: 'asc' },
         select: {
           id: true,
@@ -284,29 +312,6 @@ async function getCatalogFromDb(
           basePrice: true,
           isFeatured: true,
           isSoldOut: true,
-          allowNotes: true,
-          optionGroups: {
-            where: { isActive: true, archivedAt: null },
-            orderBy: { sortOrder: 'asc' },
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              isRequired: true,
-              isMultiple: true,
-              minSelections: true,
-              maxSelections: true,
-              options: {
-                where: { isAvailable: true, archivedAt: null },
-                orderBy: { sortOrder: 'asc' },
-                select: {
-                  id: true,
-                  name: true,
-                  price: true,
-                },
-              },
-            },
-          },
         },
       },
     },
@@ -323,6 +328,82 @@ async function getCatalogFromDb(
           : product.imageUrl,
       })),
     }));
+}
+
+async function getPublicProductDetailFromDb(
+  storeId: string,
+  tenantId: string,
+  productId: string,
+): Promise<PublicStorefrontProductDetailDto | null> {
+  const product = await getDb().product.findFirst({
+    where: {
+      id: productId,
+      tenantId,
+      storeId,
+      isAvailable: true,
+      archivedAt: null,
+      category: {
+        tenantId,
+        storeId,
+        isActive: true,
+        archivedAt: null,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      imageUrl: true,
+      imageAssetId: true,
+      basePrice: true,
+      isFeatured: true,
+      isSoldOut: true,
+      allowNotes: true,
+      optionGroups: {
+        where: { isActive: true, archivedAt: null },
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          isRequired: true,
+          isMultiple: true,
+          minSelections: true,
+          maxSelections: true,
+          options: {
+            where: { isAvailable: true, archivedAt: null },
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              id: true,
+              name: true,
+              price: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!product) return null;
+  return {
+    ...product,
+    imageUrl: product.imageAssetId ? storeAssetUrl(product.imageAssetId, 768) : product.imageUrl,
+  };
+}
+
+export async function getPublicProductDetail(
+  storeId: string,
+  tenantId: string,
+  productId: string,
+): Promise<PublicStorefrontProductDetailDto | null> {
+  return unstable_cache(
+    () => getPublicProductDetailFromDb(storeId, tenantId, productId),
+    ['public-product-detail', storeId, tenantId, productId],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.catalog(storeId)],
+    },
+  )();
 }
 
 export async function getPublicCatalog(

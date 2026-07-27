@@ -10,12 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency } from '@/lib/utils';
 import { MAX_CART_ITEM_QUANTITY, useCartStore, type SelectedOption } from '@/stores/cart-store';
-import type { PublicStorefrontProductDto } from '@/types/storefront';
+import type {
+  PublicStorefrontProductDetailDto,
+  PublicStorefrontProductSummaryDto,
+} from '@/types/storefront';
 
 import { OptionGroupSelector } from './option-group-selector';
 
 interface ProductModalProps {
-  product: PublicStorefrontProductDto;
+  product: PublicStorefrontProductSummaryDto;
+  detail: PublicStorefrontProductDetailDto | null;
+  detailStatus: 'loading' | 'success' | 'error';
+  detailError?: string;
+  onRetry: () => void;
   onClose: () => void;
   storeOpen: boolean;
   isFavorite?: boolean;
@@ -24,6 +31,10 @@ interface ProductModalProps {
 
 export function ProductModal({
   product,
+  detail,
+  detailStatus,
+  detailError,
+  onRetry,
   onClose,
   storeOpen,
   isFavorite = false,
@@ -34,6 +45,10 @@ export function ProductModal({
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Map<string, SelectedOption[]>>(new Map());
+  const resolvedProduct = detail ?? product;
+  const optionGroups = detail?.optionGroups ?? [];
+  const detailsReady = detailStatus === 'success' && detail !== null;
+  const productUnavailable = Boolean(detail?.isSoldOut);
 
   const handleOptionChange = useCallback((groupId: string, options: SelectedOption[]) => {
     setSelectedOptions((previous) => {
@@ -45,11 +60,11 @@ export function ProductModal({
 
   const allSelectedOptions = Array.from(selectedOptions.values()).flat();
   const optionsPrice = allSelectedOptions.reduce((sum, option) => sum + option.price, 0);
-  const unitPrice = product.basePrice + optionsPrice;
+  const unitPrice = resolvedProduct.basePrice + optionsPrice;
   const totalPrice = unitPrice * quantity;
-  const hasProductImage = Boolean(product.imageAssetId || product.imageUrl);
+  const hasProductImage = Boolean(resolvedProduct.imageAssetId || resolvedProduct.imageUrl);
 
-  const missingRequired = product.optionGroups
+  const missingRequired = optionGroups
     .filter((group) => group.isRequired)
     .some((group) => (selectedOptions.get(group.id) ?? []).length < group.minSelections);
   const portalContainer =
@@ -58,10 +73,14 @@ export function ProductModal({
       : (document.querySelector<HTMLElement>('.storefront-theme') ?? undefined);
 
   function handleAdd() {
+    if (!detailsReady || productUnavailable) {
+      return;
+    }
+
     const result = addItem({
-      productId: product.id,
-      productName: product.name,
-      basePrice: product.basePrice,
+      productId: resolvedProduct.id,
+      productName: resolvedProduct.name,
+      basePrice: resolvedProduct.basePrice,
       quantity,
       notes,
       selectedOptions: allSelectedOptions,
@@ -76,7 +95,7 @@ export function ProductModal({
     toast.success('Adicionado à sacola', {
       description: `${result.quantityAdded} ${
         result.quantityAdded === 1 ? 'unidade' : 'unidades'
-      } de ${product.name}.`,
+      } de ${resolvedProduct.name}.`,
       action: {
         label: 'Desfazer',
         onClick: () => removeQuantity(result.itemId, result.quantityAdded),
@@ -93,7 +112,9 @@ export function ProductModal({
           type="button"
           onClick={onFavoriteToggle}
           aria-label={
-            isFavorite ? `Remover ${product.name} dos favoritos` : `Favoritar ${product.name}`
+            isFavorite
+              ? `Remover ${resolvedProduct.name} dos favoritos`
+              : `Favoritar ${resolvedProduct.name}`
           }
           aria-pressed={isFavorite}
           className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''}`}
@@ -102,7 +123,7 @@ export function ProductModal({
         </button>
       )}
       <Dialog.Close
-        aria-label={`Fechar detalhes de ${product.name}`}
+        aria-label={`Fechar detalhes de ${resolvedProduct.name}`}
         className="storefront-product-modal-close"
       >
         <X aria-hidden="true" />
@@ -118,9 +139,9 @@ export function ProductModal({
           {hasProductImage && (
             <div className="storefront-product-modal-media">
               <ProductImage
-                name={product.name}
-                imageUrl={product.imageUrl}
-                imageAssetId={product.imageAssetId}
+                name={resolvedProduct.name}
+                imageUrl={resolvedProduct.imageUrl}
+                imageAssetId={resolvedProduct.imageAssetId}
                 sizes="(max-width: 639px) 100vw, 32rem"
                 width={768}
               />
@@ -130,10 +151,12 @@ export function ProductModal({
 
           <div className={`storefront-product-modal-header ${hasProductImage ? 'has-media' : ''}`}>
             <div className="storefront-product-modal-heading">
-              <Dialog.Title className="storefront-product-modal-title">{product.name}</Dialog.Title>
-              {product.description ? (
+              <Dialog.Title className="storefront-product-modal-title">
+                {resolvedProduct.name}
+              </Dialog.Title>
+              {resolvedProduct.description ? (
                 <Dialog.Description className="storefront-product-modal-description">
-                  {product.description}
+                  {resolvedProduct.description}
                 </Dialog.Description>
               ) : (
                 <Dialog.Description className="sr-only">
@@ -142,15 +165,46 @@ export function ProductModal({
               )}
               <p className="storefront-product-modal-price">
                 <span>A partir de</span>
-                {formatCurrency(product.basePrice)}
+                {formatCurrency(resolvedProduct.basePrice)}
               </p>
             </div>
             {!hasProductImage && modalActions}
           </div>
 
-          {product.optionGroups.length > 0 && (
+          {detailStatus === 'loading' && (
+            <div
+              id="product-details-loading"
+              className="storefront-product-modal-load-state"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="sr-only">Carregando adicionais e opções do produto.</span>
+              <span className="storefront-product-modal-skeleton-line is-wide" aria-hidden="true" />
+              <span className="storefront-product-modal-skeleton-line" aria-hidden="true" />
+              <span className="storefront-product-modal-skeleton-option" aria-hidden="true" />
+              <span className="storefront-product-modal-skeleton-option" aria-hidden="true" />
+            </div>
+          )}
+
+          {detailStatus === 'error' && (
+            <div
+              id="product-details-error"
+              className="storefront-product-modal-load-error"
+              role="alert"
+            >
+              <p>
+                {detailError ??
+                  'Não foi possível carregar os adicionais deste produto. Tente novamente.'}
+              </p>
+              <Button type="button" variant="outline" onClick={onRetry}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+
+          {detailsReady && optionGroups.length > 0 && (
             <div className="storefront-product-modal-options">
-              {product.optionGroups.map((group) => (
+              {optionGroups.map((group) => (
                 <OptionGroupSelector
                   key={group.id}
                   group={group}
@@ -161,7 +215,7 @@ export function ProductModal({
             </div>
           )}
 
-          {product.allowNotes && (
+          {detailsReady && detail?.allowNotes && (
             <div className="storefront-product-modal-notes">
               <label htmlFor="product-notes">Alguma observação?</label>
               <Textarea
@@ -185,7 +239,16 @@ export function ProductModal({
                 A loja está fechada agora. Consulte o produto e volte quando os pedidos reabrirem.
               </p>
             )}
-            {storeOpen && missingRequired && (
+            {storeOpen && detailsReady && productUnavailable && (
+              <p
+                id="product-sold-out-message"
+                role="status"
+                className="storefront-product-modal-message"
+              >
+                Este produto está esgotado no momento.
+              </p>
+            )}
+            {storeOpen && detailsReady && !productUnavailable && missingRequired && (
               <p
                 id="required-options-message"
                 role="status"
@@ -231,17 +294,31 @@ export function ProductModal({
 
               <Button
                 onClick={handleAdd}
-                disabled={!storeOpen || missingRequired}
+                disabled={!storeOpen || !detailsReady || productUnavailable || missingRequired}
                 aria-describedby={
                   !storeOpen
                     ? 'store-closed-product-message'
-                    : missingRequired
-                      ? 'required-options-message'
-                      : undefined
+                    : detailStatus === 'loading'
+                      ? 'product-details-loading'
+                      : detailStatus === 'error'
+                        ? 'product-details-error'
+                        : productUnavailable
+                          ? 'product-sold-out-message'
+                          : missingRequired
+                            ? 'required-options-message'
+                            : undefined
                 }
                 className="storefront-primary-action storefront-product-modal-cta"
               >
-                {storeOpen ? `Adicionar · ${formatCurrency(totalPrice)}` : 'Loja fechada'}
+                {!storeOpen
+                  ? 'Loja fechada'
+                  : detailStatus === 'loading'
+                    ? 'Carregando...'
+                    : detailStatus === 'error'
+                      ? 'Detalhes indisponíveis'
+                      : productUnavailable
+                        ? 'Produto esgotado'
+                        : `Adicionar · ${formatCurrency(totalPrice)}`}
               </Button>
             </div>
           </div>

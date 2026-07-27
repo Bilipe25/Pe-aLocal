@@ -21,7 +21,7 @@ export interface PublicStorefrontOptionGroupDto {
   options: PublicStorefrontOptionDto[];
 }
 
-export interface PublicStorefrontProductDto {
+export interface PublicStorefrontProductSummaryDto {
   id: string;
   name: string;
   description: string | null;
@@ -30,8 +30,15 @@ export interface PublicStorefrontProductDto {
   basePrice: number;
   isFeatured: boolean;
   isSoldOut: boolean;
+}
+
+export interface PublicStorefrontProductDetailDto extends PublicStorefrontProductSummaryDto {
   allowNotes: boolean;
   optionGroups: PublicStorefrontOptionGroupDto[];
+}
+
+export interface PublicStorefrontProductDetailResponseDto {
+  product: PublicStorefrontProductDetailDto;
 }
 
 export interface PublicStorefrontCategoryImageDto {
@@ -47,7 +54,7 @@ export interface PublicStorefrontCategoryDto {
   name: string;
   description: string | null;
   image: PublicStorefrontCategoryImageDto | null;
-  products: PublicStorefrontProductDto[];
+  products: PublicStorefrontProductSummaryDto[];
 }
 
 export interface PublicStorefrontBannerDto {
