@@ -92,6 +92,71 @@ jobs:
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Verify checkout v2 rollout readiness
+        run: pnpm db:checkout-v2:preflight
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Validate checkout v2 staging smoke configuration
+        if: ${{ inputs.environment == 'staging' }}
+        env:
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+          E2E_STORE_ID: ${{ vars.E2E_STORE_ID }}
+          E2E_STORE_SLUG: ${{ vars.E2E_STORE_SLUG }}
+          E2E_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_ORDER_TRACKING_TOKEN }}
+          E2E_EXPIRED_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_EXPIRED_ORDER_TRACKING_TOKEN }}
+          E2E_DELIVERY_POSTAL_CODE: ${{ vars.E2E_DELIVERY_POSTAL_CODE }}
+          E2E_OUTSIDE_DELIVERY_POSTAL_CODE: ${{ vars.E2E_OUTSIDE_DELIVERY_POSTAL_CODE }}
+          E2E_COUPON_CODE: ${{ vars.E2E_COUPON_CODE }}
+        run: |
+          required=(
+            E2E_OWNER_EMAIL
+            E2E_OWNER_PASSWORD
+            E2E_STORE_ID
+            E2E_STORE_SLUG
+            E2E_ORDER_TRACKING_TOKEN
+            E2E_EXPIRED_ORDER_TRACKING_TOKEN
+            E2E_DELIVERY_POSTAL_CODE
+            E2E_OUTSIDE_DELIVERY_POSTAL_CODE
+            E2E_COUPON_CODE
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing checkout v2 smoke configuration: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            exit 1
+          fi
+      - name: Install staging smoke browser
+        if: ${{ inputs.environment == 'staging' }}
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run checkout v2 on Cloudflare workerd
+        if: ${{ inputs.environment == 'staging' }}
+        run: pnpm test:workerd
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+          E2E_STORE_ID: ${{ vars.E2E_STORE_ID }}
+          E2E_STORE_SLUG: ${{ vars.E2E_STORE_SLUG }}
+          E2E_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_ORDER_TRACKING_TOKEN }}
+          E2E_EXPIRED_ORDER_TRACKING_TOKEN: ${{ secrets.E2E_EXPIRED_ORDER_TRACKING_TOKEN }}
+          E2E_DELIVERY_POSTAL_CODE: ${{ vars.E2E_DELIVERY_POSTAL_CODE }}
+          E2E_OUTSIDE_DELIVERY_POSTAL_CODE: ${{ vars.E2E_OUTSIDE_DELIVERY_POSTAL_CODE }}
+          E2E_COUPON_CODE: ${{ vars.E2E_COUPON_CODE }}
+          E2E_ALLOW_MUTATIONS: 'true'
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
       - name: Verify outbox runtime access
         run: pnpm db:outbox:preflight
         env:
@@ -132,3 +197,4 @@ jobs:
           echo "Para a aplicação, revise 'wrangler rollback --env ${{ inputs.environment }}'."
           echo "Para o consumer, revise 'wrangler rollback --config wrangler.order-events.jsonc --env ${{ inputs.environment }}'."
           echo "Siga o runbook em docs/payment-lifecycle.md."
+          echo "Para checkout v2, siga docs/checkout-v2-rollout.md e preserve o schema aditivo."
