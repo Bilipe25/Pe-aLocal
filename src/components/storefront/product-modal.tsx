@@ -2,14 +2,19 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { Heart, Minus, Plus, X } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency } from '@/lib/utils';
-import { MAX_CART_ITEM_QUANTITY, useCartStore, type SelectedOption } from '@/stores/cart-store';
+import {
+  MAX_CART_ITEM_QUANTITY,
+  useCartStore,
+  type CartItem,
+  type SelectedOption,
+} from '@/stores/cart-store';
 import type {
   PublicStorefrontProductDetailDto,
   PublicStorefrontProductSummaryDto,
@@ -27,6 +32,7 @@ interface ProductModalProps {
   storeOpen: boolean;
   isFavorite?: boolean;
   onFavoriteToggle?: () => void;
+  cartItem?: CartItem;
 }
 
 export function ProductModal({
@@ -39,16 +45,31 @@ export function ProductModal({
   storeOpen,
   isFavorite = false,
   onFavoriteToggle,
+  cartItem,
 }: ProductModalProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const updateItem = useCartStore((state) => state.updateItem);
   const removeQuantity = useCartStore((state) => state.removeQuantity);
-  const [quantity, setQuantity] = useState(1);
-  const [notes, setNotes] = useState('');
+  const [quantity, setQuantity] = useState(cartItem?.quantity ?? 1);
+  const [notes, setNotes] = useState(cartItem?.notes ?? '');
   const [selectedOptions, setSelectedOptions] = useState<Map<string, SelectedOption[]>>(new Map());
+  const restoredCartOptionsRef = useRef(false);
   const resolvedProduct = detail ?? product;
   const optionGroups = detail?.optionGroups ?? [];
   const detailsReady = detailStatus === 'success' && detail !== null;
   const productUnavailable = Boolean(detail?.isSoldOut);
+
+  useEffect(() => {
+    if (!cartItem || !detail || restoredCartOptionsRef.current) return;
+    const selectedIds = new Set(cartItem.selectedOptions.map((option) => option.id));
+    const restored = new Map<string, SelectedOption[]>();
+    for (const group of detail.optionGroups) {
+      const options = group.options.filter((option) => selectedIds.has(option.id));
+      if (options.length > 0) restored.set(group.id, options);
+    }
+    restoredCartOptionsRef.current = true;
+    setSelectedOptions(restored);
+  }, [cartItem, detail]);
 
   const handleOptionChange = useCallback((groupId: string, options: SelectedOption[]) => {
     setSelectedOptions((previous) => {
@@ -77,15 +98,44 @@ export function ProductModal({
       return;
     }
 
-    const result = addItem({
+    const nextItem = {
       productId: resolvedProduct.id,
       productName: resolvedProduct.name,
       basePrice: resolvedProduct.basePrice,
       quantity,
-      notes,
+      notes: detail?.allowNotes ? notes : '',
       selectedOptions: allSelectedOptions,
       unitPrice,
-    });
+      imageUrl: resolvedProduct.imageUrl,
+      imageAssetId: resolvedProduct.imageAssetId,
+      imageAlt: resolvedProduct.name,
+    };
+
+    if (cartItem) {
+      const updateResult = updateItem(cartItem.id, nextItem);
+      if (updateResult.status === 'not-found') {
+        toast.error('Este item não está mais na sacola', {
+          description: 'A sacola pode ter sido atualizada em outra aba.',
+        });
+        onClose();
+        return;
+      }
+      if (updateResult.status === 'quantity-limit') {
+        toast.error('Limite de 99 unidades atingido', {
+          description: 'Reduza a quantidade da configuração equivalente antes de salvar.',
+        });
+        return;
+      }
+      toast.success(updateResult.merged ? 'Itens equivalentes agrupados' : 'Item atualizado', {
+        description: `${quantity} ${
+          quantity === 1 ? 'unidade configurada' : 'unidades configuradas'
+        } de ${resolvedProduct.name}.`,
+      });
+      onClose();
+      return;
+    }
+
+    const result = addItem(nextItem);
     if (result.quantityAdded === 0) {
       toast.error('Limite de 99 unidades atingido', {
         description: 'Reduza a quantidade na sacola antes de adicionar mais deste item.',
@@ -160,7 +210,9 @@ export function ProductModal({
                 </Dialog.Description>
               ) : (
                 <Dialog.Description className="sr-only">
-                  Configure as opções e a quantidade antes de adicionar o produto à sacola.
+                  {cartItem
+                    ? 'Revise as opções, a observação e a quantidade deste item.'
+                    : 'Configure as opções e a quantidade antes de adicionar o produto à sacola.'}
                 </Dialog.Description>
               )}
               <p className="storefront-product-modal-price">
@@ -318,7 +370,9 @@ export function ProductModal({
                       ? 'Detalhes indisponíveis'
                       : productUnavailable
                         ? 'Produto esgotado'
-                        : `Adicionar · ${formatCurrency(totalPrice)}`}
+                        : cartItem
+                          ? `Salvar alterações · ${formatCurrency(totalPrice)}`
+                          : `Adicionar · ${formatCurrency(totalPrice)}`}
               </Button>
             </div>
           </div>

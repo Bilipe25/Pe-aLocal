@@ -1,34 +1,109 @@
 import { notFound, redirect } from 'next/navigation';
-import { getPublicStoreBySlug, getPublicCatalog } from '@/server/queries/public-store';
+
 import { CatalogView } from '@/components/storefront/catalog-view';
+import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
+import { StorefrontHero } from '@/components/storefront/storefront-hero';
+import { couponCodeSchema } from '@/schemas/checkout';
+import {
+  getPublicCatalog,
+  getPublicDeliveryZones,
+  getPublicStoreBySlug,
+} from '@/server/queries/public-store';
 
 interface StorePageProps {
   params: Promise<{ storeSlug: string }>;
+  searchParams: Promise<{ coupon?: string | string[] }>;
 }
 
-export default async function StorePage({ params }: StorePageProps) {
+export default async function StorePage({ params, searchParams }: StorePageProps) {
   const { storeSlug } = await params;
+  const query = await searchParams;
+  const rawCoupon = Array.isArray(query.coupon) ? query.coupon[0] : query.coupon;
+  const parsedCoupon = rawCoupon ? couponCodeSchema.safeParse(rawCoupon) : null;
+  const initialCouponCode = parsedCoupon?.success ? parsedCoupon.data : null;
   const store = await getPublicStoreBySlug(storeSlug);
 
   if (!store) {
     notFound();
   }
-  if (store.slug !== storeSlug) redirect(`/${store.slug}`);
+  if (store.slug !== storeSlug) {
+    redirect(
+      `/${store.slug}${
+        initialCouponCode ? `?coupon=${encodeURIComponent(initialCouponCode)}` : ''
+      }`,
+    );
+  }
 
-  const categories = await getPublicCatalog(
-    store.id,
-    store.tenantId,
-    store.customization.categoryImages,
-  );
+  const [categories, deliveryZones] = await Promise.all([
+    getPublicCatalog(store.id, store.tenantId, store.customization.categoryImages),
+    store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
+  ]);
+  const minDeliveryFee =
+    deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
+  const fullAddress =
+    store.address && 'street' in store.address
+      ? {
+          street: store.address.street,
+          number: store.address.number,
+          complement: store.address.complement,
+          neighborhood: store.address.neighborhood,
+          city: store.address.city,
+          state: store.address.state,
+          zipCode: store.address.zipCode,
+        }
+      : null;
+  const config = store.customization.config;
 
   return (
-    <CatalogView
-      categories={categories}
-      storeId={store.id}
-      storeSlug={store.slug}
-      storeOpen={store.availability.acceptingOrders}
-      customization={store.customization.config}
-      banners={store.customization.banners}
-    />
+    <>
+      <StorefrontHero
+        name={store.name}
+        description={store.description}
+        availability={store.availability}
+        estimatedTime={
+          store.settings
+            ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
+            : undefined
+        }
+        minOrderValue={store.settings?.minOrderValue}
+        deliveryEnabled={Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0)}
+        pickupEnabled={store.settings?.pickupEnabled}
+        minDeliveryFee={minDeliveryFee}
+        openingHours={store.openingHours}
+        acceptsPix={store.settings?.acceptsPix}
+        acceptsCash={store.settings?.acceptsCash}
+        acceptsCardOnDelivery={store.settings?.acceptsCardOnDelivery}
+        phone={store.phone}
+        whatsapp={store.whatsapp}
+        fullAddress={fullAddress}
+        showEstimatedTimeInHero={store.settings?.showEstimatedTimeInHero}
+        showFulfillmentInHero={store.settings?.showFulfillmentInHero}
+        showMinOrderValueInHero={store.settings?.showMinOrderValueInHero}
+        showOpeningHoursInHero={store.settings?.showOpeningHoursInHero}
+        logoUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+        logoAssetId={store.customization.assets.logo?.id}
+        coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
+        coverAssetId={store.customization.assets.cover?.id}
+        config={config}
+      />
+
+      <CatalogView
+        categories={categories}
+        storeId={store.id}
+        storeSlug={store.slug}
+        storeOpen={store.availability.acceptingOrders}
+        customization={config}
+        banners={store.customization.banners}
+        initialCouponCode={initialCouponCode}
+      />
+
+      {config.platformBranding.showPedidoLocalBranding && (
+        <footer className="storefront-branding px-4 py-8 text-center text-sm">
+          Tecnologia por PedidoLocal
+        </footer>
+      )}
+
+      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
+    </>
   );
 }

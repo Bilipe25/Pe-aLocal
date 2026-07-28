@@ -10,6 +10,7 @@ import {
 } from '@/stores/last-order-store';
 
 const TRACKING_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const CREATED_AT = new Date().toISOString();
 const navigationMocks = vi.hoisted(() => ({
   pathname: '/loja-a',
   push: vi.fn(),
@@ -111,7 +112,7 @@ describe('navegação inferior do storefront', () => {
       trackingToken: TRACKING_TOKEN,
       storeId: 'store-a',
       storeSlug: 'loja-a',
-      createdAt: '2026-07-24T12:00:00.000Z',
+      createdAt: CREATED_AT,
     });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
     render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
@@ -124,22 +125,25 @@ describe('navegação inferior do storefront', () => {
     );
   });
 
-  it('remove token inválido e apresenta o estado vazio', async () => {
-    writeLastOrder(window.localStorage, {
-      trackingToken: TRACKING_TOKEN,
-      storeId: 'store-a',
-      storeSlug: 'loja-a',
-      createdAt: '2026-07-24T12:00:00.000Z',
-    });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 404 })));
-    render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
+  it.each([404, 410])(
+    'remove token indisponível (HTTP %s) e apresenta o estado vazio',
+    async (status) => {
+      writeLastOrder(window.localStorage, {
+        trackingToken: TRACKING_TOKEN,
+        storeId: 'store-a',
+        storeSlug: 'loja-a',
+        createdAt: CREATED_AT,
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })));
+      render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
-    await waitFor(() => expect(useLastOrderStore.getState().record).not.toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'Meu pedido' }));
+      await waitFor(() => expect(useLastOrderStore.getState().record).not.toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: 'Meu pedido' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'O pedido salvo não está mais disponível.',
-    );
-    expect(window.localStorage.getItem(getLastOrderStorageKey('store-a'))).toBeNull();
-  });
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'O pedido salvo não está mais disponível.',
+      );
+      expect(window.localStorage.getItem(getLastOrderStorageKey('store-a'))).toBeNull();
+    },
+  );
 });

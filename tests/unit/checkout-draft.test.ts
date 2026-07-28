@@ -5,6 +5,7 @@ import {
   clearCheckoutDraft,
   getCheckoutDraftStorageKey,
   readCheckoutDraft,
+  writeCheckoutCartHandoff,
   writeCheckoutDraft,
   type CheckoutDraftData,
 } from '@/lib/checkout/checkout-draft';
@@ -87,6 +88,31 @@ describe('rascunho do checkout por sessão', () => {
     expect(readCheckoutDraft(storage, 'store-b')).toEqual({
       ...draft,
       deliveryZoneId: 'zone-b',
+    });
+  });
+
+  it('transfere o CEP da sacola pelo sessionStorage sem apagar o rascunho existente', () => {
+    const storage = createMemoryStorage();
+    writeCheckoutDraft(storage, 'store-a', draft, 1_000);
+
+    writeCheckoutCartHandoff(
+      storage,
+      'store-a',
+      {
+        modality: 'DELIVERY',
+        deliveryPostalCode: '01001000',
+        couponCode: 'BEMVINDO10',
+      },
+      2_000,
+    );
+
+    expect(readCheckoutDraft(storage, 'store-a', 2_001)).toMatchObject({
+      customerName: draft.customerName,
+      customerPhone: draft.customerPhone,
+      paymentMethod: draft.paymentMethod,
+      modality: 'DELIVERY',
+      deliveryPostalCode: '01001000',
+      couponCode: 'BEMVINDO10',
     });
   });
 });

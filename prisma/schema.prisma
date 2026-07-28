@@ -200,6 +200,9 @@ enum AuditAction {
   OPTION_UPDATED
   OPTION_ARCHIVED
   CATALOG_REORDERED
+  COUPON_CREATED
+  COUPON_UPDATED
+  COUPON_DELETED
 }
 
 enum CustomizationRevisionAction {
@@ -317,6 +320,7 @@ model Tenant {
   categories           Category[]
   products             Product[]
   deliveryZones        DeliveryZone[]
+  deliveryPostalRanges DeliveryZonePostalRange[]
   customers            Customer[]
   orders               Order[]
   coupons              Coupon[]
@@ -378,6 +382,8 @@ model Store {
   categories           Category[]
   products             Product[]
   deliveryZones        DeliveryZone[]
+  deliveryPostalRanges DeliveryZonePostalRange[]
+  coupons              Coupon[]
   orders               Order[]
   orderCounter         StoreOrderCounter?
   customization        StoreCustomization?
@@ -532,10 +538,10 @@ model StoreAsset {
   updatedAt   DateTime         @updatedAt
   deletedAt   DateTime?
 
-  store     Store         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  createdBy User?         @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  banners   StoreBanner[]
-  productImages Product[] @relation("ProductImageAsset")
+  store         Store         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy     User?         @relation("StoreAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  banners       StoreBanner[]
+  productImages Product[]     @relation("ProductImageAsset")
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, status, createdAt])
@@ -807,13 +813,37 @@ model DeliveryZone {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store                     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  postalRanges DeliveryZonePostalRange[]
 
+  @@unique([id, tenantId, storeId])
   @@index([tenantId])
   @@index([storeId])
   @@index([sortOrder])
   @@map("delivery_zones")
+}
+
+model DeliveryZonePostalRange {
+  id              String   @id @default(uuid())
+  tenantId        String
+  storeId         String
+  deliveryZoneId  String
+  postalCodeStart String   @db.Char(8)
+  postalCodeEnd   String   @db.Char(8)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  deliveryZone DeliveryZone @relation(fields: [deliveryZoneId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([deliveryZoneId, postalCodeStart, postalCodeEnd], map: "delivery_zone_postal_ranges_zone_start_end_key")
+  @@index([tenantId, storeId, isActive])
+  @@index([deliveryZoneId, isActive])
+  @@index([storeId, postalCodeStart, postalCodeEnd])
+  @@map("delivery_zone_postal_ranges")
 }
 
 // =============================================================================
@@ -879,7 +909,9 @@ model Order {
   orderNumber            Int      @default(0)
   idempotencyKey         String
   idempotencyFingerprint String?
+  quoteFingerprint       String?  @db.VarChar(64)
   publicToken            String   @unique @default(uuid())
+  publicTokenExpiresAt   DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
   paymentReportToken     String   @unique @default(dbgenerated("(gen_random_uuid())::text"))
   paymentReportExpiresAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
@@ -889,9 +921,19 @@ model Order {
   customerPhoneNormalized String?
 
   // Modalidade e endereço
-  modality         OrderModality
-  deliveryAddress  String?
-  deliveryZoneName String?
+  modality                 OrderModality
+  deliveryAddress          String?
+  deliveryZoneName         String?
+  deliveryPostalCode       String?       @db.VarChar(8)
+  deliveryStreet           String?       @db.VarChar(160)
+  deliveryNumber           String?       @db.VarChar(30)
+  deliveryComplement       String?       @db.VarChar(120)
+  deliveryNeighborhood     String?       @db.VarChar(120)
+  deliveryCity             String?       @db.VarChar(120)
+  deliveryState            String?       @db.VarChar(2)
+  deliveryReference        String?       @db.VarChar(200)
+  promisedFulfillmentMinAt DateTime?
+  promisedFulfillmentMaxAt DateTime?
 
   // Valores (em centavos)
   subtotal    Int
@@ -943,6 +985,7 @@ model Order {
   payment        Payment?
   outboxEvents   OrderOutboxEvent[]
   paymentHistory PaymentStatusHistory[]
+  couponUsages   CouponUsage[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -954,6 +997,7 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([publicToken])
+  @@index([publicTokenExpiresAt])
   @@index([tenantId, storeId, createdAt, id])
   @@index([storeId, status, createdAt, id])
   @@index([storeId, paymentStatus, createdAt, id])
@@ -963,13 +1007,13 @@ model Order {
 }
 
 model OrderInternalNote {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   tenantId     String
   storeId      String
   orderId      String
   authorUserId String
-  body         String   @db.VarChar(1000)
-  createdAt    DateTime @default(now())
+  body         String    @db.VarChar(1000)
+  createdAt    DateTime  @default(now())
   deletedAt    DateTime?
 
   order  Order @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
@@ -1150,6 +1194,7 @@ model OrderOutboxEvent {
 model Coupon {
   id            String     @id @default(uuid())
   tenantId      String
+  storeId       String?
   code          String
   type          CouponType
   value         Int // Percentual (ex: 10 = 10%) ou centavos
@@ -1164,10 +1209,12 @@ model Coupon {
   updatedAt     DateTime   @updatedAt
 
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store?        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   usages CouponUsage[]
 
-  @@unique([tenantId, code])
+  @@unique([tenantId, storeId, code])
   @@index([tenantId])
+  @@index([tenantId, storeId, isActive])
   @@index([code])
   @@map("coupons")
 }
@@ -1180,7 +1227,9 @@ model CouponUsage {
   createdAt DateTime @default(now())
 
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@unique([couponId, orderId])
   @@index([couponId])
   @@index([orderId])
   @@map("coupon_usages")

@@ -75,6 +75,10 @@ E2E_TENANT_ID=
 E2E_STORE_ID=
 E2E_STORE_SLUG=
 E2E_ORDER_TRACKING_TOKEN=
+E2E_EXPIRED_ORDER_TRACKING_TOKEN=
+E2E_DELIVERY_POSTAL_CODE=
+E2E_OUTSIDE_DELIVERY_POSTAL_CODE=
+E2E_COUPON_CODE=
 E2E_CATEGORY_NAME=
 E2E_CATEGORY_IMAGE_PATH=
 E2E_ALLOW_MUTATIONS=false
@@ -83,7 +87,9 @@ E2E_ALLOW_MUTATIONS=false
 `E2E_ORDER_TRACKING_TOKEN` deve apontar para um pedido descartável e permite auditar a página de
 acompanhamento sem criar um novo pedido. O fluxo completo de retirada exige simultaneamente OWNER,
 slug da loja e `E2E_ALLOW_MUTATIONS=true`; ele cria e conclui um pedido real somente na loja de
-teste.
+teste. Os dois CEPs devem representar, respectivamente, uma faixa ativa da loja e uma faixa não
+atendida. `E2E_COUPON_CODE` deve pertencer à mesma loja. O token expirado deve apontar para um pedido
+descartável fora da janela pública de 30 dias e nunca deve ser reutilizado em produção.
 
 ## Carga e consultas
 

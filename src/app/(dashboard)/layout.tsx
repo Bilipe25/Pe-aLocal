@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { requireAuthenticatedUser } from '@/server/auth';
-import { PlatformRole } from '@/server/permissions';
+import { hasTenantPermission, Permission, PlatformRole } from '@/server/permissions';
 import { QueryProvider } from '@/providers/query-provider';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import {
@@ -45,7 +45,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     : null;
 
   return (
-    <DashboardShell userName={session.name} stores={storesPage.items} activeStore={activeStore}>
+    <DashboardShell
+      userName={session.name}
+      stores={storesPage.items}
+      activeStore={activeStore}
+      canViewCoupons={hasTenantPermission(session.tenantRole, Permission.VIEW_COUPONS)}
+    >
       <QueryProvider>{children}</QueryProvider>
     </DashboardShell>
   );

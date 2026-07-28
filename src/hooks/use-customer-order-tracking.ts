@@ -1,6 +1,7 @@
 'use client';
 
-import PusherClient, { type Channel } from 'pusher-js';
+import type Pusher from 'pusher-js';
+import type { Channel } from 'pusher-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -10,6 +11,12 @@ import type {
 } from '@/types/order-tracking';
 
 export type CustomerTrackingConnection = 'unavailable' | 'connecting' | 'connected' | 'degraded';
+
+function isExpiredTokenResponse(value: unknown) {
+  return Boolean(
+    value && typeof value === 'object' && 'code' in value && value.code === 'TOKEN_EXPIRED',
+  );
+}
 
 function isTrackingSignal(value: unknown): value is CustomerOrderTrackingSignalDTO {
   return Boolean(
@@ -31,16 +38,20 @@ export function useCustomerOrderTracking({
   storeSlug,
   channelName,
   initialState,
+  onExpired,
 }: {
   publicToken: string;
   storeSlug: string;
   channelName: string;
   initialState: CustomerOrderTrackingStateDTO;
+  onExpired?: () => void;
 }) {
   const router = useRouter();
-  const [state, setState] = useState(initialState);
-  const latestState = useRef(initialState);
+  const [state, setState] = useState<CustomerOrderTrackingStateDTO | null>(initialState);
+  const latestState = useRef<CustomerOrderTrackingStateDTO | null>(initialState);
   const activeRequest = useRef<Promise<void> | null>(null);
+  const expiredRef = useRef(false);
+  const [expired, setExpired] = useState(false);
   const [lastSynchronizedAt, setLastSynchronizedAt] = useState(initialState.updatedAt);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -51,7 +62,20 @@ export function useCustomerOrderTracking({
     configured ? 'connecting' : 'unavailable',
   );
 
+  const expireAccess = useCallback(() => {
+    if (expiredRef.current) return;
+    expiredRef.current = true;
+    latestState.current = null;
+    setState(null);
+    setExpired(true);
+    setError(null);
+    setConnection('unavailable');
+    onExpired?.();
+    router.refresh();
+  }, [onExpired, router]);
+
   const refresh = useCallback(async () => {
+    if (expiredRef.current) return;
     if (activeRequest.current) return activeRequest.current;
     const request = (async () => {
       setIsRefreshing(true);
@@ -60,9 +84,18 @@ export function useCustomerOrderTracking({
           `/api/orders/track/${encodeURIComponent(publicToken)}?storeSlug=${encodeURIComponent(storeSlug)}`,
           { cache: 'no-store', headers: { Accept: 'application/json' } },
         );
+        if (response.status === 410) {
+          const payload: unknown = await response.json().catch(() => null);
+          if (isExpiredTokenResponse(payload)) {
+            expireAccess();
+            return;
+          }
+        }
         if (!response.ok) throw new Error('tracking-unavailable');
         const nextState = (await response.json()) as CustomerOrderTrackingStateDTO;
+        if (expiredRef.current) return;
         const changed =
+          !latestState.current ||
           nextState.version !== latestState.current.version ||
           nextState.status !== latestState.current.status ||
           nextState.paymentStatus !== latestState.current.paymentStatus;
@@ -80,47 +113,66 @@ export function useCustomerOrderTracking({
     })();
     activeRequest.current = request;
     return request;
-  }, [publicToken, router, storeSlug]);
+  }, [expireAccess, publicToken, router, storeSlug]);
 
   useEffect(() => {
+    if (expired) return;
     let stopped = false;
     let timeout: number | undefined;
-    const poll = async () => {
-      if (stopped || document.visibilityState === 'hidden') return;
+
+    const clearScheduledPoll = () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      timeout = undefined;
+    };
+    const canPoll = () => document.visibilityState === 'visible' && navigator.onLine;
+    const scheduleNextPoll = () => {
+      clearScheduledPoll();
+      if (stopped || !canPoll()) return;
+      timeout = window.setTimeout(() => {
+        timeout = undefined;
+        void refreshAndSchedule();
+      }, 20_000);
+    };
+    const refreshAndSchedule = async () => {
+      if (stopped || !canPoll()) return;
+      clearScheduledPoll();
       await refresh();
-      if (!stopped) timeout = window.setTimeout(poll, 20_000);
+      scheduleNextPoll();
     };
-    const whenVisible = () => {
-      if (document.visibilityState === 'visible') void refresh();
+    const resumePolling = () => {
+      if (canPoll()) {
+        void refreshAndSchedule();
+      } else {
+        clearScheduledPoll();
+      }
     };
-    timeout = window.setTimeout(poll, 20_000);
-    window.addEventListener('focus', whenVisible);
-    window.addEventListener('online', whenVisible);
-    document.addEventListener('visibilitychange', whenVisible);
+
+    scheduleNextPoll();
+    window.addEventListener('focus', resumePolling);
+    window.addEventListener('online', resumePolling);
+    window.addEventListener('offline', clearScheduledPoll);
+    document.addEventListener('visibilitychange', resumePolling);
     return () => {
       stopped = true;
-      if (timeout !== undefined) window.clearTimeout(timeout);
-      window.removeEventListener('focus', whenVisible);
-      window.removeEventListener('online', whenVisible);
-      document.removeEventListener('visibilitychange', whenVisible);
+      clearScheduledPoll();
+      window.removeEventListener('focus', resumePolling);
+      window.removeEventListener('online', resumePolling);
+      window.removeEventListener('offline', clearScheduledPoll);
+      document.removeEventListener('visibilitychange', resumePolling);
     };
-  }, [refresh]);
+  }, [expired, refresh]);
 
   useEffect(() => {
-    if (!configured) return;
+    if (!configured || expired) return;
     const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
     if (!key || !cluster) return;
 
-    const client = new PusherClient(key, {
-      cluster,
-      channelAuthorization: {
-        endpoint: `/api/orders/track/${encodeURIComponent(publicToken)}/pusher-auth?storeSlug=${encodeURIComponent(storeSlug)}`,
-        transport: 'ajax',
-      },
-    });
-    const channel: Channel = client.subscribe(channelName);
-    let subscribed = channel.subscribed;
+    let stopped = false;
+    let client: Pusher | null = null;
+    let channel: Channel | null = null;
+    let subscribed = false;
+
     const onSubscribed = () => {
       subscribed = true;
       setConnection('connected');
@@ -140,29 +192,58 @@ export function useCustomerOrderTracking({
       }
     };
     const onTrackingUpdated = (event: unknown) => {
-      if (isTrackingSignal(event) && event.version >= latestState.current.version) {
+      if (
+        isTrackingSignal(event) &&
+        latestState.current &&
+        event.version >= latestState.current.version
+      ) {
         void refresh();
       }
     };
 
-    channel.bind('pusher:subscription_succeeded', onSubscribed);
-    channel.bind('pusher:subscription_error', onSubscriptionError);
-    channel.bind('tracking-updated', onTrackingUpdated);
-    client.connection.bind('state_change', onConnectionChange);
-    if (subscribed) queueMicrotask(() => setConnection('connected'));
+    const connect = async () => {
+      try {
+        const { default: PusherClient } = await import('pusher-js');
+        if (stopped) return;
+
+        client = new PusherClient(key, {
+          cluster,
+          channelAuthorization: {
+            endpoint: `/api/orders/track/${encodeURIComponent(publicToken)}/pusher-auth?storeSlug=${encodeURIComponent(storeSlug)}`,
+            transport: 'ajax',
+          },
+        });
+        channel = client.subscribe(channelName);
+        subscribed = channel.subscribed;
+        channel.bind('pusher:subscription_succeeded', onSubscribed);
+        channel.bind('pusher:subscription_error', onSubscriptionError);
+        channel.bind('tracking-updated', onTrackingUpdated);
+        client.connection.bind('state_change', onConnectionChange);
+        if (subscribed) queueMicrotask(() => setConnection('connected'));
+      } catch {
+        if (!stopped) setConnection('degraded');
+      }
+    };
+
+    queueMicrotask(() => {
+      if (!stopped) setConnection('connecting');
+    });
+    void connect();
 
     return () => {
-      channel.unbind('pusher:subscription_succeeded', onSubscribed);
-      channel.unbind('pusher:subscription_error', onSubscriptionError);
-      channel.unbind('tracking-updated', onTrackingUpdated);
-      client.connection.unbind('state_change', onConnectionChange);
-      client.unsubscribe(channelName);
-      client.disconnect();
+      stopped = true;
+      channel?.unbind('pusher:subscription_succeeded', onSubscribed);
+      channel?.unbind('pusher:subscription_error', onSubscriptionError);
+      channel?.unbind('tracking-updated', onTrackingUpdated);
+      client?.connection.unbind('state_change', onConnectionChange);
+      client?.unsubscribe(channelName);
+      client?.disconnect();
     };
-  }, [channelName, configured, publicToken, refresh, storeSlug]);
+  }, [channelName, configured, expired, publicToken, refresh, storeSlug]);
 
   return {
     state,
+    expired,
     connection,
     lastSynchronizedAt,
     error,

@@ -31,6 +31,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:outbox:preflight": "node tools/verify-outbox-runtime-access.mjs",
     "db:payment:preflight": "node tools/verify-payment-consistency.mjs",
+    "db:checkout-v2:preflight": "node tools/checkout-v2-preflight.mjs",
     "db:outbox:replay": "tsx prisma/replay-order-outbox.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",

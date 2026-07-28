@@ -14,7 +14,10 @@ test.describe.serial('compra publica e acompanhamento', () => {
   test('cliente cria retirada, acompanha e operador conclui o fluxo', async ({
     page,
   }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium', 'Pedido mutavel roda uma unica vez.');
+    test.skip(
+      !testInfo.project.name.includes('chromium'),
+      'Pedido mutavel roda uma unica vez.',
+    );
     test.skip(!storeSlug, 'E2E_STORE_SLUG nao foi configurado.');
     test.skip(!owner, 'Credenciais E2E de OWNER nao foram configuradas.');
     test.skip(
@@ -46,24 +49,55 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     await page.goto(`/${storeSlug}/cart`);
     await expect(page.getByRole('heading', { name: 'Sua sacola' })).toBeVisible();
-    await page.getByRole('link', { name: 'Continuar pedido' }).click();
+    await page.getByRole('link', { name: /Ir para checkout/ }).click();
 
-    await expect(page.getByRole('heading', { name: 'Finalizar pedido' })).toBeVisible();
-    const pickup = page.getByRole('button', { name: /Retirada/ });
-    if ((await pickup.count()) > 0) await pickup.click();
-
+    await expect(page.getByRole('heading', { name: 'Como podemos chamar você?' })).toBeVisible();
     await page.getByLabel('Nome').fill('Cliente E2E');
     await page.getByLabel('Telefone / WhatsApp').fill('(85) 99999-9999');
+    await page.getByRole('button', { name: 'Continuar para recebimento' }).click();
 
-    const cash = page.getByText('Dinheiro', { exact: false });
-    const card = page.getByText('Cartão na entrega', { exact: false });
-    if ((await cash.count()) > 0) {
-      await cash.first().click();
+    await expect(page.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
+    const pickup = page.getByRole('button', { name: 'Retirada', exact: true });
+    test.skip((await pickup.count()) === 0, 'A loja E2E não oferece retirada.');
+    await pickup.click();
+    await page.getByRole('button', { name: 'Continuar para pagamento' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
+    const pix = page.getByRole('radio', { name: /Pix/ });
+    const cash = page.getByRole('radio', { name: /Dinheiro/ });
+    const card = page.getByRole('radio', { name: /Cartão na entrega/ });
+    if ((await pix.count()) > 0) {
+      await pix.check();
+    } else if ((await cash.count()) > 0) {
+      await cash.check();
+      await page.getByLabel('Sem troco').check();
     } else if ((await card.count()) > 0) {
-      await card.first().click();
+      await card.check();
+    } else {
+      test.skip(true, 'A loja E2E não possui forma de pagamento pública.');
     }
 
-    const submit = page.getByRole('button', { name: /Confirmar pedido/ });
+    await page.getByRole('button', { name: 'Revisar pedido' }).click();
+    await expect(page.getByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
+
+    let submittedAction: { url: string; headers: Record<string, string>; body: Buffer } | undefined;
+    page.on('request', (request) => {
+      const body = request.postDataBuffer();
+      if (
+        !submittedAction &&
+        request.method() === 'POST' &&
+        request.headers()['next-action'] &&
+        body
+      ) {
+        submittedAction = {
+          url: request.url(),
+          headers: request.headers(),
+          body,
+        };
+      }
+    });
+
+    const submit = page.getByRole('button', { name: /Confirmar ·/ });
     test.skip(await submit.isDisabled(), 'Pedido E2E nao atingiu minimo ou forma de pagamento.');
     await submit.click();
 
@@ -75,6 +109,21 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     const token = new URL(page.url()).pathname.split('/').at(-1);
     expect(token).toBeTruthy();
+    expect(submittedAction).toBeDefined();
+    if (!submittedAction) throw new Error('A requisição de criação do pedido não foi capturada.');
+
+    const replayHeaders = { ...submittedAction.headers };
+    delete replayHeaders['content-length'];
+    delete replayHeaders.cookie;
+    delete replayHeaders.host;
+    const replay = await page.request.fetch(submittedAction.url, {
+      method: 'POST',
+      headers: replayHeaders,
+      data: submittedAction.body,
+    });
+    expect(replay.ok()).toBe(true);
+    expect(await replay.text()).toContain(token!);
+
     const trackingResponse = await page.evaluate(
       async ({ publicToken, slug }) => {
         const response = await fetch(

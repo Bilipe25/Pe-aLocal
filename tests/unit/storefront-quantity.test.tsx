@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CartView } from '@/components/storefront/cart-view';
+import { buildCartCheckoutHref, CartView } from '@/components/storefront/cart-view';
 import { ProductModal } from '@/components/storefront/product-modal';
 
 const mocks = vi.hoisted(() => ({
@@ -10,14 +10,22 @@ const mocks = vi.hoisted(() => ({
   getTotal: vi.fn(() => 250_000),
   removeItem: vi.fn(),
   removeQuantity: vi.fn(),
+  restoreSnapshot: vi.fn(),
   restoreItems: vi.fn(),
+  setCouponCode: vi.fn(),
   setStore: vi.fn(),
+  storageCleanup: vi.fn(),
+  subscribeToCartStorage: vi.fn(),
+  updateItem: vi.fn(),
   updateQuantity: vi.fn(),
+  getSnapshot: vi.fn(() => ({ items: [], couponCode: null, revision: 0 })),
 }));
 
 const cartState = {
   storeId: 'store-1',
   storeSlug: 'loja-1',
+  couponCode: null,
+  revision: 0,
   items: [
     {
       id: 'item-1',
@@ -52,12 +60,27 @@ const productDetail = {
 
 vi.mock('@/stores/cart-store', () => ({
   MAX_CART_ITEM_QUANTITY: 99,
+  selectCartCouponCode: (state: typeof cartState) => state.couponCode,
+  selectCartRevision: (state: typeof cartState) => state.revision,
+  subscribeToCartStorage: mocks.subscribeToCartStorage,
   useCartStore: (selector: (state: typeof cartState) => unknown) => selector(cartState),
 }));
 
 describe('limite de quantidade no storefront', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.updateItem.mockReturnValue({
+      status: 'updated',
+      itemId: 'item-1',
+      merged: false,
+    });
+    mocks.subscribeToCartStorage.mockReturnValue(mocks.storageCleanup);
+  });
+
+  it('não inclui CEP na URL criada pela sacola', () => {
+    expect(buildCartCheckoutHref('loja-1', 'DELIVERY', 'BEMVINDO10')).toBe(
+      '/loja-1/checkout?modality=DELIVERY&coupon=BEMVINDO10',
+    );
   });
 
   it('desabilita o incremento e anuncia o limite no modal do produto', () => {
@@ -154,13 +177,73 @@ describe('limite de quantidade no storefront', () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  it('edita o item preservando quantidade, observação e adicionais atuais', async () => {
+    const option = { id: 'option-a', name: 'Queijo extra', price: 300 };
+    render(
+      <ProductModal
+        product={productSummary}
+        detail={{
+          ...productDetail,
+          allowNotes: true,
+          optionGroups: [
+            {
+              id: 'group-a',
+              title: 'Adicionais',
+              description: null,
+              isRequired: false,
+              isMultiple: true,
+              minSelections: 0,
+              maxSelections: 2,
+              options: [option],
+            },
+          ],
+        }}
+        detailStatus="success"
+        onRetry={vi.fn()}
+        onClose={vi.fn()}
+        storeOpen
+        cartItem={{
+          ...cartState.items[0],
+          quantity: 2,
+          notes: 'sem cebola',
+          selectedOptions: [option],
+          unitPrice: 2_800,
+        }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /Queijo extra/ })).toBeChecked(),
+    );
+    expect(screen.getByLabelText('Alguma observação?')).toHaveValue('sem cebola');
+    expect(screen.getByRole('button', { name: /Salvar alterações/ })).toHaveTextContent('R$ 56,00');
+
+    fireEvent.click(screen.getByRole('button', { name: /Salvar alterações/ }));
+
+    expect(mocks.updateItem).toHaveBeenCalledWith(
+      'item-1',
+      expect.objectContaining({
+        quantity: 2,
+        notes: 'sem cebola',
+        selectedOptions: [option],
+        unitPrice: 2_800,
+      }),
+    );
+  });
+
   it('desabilita o incremento e anuncia o limite na sacola', () => {
-    render(<CartView storeId="store-1" storeSlug="loja-1" acceptingOrders unavailableReason="" />);
+    const { unmount } = render(
+      <CartView storeId="store-1" storeSlug="loja-1" acceptingOrders unavailableReason="" />,
+    );
 
     expect(
       screen.getByRole('button', { name: 'Aumentar quantidade de Burger da casa' }),
     ).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Limite de 99');
+    expect(screen.getByText('Limite de 99 unidades.')).toBeVisible();
     expect(mocks.updateQuantity).not.toHaveBeenCalled();
+    expect(mocks.subscribeToCartStorage).toHaveBeenCalledWith('store-1', 'loja-1');
+
+    unmount();
+    expect(mocks.storageCleanup).toHaveBeenCalledOnce();
   });
 });

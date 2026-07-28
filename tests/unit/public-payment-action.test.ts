@@ -86,7 +86,7 @@ describe('reportPixPaymentAction', () => {
 
     const result = await reportPixPaymentAction({ reportToken });
 
-    expect(result).toMatchObject({ success: false, error: { code: 'RATE_LIMIT_EXCEEDED' } });
+    expect(result).toMatchObject({ success: false, error: { code: 'RATE_LIMITED' } });
     expect(mocks.reportCustomerPixPayment).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,7 @@ describe('reportPixPaymentAction', () => {
 
     const result = await reportPixPaymentAction({ reportToken });
 
-    expect(result).toMatchObject({ success: false, error: { code: 'RATE_LIMIT_EXCEEDED' } });
+    expect(result).toMatchObject({ success: false, error: { code: 'RATE_LIMITED' } });
     expect(mocks.reportCustomerPixPayment).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,8 @@ interface TrackingSnapshot {
   preparingAt: Date | null;
   readyAt: Date | null;
   dispatchedAt: Date | null;
+  promisedFulfillmentMinAt: Date | null;
+  promisedFulfillmentMaxAt: Date | null;
   updatedAt: Date;
   cancellationReasonCode: OrderCancellationReasonCode | null;
   estimatedTimeMinMinutes: number;
@@ -46,6 +48,16 @@ function estimate(snapshot: TrackingSnapshot): CustomerOrderTrackingStateDTO['es
   if (snapshot.status === 'DELIVERED' || snapshot.status === 'CANCELLED') return null;
   if (snapshot.status === 'READY') return null;
 
+  if (snapshot.promisedFulfillmentMinAt && snapshot.promisedFulfillmentMaxAt) {
+    return {
+      label: snapshot.modality === 'PICKUP' ? 'Previsão para retirada' : 'Previsão de chegada',
+      minAt: snapshot.promisedFulfillmentMinAt.toISOString(),
+      maxAt: snapshot.promisedFulfillmentMaxAt.toISOString(),
+    };
+  }
+
+  // Pedidos anteriores à introdução do snapshot continuam acompanháveis.
+  // Somente esse legado recalcula a janela com a configuração atual da loja.
   const base =
     snapshot.status === 'OUT_FOR_DELIVERY'
       ? (snapshot.dispatchedAt ?? snapshot.statusChangedAt)

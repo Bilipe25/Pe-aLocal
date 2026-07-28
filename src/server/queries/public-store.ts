@@ -158,6 +158,35 @@ async function getStoreFromDb(slug: string) {
     bannerRepo.listPublicStoreBanners(store.tenantId, store.id, new Date()),
     domainRepo.findActivePrimaryStoreDomain(store.tenantId, store.id),
   ]);
+  const couponDestinations = [
+    ...new Set(
+      banners.flatMap((banner) =>
+        banner.destinationType === 'COUPON' && banner.destinationValue
+          ? [banner.destinationValue]
+          : [],
+      ),
+    ),
+  ];
+  const bannerCoupons =
+    couponDestinations.length > 0
+      ? await getDb().coupon.findMany({
+          where: {
+            tenantId: store.tenantId,
+            storeId: store.id,
+            OR: [
+              { id: { in: couponDestinations } },
+              { code: { in: couponDestinations, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true, code: true },
+        })
+      : [];
+  const couponCodeByDestination = new Map(
+    bannerCoupons.flatMap((coupon) => [
+      [coupon.id, coupon.code] as const,
+      [coupon.code.toUpperCase(), coupon.code] as const,
+    ]),
+  );
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
   const resolveAsset = (id: string | null, type: string, width?: number) => {
     if (!id) return null;
@@ -170,7 +199,13 @@ async function getStoreFromDb(slug: string) {
     if (!value || type === 'NONE') return null;
     if (type === 'CATEGORY') return `#category-${value}`;
     if (type === 'PRODUCT') return `#product-${value}`;
-    if (type === 'COUPON') return `/${store.slug}?coupon=${encodeURIComponent(value)}`;
+    if (type === 'COUPON') {
+      const code =
+        couponCodeByDestination.get(value) ??
+        couponCodeByDestination.get(value.toUpperCase()) ??
+        value.toUpperCase();
+      return `/${store.slug}?coupon=${encodeURIComponent(code)}`;
+    }
     return value;
   };
   const publicBanners = banners.map((banner): PublicStorefrontBannerDto => ({
@@ -433,7 +468,13 @@ export async function getPublicCatalog(
 
 async function getDeliveryZonesFromDb(storeId: string): Promise<PublicDeliveryZoneDto[]> {
   return getDb().deliveryZone.findMany({
-    where: { storeId, isActive: true },
+    where: {
+      storeId,
+      isActive: true,
+      postalRanges: {
+        some: { isActive: true },
+      },
+    },
     orderBy: { sortOrder: 'asc' },
     select: {
       id: true,

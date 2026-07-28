@@ -4,6 +4,7 @@ import { create } from 'zustand';
 
 export const LAST_ORDER_STORAGE_KEY_PREFIX = 'pedidolocal:last-order:';
 const LAST_ORDER_STORAGE_VERSION = 1;
+export const PUBLIC_ORDER_TRACKING_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 const PUBLIC_TOKEN_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,14 +54,18 @@ function isValidRecord(
 ): value is LastPublicOrder {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
+  const createdAt =
+    typeof record.createdAt === 'string' ? Date.parse(record.createdAt) : Number.NaN;
+  const age = Date.now() - createdAt;
   return (
     record.version === LAST_ORDER_STORAGE_VERSION &&
     record.storeId === storeId &&
     record.storeSlug === storeSlug &&
     typeof record.trackingToken === 'string' &&
     PUBLIC_TOKEN_PATTERN.test(record.trackingToken) &&
-    typeof record.createdAt === 'string' &&
-    Number.isFinite(Date.parse(record.createdAt))
+    Number.isFinite(createdAt) &&
+    age >= -5 * 60 * 1_000 &&
+    age < PUBLIC_ORDER_TRACKING_RETENTION_MS
   );
 }
 

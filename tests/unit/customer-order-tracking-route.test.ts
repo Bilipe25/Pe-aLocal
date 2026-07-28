@@ -4,10 +4,14 @@ import { GET } from '@/app/api/orders/track/[token]/route';
 
 const mocks = vi.hoisted(() => ({
   getCustomerOrderTrackingState: vi.fn(),
+  isPublicOrderTokenExpired: vi.fn(),
 }));
 
 vi.mock('@/server/services/customer-order-tracking.service', () => ({
   getCustomerOrderTrackingState: mocks.getCustomerOrderTrackingState,
+}));
+vi.mock('@/server/repositories/order.repository', () => ({
+  isPublicOrderTokenExpired: mocks.isPublicOrderTokenExpired,
 }));
 
 const token = '4da03571-bffd-45ef-8c44-20686c487838';
@@ -27,6 +31,7 @@ describe('GET /api/orders/track/[token]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCustomerOrderTrackingState.mockResolvedValue(state);
+    mocks.isPublicOrderTokenExpired.mockResolvedValue(false);
   });
 
   it('retorna apenas o estado mínimo e desabilita cache', async () => {
@@ -50,5 +55,21 @@ describe('GET /api/orders/track/[token]', () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it('retorna TOKEN_EXPIRED sem serializar dados do pedido', async () => {
+    mocks.getCustomerOrderTrackingState.mockResolvedValue(null);
+    mocks.isPublicOrderTokenExpired.mockResolvedValue(true);
+
+    const response = await GET(
+      new Request(`http://localhost/api/orders/track/${token}?storeSlug=burger-do-ze`),
+      { params: Promise.resolve({ token }) },
+    );
+
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({
+      code: 'TOKEN_EXPIRED',
+      details: [],
+    });
   });
 });

@@ -35,6 +35,7 @@ interface CatalogViewProps {
   storeOpen: boolean;
   customization: StoreCustomizationConfig;
   banners: PublicStorefrontBannerDto[];
+  initialCouponCode?: string | null;
 }
 
 const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
@@ -79,8 +80,10 @@ export function CatalogView({
   storeOpen,
   customization,
   banners,
+  initialCouponCode,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
+  const setCouponCode = useCartStore((state) => state.setCouponCode);
   const setFavoriteStore = useFavoritesStore((state) => state.setStore);
   const favoriteProductIds = useFavoritesStore((state) => state.productIds);
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
@@ -108,7 +111,10 @@ export function CatalogView({
     >(),
   );
 
-  useEffect(() => setStore(storeId, storeSlug), [storeId, storeSlug, setStore]);
+  useEffect(() => {
+    setStore(storeId, storeSlug);
+    if (initialCouponCode) setCouponCode(initialCouponCode);
+  }, [initialCouponCode, setCouponCode, setStore, storeId, storeSlug]);
   const availableProductIds = useMemo(
     () => categories.flatMap((category) => category.products.map((product) => product.id)),
     [categories],

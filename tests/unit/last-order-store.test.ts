@@ -31,6 +31,8 @@ describe('último pedido público por estabelecimento', () => {
   let storage: Storage;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-27T12:00:00.000Z'));
     storage = createMemoryStorage();
     vi.stubGlobal('window', { localStorage: storage });
     useLastOrderStore.setState({
@@ -41,6 +43,7 @@ describe('último pedido público por estabelecimento', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -89,6 +92,22 @@ describe('último pedido público por estabelecimento', () => {
         createdAt: '2026-07-24T12:00:00.000Z',
       }),
     );
+    expect(readLastOrder(storage, 'store-a', 'loja-a')).toBeNull();
+    expect(storage.getItem(getLastOrderStorageKey('store-a'))).toBeNull();
+  });
+
+  it('remove o token local quando a retenção de 30 dias termina', () => {
+    storage.setItem(
+      getLastOrderStorageKey('store-a'),
+      JSON.stringify({
+        version: 1,
+        trackingToken: TRACKING_TOKEN,
+        storeId: 'store-a',
+        storeSlug: 'loja-a',
+        createdAt: '2026-06-27T11:59:59.999Z',
+      }),
+    );
+
     expect(readLastOrder(storage, 'store-a', 'loja-a')).toBeNull();
     expect(storage.getItem(getLastOrderStorageKey('store-a'))).toBeNull();
   });

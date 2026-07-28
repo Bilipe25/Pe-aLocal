@@ -188,12 +188,16 @@ export function evaluateStoreReadiness(
     );
   }
   if (settings?.deliveryEnabled && snapshot.deliveryZones.length === 0) {
-    blockers.push(
+    const target = settings.pickupEnabled ? warnings : blockers;
+    const severity = settings.pickupEnabled ? 'WARNING' : 'BLOCKER';
+    target.push(
       issue(
         'DELIVERY_ZONE_REQUIRED',
-        'BLOCKER',
-        'Entrega sem zona ativa',
-        'Cadastre ao menos uma zona ativa ou desabilite a entrega.',
+        severity,
+        'Entrega sem faixa de CEP ativa',
+        settings.pickupEnabled
+          ? 'A retirada continua disponível, mas a entrega ficará oculta até existir uma faixa de CEP ativa.'
+          : 'Cadastre ao menos uma faixa de CEP ativa ou habilite a retirada antes de abrir a loja.',
         '/dashboard/delivery',
       ),
     );

@@ -141,7 +141,10 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
         },
       },
       deliveryZones: {
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          postalRanges: { some: { isActive: true } },
+        },
         take: 1,
         select: { id: true },
       },
@@ -312,7 +315,10 @@ export async function findStoreReadinessById(
         },
       },
       deliveryZones: {
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          postalRanges: { some: { isActive: true } },
+        },
         take: 1,
         select: { id: true },
       },

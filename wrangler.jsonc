@@ -29,7 +29,7 @@
   },
   "vars": {
     "APP_ENV": "staging",
-    "ORDER_EVENT_PUBLISH_MODE": "direct",
+    "ORDER_EVENT_PUBLISH_MODE": "outbox",
   },
   "services": [
     {
@@ -78,13 +78,23 @@
       "namespace_id": "1003",
       "simple": { "limit": 5, "period": 60 },
     },
+    {
+      "name": "CHECKOUT_QUOTE_RATE_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 60, "period": 60 },
+    },
+    {
+      "name": "ORDER_IP_RATE_LIMITER",
+      "namespace_id": "1005",
+      "simple": { "limit": 30, "period": 60 },
+    },
   ],
   "env": {
     "staging": {
       "name": "pedidolocal-staging",
       "vars": {
         "APP_ENV": "staging",
-        "ORDER_EVENT_PUBLISH_MODE": "direct",
+        "ORDER_EVENT_PUBLISH_MODE": "outbox",
       },
       "images": {
         "binding": "IMAGES",
@@ -136,6 +146,16 @@
           "name": "PAYMENT_REPORT_RATE_LIMITER",
           "namespace_id": "1003",
           "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "CHECKOUT_QUOTE_RATE_LIMITER",
+          "namespace_id": "1004",
+          "simple": { "limit": 60, "period": 60 },
+        },
+        {
+          "name": "ORDER_IP_RATE_LIMITER",
+          "namespace_id": "1005",
+          "simple": { "limit": 30, "period": 60 },
         },
       ],
     },
@@ -193,6 +213,16 @@
           "name": "PAYMENT_REPORT_RATE_LIMITER",
           "namespace_id": "2003",
           "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "CHECKOUT_QUOTE_RATE_LIMITER",
+          "namespace_id": "2004",
+          "simple": { "limit": 60, "period": 60 },
+        },
+        {
+          "name": "ORDER_IP_RATE_LIMITER",
+          "namespace_id": "2005",
+          "simple": { "limit": 30, "period": 60 },
         },
       ],
     },

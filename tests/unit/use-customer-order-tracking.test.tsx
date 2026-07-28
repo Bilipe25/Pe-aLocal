@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => {
     },
   };
   const routerRefresh = vi.fn();
+  const PusherClient = vi.fn(function MockPusherClient() {
+    return client;
+  });
   return {
     channelHandlers,
     connectionHandlers,
@@ -32,13 +35,12 @@ const mocks = vi.hoisted(() => {
     client,
     routerRefresh,
     router: { refresh: routerRefresh },
+    PusherClient,
   };
 });
 
 vi.mock('pusher-js', () => ({
-  default: vi.fn(function MockPusherClient() {
-    return mocks.client;
-  }),
+  default: mocks.PusherClient,
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => mocks.router,
@@ -72,13 +74,22 @@ describe('acompanhamento automático do cliente', () => {
     mocks.channel.subscribed = false;
     process.env.NEXT_PUBLIC_PUSHER_KEY = 'test-key';
     process.env.NEXT_PUBLIC_PUSHER_CLUSTER = 'test-cluster';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      value: true,
+    });
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(nextState), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(JSON.stringify(nextState), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
       ),
     );
   });
@@ -98,6 +109,7 @@ describe('acompanhamento automático do cliente', () => {
       }),
     );
 
+    await waitFor(() => expect(mocks.client.subscribe).toHaveBeenCalledOnce());
     act(() => mocks.channelHandlers.get('pusher:subscription_succeeded')?.());
     expect(result.current.connection).toBe('connected');
     await act(async () => {
@@ -109,7 +121,7 @@ describe('acompanhamento automático do cliente', () => {
       });
     });
 
-    await waitFor(() => expect(result.current.state.status).toBe('CONFIRMED'));
+    await waitFor(() => expect(result.current.state?.status).toBe('CONFIRMED'));
     expect(fetch).toHaveBeenCalledWith(
       '/api/orders/track/4da03571-bffd-45ef-8c44-20686c487838?storeSlug=burger-do-ze',
       expect.objectContaining({ cache: 'no-store' }),
@@ -137,6 +149,116 @@ describe('acompanhamento automático do cliente', () => {
       await vi.advanceTimersByTimeAsync(20_000);
     });
     expect(fetch).toHaveBeenCalledOnce();
-    expect(result.current.state.status).toBe('CONFIRMED');
+    expect(result.current.state?.status).toBe('CONFIRMED');
+  });
+
+  it('pausa o polling em aba oculta e sincroniza ao voltar a ficar visível', async () => {
+    delete process.env.NEXT_PUBLIC_PUSHER_KEY;
+    delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    vi.useFakeTimers();
+    renderHook(() =>
+      useCustomerOrderTracking({
+        publicToken: '4da03571-bffd-45ef-8c44-20686c487838',
+        storeSlug: 'burger-do-ze',
+        channelName: `private-order-${'a'.repeat(64)}`,
+        initialState,
+      }),
+    );
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetch).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('remove o estado visível e encerra atualizações quando o token expira', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          statusCode: 410,
+          code: 'TOKEN_EXPIRED',
+          message: 'Link expirado.',
+          details: [],
+        }),
+        {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+    const onExpired = vi.fn();
+    const { result } = renderHook(() =>
+      useCustomerOrderTracking({
+        publicToken: '4da03571-bffd-45ef-8c44-20686c487838',
+        storeSlug: 'burger-do-ze',
+        channelName: `private-order-${'a'.repeat(64)}`,
+        initialState,
+        onExpired,
+      }),
+    );
+
+    await waitFor(() => expect(mocks.client.subscribe).toHaveBeenCalledOnce());
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.expired).toBe(true);
+    expect(result.current.state).toBeNull();
+    expect(result.current.connection).toBe('unavailable');
+    expect(result.current.error).toBeNull();
+    expect(onExpired).toHaveBeenCalledOnce();
+    expect(mocks.routerRefresh).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mocks.client.disconnect).toHaveBeenCalledOnce());
+  });
+
+  it('não agenda novo polling depois de receber TOKEN_EXPIRED', async () => {
+    delete process.env.NEXT_PUBLIC_PUSHER_KEY;
+    delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ code: 'TOKEN_EXPIRED' }), {
+        status: 410,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const { result } = renderHook(() =>
+      useCustomerOrderTracking({
+        publicToken: '4da03571-bffd-45ef-8c44-20686c487838',
+        storeSlug: 'burger-do-ze',
+        channelName: `private-order-${'a'.repeat(64)}`,
+        initialState,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(result.current.expired).toBe(true);
+    expect(fetch).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });

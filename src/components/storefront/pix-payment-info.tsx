@@ -1,11 +1,24 @@
 'use client';
 
 import { Check, CheckCircle2, Copy, Loader2, MessageCircle } from 'lucide-react';
-import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from 'react';
 
 import { Button } from '@/components/ui/button';
 import { reportPixPaymentAction } from '@/features/orders/actions';
+import { normalizePhone } from '@/lib/brazil';
+import {
+  clearPaymentReportToken,
+  readPaymentReportToken,
+  subscribeToPaymentReportToken,
+} from '@/lib/orders/payment-report-token-memory';
 import type { PaymentStatus } from '@/types';
 
 interface PixPaymentInfoProps {
@@ -20,16 +33,6 @@ interface PixPaymentInfoProps {
   storeName: string;
   publicToken: string;
   paymentStatus: PaymentStatus;
-}
-
-const subscribeToPaymentReportToken = () => () => {};
-
-function readPaymentReportToken(publicToken: string): string | null {
-  try {
-    return window.sessionStorage.getItem(`payment-report:${publicToken}`);
-  } catch {
-    return null;
-  }
 }
 
 function copyWithSelectionFallback(value: string) {
@@ -69,9 +72,17 @@ export function PixPaymentInfo({
   const [isPending, startTransition] = useTransition();
   const copyStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
-  const reportToken = useSyncExternalStore(
-    subscribeToPaymentReportToken,
+  const subscribeToReportToken = useCallback(
+    (listener: () => void) => subscribeToPaymentReportToken(publicToken, listener),
+    [publicToken],
+  );
+  const getReportTokenSnapshot = useCallback(
     () => readPaymentReportToken(publicToken),
+    [publicToken],
+  );
+  const reportToken = useSyncExternalStore(
+    subscribeToReportToken,
+    getReportTokenSnapshot,
     () => null,
   );
 
@@ -85,6 +96,12 @@ export function PixPaymentInfo({
     [],
   );
 
+  useEffect(() => {
+    if (currentStatus !== 'PENDING') {
+      clearPaymentReportToken(publicToken);
+    }
+  }, [currentStatus, publicToken]);
+
   function handleReportPayment() {
     setError(null);
     startTransition(async () => {
@@ -95,6 +112,7 @@ export function PixPaymentInfo({
           setError(result.error.message);
           return;
         }
+        clearPaymentReportToken(publicToken);
         setReportedStatus(result.data.paymentStatus);
         router.refresh();
       } catch {
@@ -165,8 +183,9 @@ export function PixPaymentInfo({
     `Olá! Segue o comprovante do pedido #${String(orderNumber).padStart(4, '0')} (${totalFormatted}) na ${storeName}.`,
   );
 
-  const whatsappUrl = storeWhatsapp
-    ? `https://wa.me/55${storeWhatsapp.replace(/\D/g, '')}?text=${whatsappMessage}`
+  const normalizedWhatsapp = storeWhatsapp ? normalizePhone(storeWhatsapp) : '';
+  const whatsappUrl = /^55\d{10,11}$/.test(normalizedWhatsapp)
+    ? `https://wa.me/${normalizedWhatsapp}?text=${whatsappMessage}`
     : null;
 
   return (

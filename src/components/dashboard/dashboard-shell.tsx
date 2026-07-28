@@ -10,6 +10,7 @@ import {
   Menu,
   Settings,
   ShoppingBag,
+  TicketPercent,
   Truck,
   UtensilsCrossed,
   X,
@@ -24,15 +25,18 @@ interface DashboardShellProps {
   userName: string;
   stores: StoreSwitcherItem[];
   activeStore: StoreSwitcherItem | null;
+  canViewCoupons?: boolean;
 }
 
 function Navigation({
   pathname,
   activeStoreId,
+  canViewCoupons = false,
   onNavigate,
 }: {
   pathname: string;
   activeStoreId: string | null;
+  canViewCoupons: boolean;
   onNavigate?: () => void;
 }) {
   const fallbackHref = '/dashboard/stores';
@@ -53,13 +57,19 @@ function Navigation({
       label: 'Catálogo',
       icon: UtensilsCrossed,
     },
+    {
+      href: activeStoreId ? '/dashboard/coupons' : fallbackHref,
+      label: 'Cupons',
+      icon: TicketPercent,
+      hidden: !canViewCoupons,
+    },
     { href: activeStoreId ? '/dashboard/delivery' : fallbackHref, label: 'Entrega', icon: Truck },
     {
       href: activeStoreId ? `/dashboard/stores/${activeStoreId}` : fallbackHref,
       label: 'Minha loja',
       icon: Settings,
     },
-  ];
+  ].filter((item) => !item.hidden);
 
   return (
     <nav aria-label="Navegação do estabelecimento" className="space-y-1">
@@ -100,7 +110,13 @@ function AccountFooter({ userName }: { userName: string }) {
   );
 }
 
-export function DashboardShell({ children, userName, stores, activeStore }: DashboardShellProps) {
+export function DashboardShell({
+  children,
+  userName,
+  stores,
+  activeStore,
+  canViewCoupons = false,
+}: DashboardShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -115,7 +131,11 @@ export function DashboardShell({ children, userName, stores, activeStore }: Dash
         </Link>
         <div className="mt-4 flex-1 overflow-y-auto">
           <StoreSwitcher stores={stores} activeStore={activeStore} />
-          <Navigation pathname={pathname} activeStoreId={activeStore?.id ?? null} />
+          <Navigation
+            pathname={pathname}
+            activeStoreId={activeStore?.id ?? null}
+            canViewCoupons={canViewCoupons}
+          />
         </div>
         <AccountFooter userName={userName} />
       </aside>
@@ -152,6 +172,7 @@ export function DashboardShell({ children, userName, stores, activeStore }: Dash
                   <Navigation
                     pathname={pathname}
                     activeStoreId={activeStore?.id ?? null}
+                    canViewCoupons={canViewCoupons}
                     onNavigate={() => setMenuOpen(false)}
                   />
                 </div>
