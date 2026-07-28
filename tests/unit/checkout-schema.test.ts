@@ -1,23 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkoutSchema } from '@/schemas/checkout';
+import {
+  checkoutQuoteSchema,
+  checkoutSchema,
+  MAX_CHECKOUT_ITEM_QUANTITY,
+  MAX_CHECKOUT_LINES,
+  MAX_CHECKOUT_OPTIONS_PER_LINE,
+  MAX_CHECKOUT_TOTAL_UNITS,
+} from '@/schemas/checkout';
+
+const quoteFingerprint = 'a'.repeat(64);
+
+function uuid(index: number) {
+  return `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+}
+
+function item(index = 1, overrides: Record<string, unknown> = {}) {
+  return {
+    lineId: uuid(index),
+    productId: uuid(10_000 + index),
+    quantity: 1,
+    notes: '',
+    optionIds: [],
+    ...overrides,
+  };
+}
 
 const validCheckout = {
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP' as const,
   paymentMethod: 'PIX' as const,
+  expectedQuoteFingerprint: quoteFingerprint,
   idempotencyKey: '4da03571-bffd-45ef-8c44-20686c487838',
-  items: [
-    {
-      productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
-      quantity: 1,
-      optionIds: [],
-    },
-  ],
+  items: [item()],
 };
 
-describe('checkout payment rules', () => {
+describe('checkout v2 — contrato de pagamento e entrega', () => {
   it.each(['11999999999', '(11) 99999-9999', '11 99999-9999', '+55 11 99999-9999'])(
     'normaliza telefone celular %s no servidor',
     (customerPhone) => {
@@ -58,30 +77,113 @@ describe('checkout payment rules', () => {
     ).toBe(false);
   });
 
-  it('mantém endereço e zona obrigatórios somente para entrega', () => {
+  it('exige CEP e endereço estruturado e impede confirmar uma cotação de outro CEP', () => {
     expect(checkoutSchema.safeParse(validCheckout).success).toBe(true);
     expect(checkoutSchema.safeParse({ ...validCheckout, modality: 'DELIVERY' }).success).toBe(
+      false,
+    );
+
+    const deliveryAddress = {
+      postalCode: '01001000',
+      street: 'Praça da Sé',
+      number: '100',
+      neighborhood: 'Sé',
+      city: 'São Paulo',
+      state: 'sp',
+      complement: '',
+      reference: '',
+    };
+    const parsed = checkoutSchema.parse({
+      ...validCheckout,
+      modality: 'DELIVERY',
+      deliveryPostalCode: '01001-000',
+      deliveryAddress,
+    });
+    expect(parsed.deliveryPostalCode).toBe('01001000');
+    expect(parsed.deliveryAddress?.state).toBe('SP');
+
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        modality: 'DELIVERY',
+        deliveryPostalCode: '01001000',
+        deliveryAddress: { ...deliveryAddress, postalCode: '01111000' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('exige fingerprint SHA-256 e rejeita chaves extras do navegador', () => {
+    expect(
+      checkoutSchema.safeParse({ ...validCheckout, expectedQuoteFingerprint: 'invalido' }).success,
+    ).toBe(false);
+    expect(checkoutSchema.safeParse({ ...validCheckout, deliveryZoneId: uuid(999) }).success).toBe(
       false,
     );
   });
 });
 
-describe('checkout com dados determinísticos do seed', () => {
-  it('aceita produtos, adicionais e zonas persistidos pela loja de demonstração', () => {
+describe('checkout v2 — limites de abuso', () => {
+  it(`limita o carrinho a ${MAX_CHECKOUT_LINES} linhas`, () => {
+    const atLimit = Array.from({ length: MAX_CHECKOUT_LINES }, (_, index) => item(index + 1));
+    expect(checkoutQuoteSchema.safeParse({ modality: 'PICKUP', items: atLimit }).success).toBe(
+      true,
+    );
     expect(
-      checkoutSchema.safeParse({
-        ...validCheckout,
-        modality: 'DELIVERY',
-        deliveryZoneId: '00000000-0000-0000-0005-000000000001',
-        deliveryAddress: 'Rua Demonstração, 100',
-        items: [
-          {
-            productId: '00000000-0000-0000-0002-000000000001',
-            quantity: 1,
-            optionIds: ['00000000-0000-0000-0004-000000000001'],
-          },
-        ],
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [...atLimit, item(MAX_CHECKOUT_LINES + 1)],
+      }).success,
+    ).toBe(false);
+  });
+
+  it(`limita quantidade por linha a ${MAX_CHECKOUT_ITEM_QUANTITY} e total a ${MAX_CHECKOUT_TOTAL_UNITS}`, () => {
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { quantity: MAX_CHECKOUT_ITEM_QUANTITY })],
       }).success,
     ).toBe(true);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { quantity: MAX_CHECKOUT_ITEM_QUANTITY + 1 })],
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { quantity: 99 }), item(2, { quantity: 99 }), item(3, { quantity: 53 })],
+      }).success,
+    ).toBe(false);
+  });
+
+  it(`limita adicionais a ${MAX_CHECKOUT_OPTIONS_PER_LINE}, rejeita duplicados e limita observações`, () => {
+    const optionIds = Array.from({ length: MAX_CHECKOUT_OPTIONS_PER_LINE }, (_, index) =>
+      uuid(20_000 + index),
+    );
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { optionIds, notes: 'x'.repeat(500) })],
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { optionIds: [...optionIds, uuid(30_000)] })],
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { optionIds: [optionIds[0], optionIds[0]] })],
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'PICKUP',
+        items: [item(1, { notes: 'x'.repeat(501) })],
+      }).success,
+    ).toBe(false);
   });
 });

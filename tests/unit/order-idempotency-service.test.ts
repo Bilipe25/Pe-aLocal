@@ -12,9 +12,11 @@ const input: CheckoutInput = {
   modality: 'PICKUP',
   paymentMethod: 'PIX',
   notes: '',
+  expectedQuoteFingerprint: 'a'.repeat(64),
   idempotencyKey: '4da03571-bffd-45ef-8c44-20686c487838',
   items: [
     {
+      lineId: '10000000-0000-4000-8000-000000000001',
       productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
       quantity: 1,
       notes: '',
@@ -24,11 +26,17 @@ const input: CheckoutInput = {
 };
 
 describe('order idempotency fingerprint', () => {
-  it('ignores the idempotency key and ordering without changing checkout semantics', () => {
+  it('ignora a chave, lineId e ordenação sem alterar a semântica do checkout', () => {
     const equivalent: CheckoutInput = {
       ...input,
       idempotencyKey: '65bdab05-46f3-40ed-9285-c733721d8709',
-      items: [{ ...input.items[0], optionIds: [...input.items[0].optionIds].reverse() }],
+      items: [
+        {
+          ...input.items[0],
+          lineId: '10000000-0000-4000-8000-000000000002',
+          optionIds: [...input.items[0].optionIds].reverse(),
+        },
+      ],
     };
 
     expect(createOrderFingerprint(equivalent)).toBe(createOrderFingerprint(input));
@@ -41,6 +49,7 @@ describe('order idempotency fingerprint', () => {
         { ...input.items[0], notes: 'Sem cebola' },
         {
           ...input.items[0],
+          lineId: '10000000-0000-4000-8000-000000000003',
           notes: 'Com bacon',
           optionIds: [input.items[0].optionIds[1]],
         },
@@ -50,19 +59,22 @@ describe('order idempotency fingerprint', () => {
       ...customized,
       items: [...customized.items]
         .reverse()
-        .map((item) => ({ ...item, optionIds: [...item.optionIds].reverse() })),
+        .map((entry) => ({ ...entry, optionIds: [...entry.optionIds].reverse() })),
     };
 
     expect(createOrderFingerprint(reordered)).toBe(createOrderFingerprint(customized));
   });
 
-  it('changes when order content changes', () => {
-    expect(createOrderFingerprint({ ...input, customerName: 'Outra pessoa' })).not.toBe(
-      createOrderFingerprint(input),
-    );
+  it.each([
+    ['cliente', { customerName: 'Outra pessoa' }],
+    ['cupom', { couponCode: 'BEMVINDO10' }],
+    ['CEP', { deliveryPostalCode: '01001000' }],
+    ['cotação', { expectedQuoteFingerprint: 'b'.repeat(64) }],
+  ])('muda quando %s altera o conteúdo confirmado', (_label, change) => {
+    expect(createOrderFingerprint({ ...input, ...change })).not.toBe(createOrderFingerprint(input));
   });
 
-  it('rejects reuse with a different fingerprint but accepts legacy rows', () => {
+  it('rejeita reuso com fingerprint diferente, mas aceita linhas legadas', () => {
     expect(() => assertMatchingOrderFingerprint(null, 'new')).not.toThrow();
     expect(() => assertMatchingOrderFingerprint('same', 'same')).not.toThrow();
     expect(() => assertMatchingOrderFingerprint('old', 'new')).toThrowError(

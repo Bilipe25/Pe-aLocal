@@ -434,9 +434,17 @@ async function main() {
   console.log('✅ Adicionais criados');
 
   // 11. Delivery Zones (field: fee, estimatedTime)
-  await prisma.deliveryZone.upsert({
+  const centroZone = await prisma.deliveryZone.upsert({
     where: { id: '00000000-0000-0000-0005-000000000001' },
-    update: {},
+    update: {
+      tenantId: tenant.id,
+      storeId: store.id,
+      name: 'Centro (até 3km)',
+      fee: 500,
+      estimatedTime: '25-35 min',
+      sortOrder: 1,
+      isActive: true,
+    },
     create: {
       id: '00000000-0000-0000-0005-000000000001',
       tenantId: tenant.id,
@@ -448,9 +456,17 @@ async function main() {
     },
   });
 
-  await prisma.deliveryZone.upsert({
+  const nearbyZone = await prisma.deliveryZone.upsert({
     where: { id: '00000000-0000-0000-0005-000000000002' },
-    update: {},
+    update: {
+      tenantId: tenant.id,
+      storeId: store.id,
+      name: 'Bairros próximos (3-6km)',
+      fee: 800,
+      estimatedTime: '35-50 min',
+      sortOrder: 2,
+      isActive: true,
+    },
     create: {
       id: '00000000-0000-0000-0005-000000000002',
       tenantId: tenant.id,
@@ -461,7 +477,74 @@ async function main() {
       sortOrder: 2,
     },
   });
-  console.log('✅ Zonas de entrega criadas');
+
+  await prisma.deliveryZonePostalRange.upsert({
+    where: { id: '00000000-0000-0000-0007-000000000001' },
+    update: {
+      tenantId: tenant.id,
+      storeId: store.id,
+      deliveryZoneId: centroZone.id,
+      postalCodeStart: '01000000',
+      postalCodeEnd: '01099999',
+      isActive: true,
+    },
+    create: {
+      id: '00000000-0000-0000-0007-000000000001',
+      tenantId: tenant.id,
+      storeId: store.id,
+      deliveryZoneId: centroZone.id,
+      postalCodeStart: '01000000',
+      postalCodeEnd: '01099999',
+      isActive: true,
+    },
+  });
+
+  await prisma.deliveryZonePostalRange.upsert({
+    where: { id: '00000000-0000-0000-0007-000000000002' },
+    update: {
+      tenantId: tenant.id,
+      storeId: store.id,
+      deliveryZoneId: nearbyZone.id,
+      postalCodeStart: '01100000',
+      postalCodeEnd: '01199999',
+      isActive: true,
+    },
+    create: {
+      id: '00000000-0000-0000-0007-000000000002',
+      tenantId: tenant.id,
+      storeId: store.id,
+      deliveryZoneId: nearbyZone.id,
+      postalCodeStart: '01100000',
+      postalCodeEnd: '01199999',
+      isActive: true,
+    },
+  });
+
+  await prisma.coupon.upsert({
+    where: { id: '00000000-0000-0000-0006-000000000001' },
+    update: {
+      tenantId: tenant.id,
+      storeId: store.id,
+      code: 'BEMVINDO10',
+      type: 'PERCENTAGE',
+      value: 10,
+      minOrderValue: 2000,
+      maxDiscount: 1500,
+      isActive: true,
+    },
+    create: {
+      id: '00000000-0000-0000-0006-000000000001',
+      tenantId: tenant.id,
+      storeId: store.id,
+      code: 'BEMVINDO10',
+      type: 'PERCENTAGE',
+      value: 10,
+      minOrderValue: 2000,
+      maxDiscount: 1500,
+      isActive: true,
+    },
+  });
+  console.log('✅ Zonas por CEP e cupom de demonstração criados');
 
   console.log('\n🎉 Seed concluído!\n');
   console.log('Usuários de desenvolvimento associados ao Supabase Auth.');

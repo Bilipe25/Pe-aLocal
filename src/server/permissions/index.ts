@@ -65,6 +65,8 @@ export const Permission = {
   REFUND_PAYMENT: 'REFUND_PAYMENT',
   MANAGE_DELIVERY: 'MANAGE_DELIVERY',
   CONFIGURE_DELIVERY_ZONES: 'CONFIGURE_DELIVERY_ZONES',
+  VIEW_COUPONS: 'VIEW_COUPONS',
+  MANAGE_COUPONS: 'MANAGE_COUPONS',
   VIEW_REPORTS: 'VIEW_REPORTS',
   VIEW_BASIC_REPORTS: 'VIEW_BASIC_REPORTS',
 } as const;
@@ -124,6 +126,8 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.REFUND_PAYMENT,
     Permission.MANAGE_DELIVERY,
     Permission.CONFIGURE_DELIVERY_ZONES,
+    Permission.VIEW_COUPONS,
+    Permission.MANAGE_COUPONS,
     Permission.VIEW_REPORTS,
     Permission.VIEW_BASIC_REPORTS,
   ]),
@@ -156,6 +160,7 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.CONFIRM_MANUAL_PAYMENT,
     Permission.REFUND_PAYMENT,
     Permission.CONFIGURE_DELIVERY_ZONES,
+    Permission.VIEW_COUPONS,
     Permission.VIEW_BASIC_REPORTS,
   ]),
   [TenantRole.ATTENDANT]: new Set([

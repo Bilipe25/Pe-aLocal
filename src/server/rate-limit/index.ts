@@ -21,6 +21,10 @@ export interface RateLimiter {
 
 function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
   if (identifier.startsWith('report-payment:')) return env.PAYMENT_REPORT_RATE_LIMITER;
+  if (identifier.startsWith('checkout-quote:') || identifier.startsWith('checkout-event:')) {
+    return env.CHECKOUT_QUOTE_RATE_LIMITER;
+  }
+  if (identifier.startsWith('order-ip:')) return env.ORDER_IP_RATE_LIMITER;
   return identifier.startsWith('login:') || identifier.startsWith('password-recovery:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
@@ -63,6 +67,8 @@ export function getRateLimiter(): RateLimiter {
 export const RATE_LIMITS = {
   login: { maxAttempts: 5, windowInSeconds: 60 },
   createOrder: { maxAttempts: 10, windowInSeconds: 60 },
+  createOrderByIp: { maxAttempts: 30, windowInSeconds: 60 },
+  checkoutQuote: { maxAttempts: 60, windowInSeconds: 60 },
   publicOrderLookup: { maxAttempts: 30, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },

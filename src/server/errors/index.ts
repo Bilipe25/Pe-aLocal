@@ -40,7 +40,10 @@ export class ValidationError extends DomainError {
   readonly statusCode = 400;
   readonly code = 'VALIDATION_ERROR';
 
-  constructor(message = 'Os dados enviados são inválidos.', details: Record<string, unknown>[] = []) {
+  constructor(
+    message = 'Os dados enviados são inválidos.',
+    details: Record<string, unknown>[] = [],
+  ) {
     super(message, details);
   }
 }
@@ -118,9 +121,7 @@ export class ConcurrencyError extends DomainError {
   readonly code = 'CONCURRENCY_CONFLICT';
 
   constructor(resource = 'Recurso') {
-    super(
-      `${resource} foi alterado por outro usuário. Recarregue a página e tente novamente.`,
-    );
+    super(`${resource} foi alterado por outro usuário. Recarregue a página e tente novamente.`);
   }
 }
 
@@ -159,11 +160,96 @@ export class OrderUndoNotAllowedError extends DomainError {
  */
 export class RateLimitError extends DomainError {
   readonly statusCode = 429;
-  readonly code = 'RATE_LIMIT_EXCEEDED';
+  readonly code = 'RATE_LIMITED';
 
   constructor(message = 'Muitas tentativas. Aguarde antes de tentar novamente.') {
     super(message);
   }
+}
+
+export class CheckoutError extends DomainError {
+  readonly statusCode: number;
+  readonly code: string;
+
+  constructor(
+    code:
+      | 'CART_INVALID'
+      | 'PRODUCT_UNAVAILABLE'
+      | 'OUTSIDE_DELIVERY_AREA'
+      | 'COUPON_INVALID'
+      | 'STORE_UNAVAILABLE',
+    message: string,
+    statusCode: 400 | 409 | 413 | 422 = 422,
+    details: Record<string, unknown>[] = [],
+  ) {
+    super(message, details);
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+export class QuoteChangedError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = 'QUOTE_CHANGED';
+
+  constructor(quote: Record<string, unknown>) {
+    super('Os valores ou a disponibilidade do pedido mudaram. Revise a nova cotação.', [{ quote }]);
+  }
+}
+
+export class PublicTokenExpiredError extends DomainError {
+  readonly statusCode = 410;
+  readonly code = 'TOKEN_EXPIRED';
+
+  constructor() {
+    super('O link público deste pedido expirou.');
+  }
+}
+
+type UnexpectedErrorKind =
+  | 'error'
+  | 'non_error'
+  | 'type_error'
+  | 'range_error'
+  | 'syntax_error'
+  | 'reference_error'
+  | 'uri_error'
+  | 'database_known_error'
+  | 'database_unknown_error'
+  | 'database_initialization_error'
+  | 'database_validation_error';
+
+const SAFE_UNEXPECTED_ERROR_KINDS = new Map<string, UnexpectedErrorKind>([
+  ['TypeError', 'type_error'],
+  ['RangeError', 'range_error'],
+  ['SyntaxError', 'syntax_error'],
+  ['ReferenceError', 'reference_error'],
+  ['URIError', 'uri_error'],
+  ['PrismaClientKnownRequestError', 'database_known_error'],
+  ['PrismaClientUnknownRequestError', 'database_unknown_error'],
+  ['PrismaClientInitializationError', 'database_initialization_error'],
+  ['PrismaClientValidationError', 'database_validation_error'],
+]);
+
+/**
+ * Registra somente metadados de uma allowlist fixa.
+ *
+ * Mensagem, stack, cause e propriedades arbitrárias do erro podem conter SQL,
+ * tokens ou PII e, portanto, nunca são enviados ao logger.
+ */
+function logUnexpectedError(scope: '[UNEXPECTED_ERROR]' | '[ACTION_ERROR]', error: unknown) {
+  let kind: UnexpectedErrorKind = 'non_error';
+
+  if (error instanceof Error) {
+    kind = 'error';
+    try {
+      kind = SAFE_UNEXPECTED_ERROR_KINDS.get(error.name) ?? kind;
+    } catch {
+      // Um Error customizado pode expor `name` por getter. Não o serializamos.
+    }
+  }
+
+  console.error(scope, { kind });
 }
 
 // =============================================================================
@@ -180,7 +266,7 @@ export function errorToResponse(error: unknown): Response {
   }
 
   // Erro inesperado — log interno, resposta genérica
-  console.error('[UNEXPECTED_ERROR]', error);
+  logUnexpectedError('[UNEXPECTED_ERROR]', error);
 
   return Response.json(
     {
@@ -199,7 +285,10 @@ export function errorToResponse(error: unknown): Response {
  */
 export type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: { code: string; message: string; details?: Record<string, unknown>[] } };
+  | {
+      success: false;
+      error: { code: string; message: string; details?: Record<string, unknown>[] };
+    };
 
 /**
  * Cria um resultado de sucesso para Server Action.
@@ -223,7 +312,7 @@ export function actionError(error: unknown): ActionResult<never> {
     };
   }
 
-  console.error('[ACTION_ERROR]', error);
+  logUnexpectedError('[ACTION_ERROR]', error);
 
   return {
     success: false,

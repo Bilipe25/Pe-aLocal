@@ -127,7 +127,7 @@ describe('StoreReadinessService', () => {
     });
   });
 
-  it('bloqueia Pix, entrega, endereço, horário e fuso inválidos', () => {
+  it('mantém retirada disponível e alerta quando faltam faixas de CEP', () => {
     const snapshot = readySnapshot({
       settings: {
         ...readySnapshot().settings!,
@@ -143,11 +143,37 @@ describe('StoreReadinessService', () => {
     expect(result.blockers.map((item) => item.code)).toEqual(
       expect.arrayContaining([
         'PIX_CONFIGURATION_INVALID',
-        'DELIVERY_ZONE_REQUIRED',
         'ADDRESS_REQUIRED',
         'OPENING_HOURS_INVALID',
         'TIMEZONE_INVALID',
       ]),
+    );
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'DELIVERY_ZONE_REQUIRED',
+        severity: 'WARNING',
+      }),
+    );
+  });
+
+  it('bloqueia uma loja somente-entrega sem faixa de CEP ativa', () => {
+    const result = evaluateStoreReadiness(
+      readySnapshot({
+        settings: {
+          ...readySnapshot().settings!,
+          deliveryEnabled: true,
+          pickupEnabled: false,
+        },
+        deliveryZones: [],
+      }),
+    );
+
+    expect(result.isReady).toBe(false);
+    expect(result.blockers).toContainEqual(
+      expect.objectContaining({
+        code: 'DELIVERY_ZONE_REQUIRED',
+        severity: 'BLOCKER',
+      }),
     );
   });
 

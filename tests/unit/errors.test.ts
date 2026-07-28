@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ValidationError,
   AuthenticationError,
@@ -10,6 +10,7 @@ import {
   RateLimitError,
   actionSuccess,
   actionError,
+  errorToResponse,
 } from '@/server/errors';
 
 describe('Domain Errors', () => {
@@ -91,10 +92,38 @@ describe('Action Results', () => {
   });
 
   it('actionError com erro genérico deve retornar INTERNAL_ERROR', () => {
-    const result = actionError(new Error('Unexpected'));
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const unsafeError = Object.assign(new Error('token=segredo telefone=85999999999'), {
+        customerPhone: '85999999999',
+      });
+      const result = actionError(unsafeError);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+      expect(consoleError).toHaveBeenCalledWith('[ACTION_ERROR]', { kind: 'error' });
+      expect(consoleError.mock.calls[0]).not.toContain(unsafeError);
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('segredo');
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('85999999999');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('errorToResponse classifica por allowlist sem registrar mensagem, stack ou PII', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const unsafeError = new TypeError('SQL com email cliente@exemplo.test');
+      const response = errorToResponse(unsafeError);
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
+      expect(consoleError).toHaveBeenCalledWith('[UNEXPECTED_ERROR]', { kind: 'type_error' });
+      expect(consoleError.mock.calls[0]).not.toContain(unsafeError);
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('cliente@exemplo.test');
+    } finally {
+      consoleError.mockRestore();
     }
   });
 });

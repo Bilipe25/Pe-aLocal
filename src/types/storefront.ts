@@ -76,3 +76,57 @@ export interface PublicDeliveryZoneDto {
   estimatedTime: string | null;
   minOrderValue: number | null;
 }
+
+export type CheckoutQuoteIssueCode =
+  | 'STORE_UNAVAILABLE'
+  | 'PRODUCT_UNAVAILABLE'
+  | 'CART_INVALID'
+  | 'OUTSIDE_DELIVERY_AREA'
+  | 'COUPON_INVALID'
+  | 'MIN_ORDER_NOT_REACHED';
+
+export interface CheckoutQuoteIssueDto {
+  code: CheckoutQuoteIssueCode;
+  message: string;
+  lineId?: string;
+}
+
+export interface CheckoutQuoteLineDto {
+  lineId: string;
+  productId: string;
+  productName: string;
+  imageUrl: string | null;
+  imageAssetId: string | null;
+  quantity: number;
+  notes: string;
+  options: PublicStorefrontOptionDto[];
+  unitPrice: number;
+  itemTotal: number;
+}
+
+export interface CheckoutQuoteCouponDto {
+  code: string;
+  discount: number;
+}
+
+export interface CheckoutQuoteDto {
+  quoteFingerprint: string;
+  storeId: string;
+  storeSlug: string;
+  lines: CheckoutQuoteLineDto[];
+  subtotal: number;
+  discount: number;
+  deliveryFee: number;
+  total: number;
+  minOrderValue: number;
+  missingForMinimum: number;
+  deliveryZoneId: string | null;
+  deliveryZoneName: string | null;
+  estimatedMinMinutes?: number;
+  estimatedMaxMinutes?: number;
+  promisedFulfillmentMinAt: string;
+  promisedFulfillmentMaxAt: string;
+  coupon: CheckoutQuoteCouponDto | null;
+  issues: CheckoutQuoteIssueDto[];
+  canCheckout: boolean;
+}
