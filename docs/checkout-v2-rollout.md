@@ -11,7 +11,9 @@
 6. Execute `pnpm db:checkout-v2:preflight`. O deploy da aplicação deve permanecer bloqueado enquanto
    houver cobertura ausente, cupom ativo sem loja, expiração nula, índice inválido ou constraint não
    validada.
-7. Execute os testes do runtime Cloudflare contra staging e faça o soak antes de qualquer promoção.
+7. O smoke E2E do runtime Cloudflare é opcional no workflow de deploy e permanece desativado por
+   padrão. Para executá-lo em staging, marque `run_e2e_smoke` e configure as variáveis E2E. Faça o
+   soak antes de qualquer promoção para produção.
 
 O preflight abre uma transação `READ ONLY`, registra somente contagens, slugs públicos e nomes de
 constraints e nunca altera dados.
