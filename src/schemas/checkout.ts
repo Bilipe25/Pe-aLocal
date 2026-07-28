@@ -47,14 +47,17 @@ const checkoutQuoteShape = {
     .max(MAX_CHECKOUT_LINES, `O pedido deve ter no máximo ${MAX_CHECKOUT_LINES} itens.`),
 };
 
-function addQuoteRefinements<T extends z.ZodTypeAny>(schema: T) {
+function addQuoteRefinements<T extends z.ZodTypeAny>(
+  schema: T,
+  { requireDeliveryPostalCode = true }: { requireDeliveryPostalCode?: boolean } = {},
+) {
   return schema.superRefine((data: z.infer<T>, ctx) => {
     const quote = data as {
       modality: 'DELIVERY' | 'PICKUP';
       deliveryPostalCode?: string;
       items: Array<{ quantity: number }>;
     };
-    if (quote.modality === 'DELIVERY' && !quote.deliveryPostalCode) {
+    if (requireDeliveryPostalCode && quote.modality === 'DELIVERY' && !quote.deliveryPostalCode) {
       ctx.addIssue({
         code: 'custom',
         message: 'Informe o CEP para calcular a entrega.',
@@ -73,6 +76,10 @@ function addQuoteRefinements<T extends z.ZodTypeAny>(schema: T) {
 }
 
 export const checkoutQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).strict());
+
+export const cartQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).strict(), {
+  requireDeliveryPostalCode: false,
+});
 
 export const checkoutDeliveryAddressSchema = z
   .object({

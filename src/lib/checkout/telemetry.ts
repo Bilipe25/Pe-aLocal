@@ -7,11 +7,21 @@ export type CheckoutTelemetryEvent =
 
 export type CheckoutTelemetryStep = 'identification' | 'fulfillment' | 'payment' | 'review';
 
+export type StorefrontRecommendationTelemetryEvent =
+  'recommendation_viewed' | 'recommendation_clicked' | 'recommendation_added';
+
 interface CheckoutTelemetryPayload {
   event: CheckoutTelemetryEvent;
   step?: CheckoutTelemetryStep;
   reason?: 'navigation' | 'page_hidden' | 'quote_changed';
 }
+
+type StorefrontRecommendationTelemetryPayload =
+  | { event: 'recommendation_viewed' }
+  | {
+      event: Exclude<StorefrontRecommendationTelemetryEvent, 'recommendation_viewed'>;
+      productId: string;
+    };
 
 function endpoint(storeSlug: string) {
   return `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/events`;
@@ -27,6 +37,22 @@ export function reportCheckoutEvent(storeSlug: string, payload: CheckoutTelemetr
     keepalive: true,
   }).catch(() => {
     // Telemetria nunca deve interromper ou degradar o checkout.
+  });
+}
+
+export function reportStorefrontEvent(
+  storeSlug: string,
+  payload: StorefrontRecommendationTelemetryPayload,
+) {
+  if (typeof window === 'undefined') return;
+  void fetch(endpoint(storeSlug), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+    keepalive: true,
+  }).catch(() => {
+    // Telemetria nunca deve interromper ou degradar o carrinho.
   });
 }
 

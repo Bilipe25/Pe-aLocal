@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultCustomization } from '@/features/customization/domain';
 import {
   getPublicCatalog,
+  getPublicCartRecommendationCandidates,
   getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
   getPublicProductDetail,
@@ -508,6 +509,107 @@ describe('queries públicas da loja', () => {
     expect(query.select.products.select).not.toHaveProperty('optionGroups');
     expect(result[0].products[0]).not.toHaveProperty('allowNotes');
     expect(result[0].products[0]).not.toHaveProperty('optionGroups');
+  });
+
+  it('monta um pool compacto de recomendações sem N+1 e exclui configuração impossível', async () => {
+    mocks.categoryFindMany.mockResolvedValue([
+      {
+        id: 'category-1',
+        name: 'Bebidas',
+        sortOrder: 1_000,
+        products: [
+          {
+            id: 'product-simple',
+            name: 'Água',
+            imageUrl: null,
+            imageAssetId: null,
+            basePrice: 500,
+            isAvailable: true,
+            isFeatured: true,
+            sortOrder: 1_000,
+            optionGroups: [],
+          },
+          {
+            id: 'product-configurable',
+            name: 'Refrigerante',
+            imageUrl: null,
+            imageAssetId: null,
+            basePrice: 700,
+            isAvailable: true,
+            isFeatured: false,
+            sortOrder: 2_000,
+            optionGroups: [
+              {
+                isRequired: false,
+                minSelections: 0,
+                _count: { options: 1 },
+              },
+            ],
+          },
+          {
+            id: 'product-impossible',
+            name: 'Produto incompleto',
+            imageUrl: null,
+            imageAssetId: null,
+            basePrice: 800,
+            isAvailable: true,
+            isFeatured: false,
+            sortOrder: 3_000,
+            optionGroups: [
+              {
+                isRequired: true,
+                minSelections: 2,
+                _count: { options: 1 },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const result = await getPublicCartRecommendationCandidates('store-1', 'tenant-1');
+    const query = mocks.categoryFindMany.mock.calls[0][0];
+
+    expect(mocks.categoryFindMany).toHaveBeenCalledOnce();
+    expect(query.where).toEqual({
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      isActive: true,
+      archivedAt: null,
+    });
+    expect(query.select.products.where).toEqual(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        storeId: 'store-1',
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        basePrice: { gt: 0 },
+      }),
+    );
+    expect(query.select.products.select).not.toHaveProperty('tenantId');
+    expect(query.select.products.select).not.toHaveProperty('storeId');
+    expect(query.select.products.select.optionGroups.select).toEqual({
+      isRequired: true,
+      minSelections: true,
+      _count: {
+        select: {
+          options: { where: { isAvailable: true, archivedAt: null } },
+        },
+      },
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'product-simple',
+        requiresConfiguration: false,
+        category: { id: 'category-1', name: 'Bebidas' },
+      }),
+      expect.objectContaining({
+        id: 'product-configurable',
+        requiresConfiguration: true,
+      }),
+    ]);
+    expect(result).not.toContainEqual(expect.objectContaining({ id: 'product-impossible' }));
   });
 
   it('busca o detalhe sob demanda com isolamento e somente opções públicas ativas', async () => {

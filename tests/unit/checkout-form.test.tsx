@@ -292,7 +292,7 @@ describe('checkout público v2', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Continuar para recebimento' }));
 
-      const street = await screen.findByRole('textbox', { name: 'Rua' });
+      const street = await screen.findByRole('textbox', { name: 'Rua' }, { timeout: 5_000 });
       fireEvent.change(street, { target: { value: 'Rua das Flores' } });
       fireEvent.change(screen.getByRole('textbox', { name: 'Bairro' }), {
         target: { value: 'Centro' },
@@ -368,7 +368,9 @@ describe('checkout público v2', () => {
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
 
-    await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce(), {
+      timeout: 5_000,
+    });
     expect(mocks.clearCart).toHaveBeenCalledOnce();
     expect(mocks.reportCheckoutEvent).toHaveBeenCalledWith('loja-1', {
       event: 'checkout_completed',

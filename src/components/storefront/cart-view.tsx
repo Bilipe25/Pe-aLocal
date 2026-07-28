@@ -4,28 +4,26 @@ import {
   ArrowLeft,
   Loader2,
   Minus,
+  MoreVertical,
   Pencil,
   Plus,
   RefreshCw,
   ShoppingBag,
   Store,
-  Ticket,
   Trash2,
-  Truck,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
+import { CartRecommendations } from '@/components/storefront/cart-recommendations';
 import { Button } from '@/components/ui/button';
 import { useCartQuote, type CartFulfillmentModality } from '@/hooks/use-cart-quote';
-import { writeCheckoutCartHandoff } from '@/lib/checkout/checkout-draft';
 import { formatCurrency } from '@/lib/utils';
 import {
   MAX_CART_ITEM_QUANTITY,
-  selectCartCouponCode,
   selectCartRevision,
   subscribeToCartStorage,
   useCartStore,
@@ -56,29 +54,8 @@ interface CartViewProps {
   pickupEnabled?: boolean;
 }
 
-function formatPostalCode(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
-}
-
-function getSessionStorage() {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function buildCartCheckoutHref(
-  storeSlug: string,
-  modality: CartFulfillmentModality,
-  couponCode: string | null,
-) {
-  const query = new URLSearchParams({
-    modality,
-    ...(couponCode ? { coupon: couponCode } : {}),
-  });
-  return `/${storeSlug}/checkout?${query.toString()}`;
+export function buildCartCheckoutHref(storeSlug: string) {
+  return `/${storeSlug}/checkout`;
 }
 
 export function CartView({
@@ -100,14 +77,8 @@ export function CartView({
   const clearCart = useCartStore((state) => state.clearCart);
   const getSnapshot = useCartStore((state) => state.getSnapshot);
   const restoreSnapshot = useCartStore((state) => state.restoreSnapshot);
-  const couponCode = useCartStore(selectCartCouponCode);
   const revision = useCartStore(selectCartRevision);
-  const setCouponCode = useCartStore((state) => state.setCouponCode);
   const getTotal = useCartStore((state) => state.getTotal);
-  const [modality, setModality] = useState<CartFulfillmentModality>(
-    pickupEnabled ? 'PICKUP' : 'DELIVERY',
-  );
-  const [postalCode, setPostalCode] = useState('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const editingTriggerRef = useRef<HTMLButtonElement | null>(null);
   const localTotal = getTotal();
@@ -117,13 +88,16 @@ export function CartView({
     return subscribeToCartStorage(storeId, storeSlug);
   }, [setStore, storeId, storeSlug]);
 
+  const quoteModality: CartFulfillmentModality = pickupEnabled
+    ? 'PICKUP'
+    : deliveryEnabled
+      ? 'DELIVERY'
+      : 'PICKUP';
   const quoteState = useCartQuote({
     storeSlug,
     items,
     revision,
-    modality,
-    deliveryPostalCode: postalCode,
-    couponCode,
+    modality: quoteModality,
   });
   const quoteLines = useMemo(
     () => new Map(quoteState.quote?.lines.map((line) => [line.lineId, line]) ?? []),
@@ -142,10 +116,10 @@ export function CartView({
       (issue) => !issue.lineId && issue.code !== 'MIN_ORDER_NOT_REACHED',
     ) ?? [];
   const subtotal = quoteState.quote?.subtotal ?? localTotal;
-  const total = quoteState.quote?.total ?? localTotal;
+  const total = subtotal;
   const canCheckout =
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
-  const checkoutHref = buildCartCheckoutHref(storeSlug, modality, couponCode);
+  const checkoutHref = buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
 
   function closeItemEditor() {
@@ -184,16 +158,6 @@ export function CartView({
         onClick: () => restoreSafely(snapshot, undoRevision),
       },
       duration: 6000,
-    });
-  }
-
-  function preserveCheckoutContext() {
-    writeCheckoutCartHandoff(getSessionStorage(), storeId, {
-      modality,
-      ...(modality === 'DELIVERY' && postalCode.replace(/\D/g, '').length === 8
-        ? { deliveryPostalCode: postalCode.replace(/\D/g, '') }
-        : {}),
-      ...(couponCode ? { couponCode } : {}),
     });
   }
 
@@ -248,63 +212,6 @@ export function CartView({
 
       <div className="storefront-cart-layout">
         <div className="storefront-cart-content">
-          {(deliveryEnabled || pickupEnabled) && (
-            <section
-              className="storefront-cart-fulfillment"
-              aria-labelledby="cart-fulfillment-title"
-            >
-              <div className="storefront-cart-section-heading">
-                <h2 id="cart-fulfillment-title">Como você quer receber?</h2>
-                <span>A taxa e o total são atualizados pela loja.</span>
-              </div>
-              <div className="storefront-cart-fulfillment-options">
-                {pickupEnabled && (
-                  <button
-                    type="button"
-                    aria-pressed={modality === 'PICKUP'}
-                    className={modality === 'PICKUP' ? 'is-selected' : undefined}
-                    onClick={() => setModality('PICKUP')}
-                  >
-                    <Store aria-hidden="true" />
-                    <span>
-                      <strong>Retirada</strong>
-                      <small>Buscar no local</small>
-                    </span>
-                  </button>
-                )}
-                {deliveryEnabled && (
-                  <button
-                    type="button"
-                    aria-pressed={modality === 'DELIVERY'}
-                    className={modality === 'DELIVERY' ? 'is-selected' : undefined}
-                    onClick={() => setModality('DELIVERY')}
-                  >
-                    <Truck aria-hidden="true" />
-                    <span>
-                      <strong>Entrega</strong>
-                      <small>Receber no endereço</small>
-                    </span>
-                  </button>
-                )}
-              </div>
-              {modality === 'DELIVERY' && (
-                <div className="storefront-cart-postal">
-                  <label htmlFor="cart-postal-code">CEP para entrega</label>
-                  <input
-                    id="cart-postal-code"
-                    value={postalCode}
-                    onChange={(event) => setPostalCode(formatPostalCode(event.target.value))}
-                    inputMode="numeric"
-                    autoComplete="postal-code"
-                    placeholder="00000-000"
-                    maxLength={9}
-                  />
-                  <p>Usaremos o CEP para confirmar cobertura, prazo e taxa.</p>
-                </div>
-              )}
-            </section>
-          )}
-
           <section className="storefront-cart-items" aria-labelledby="cart-items-title">
             <div className="storefront-cart-section-heading">
               <h2 id="cart-items-title">Itens do pedido</h2>
@@ -326,106 +233,33 @@ export function CartView({
                 const priceChanged = Boolean(quotedLine && quotedLine.unitPrice !== item.unitPrice);
 
                 return (
-                  <article
+                  <CartLineItem
                     key={item.id}
-                    className={`storefront-cart-line ${issues.length > 0 ? 'has-issue' : ''}`}
-                  >
-                    <div className="storefront-cart-line-media">
-                      <ProductImage
-                        name={displayName}
-                        imageUrl={quotedLine?.imageUrl ?? item.imageUrl ?? null}
-                        imageAssetId={quotedLine?.imageAssetId ?? item.imageAssetId ?? null}
-                        sizes="64px"
-                        width={192}
-                      />
-                    </div>
-                    <div className="storefront-cart-line-main">
-                      <div className="storefront-cart-line-copy">
-                        <h3>{displayName}</h3>
-                        {displayOptions.length > 0 && (
-                          <p>{displayOptions.map((option) => option.name).join(', ')}</p>
-                        )}
-                        {item.notes && <p className="is-note">“{item.notes}”</p>}
-                        <span>{formatCurrency(displayUnitPrice)} por unidade</span>
-                        {priceChanged && <em>Preço atualizado pela loja</em>}
-                        <button
-                          type="button"
-                          className="storefront-cart-line-edit"
-                          onClick={(event) => {
-                            editingTriggerRef.current = event.currentTarget;
-                            setEditingItemId(item.id);
-                          }}
-                        >
-                          <Pencil aria-hidden="true" />
-                          Editar
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={`Remover ${displayName} da sacola`}
-                        onClick={() => handleRemoveItem(item.id, displayName)}
-                        className="storefront-cart-line-remove"
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </button>
-                      <div className="storefront-cart-line-actions">
-                        <div className="storefront-cart-quantity">
-                          <button
-                            type="button"
-                            aria-label={`Diminuir quantidade de ${displayName}`}
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            disabled={item.quantity <= 1}
-                          >
-                            <Minus aria-hidden="true" />
-                          </button>
-                          <output aria-live="polite" aria-label={`Quantidade de ${displayName}`}>
-                            {item.quantity}
-                          </output>
-                          <button
-                            type="button"
-                            aria-label={`Aumentar quantidade de ${displayName}`}
-                            aria-describedby={
-                              item.quantity >= MAX_CART_ITEM_QUANTITY
-                                ? `cart-quantity-limit-${item.id}`
-                                : undefined
-                            }
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            disabled={item.quantity >= MAX_CART_ITEM_QUANTITY}
-                          >
-                            <Plus aria-hidden="true" />
-                          </button>
-                        </div>
-                        <strong>{formatCurrency(displayTotal)}</strong>
-                      </div>
-                      {item.quantity >= MAX_CART_ITEM_QUANTITY && (
-                        <p id={`cart-quantity-limit-${item.id}`} role="status">
-                          Limite de {MAX_CART_ITEM_QUANTITY} unidades.
-                        </p>
-                      )}
-                      {issues.map((issue) => (
-                        <p key={issue} className="storefront-cart-line-issue" role="alert">
-                          {issue}
-                        </p>
-                      ))}
-                    </div>
-                  </article>
+                    itemId={item.id}
+                    displayName={displayName}
+                    displayOptions={displayOptions}
+                    displayUnitPrice={displayUnitPrice}
+                    displayTotal={displayTotal}
+                    quantity={item.quantity}
+                    notes={item.notes}
+                    imageUrl={quotedLine?.imageUrl ?? item.imageUrl ?? null}
+                    imageAssetId={quotedLine?.imageAssetId ?? item.imageAssetId ?? null}
+                    priceChanged={priceChanged}
+                    issues={issues}
+                    onRemove={() => handleRemoveItem(item.id, displayName)}
+                    onEdit={(trigger) => {
+                      editingTriggerRef.current = trigger;
+                      setEditingItemId(item.id);
+                    }}
+                    onQuantityChange={(qty) => updateQuantity(item.id, qty)}
+                  />
                 );
               })}
             </div>
           </section>
 
-          <CartCouponSection
-            key={couponCode ?? 'without-coupon'}
-            couponCode={couponCode}
-            appliedCoupon={quoteState.quote?.coupon ?? null}
-            onCouponChange={setCouponCode}
-          />
+          <CartRecommendations storeSlug={storeSlug} storeOpen={acceptingOrders} />
 
-          {quoteState.status === 'waiting' && modality === 'DELIVERY' && (
-            <div className="storefront-cart-notice" role="status">
-              Informe um CEP com 8 números para calcular a entrega.
-            </div>
-          )}
           {quoteState.status === 'error' && (
             <div className="storefront-cart-notice is-error" role="alert">
               <span>{quoteState.error}</span>
@@ -461,27 +295,16 @@ export function CartView({
           )}
         </div>
 
-        <aside className="storefront-cart-summary" aria-labelledby="cart-summary-title">
+        <aside
+          className="storefront-cart-summary"
+          aria-labelledby="cart-summary-title"
+          data-cart-summary
+          tabIndex={-1}
+        >
           <h2 id="cart-summary-title">Resumo</h2>
           <dl>
-            <div>
-              <dt>Subtotal</dt>
-              <dd>{formatCurrency(subtotal)}</dd>
-            </div>
-            {quoteState.quote && quoteState.quote.discount > 0 && (
-              <div className="is-discount">
-                <dt>Desconto</dt>
-                <dd>− {formatCurrency(quoteState.quote.discount)}</dd>
-              </div>
-            )}
-            {modality === 'DELIVERY' && quoteState.quote && (
-              <div>
-                <dt>Entrega</dt>
-                <dd>{formatCurrency(quoteState.quote.deliveryFee)}</dd>
-              </div>
-            )}
             <div className="is-total">
-              <dt>Total</dt>
+              <dt>Subtotal dos itens</dt>
               <dd>{formatCurrency(total)}</dd>
             </div>
           </dl>
@@ -492,28 +315,43 @@ export function CartView({
             </p>
           )}
           {quoteState.status === 'loading' ? (
-            <Button type="button" className="storefront-primary-action" disabled>
+            <Button
+              type="button"
+              className="storefront-primary-action"
+              data-cart-summary-action
+              disabled
+            >
               <Loader2 className="animate-spin" aria-hidden="true" />
               Atualizando…
             </Button>
           ) : quoteState.status === 'error' ? (
-            <Button type="button" className="storefront-primary-action" onClick={quoteState.retry}>
+            <Button
+              type="button"
+              className="storefront-primary-action"
+              data-cart-summary-action
+              onClick={quoteState.retry}
+            >
               <RefreshCw aria-hidden="true" />
               Atualizar valores
             </Button>
           ) : canCheckout ? (
             <Button asChild className="storefront-primary-action">
-              <Link href={checkoutHref} onClick={preserveCheckoutContext}>
+              <Link href={checkoutHref} data-cart-summary-action>
                 Ir para checkout · {formatCurrency(total)}
               </Link>
             </Button>
           ) : (
-            <Button type="button" className="storefront-primary-action" disabled>
-              {quoteState.status === 'waiting' ? 'Informe o CEP' : 'Revise a sacola'}
+            <Button
+              type="button"
+              className="storefront-primary-action"
+              data-cart-summary-action
+              disabled
+            >
+              {quoteState.status === 'waiting' ? 'Atualizando valores…' : 'Revise a sacola'}
             </Button>
           )}
           <p className="storefront-cart-summary-caption">
-            Valores e disponibilidade confirmados antes de criar o pedido.
+            Recebimento, cupom e total final são definidos no checkout.
           </p>
         </aside>
       </div>
@@ -530,69 +368,169 @@ export function CartView({
   );
 }
 
-function CartCouponSection({
-  couponCode,
-  appliedCoupon,
-  onCouponChange,
+function CartLineItem({
+  itemId,
+  displayName,
+  displayOptions,
+  displayUnitPrice,
+  displayTotal,
+  quantity,
+  notes,
+  imageUrl,
+  imageAssetId,
+  priceChanged,
+  issues,
+  onRemove,
+  onEdit,
+  onQuantityChange,
 }: {
-  couponCode: string | null;
-  appliedCoupon: { code: string; discount: number } | null;
-  onCouponChange: (couponCode: string | null) => number;
+  itemId: string;
+  displayName: string;
+  displayOptions: { name: string }[];
+  displayUnitPrice: number;
+  displayTotal: number;
+  quantity: number;
+  notes: string | null | undefined;
+  imageUrl: string | null;
+  imageAssetId: string | null;
+  priceChanged: boolean;
+  issues: string[];
+  onRemove: () => void;
+  onEdit: (trigger: HTMLButtonElement) => void;
+  onQuantityChange: (qty: number) => void;
 }) {
-  const [draft, setDraft] = useState(couponCode ?? '');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  function submitCoupon(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const normalized = draft.trim().toUpperCase();
-    setDraft(normalized);
-    onCouponChange(normalized || null);
-  }
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [menuOpen]);
 
   return (
-    <section className="storefront-cart-coupon" aria-labelledby="cart-coupon-title">
-      <div className="storefront-cart-section-heading">
-        <h2 id="cart-coupon-title">
-          <Ticket aria-hidden="true" />
-          Cupom
-        </h2>
-        <span>Se tiver um código, aplique antes de continuar.</span>
-      </div>
-      <form onSubmit={submitCoupon}>
-        <label htmlFor="cart-coupon-code" className="sr-only">
-          Código do cupom
-        </label>
-        <input
-          id="cart-coupon-code"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value.toUpperCase())}
-          placeholder="DIGITE O CÓDIGO"
-          maxLength={32}
-          autoCapitalize="characters"
-          autoComplete="off"
+    <article className={`storefront-cart-line ${issues.length > 0 ? 'has-issue' : ''}`}>
+      <div className="storefront-cart-line-media">
+        <ProductImage
+          name={displayName}
+          imageUrl={imageUrl}
+          imageAssetId={imageAssetId}
+          sizes="48px"
+          width={96}
         />
-        <Button type="submit" variant="outline">
-          {couponCode ? 'Atualizar' : 'Aplicar'}
-        </Button>
-      </form>
-      {appliedCoupon && (
-        <div className="storefront-cart-coupon-applied" role="status">
-          <Ticket aria-hidden="true" />
-          <span>
-            <strong>{appliedCoupon.code}</strong>
-            {formatCurrency(appliedCoupon.discount)} de desconto
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setDraft('');
-              onCouponChange(null);
-            }}
-          >
-            Remover
-          </button>
+      </div>
+
+      <div className="storefront-cart-line-body">
+        <div className="storefront-cart-line-row">
+          <div className="storefront-cart-line-info">
+            <h3>{displayName}</h3>
+            {displayOptions.length > 0 && (
+              <p>{displayOptions.map((option) => option.name).join(' · ')}</p>
+            )}
+            {notes && <p className="is-note">“{notes}”</p>}
+            {priceChanged && <em>Preço atualizado</em>}
+          </div>
+          <div className="storefront-cart-line-end">
+            <strong>{formatCurrency(displayTotal)}</strong>
+            {quantity > 1 && (
+              <span className="storefront-cart-line-unit">
+                {formatCurrency(displayUnitPrice)} cada
+              </span>
+            )}
+          </div>
         </div>
+
+        <div className="storefront-cart-line-controls">
+          <div className="storefront-cart-quantity">
+            <button
+              type="button"
+              className="is-decrease"
+              aria-label={`Diminuir quantidade de ${displayName}`}
+              onClick={() => onQuantityChange(quantity - 1)}
+              disabled={quantity <= 1}
+            >
+              <Minus aria-hidden="true" />
+            </button>
+            <output aria-live="polite" aria-label={`Quantidade de ${displayName}`}>
+              {quantity}
+            </output>
+            <button
+              type="button"
+              className="is-increase"
+              aria-label={`Aumentar quantidade de ${displayName}`}
+              aria-describedby={
+                quantity >= MAX_CART_ITEM_QUANTITY
+                  ? `cart-quantity-limit-${itemId}`
+                  : undefined
+              }
+              onClick={() => onQuantityChange(quantity + 1)}
+              disabled={quantity >= MAX_CART_ITEM_QUANTITY}
+            >
+              <Plus aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="storefront-cart-line-menu-wrap" ref={menuRef}>
+            <button
+              type="button"
+              ref={triggerRef}
+              className="storefront-cart-line-menu-trigger"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label={`Opções de ${displayName}`}
+              aria-expanded={menuOpen}
+            >
+              <MoreVertical aria-hidden="true" />
+            </button>
+            {menuOpen && (
+              <div className="storefront-cart-line-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    closeMenu();
+                    onEdit(event.currentTarget);
+                  }}
+                >
+                  <Pencil aria-hidden="true" />
+                  Editar item
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="is-danger"
+                  onClick={() => {
+                    closeMenu();
+                    onRemove();
+                  }}
+                >
+                  <Trash2 aria-hidden="true" />
+                  Remover
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {quantity >= MAX_CART_ITEM_QUANTITY && (
+        <p id={`cart-quantity-limit-${itemId}`} className="storefront-cart-line-issue" role="status">
+          Limite de {MAX_CART_ITEM_QUANTITY} unidades.
+        </p>
       )}
-    </section>
+      {issues.map((issue) => (
+        <p key={issue} className="storefront-cart-line-issue" role="alert">
+          {issue}
+        </p>
+      ))}
+    </article>
   );
 }
 
