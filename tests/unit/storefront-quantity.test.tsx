@@ -65,6 +65,9 @@ vi.mock('@/stores/cart-store', () => ({
   subscribeToCartStorage: mocks.subscribeToCartStorage,
   useCartStore: (selector: (state: typeof cartState) => unknown) => selector(cartState),
 }));
+vi.mock('@/components/storefront/cart-recommendations', () => ({
+  CartRecommendations: () => null,
+}));
 
 describe('limite de quantidade no storefront', () => {
   beforeEach(() => {
@@ -77,10 +80,8 @@ describe('limite de quantidade no storefront', () => {
     mocks.subscribeToCartStorage.mockReturnValue(mocks.storageCleanup);
   });
 
-  it('não inclui CEP na URL criada pela sacola', () => {
-    expect(buildCartCheckoutHref('loja-1', 'DELIVERY', 'BEMVINDO10')).toBe(
-      '/loja-1/checkout?modality=DELIVERY&coupon=BEMVINDO10',
-    );
+  it('deixa modalidade e cupom para as etapas do checkout', () => {
+    expect(buildCartCheckoutHref('loja-1')).toBe('/loja-1/checkout');
   });
 
   it('desabilita o incremento e anuncia o limite no modal do produto', () => {
@@ -240,6 +241,9 @@ describe('limite de quantidade no storefront', () => {
       screen.getByRole('button', { name: 'Aumentar quantidade de Burger da casa' }),
     ).toBeDisabled();
     expect(screen.getByText('Limite de 99 unidades.')).toBeVisible();
+    expect(screen.queryByText('Como você quer receber?')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Código do cupom')).not.toBeInTheDocument();
+    expect(screen.getByText('Recebimento, cupom e total final são definidos no checkout.')).toBeVisible();
     expect(mocks.updateQuantity).not.toHaveBeenCalled();
     expect(mocks.subscribeToCartStorage).toHaveBeenCalledWith('store-1', 'loja-1');
 

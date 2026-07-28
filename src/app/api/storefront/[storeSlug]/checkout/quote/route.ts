@@ -1,4 +1,4 @@
-import { checkoutQuoteSchema } from '@/schemas/checkout';
+import { cartQuoteSchema, checkoutQuoteSchema } from '@/schemas/checkout';
 import { CheckoutError, errorToResponse, NotFoundError, RateLimitError } from '@/server/errors';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import {
@@ -94,7 +94,8 @@ export async function POST(
     }
 
     const rawInput = await readLimitedJsonBody(request);
-    const parsed = checkoutQuoteSchema.safeParse(rawInput);
+    const isCartPreview = new URL(request.url).searchParams.get('context') === 'cart';
+    const parsed = (isCartPreview ? cartQuoteSchema : checkoutQuoteSchema).safeParse(rawInput);
     if (!parsed.success) {
       throw new CheckoutError(
         'CART_INVALID',

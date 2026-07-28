@@ -13,8 +13,6 @@ interface UseCartQuoteInput {
   items: CartItem[];
   revision: number;
   modality: CartFulfillmentModality;
-  deliveryPostalCode: string;
-  couponCode: string | null;
 }
 
 function responseErrorMessage(payload: unknown) {
@@ -34,20 +32,15 @@ export function useCartQuote({
   items,
   revision,
   modality,
-  deliveryPostalCode,
-  couponCode,
 }: UseCartQuoteInput) {
   const [quote, setQuote] = useState<CheckoutQuoteDto | null>(null);
   const [status, setStatus] = useState<CartQuoteStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [resolvedRequestKey, setResolvedRequestKey] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const normalizedPostalCode = deliveryPostalCode.replace(/\D/g, '');
   const requestBody = useMemo(
     () => ({
       modality,
-      deliveryPostalCode: modality === 'DELIVERY' ? normalizedPostalCode : undefined,
-      couponCode: couponCode ?? undefined,
       items: items.map((item) => ({
         lineId: item.id,
         productId: item.productId,
@@ -56,11 +49,10 @@ export function useCartQuote({
         optionIds: item.selectedOptions.map((option) => option.id),
       })),
     }),
-    [couponCode, items, modality, normalizedPostalCode],
+    [items, modality],
   );
   const requestKey = useMemo(() => JSON.stringify(requestBody), [requestBody]);
-  const canRequest =
-    items.length > 0 && (modality === 'PICKUP' || normalizedPostalCode.length === 8);
+  const canRequest = items.length > 0;
 
   useEffect(() => {
     if (!canRequest) return;
@@ -72,7 +64,7 @@ export function useCartQuote({
       setError(null);
       try {
         const response = await fetch(
-          `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote`,
+          `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote?context=cart`,
           {
             method: 'POST',
             headers: {

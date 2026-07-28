@@ -41,6 +41,29 @@ export interface PublicStorefrontProductDetailResponseDto {
   product: PublicStorefrontProductDetailDto;
 }
 
+/**
+ * Recorte público e compacto usado somente para sugestões no carrinho.
+ * A ordem do array representa a prioridade comercial calculada no servidor.
+ */
+export interface PublicCartRecommendationDto {
+  id: string;
+  name: string;
+  basePrice: number;
+  imageUrl: string | null;
+  imageAssetId: string | null;
+  category: {
+    id: string;
+    name: string;
+  };
+  isAvailable: boolean;
+  isFeatured: boolean;
+  requiresConfiguration: boolean;
+}
+
+export interface PublicCartRecommendationsResponseDto {
+  recommendations: PublicCartRecommendationDto[];
+}
+
 export interface PublicStorefrontCategoryImageDto {
   id: string;
   url: string;

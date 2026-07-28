@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cartQuoteSchema,
   checkoutQuoteSchema,
   checkoutSchema,
   MAX_CHECKOUT_ITEM_QUANTITY,
@@ -37,6 +38,13 @@ const validCheckout = {
 };
 
 describe('checkout v2 — contrato de pagamento e entrega', () => {
+  it('permite prévia do carrinho sem antecipar CEP, mas mantém o CEP obrigatório no checkout', () => {
+    const deliveryPreview = { modality: 'DELIVERY' as const, items: [item()] };
+
+    expect(cartQuoteSchema.safeParse(deliveryPreview).success).toBe(true);
+    expect(checkoutQuoteSchema.safeParse(deliveryPreview).success).toBe(false);
+  });
+
   it.each(['11999999999', '(11) 99999-9999', '11 99999-9999', '+55 11 99999-9999'])(
     'normaliza telefone celular %s no servidor',
     (customerPhone) => {

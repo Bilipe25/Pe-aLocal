@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
 import { storeAssetUrl } from '@/features/assets/urls';
+import type { RankedCartRecommendation } from '@/features/storefront/cart-recommendations';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
 import * as bannerRepo from '@/server/repositories/store-banner.repository';
@@ -434,6 +435,101 @@ export async function getPublicProductDetail(
   return unstable_cache(
     () => getPublicProductDetailFromDb(storeId, tenantId, productId),
     ['public-product-detail', storeId, tenantId, productId],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.catalog(storeId)],
+    },
+  )();
+}
+
+async function getPublicCartRecommendationCandidatesFromDb(
+  storeId: string,
+  tenantId: string,
+): Promise<RankedCartRecommendation[]> {
+  const categories = await getDb().category.findMany({
+    where: {
+      tenantId,
+      storeId,
+      isActive: true,
+      archivedAt: null,
+    },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      name: true,
+      sortOrder: true,
+      products: {
+        where: {
+          tenantId,
+          storeId,
+          isAvailable: true,
+          isSoldOut: false,
+          archivedAt: null,
+          basePrice: { gt: 0 },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          imageUrl: true,
+          imageAssetId: true,
+          basePrice: true,
+          isAvailable: true,
+          isFeatured: true,
+          sortOrder: true,
+          optionGroups: {
+            where: { isActive: true, archivedAt: null },
+            select: {
+              isRequired: true,
+              minSelections: true,
+              _count: {
+                select: {
+                  options: { where: { isAvailable: true, archivedAt: null } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return categories.flatMap((category) =>
+    category.products.flatMap((product) => {
+      const hasImpossibleRequiredGroup = product.optionGroups.some(
+        (group) => group.isRequired && group._count.options < group.minSelections,
+      );
+      if (hasImpossibleRequiredGroup) return [];
+
+      return [
+        {
+          id: product.id,
+          name: product.name,
+          basePrice: product.basePrice,
+          imageUrl: product.imageAssetId
+            ? storeAssetUrl(product.imageAssetId, 256)
+            : product.imageUrl,
+          imageAssetId: product.imageAssetId,
+          category: { id: category.id, name: category.name },
+          isAvailable: product.isAvailable,
+          isFeatured: product.isFeatured,
+          requiresConfiguration: product.optionGroups.some((group) => group._count.options > 0),
+          categorySortOrder: category.sortOrder,
+          productSortOrder: product.sortOrder,
+        },
+      ];
+    }),
+  );
+}
+
+/**
+ * Pool interno, compacto e cacheado. A rota pública reduz este conjunto para
+ * no máximo oito itens depois de excluir os produtos presentes no carrinho.
+ */
+export async function getPublicCartRecommendationCandidates(storeId: string, tenantId: string) {
+  return unstable_cache(
+    () => getPublicCartRecommendationCandidatesFromDb(storeId, tenantId),
+    ['public-cart-recommendations', storeId, tenantId],
     {
       revalidate: PUBLIC_CACHE_SECONDS,
       tags: [CACHE_TAGS.catalog(storeId)],

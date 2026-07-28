@@ -116,6 +116,41 @@ describe('POST checkout/events', () => {
     expect(JSON.stringify(logged)).not.toMatch(/phone|address|postal|token|customer/i);
   });
 
+  it('registra eventos de recomendação somente com o ID público do produto', async () => {
+    const info = vi.mocked(console.info);
+    const productId = '00000000-0000-0000-0002-000000000002';
+
+    const response = await POST(request({ event: 'recommendation_added', productId }), context);
+
+    expect(response.status).toBe(204);
+    const logged = JSON.parse(info.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(logged).toEqual({
+      event: 'storefront_recommendation_event',
+      correlationId: 'ray-test-a',
+      storeId: 'store-a',
+      recommendationEvent: 'recommendation_added',
+      productId,
+    });
+    expect(JSON.stringify(logged)).not.toMatch(/phone|address|postal|token|customer|cart/i);
+  });
+
+  it.each([
+    ['clique sem produto', { event: 'recommendation_clicked' }],
+    [
+      'visualização com produto',
+      {
+        event: 'recommendation_viewed',
+        productId: '00000000-0000-0000-0002-000000000002',
+      },
+    ],
+    ['recomendação com etapa do checkout', { event: 'recommendation_viewed', step: 'payment' }],
+  ])('rejeita %s no contrato de telemetria', async (_label, payload) => {
+    const response = await POST(request(payload), context);
+
+    expect(response.status).toBe(400);
+    expect(console.info).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['evento desconhecido', { event: 'customer_identified' }],
     [

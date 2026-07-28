@@ -31,8 +31,8 @@ const validPayload = {
   ],
 };
 
-function request(body: BodyInit, headers: Record<string, string> = {}) {
-  return new Request('https://pedidolocal.test/api/storefront/loja-a/checkout/quote', {
+function request(body: BodyInit, headers: Record<string, string> = {}, query = '') {
+  return new Request(`https://pedidolocal.test/api/storefront/loja-a/checkout/quote${query}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -165,5 +165,13 @@ describe('POST checkout/quote', () => {
     });
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', validPayload);
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledOnce();
+  });
+
+  it('aceita a prévia do carrinho de uma loja somente entrega sem exigir CEP antecipado', async () => {
+    const payload = { ...validPayload, modality: 'DELIVERY' };
+    const response = await POST(request(JSON.stringify(payload), {}, '?context=cart'), context);
+
+    expect(response.status).toBe(200);
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', payload);
   });
 });

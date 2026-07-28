@@ -16,11 +16,30 @@ const checkoutTelemetrySchema = z
       'checkout_abandoned',
       'checkout_quote_changed',
       'checkout_completed',
+      'recommendation_viewed',
+      'recommendation_clicked',
+      'recommendation_added',
     ]),
     step: z.enum(['identification', 'fulfillment', 'payment', 'review']).optional(),
     reason: z.enum(['navigation', 'page_hidden', 'quote_changed']).optional(),
+    productId: z.guid().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const recommendationEvent = value.event.startsWith('recommendation_');
+    const productEvent =
+      value.event === 'recommendation_clicked' || value.event === 'recommendation_added';
+
+    if (recommendationEvent && (value.step || value.reason)) {
+      context.addIssue({ code: 'custom', message: 'Contexto incompatível com recomendação.' });
+    }
+    if (productEvent && !value.productId) {
+      context.addIssue({ code: 'custom', path: ['productId'], message: 'Produto obrigatório.' });
+    }
+    if ((!productEvent || !recommendationEvent) && value.productId) {
+      context.addIssue({ code: 'custom', path: ['productId'], message: 'Produto não permitido.' });
+    }
+  });
 
 function invalidTelemetryPayload() {
   return new ValidationError('O evento informado é inválido.');
@@ -106,15 +125,26 @@ export async function POST(
       throw invalidTelemetryPayload();
     }
 
+    const recommendationEvent = parsed.data.event.startsWith('recommendation_');
     console.info(
-      JSON.stringify({
-        event: 'checkout_funnel_event',
-        correlationId,
-        storeId: store.id,
-        funnelEvent: parsed.data.event,
-        step: parsed.data.step ?? null,
-        reason: parsed.data.reason ?? null,
-      }),
+      JSON.stringify(
+        recommendationEvent
+          ? {
+              event: 'storefront_recommendation_event',
+              correlationId,
+              storeId: store.id,
+              recommendationEvent: parsed.data.event,
+              productId: parsed.data.productId ?? null,
+            }
+          : {
+              event: 'checkout_funnel_event',
+              correlationId,
+              storeId: store.id,
+              funnelEvent: parsed.data.event,
+              step: parsed.data.step ?? null,
+              reason: parsed.data.reason ?? null,
+            },
+      ),
     );
 
     return new Response(null, {

@@ -29,6 +29,7 @@ interface ProductModalProps {
   detailError?: string;
   onRetry: () => void;
   onClose: () => void;
+  onAdded?: (productId: string) => void;
   storeOpen: boolean;
   isFavorite?: boolean;
   onFavoriteToggle?: () => void;
@@ -42,6 +43,7 @@ export function ProductModal({
   detailError,
   onRetry,
   onClose,
+  onAdded,
   storeOpen,
   isFavorite = false,
   onFavoriteToggle,
@@ -152,6 +154,7 @@ export function ProductModal({
       },
       duration: 6000,
     });
+    onAdded?.(resolvedProduct.id);
     onClose();
   }
 
