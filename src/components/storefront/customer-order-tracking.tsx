@@ -14,6 +14,10 @@ import {
 } from 'lucide-react';
 import type { OrderStatus } from '@prisma/client';
 
+import {
+  ExpiredOrderAccess,
+  useExpireCustomerOrderAccess,
+} from '@/components/storefront/customer-order-access-boundary';
 import { Button } from '@/components/ui/button';
 import {
   useCustomerOrderTracking,
@@ -120,12 +124,19 @@ export function CustomerOrderTracking({
   timeZone: string;
   initialState: CustomerOrderTrackingStateDTO;
 }) {
+  const expireCustomerOrderAccess = useExpireCustomerOrderAccess();
   const tracking = useCustomerOrderTracking({
     publicToken,
     storeSlug,
     channelName,
     initialState,
+    onExpired: expireCustomerOrderAccess,
   });
+
+  if (tracking.expired || !tracking.state) {
+    return <ExpiredOrderAccess storeSlug={storeSlug} />;
+  }
+
   const state = tracking.state;
   const presentation = statusPresentation[state.status];
   const StatusIcon = presentation.icon;
@@ -144,7 +155,10 @@ export function CustomerOrderTracking({
       : presentation.description;
 
   return (
-    <section className="border-tinta/10 bg-papel rounded-xl border p-4 sm:p-5" aria-live="polite">
+    <section className="border-tinta/10 bg-papel rounded-xl border p-4 sm:p-5">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {presentation.label}. {statusDescription}
+      </p>
       <div className="flex items-start gap-3">
         <div
           className={cn(

@@ -24,6 +24,8 @@ const base = {
   preparingAt: new Date('2026-07-22T12:05:00.000Z'),
   readyAt: null,
   dispatchedAt: null,
+  promisedFulfillmentMinAt: new Date('2026-07-22T12:35:00.000Z'),
+  promisedFulfillmentMaxAt: new Date('2026-07-22T12:55:00.000Z'),
   updatedAt: new Date('2026-07-22T12:06:00.000Z'),
   cancellationReasonCode: null,
   estimatedTimeMinMinutes: 30,
@@ -60,9 +62,27 @@ describe('acompanhamento público do pedido', () => {
     expect(JSON.stringify(state)).not.toContain('cancellationNote');
   });
 
+  it('mantém a promessa criada no checkout mesmo se a configuração da loja mudar', () => {
+    const state = toCustomerOrderTrackingState({
+      ...base,
+      promisedFulfillmentMinAt: new Date('2026-07-22T12:20:00.000Z'),
+      promisedFulfillmentMaxAt: new Date('2026-07-22T12:40:00.000Z'),
+      estimatedTimeMinMinutes: 90,
+      estimatedTimeMaxMinutes: 120,
+    });
+
+    expect(state.estimate).toEqual({
+      label: 'Previsão para retirada',
+      minAt: '2026-07-22T12:20:00.000Z',
+      maxAt: '2026-07-22T12:40:00.000Z',
+    });
+  });
+
   it('consulta pelo token e slug canônico e aplica defaults seguros', async () => {
     mocks.getOrderTrackingStateByPublicToken.mockResolvedValue({
       ...base,
+      promisedFulfillmentMinAt: null,
+      promisedFulfillmentMaxAt: null,
       store: { settings: null },
     });
 

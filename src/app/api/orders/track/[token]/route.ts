@@ -1,13 +1,24 @@
 import { z } from 'zod';
 
-import { errorToResponse, NotFoundError, RateLimitError, ValidationError } from '@/server/errors';
+import {
+  errorToResponse,
+  NotFoundError,
+  PublicTokenExpiredError,
+  RateLimitError,
+  ValidationError,
+} from '@/server/errors';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { isPublicOrderTokenExpired } from '@/server/repositories/order.repository';
 import { getCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
 
 const trackingRequestSchema = z.object({
   token: z.string().uuid(),
   storeSlug: z.string().trim().min(1).max(120),
 });
+
+function isDeployedEnvironment() {
+  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
+}
 
 function privateErrorResponse(error: unknown) {
   const response = errorToResponse(error);
@@ -33,13 +44,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     const rateLimit = await getRateLimiter().check({
       identifier: `tracking:${clientAddress}:${parsed.data.token}`,
       ...RATE_LIMITS.publicOrderLookup,
+      strict: isDeployedEnvironment(),
     });
-    if (!rateLimit.allowed) {
+    if (rateLimit.unavailable || !rateLimit.allowed) {
       throw new RateLimitError('Muitas atualizações em sequência. Aguarde um minuto.');
     }
 
     const state = await getCustomerOrderTrackingState(parsed.data.token, parsed.data.storeSlug);
-    if (!state) throw new NotFoundError('Pedido');
+    if (!state) {
+      if (await isPublicOrderTokenExpired(parsed.data.token, parsed.data.storeSlug)) {
+        throw new PublicTokenExpiredError();
+      }
+      throw new NotFoundError('Pedido');
+    }
 
     return Response.json(state, {
       headers: {

@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 
-import { selectCartItemCount, selectCartStoreId, useCartStore } from '@/stores/cart-store';
+import {
+  selectCartItemCount,
+  selectCartStoreId,
+  subscribeToCartStorage,
+  useCartStore,
+} from '@/stores/cart-store';
 import { useLastOrderStore } from '@/stores/last-order-store';
 
 interface StorefrontBottomNavProps {
@@ -28,6 +33,7 @@ export function StorefrontBottomNav({ storeId, storeSlug }: StorefrontBottomNavP
   useEffect(() => {
     setCartStore(storeId, storeSlug);
     setLastOrderStore(storeId, storeSlug);
+    return subscribeToCartStorage(storeId, storeSlug);
   }, [setCartStore, setLastOrderStore, storeId, storeSlug]);
 
   const catalogPath = `/${storeSlug}`;
@@ -59,7 +65,7 @@ export function StorefrontBottomNav({ storeId, storeSlug }: StorefrontBottomNavP
           router.push(`${orderPathPrefix}${lastOrder.trackingToken}`);
           return;
         }
-        if (response.status === 400 || response.status === 404) {
+        if (response.status === 400 || response.status === 404 || response.status === 410) {
           clearLastOrder();
           setStatusMessage('O pedido salvo não está mais disponível.');
           return;

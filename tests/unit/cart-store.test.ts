@@ -62,7 +62,14 @@ describe('carrinho por loja', () => {
   beforeEach(() => {
     storage = createMemoryStorage();
     vi.stubGlobal('window', { localStorage: storage });
-    useCartStore.setState({ storeId: null, storeSlug: null, items: [] });
+    useCartStore.setState({
+      storeId: null,
+      storeSlug: null,
+      items: [],
+      couponCode: null,
+      revision: 0,
+      updatedAt: 0,
+    });
   });
 
   it('mantém carrinhos independentes ao alternar A → B → A', () => {
@@ -221,6 +228,65 @@ describe('carrinho por loja', () => {
     expect(useCartStore.getState().items).toHaveLength(2);
   });
 
+  it('edita a configuração do item preservando a identidade da linha', () => {
+    useCartStore.getState().setStore('store-a', 'loja-a');
+    const added = useCartStore.getState().addItem(itemInput());
+
+    const result = useCartStore.getState().updateItem(
+      added.itemId,
+      itemInput({
+        quantity: 2,
+        notes: 'sem cebola',
+        selectedOptions: [{ id: 'option-a', name: 'Queijo', price: 300 }],
+        unitPrice: 1_300,
+      }),
+    );
+
+    expect(result).toEqual({ status: 'updated', itemId: added.itemId, merged: false });
+    expect(useCartStore.getState().items).toEqual([
+      expect.objectContaining({
+        id: added.itemId,
+        quantity: 2,
+        notes: 'sem cebola',
+        unitPrice: 1_300,
+        selectedOptions: [{ id: 'option-a', name: 'Queijo', price: 300 }],
+      }),
+    ]);
+  });
+
+  it('agrupa com segurança uma edição que fica equivalente a outra linha', () => {
+    useCartStore.getState().setStore('store-a', 'loja-a');
+    const first = useCartStore
+      .getState()
+      .addItem(itemInput({ quantity: 2, notes: 'primeira configuração' }));
+    const second = useCartStore.getState().addItem(itemInput({ quantity: 3, notes: '' }));
+
+    const result = useCartStore
+      .getState()
+      .updateItem(first.itemId, itemInput({ quantity: 2, notes: '' }));
+
+    expect(result).toEqual({ status: 'updated', itemId: second.itemId, merged: true });
+    expect(useCartStore.getState().items).toEqual([
+      expect.objectContaining({ id: second.itemId, quantity: 5, notes: '' }),
+    ]);
+  });
+
+  it('não perde unidades ao editar para uma linha equivalente acima do limite', () => {
+    useCartStore.getState().setStore('store-a', 'loja-a');
+    const first = useCartStore
+      .getState()
+      .addItem(itemInput({ quantity: 2, notes: 'primeira configuração' }));
+    useCartStore.getState().addItem(itemInput({ quantity: 98, notes: '' }));
+
+    const before = useCartStore.getState().getSnapshot();
+    const result = useCartStore
+      .getState()
+      .updateItem(first.itemId, itemInput({ quantity: 2, notes: '' }));
+
+    expect(result).toEqual({ status: 'quantity-limit' });
+    expect(useCartStore.getState().items).toEqual(before.items);
+  });
+
   it('limita a quantidade consolidada a 99 e desfaz somente o que foi adicionado', () => {
     useCartStore.getState().setStore('store-a', 'loja-a');
     const first = useCartStore.getState().addItem(itemInput({ quantity: 98 }));
@@ -247,5 +313,87 @@ describe('carrinho por loja', () => {
     expect(selectCartStoreSlug(state)).toBe('loja-a');
     expect(selectCartItemCount(state)).toBe(5);
     expect(selectCartTotal(state)).toBe(4_000);
+  });
+
+  it('ignora payload externo antigo ou repetido e aplica somente versão mais recente', () => {
+    useCartStore.setState({
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem({ productName: 'Versão atual' })],
+      couponCode: null,
+      revision: 5,
+      updatedAt: 200,
+    });
+    const serialize = (updatedAt: number, productName: string) =>
+      JSON.stringify({
+        version: 2,
+        storeId: 'store-a',
+        storeSlug: 'loja-a',
+        items: [cartItem({ productName })],
+        couponCode: null,
+        revision: 6,
+        updatedAt,
+      });
+
+    useCartStore.getState().syncExternalCart('store-a', 'loja-a', serialize(200, 'Repetida'));
+    useCartStore.getState().syncExternalCart('store-a', 'loja-a', serialize(199, 'Antiga'));
+
+    expect(useCartStore.getState().items[0].productName).toBe('Versão atual');
+    expect(useCartStore.getState().updatedAt).toBe(200);
+
+    useCartStore.getState().syncExternalCart('store-a', 'loja-a', serialize(201, 'Mais recente'));
+
+    expect(useCartStore.getState().items[0].productName).toBe('Mais recente');
+    expect(useCartStore.getState().updatedAt).toBe(201);
+  });
+
+  it('mantém alterações novas diante de uma remoção externa atrasada', () => {
+    const previousSerialized = JSON.stringify({
+      version: 2,
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem({ productName: 'Versão anterior' })],
+      couponCode: null,
+      revision: 4,
+      updatedAt: 199,
+    });
+    useCartStore.setState({
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem({ productName: 'Versão atual' })],
+      couponCode: null,
+      revision: 5,
+      updatedAt: 200,
+    });
+
+    useCartStore.getState().syncExternalCart('store-a', 'loja-a', null, previousSerialized);
+
+    expect(useCartStore.getState().items[0].productName).toBe('Versão atual');
+    expect(useCartStore.getState().updatedAt).toBe(200);
+  });
+
+  it('aceita a limpeza de uma aba legada quando ela corresponde ao estado atual', () => {
+    const previousSerialized = JSON.stringify({
+      version: 2,
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem()],
+      couponCode: null,
+      revision: 5,
+      updatedAt: 200,
+    });
+    useCartStore.setState({
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem()],
+      couponCode: null,
+      revision: 5,
+      updatedAt: 200,
+    });
+
+    useCartStore.getState().syncExternalCart('store-a', 'loja-a', null, previousSerialized);
+
+    expect(useCartStore.getState().items).toEqual([]);
+    expect(useCartStore.getState().updatedAt).toBeGreaterThan(200);
   });
 });

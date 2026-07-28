@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   clipboardWriteText: vi.fn(),
@@ -15,6 +15,11 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
+import {
+  clearPaymentReportToken,
+  readPaymentReportToken,
+  storePaymentReportToken,
+} from '@/lib/orders/payment-report-token-memory';
 
 const props = {
   pixKeyType: 'E-mail',
@@ -42,7 +47,8 @@ describe('PixPaymentInfo', () => {
       value: vi.fn(() => false),
     });
     mocks.clipboardWriteText.mockResolvedValue(undefined);
-    window.sessionStorage.setItem(`payment-report:${props.publicToken}`, 'report-token-a');
+    clearPaymentReportToken(props.publicToken);
+    storePaymentReportToken(props.publicToken, 'report-token-a');
     mocks.reportPixPaymentAction.mockResolvedValue({
       success: true,
       data: {
@@ -51,6 +57,10 @@ describe('PixPaymentInfo', () => {
         notificationPending: false,
       },
     });
+  });
+
+  afterEach(() => {
+    clearPaymentReportToken(props.publicToken);
   });
 
   it('copia a chave com feedback acessível', async () => {
@@ -108,13 +118,21 @@ describe('PixPaymentInfo', () => {
     expect(mocks.reportPixPaymentAction).toHaveBeenCalledWith({
       reportToken: 'report-token-a',
     });
+    expect(readPaymentReportToken(props.publicToken)).toBeNull();
     expect(mocks.refresh).toHaveBeenCalledOnce();
   }, 10_000);
+
+  it('descarta o token em memória quando o pagamento já está confirmado', async () => {
+    render(<PixPaymentInfo {...props} paymentStatus="PAID" />);
+
+    await waitFor(() => expect(readPaymentReportToken(props.publicToken)).toBeNull());
+    expect(screen.getByText('Pagamento confirmado')).toBeInTheDocument();
+  });
 
   it('mantém instruções e mostra erro seguro quando o relato falha', async () => {
     mocks.reportPixPaymentAction.mockResolvedValue({
       success: false,
-      error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Aguarde antes de tentar novamente.' },
+      error: { code: 'RATE_LIMITED', message: 'Aguarde antes de tentar novamente.' },
     });
     render(<PixPaymentInfo {...props} />);
 
@@ -124,5 +142,25 @@ describe('PixPaymentInfo', () => {
       'Aguarde antes de tentar novamente.',
     );
     expect(screen.getByText('financeiro@loja.test')).toBeInTheDocument();
+  });
+
+  it.each(['(85) 98888-7777', '+55 (85) 98888-7777', '5585988887777'])(
+    'normaliza o WhatsApp %s sem duplicar o DDI do Brasil',
+    (storeWhatsapp) => {
+      render(<PixPaymentInfo {...props} storeWhatsapp={storeWhatsapp} />);
+
+      expect(screen.getByRole('link', { name: 'Enviar comprovante via WhatsApp' })).toHaveAttribute(
+        'href',
+        expect.stringMatching(/^https:\/\/wa\.me\/5585988887777\?text=/),
+      );
+    },
+  );
+
+  it('não renderiza link de WhatsApp para número inválido', () => {
+    render(<PixPaymentInfo {...props} storeWhatsapp="1234" />);
+
+    expect(
+      screen.queryByRole('link', { name: 'Enviar comprovante via WhatsApp' }),
+    ).not.toBeInTheDocument();
   });
 });
