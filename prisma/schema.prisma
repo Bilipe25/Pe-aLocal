@@ -141,6 +141,24 @@ enum CouponType {
   FIXED
 }
 
+enum CustomerAddressLabel {
+  HOME
+  WORK
+  OTHER
+}
+
+enum CustomerRecognitionThrottleScope {
+  IP
+  PHONE
+  STORE
+  SESSION
+}
+
+enum CheckoutRecognitionConfirmationMode {
+  SAVED_ADDRESS
+  NEW_ADDRESS
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -322,6 +340,7 @@ model Tenant {
   deliveryZones        DeliveryZone[]
   deliveryPostalRanges DeliveryZonePostalRange[]
   customers            Customer[]
+  recognitionThrottles CustomerRecognitionThrottle[]
   orders               Order[]
   coupons              Coupon[]
   auditLogs            AuditLog[]
@@ -376,25 +395,29 @@ model Store {
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   settings StoreSettings?
 
-  address              StoreAddress?
-  openingHours         OpeningHour[]
-  scheduleExceptions   StoreScheduleException[]
-  categories           Category[]
-  products             Product[]
-  deliveryZones        DeliveryZone[]
-  deliveryPostalRanges DeliveryZonePostalRange[]
-  coupons              Coupon[]
-  orders               Order[]
-  orderCounter         StoreOrderCounter?
-  customization        StoreCustomization?
-  auditLogs            AuditLog[]
-  orderOutboxEvents    OrderOutboxEvent[]
-  paymentStatusHistory PaymentStatusHistory[]
-  assets               StoreAsset[]
-  banners              StoreBanner[]
-  domains              StoreDomain[]
-  entitlement          StoreEntitlement?
-  slugRedirects        StoreSlugRedirect[]
+  address                      StoreAddress?
+  openingHours                 OpeningHour[]
+  scheduleExceptions           StoreScheduleException[]
+  categories                   Category[]
+  products                     Product[]
+  deliveryZones                DeliveryZone[]
+  deliveryPostalRanges         DeliveryZonePostalRange[]
+  customerAddressUses          CustomerAddressStoreUse[]
+  recognitionSessions          CheckoutRecognitionSession[]
+  recognitionAddressReferences CheckoutRecognitionAddressReference[]
+  recognitionThrottles         CustomerRecognitionThrottle[]
+  coupons                      Coupon[]
+  orders                       Order[]
+  orderCounter                 StoreOrderCounter?
+  customization                StoreCustomization?
+  auditLogs                    AuditLog[]
+  orderOutboxEvents            OrderOutboxEvent[]
+  paymentStatusHistory         PaymentStatusHistory[]
+  assets                       StoreAsset[]
+  banners                      StoreBanner[]
+  domains                      StoreDomain[]
+  entitlement                  StoreEntitlement?
+  slugRedirects                StoreSlugRedirect[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -813,9 +836,10 @@ model DeliveryZone {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store        Store                     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  postalRanges DeliveryZonePostalRange[]
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store               Store                     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  postalRanges        DeliveryZonePostalRange[]
+  customerAddressUses CustomerAddressStoreUse[]
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId])
@@ -851,41 +875,155 @@ model DeliveryZonePostalRange {
 // =============================================================================
 
 model Customer {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  phone     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String    @id @default(uuid())
+  tenantId           String
+  name               String
+  phone              String
+  phoneNormalized    String    @db.VarChar(13)
+  lastOrderAt        DateTime?
+  recognitionEnabled Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  addresses CustomerAddress[]
-  orders    Order[]
+  tenant                       Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses                    CustomerAddress[]
+  orders                       Order[]
+  recognitionSessions          CheckoutRecognitionSession[]
+  recognitionAddressReferences CheckoutRecognitionAddressReference[]
 
   @@unique([tenantId, phone])
+  @@unique([id, tenantId])
+  @@unique([tenantId, phoneNormalized])
   @@index([tenantId])
   @@index([phone])
   @@map("customers")
 }
 
 model CustomerAddress {
-  id           String   @id @default(uuid())
-  customerId   String
-  street       String
-  number       String
-  complement   String?
-  neighborhood String
-  city         String
-  state        String
-  zipCode      String?
-  reference    String?
-  isDefault    Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id                 String               @id @default(uuid())
+  tenantId           String
+  customerId         String
+  label              CustomerAddressLabel @default(OTHER)
+  street             String
+  number             String
+  complement         String?
+  neighborhood       String
+  city               String
+  state              String
+  zipCode            String?
+  reference          String?
+  addressFingerprint String               @db.Char(64)
+  isDefault          Boolean              @default(false)
+  lastUsedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer              Customer                              @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  storeUses             CustomerAddressStoreUse[]
+  recognitionReferences CheckoutRecognitionAddressReference[]
 
+  @@unique([id, tenantId])
+  @@unique([customerId, addressFingerprint])
+  @@index([tenantId])
   @@index([customerId])
   @@map("customer_addresses")
+}
+
+model CustomerAddressStoreUse {
+  id                String   @id @default(uuid())
+  tenantId          String
+  storeId           String
+  customerAddressId String
+  deliveryZoneId    String
+  lastUsedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  store           Store           @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customerAddress CustomerAddress @relation(fields: [customerAddressId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  deliveryZone    DeliveryZone    @relation(fields: [deliveryZoneId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([customerAddressId, storeId])
+  @@index([tenantId, storeId, lastUsedAt])
+  @@index([deliveryZoneId, tenantId, storeId])
+  @@map("customer_address_store_uses")
+}
+
+model CheckoutRecognitionSession {
+  id                  String                               @id @default(uuid())
+  tokenHash           String                               @unique @db.Char(64)
+  tenantId            String
+  storeId             String
+  customerId          String?
+  attemptCount        Int                                  @default(0)
+  consecutiveFailures Int                                  @default(0)
+  nextAttemptAt       DateTime?
+  blockedUntil        DateTime?
+  confirmedAt         DateTime?
+  confirmationMode    CheckoutRecognitionConfirmationMode?
+  expiresAt           DateTime
+  invalidatedAt       DateTime?
+  consumedAt          DateTime?
+  createdAt           DateTime                             @default(now())
+  updatedAt           DateTime                             @updatedAt
+
+  store             Store                                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customer          Customer?                             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  addressReferences CheckoutRecognitionAddressReference[]
+
+  @@index([tenantId, storeId, expiresAt])
+  @@index([customerId, expiresAt])
+  @@index([expiresAt])
+  @@map("checkout_recognition_sessions")
+}
+
+model CheckoutRecognitionAddressReference {
+  id                   String    @id @default(uuid())
+  referenceHash        String    @unique @db.Char(64)
+  recognitionSessionId String
+  tenantId             String
+  storeId              String
+  customerId           String
+  customerAddressId    String
+  addressUpdatedAt     DateTime
+  confirmedAt          DateTime?
+  expiresAt            DateTime
+  invalidatedAt        DateTime?
+  consumedAt           DateTime?
+  createdAt            DateTime  @default(now())
+
+  recognitionSession CheckoutRecognitionSession @relation(fields: [recognitionSessionId], references: [id], onDelete: Cascade)
+  store              Store                      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customer           Customer                   @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customerAddress    CustomerAddress            @relation(fields: [customerAddressId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([recognitionSessionId, expiresAt])
+  @@index([tenantId, storeId, expiresAt])
+  @@index([customerAddressId, expiresAt])
+  @@map("checkout_recognition_address_references")
+}
+
+model CustomerRecognitionThrottle {
+  id              String                           @id @default(uuid())
+  tenantId        String
+  storeId         String?
+  scope           CustomerRecognitionThrottleScope
+  keyHash         String                           @db.Char(64)
+  failureCount    Int                              @default(0)
+  windowStartedAt DateTime                         @default(now())
+  nextAttemptAt   DateTime?
+  blockedUntil    DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store? @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([tenantId, scope, keyHash])
+  @@index([expiresAt])
+  @@index([tenantId, storeId, blockedUntil])
+  @@map("customer_recognition_throttles")
 }
 
 // =============================================================================
