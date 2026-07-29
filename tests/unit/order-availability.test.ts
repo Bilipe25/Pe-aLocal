@@ -187,6 +187,7 @@ describe('checkout público v2', () => {
       }),
       storeSlug: 'loja-a',
       idempotencyFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      recognitionBrowserToken: null,
     });
     expect(mocks.dispatchCommittedOrderEvents).toHaveBeenCalledWith({
       eventIds: ['outbox-a'],

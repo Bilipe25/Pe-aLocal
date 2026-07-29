@@ -1,7 +1,4 @@
-import {
-  canonicalizeCheckoutForIdempotency,
-  type CheckoutFingerprintInput,
-} from './order-idempotency';
+import type { CheckoutFingerprintInput } from './order-idempotency';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
@@ -12,7 +9,30 @@ export interface CheckoutIdempotencyRecord {
 }
 
 async function fingerprintPayload(payload: CheckoutFingerprintInput) {
-  const bytes = new TextEncoder().encode(canonicalizeCheckoutForIdempotency(payload));
+  // O registro persistido no navegador nunca deriva nome, telefone, endereço,
+  // observações ou a referência opaca. A impressão autoritativa e completa
+  // continua sendo calculada somente no servidor.
+  const nonSensitiveAttempt = JSON.stringify({
+    modality: payload.modality,
+    deliveryZoneId: payload.deliveryZoneId ?? null,
+    couponCode: payload.couponCode ?? null,
+    paymentMethod: payload.paymentMethod,
+    changeFor: payload.changeFor ?? null,
+    saveCustomerData: payload.saveCustomerData,
+    expectedQuoteFingerprint: payload.expectedQuoteFingerprint ?? null,
+    items: payload.items
+      .map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        optionIds: [...item.optionIds].sort(),
+      }))
+      .sort((left, right) =>
+        `${left.productId}:${left.optionIds.join(',')}`.localeCompare(
+          `${right.productId}:${right.optionIds.join(',')}`,
+        ),
+      ),
+  });
+  const bytes = new TextEncoder().encode(nonSensitiveAttempt);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -28,7 +48,7 @@ export async function resolveCheckoutIdempotency(
 
   try {
     const raw = storage?.getItem(storageKey);
-    const stored = raw ? JSON.parse(raw) as Partial<CheckoutIdempotencyRecord> : null;
+    const stored = raw ? (JSON.parse(raw) as Partial<CheckoutIdempotencyRecord>) : null;
     if (
       stored &&
       typeof stored.key === 'string' &&

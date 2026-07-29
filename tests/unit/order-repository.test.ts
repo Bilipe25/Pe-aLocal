@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     },
     coupon: { update: vi.fn() },
     couponUsage: { create: vi.fn() },
+    customer: { findFirst: vi.fn() },
   };
   return {
     tx,
@@ -25,6 +26,11 @@ const mocks = vi.hoisted(() => {
     toPublicCheckoutQuote: vi.fn((quote: unknown) => quote),
     writeOrderCreatedAudit: vi.fn(),
     appendOrderOutboxEvent: vi.fn(),
+    persistCheckoutCustomerAfterOrder: vi.fn(),
+    resolveActiveRecognitionSession: vi.fn(),
+    resolveConfirmedRecognition: vi.fn(),
+    resolveRecognitionAddressReference: vi.fn(),
+    consumeRecognitionSession: vi.fn(),
   };
 });
 
@@ -41,6 +47,15 @@ vi.mock('@/server/services/order-audit.service', () => ({
 vi.mock('@/server/services/order-outbox.service', () => ({
   appendOrderOutboxEvent: mocks.appendOrderOutboxEvent,
 }));
+vi.mock('@/server/services/customer-checkout-persistence.service', () => ({
+  persistCheckoutCustomerAfterOrder: mocks.persistCheckoutCustomerAfterOrder,
+}));
+vi.mock('@/server/services/customer-recognition.service', () => ({
+  resolveActiveRecognitionSession: mocks.resolveActiveRecognitionSession,
+  resolveConfirmedRecognition: mocks.resolveConfirmedRecognition,
+  resolveRecognitionAddressReference: mocks.resolveRecognitionAddressReference,
+  consumeRecognitionSession: mocks.consumeRecognitionSession,
+}));
 
 const expectedQuoteFingerprint = 'a'.repeat(64);
 const idempotencyFingerprint = 'b'.repeat(64);
@@ -50,6 +65,9 @@ const input = {
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP' as const,
+  saveCustomerData: false,
+  addressLabel: 'HOME' as const,
+  setAddressAsDefault: false,
   paymentMethod: 'PIX' as const,
   notes: '',
   expectedQuoteFingerprint,
@@ -117,6 +135,7 @@ describe('OrderRepository checkout v2', () => {
     mocks.tx.store.findUnique.mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',
+      address: { city: 'São Paulo', state: 'SP' },
       settings: {
         acceptsPix: true,
         pixKeyType: 'EMAIL',
@@ -139,6 +158,15 @@ describe('OrderRepository checkout v2', () => {
     mocks.calculateCheckoutQuote.mockResolvedValue(quote);
     mocks.writeOrderCreatedAudit.mockResolvedValue('audit-a');
     mocks.appendOrderOutboxEvent.mockResolvedValue({ id: 'outbox-a' });
+    mocks.persistCheckoutCustomerAfterOrder.mockResolvedValue({
+      customerId: null,
+      addressId: null,
+      nameConflict: false,
+    });
+    mocks.resolveActiveRecognitionSession.mockResolvedValue(null);
+    mocks.resolveConfirmedRecognition.mockResolvedValue(null);
+    mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
+    mocks.consumeRecognitionSession.mockResolvedValue(true);
   });
 
   it('recalcula e grava pedido, auditoria e outbox na mesma transação serializável', async () => {
@@ -155,6 +183,7 @@ describe('OrderRepository checkout v2', () => {
       paymentReportToken: 'payment-report-token',
       created: true,
       outboxEventIds: ['outbox-a'],
+      customerNameConflict: false,
     });
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
@@ -163,6 +192,8 @@ describe('OrderRepository checkout v2', () => {
     });
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', input, {
       client: mocks.tx,
+      now,
+      savedAddress: null,
     });
     expect(mocks.writeOrderCreatedAudit).toHaveBeenCalledWith(
       mocks.tx,
@@ -280,6 +311,189 @@ describe('OrderRepository checkout v2', () => {
     mocks.writeOrderCreatedAudit.mockResolvedValueOnce('audit-a');
     mocks.appendOrderOutboxEvent.mockRejectedValueOnce(new Error('outbox unavailable'));
     await expect(createOrder(params)).rejects.toThrow('outbox unavailable');
+  });
+
+  it('resolve referência store-bound, recalcula e grava snapshots completos sem confiar no navegador', async () => {
+    const savedAddressReference = 'r'.repeat(43);
+    const recognitionBrowserToken = 't'.repeat(43);
+    const deliveryInput = {
+      ...input,
+      modality: 'DELIVERY' as const,
+      savedAddressReference,
+      saveCustomerData: true,
+      deliveryZoneId: 'zone-a',
+    };
+    const resolvedAddress = {
+      id: 'address-a',
+      updatedAt: new Date('2026-07-20T12:00:00.000Z'),
+      addressFingerprint: 'f'.repeat(64),
+      street: 'Rua das Flores',
+      number: '182',
+      complement: 'Apto 4',
+      neighborhood: 'Centro',
+      city: 'São Paulo',
+      state: 'SP',
+      zipCode: '01001-000',
+      reference: 'Portão azul',
+    };
+    mocks.resolveConfirmedRecognition.mockResolvedValue({
+      sessionId: 'session-a',
+      customerId: 'customer-a',
+      confirmationMode: 'SAVED_ADDRESS',
+    });
+    mocks.tx.customer.findFirst.mockResolvedValue({ id: 'customer-a', name: 'Cliente' });
+    mocks.resolveRecognitionAddressReference.mockResolvedValue({
+      referenceId: 'reference-a',
+      sessionId: 'session-a',
+      customerId: 'customer-a',
+      address: resolvedAddress,
+      mappedDeliveryZoneId: 'zone-a',
+    });
+    mocks.calculateCheckoutQuote.mockResolvedValue({
+      ...quote,
+      deliveryZoneId: 'zone-a',
+      deliveryZoneName: 'Centro',
+      deliveryFee: 600,
+      total: 2600,
+    });
+
+    await createOrder({
+      input: deliveryInput,
+      storeSlug: 'loja-a',
+      idempotencyFingerprint,
+      recognitionBrowserToken,
+    });
+
+    expect(mocks.resolveRecognitionAddressReference).toHaveBeenCalledWith({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      opaqueReference: savedAddressReference,
+      browserToken: recognitionBrowserToken,
+      client: mocks.tx,
+      now: expect.any(Date),
+    });
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', deliveryInput, {
+      client: mocks.tx,
+      now: expect.any(Date),
+      savedAddress: { ...resolvedAddress, mappedDeliveryZoneId: 'zone-a' },
+    });
+    expect(mocks.tx.order.create.mock.calls[0][0].data).toMatchObject({
+      deliveryAddress:
+        'Rua das Flores, 182, Apto 4, Centro, São Paulo - SP, CEP 01001-000, Referência: Portão azul',
+      deliveryPostalCode: '01001000',
+      deliveryStreet: 'Rua das Flores',
+      deliveryNumber: '182',
+      deliveryComplement: 'Apto 4',
+      deliveryNeighborhood: 'Centro',
+      deliveryCity: 'São Paulo',
+      deliveryState: 'SP',
+      deliveryReference: 'Portão azul',
+    });
+    expect(mocks.consumeRecognitionSession).toHaveBeenCalledWith(
+      mocks.tx,
+      'session-a',
+      expect.any(Date),
+    );
+  });
+
+  it('deriva região, cidade e UF no servidor para endereço manual sem CEP', async () => {
+    const deliveryInput = {
+      ...input,
+      modality: 'DELIVERY' as const,
+      deliveryZoneId: 'zone-a',
+      deliveryAddress: {
+        street: 'Rua Nova',
+        number: '25',
+        complement: '',
+        reference: 'Próximo à praça',
+      },
+    };
+    mocks.calculateCheckoutQuote.mockResolvedValue({
+      ...quote,
+      deliveryZoneId: 'zone-a',
+      deliveryZoneName: 'Bela Vista',
+      deliveryFee: 700,
+      total: 2700,
+    });
+
+    await createOrder({
+      input: deliveryInput,
+      storeSlug: 'loja-a',
+      idempotencyFingerprint,
+    });
+
+    expect(mocks.tx.order.create.mock.calls[0][0].data).toMatchObject({
+      deliveryAddress: 'Rua Nova, 25, Bela Vista, São Paulo - SP, Referência: Próximo à praça',
+      deliveryPostalCode: null,
+      deliveryStreet: 'Rua Nova',
+      deliveryNumber: '25',
+      deliveryNeighborhood: 'Bela Vista',
+      deliveryCity: 'São Paulo',
+      deliveryState: 'SP',
+      deliveryReference: 'Próximo à praça',
+    });
+    expect(mocks.persistCheckoutCustomerAfterOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryZoneId: 'zone-a',
+        address: expect.objectContaining({
+          neighborhood: 'Bela Vista',
+          city: 'São Paulo',
+          state: 'SP',
+          zipCode: null,
+        }),
+      }),
+    );
+  });
+
+  it('rejeita referência ausente ou pertencente a outra loja antes de criar o pedido', async () => {
+    mocks.resolveConfirmedRecognition.mockResolvedValue({
+      sessionId: 'session-a',
+      customerId: 'customer-a',
+      confirmationMode: 'SAVED_ADDRESS',
+    });
+    mocks.tx.customer.findFirst.mockResolvedValue({ id: 'customer-a', name: 'Cliente' });
+    mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
+
+    await expect(
+      createOrder({
+        input: {
+          ...input,
+          modality: 'DELIVERY',
+          savedAddressReference: 'r'.repeat(43),
+        },
+        storeSlug: 'loja-a',
+        idempotencyFingerprint,
+        recognitionBrowserToken: 't'.repeat(43),
+      }),
+    ).rejects.toMatchObject({ code: 'SAVED_ADDRESS_UNAVAILABLE', statusCode: 409 });
+    expect(mocks.calculateCheckoutQuote).not.toHaveBeenCalled();
+    expect(mocks.tx.order.create).not.toHaveBeenCalled();
+  });
+
+  it('consome sessão negativa ou não confirmada sem vinculá-la ao Customer', async () => {
+    mocks.resolveConfirmedRecognition.mockResolvedValue(null);
+    mocks.resolveActiveRecognitionSession.mockResolvedValue({ sessionId: 'session-negative' });
+
+    await createOrder({
+      ...params,
+      recognitionBrowserToken: 't'.repeat(43),
+    });
+
+    expect(mocks.resolveActiveRecognitionSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      browserToken: 't'.repeat(43),
+      client: mocks.tx,
+      now: expect.any(Date),
+    });
+    expect(mocks.consumeRecognitionSession).toHaveBeenCalledWith(
+      mocks.tx,
+      'session-negative',
+      expect.any(Date),
+    );
+    expect(mocks.persistCheckoutCustomerAfterOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ recognizedCustomerId: null }),
+    );
   });
 
   it('repete somente conflitos serializáveis P2034 e mantém o mesmo contrato', async () => {

@@ -5,7 +5,11 @@ import type { Prisma } from '@prisma/client';
 
 import { storeAssetUrl } from '@/features/assets/urls';
 import { validateCartItem } from '@/lib/checkout/cart-validator';
-import { MAX_POSTGRES_INTEGER_CENTS, type CheckoutQuoteInput } from '@/schemas/checkout';
+import {
+  MAX_POSTGRES_INTEGER_CENTS,
+  type CheckoutInput,
+  type CheckoutQuoteInput,
+} from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import { CheckoutError, DomainError } from '@/server/errors';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
@@ -15,7 +19,25 @@ import type {
   CheckoutQuoteLineDto,
 } from '@/types/storefront';
 
-type QuoteClient = Pick<Prisma.TransactionClient, 'store' | 'product' | 'deliveryZone' | 'coupon'>;
+type QuoteClient = Pick<
+  Prisma.TransactionClient,
+  'store' | 'product' | 'deliveryZone' | 'deliveryZonePostalRange' | 'coupon'
+>;
+
+export interface ResolvedSavedCheckoutAddress {
+  id: string;
+  addressFingerprint: string;
+  updatedAt: Date;
+  street: string;
+  number: string;
+  complement: string | null;
+  neighborhood: string;
+  city: string;
+  state: string;
+  zipCode: string | null;
+  reference: string | null;
+  mappedDeliveryZoneId: string | null;
+}
 
 export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   tenantId: string;
@@ -23,6 +45,10 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   estimatedMinMinutes: number;
   estimatedMaxMinutes: number;
 }
+
+type CheckoutQuoteCalculationInput = CheckoutQuoteInput & {
+  deliveryAddress?: CheckoutInput['deliveryAddress'];
+};
 
 function safeAdd(left: number, right: number) {
   const result = left + right;
@@ -104,6 +130,7 @@ function quoteFingerprint(input: {
   deliveryFee: number;
   total: number;
   deliveryZoneId: string | null;
+  deliveryAddressVersion: string | null;
   couponCode: string | null;
   issues: CheckoutQuoteIssueDto[];
   estimatedMinMinutes: number;
@@ -154,8 +181,12 @@ function issueFromError(error: unknown, lineId: string): CheckoutQuoteIssueDto {
 
 export async function calculateCheckoutQuote(
   storeSlug: string,
-  input: CheckoutQuoteInput,
-  options: { client?: QuoteClient; now?: Date } = {},
+  input: CheckoutQuoteCalculationInput,
+  options: {
+    client?: QuoteClient;
+    now?: Date;
+    savedAddress?: ResolvedSavedCheckoutAddress | null;
+  } = {},
 ): Promise<ResolvedCheckoutQuote | null> {
   const client = options.client ?? getDb();
   const now = options.now ?? new Date();
@@ -165,6 +196,7 @@ export async function calculateCheckoutQuote(
       id: true,
       tenantId: true,
       slug: true,
+      address: { select: { city: true, state: true } },
       settings: {
         select: {
           minOrderValue: true,
@@ -332,41 +364,161 @@ export async function calculateCheckoutQuote(
   let zoneMinOrderValue = 0;
   let estimatedMinMinutes = store.settings?.estimatedTimeMinMinutes ?? 30;
   let estimatedMaxMinutes = store.settings?.estimatedTimeMaxMinutes ?? 50;
+  const savedAddress = options.savedAddress ?? null;
+  const savedAddressPostalCodeDigits = savedAddress?.zipCode?.replace(/\D/g, '') || null;
+  const savedAddressPostalCode =
+    savedAddressPostalCodeDigits && /^\d{8}$/.test(savedAddressPostalCodeDigits)
+      ? savedAddressPostalCodeDigits
+      : null;
+  const manualAddressPostalCode = input.deliveryAddress?.postalCode ?? null;
+  const effectivePostalCode =
+    savedAddressPostalCode ?? manualAddressPostalCode ?? input.deliveryPostalCode ?? null;
+  const deliveryAddressVersion = savedAddress
+    ? `${savedAddress.addressFingerprint}:${savedAddress.updatedAt.toISOString()}`
+    : null;
 
-  if (input.modality === 'DELIVERY' && input.deliveryPostalCode) {
-    const matchingZones = await client.deliveryZone.findMany({
-      where: {
-        tenantId: store.tenantId,
-        storeId: store.id,
-        isActive: true,
-        postalRanges: {
-          some: {
-            isActive: true,
-            postalCodeStart: { lte: input.deliveryPostalCode },
-            postalCodeEnd: { gte: input.deliveryPostalCode },
+  if (input.modality === 'DELIVERY') {
+    if (!store.address) {
+      issues.push({
+        code: 'STORE_UNAVAILABLE',
+        message: 'A loja ainda não configurou a cidade atendida para entrega.',
+      });
+    }
+    if (input.savedAddressReference && !savedAddress) {
+      issues.push({
+        code: 'SAVED_ADDRESS_UNAVAILABLE',
+        message: 'Este endereço não está mais disponível. Informe um novo endereço para continuar.',
+      });
+    }
+    if (savedAddress?.zipCode && !savedAddressPostalCode) {
+      issues.push({
+        code: 'SAVED_ADDRESS_UNAVAILABLE',
+        message: 'Este endereço não está mais disponível. Informe um novo endereço para continuar.',
+      });
+    }
+
+    if (
+      savedAddress &&
+      store.address &&
+      (savedAddress.city.localeCompare(store.address.city, 'pt-BR', { sensitivity: 'base' }) !==
+        0 ||
+        savedAddress.state.toUpperCase() !== store.address.state.toUpperCase())
+    ) {
+      issues.push({
+        code: 'OUTSIDE_DELIVERY_AREA',
+        message: 'Este endereço não pertence à cidade atendida por esta loja.',
+      });
+    }
+
+    if (
+      savedAddress?.mappedDeliveryZoneId &&
+      input.deliveryZoneId &&
+      input.deliveryZoneId !== savedAddress.mappedDeliveryZoneId
+    ) {
+      issues.push({
+        code: 'SAVED_ADDRESS_UNAVAILABLE',
+        message: 'Este endereço não está mais disponível. Informe um novo endereço para continuar.',
+      });
+    }
+
+    const requestedZoneId = savedAddress?.mappedDeliveryZoneId ?? input.deliveryZoneId ?? null;
+    let zone:
+      | {
+          id: string;
+          name: string;
+          fee: number;
+          minOrderValue: number | null;
+          estimatedTime: string | null;
+        }
+      | undefined;
+
+    if (requestedZoneId) {
+      const selectedZone = await client.deliveryZone.findFirst({
+        where: {
+          id: requestedZoneId,
+          tenantId: store.tenantId,
+          storeId: store.id,
+          isActive: true,
+          postalRanges: { some: { isActive: true } },
+        },
+        select: {
+          id: true,
+          name: true,
+          fee: true,
+          minOrderValue: true,
+          estimatedTime: true,
+        },
+      });
+      if (!selectedZone) {
+        issues.push({
+          code: 'OUTSIDE_DELIVERY_AREA',
+          message: 'A região escolhida não está disponível para entrega.',
+        });
+      } else {
+        const matchingPostalRange = effectivePostalCode
+          ? await client.deliveryZonePostalRange.count({
+              where: {
+                deliveryZoneId: selectedZone.id,
+                tenantId: store.tenantId,
+                storeId: store.id,
+                isActive: true,
+                postalCodeStart: { lte: effectivePostalCode },
+                postalCodeEnd: { gte: effectivePostalCode },
+              },
+            })
+          : 1;
+        if (matchingPostalRange === 0) {
+          issues.push({
+            code: 'OUTSIDE_DELIVERY_AREA',
+            message: 'O CEP informado não pertence à região escolhida.',
+          });
+        } else {
+          zone = selectedZone;
+        }
+      }
+    } else if (effectivePostalCode) {
+      const matchingZones = await client.deliveryZone.findMany({
+        where: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          isActive: true,
+          postalRanges: {
+            some: {
+              isActive: true,
+              postalCodeStart: { lte: effectivePostalCode },
+              postalCodeEnd: { gte: effectivePostalCode },
+            },
           },
         },
-      },
-      select: {
-        id: true,
-        name: true,
-        fee: true,
-        minOrderValue: true,
-        estimatedTime: true,
-      },
-      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      take: 2,
-    });
-    if (matchingZones.length !== 1) {
-      issues.push({
-        code: matchingZones.length === 0 ? 'OUTSIDE_DELIVERY_AREA' : 'CART_INVALID',
-        message:
-          matchingZones.length === 0
-            ? 'Este CEP ainda não está na área de entrega da loja.'
-            : 'A cobertura de entrega está em atualização. Escolha retirada ou tente mais tarde.',
+        select: {
+          id: true,
+          name: true,
+          fee: true,
+          minOrderValue: true,
+          estimatedTime: true,
+        },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        take: 2,
       });
+      if (matchingZones.length === 1) {
+        zone = matchingZones[0];
+      } else {
+        issues.push({
+          code: matchingZones.length === 0 ? 'OUTSIDE_DELIVERY_AREA' : 'CART_INVALID',
+          message:
+            matchingZones.length === 0
+              ? 'Este CEP ainda não está na área de entrega da loja.'
+              : 'A cobertura de entrega está em atualização. Escolha retirada ou tente mais tarde.',
+        });
+      }
     } else {
-      const zone = matchingZones[0];
+      issues.push({
+        code: 'DELIVERY_ZONE_REQUIRED',
+        message: 'Escolha uma região atendida para calcular a entrega.',
+      });
+    }
+
+    if (zone) {
       deliveryZoneId = zone.id;
       deliveryZoneName = zone.name;
       deliveryFee = zone.fee;
@@ -441,13 +593,14 @@ export async function calculateCheckoutQuote(
   const fingerprint = quoteFingerprint({
     storeId: store.id,
     modality: input.modality,
-    postalCode: input.deliveryPostalCode ?? null,
+    postalCode: effectivePostalCode,
     lines,
     subtotal,
     discount,
     deliveryFee,
     total,
     deliveryZoneId,
+    deliveryAddressVersion,
     couponCode: coupon?.code ?? null,
     issues,
     estimatedMinMinutes,

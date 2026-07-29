@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   calculateCheckoutQuote: vi.fn(),
   rateLimitCheck: vi.fn(),
   toPublicCheckoutQuote: vi.fn(),
+  getStoreScope: vi.fn(),
+  resolveRecognitionAddressReference: vi.fn(),
 }));
 
 vi.mock('@/server/rate-limit', () => ({
@@ -13,6 +15,16 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@/server/services/checkout-quote.service', () => ({
   calculateCheckoutQuote: mocks.calculateCheckoutQuote,
   toPublicCheckoutQuote: mocks.toPublicCheckoutQuote,
+}));
+vi.mock('@/server/database/client', () => ({
+  getDb: () => ({ marker: 'db-client' }),
+}));
+vi.mock('@/server/queries/public-store', () => ({
+  getPublicStoreScopeBySlug: mocks.getStoreScope,
+}));
+vi.mock('@/server/services/customer-recognition.service', () => ({
+  getRecognitionCookieName: () => 'pedidolocal_recognition',
+  resolveRecognitionAddressReference: mocks.resolveRecognitionAddressReference,
 }));
 
 import { POST } from '@/app/api/storefront/[storeSlug]/checkout/quote/route';
@@ -85,6 +97,8 @@ describe('POST checkout/quote', () => {
       canCheckout: true,
       issues: [],
     });
+    mocks.getStoreScope.mockResolvedValue({ id: 'store-a', tenantId: 'tenant-a' });
+    mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
   });
 
@@ -163,7 +177,9 @@ describe('POST checkout/quote', () => {
       quoteFingerprint: 'a'.repeat(64),
       canCheckout: true,
     });
-    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', validPayload);
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', validPayload, {
+      savedAddress: null,
+    });
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledOnce();
   });
 
@@ -172,6 +188,64 @@ describe('POST checkout/quote', () => {
     const response = await POST(request(JSON.stringify(payload), {}, '?context=cart'), context);
 
     expect(response.status).toBe(200);
-    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', payload);
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', payload, {
+      savedAddress: null,
+    });
+  });
+
+  it('resolve a referência opaca no servidor e não devolve o endereço ao navegador', async () => {
+    const payload = {
+      ...validPayload,
+      modality: 'DELIVERY',
+      savedAddressReference: 'a'.repeat(43),
+    };
+    mocks.resolveRecognitionAddressReference.mockResolvedValue({
+      referenceId: 'reference-a',
+      sessionId: 'session-a',
+      customerId: 'customer-a',
+      mappedDeliveryZoneId: 'zone-a',
+      address: {
+        id: 'address-a',
+        updatedAt: new Date('2026-07-29T12:00:00.000Z'),
+        addressFingerprint: 'f'.repeat(64),
+        street: 'Rua Privada',
+        number: '123',
+        complement: 'Apto 4',
+        neighborhood: 'Centro',
+        city: 'São Paulo',
+        state: 'SP',
+        zipCode: '01001000',
+        reference: 'Portão azul',
+      },
+    });
+
+    const response = await POST(
+      request(JSON.stringify(payload), {
+        cookie: `pedidolocal_recognition=${'b'.repeat(43)}`,
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveRecognitionAddressReference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        opaqueReference: 'a'.repeat(43),
+      }),
+    );
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith(
+      'loja-a',
+      payload,
+      expect.objectContaining({
+        savedAddress: expect.objectContaining({
+          id: 'address-a',
+          mappedDeliveryZoneId: 'zone-a',
+        }),
+      }),
+    );
+    const responseText = await response.text();
+    expect(responseText).not.toContain('Rua Privada');
+    expect(responseText).not.toContain('Portão azul');
   });
 });

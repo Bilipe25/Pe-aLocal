@@ -7,6 +7,7 @@ export const MAX_CHECKOUT_ITEM_QUANTITY = 99;
 export const MAX_CHECKOUT_TOTAL_UNITS = 250;
 export const MAX_CHECKOUT_OPTIONS_PER_LINE = 50;
 export const MAX_POSTGRES_INTEGER_CENTS = 2_147_483_647;
+export const CHECKOUT_ADDRESS_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const boundedTrimmedString = (max: number) => z.string().trim().max(max);
 
@@ -39,7 +40,12 @@ export const checkoutItemSchema = z
 
 const checkoutQuoteShape = {
   modality: z.enum(['DELIVERY', 'PICKUP']),
+  deliveryZoneId: z.uuid().optional(),
   deliveryPostalCode: postalCodeSchema.optional(),
+  savedAddressReference: z
+    .string()
+    .regex(CHECKOUT_ADDRESS_REFERENCE_PATTERN, 'A referência do endereço é inválida.')
+    .optional(),
   couponCode: couponCodeSchema.optional(),
   items: z
     .array(checkoutItemSchema)
@@ -49,19 +55,40 @@ const checkoutQuoteShape = {
 
 function addQuoteRefinements<T extends z.ZodTypeAny>(
   schema: T,
-  { requireDeliveryPostalCode = true }: { requireDeliveryPostalCode?: boolean } = {},
+  { requireDeliverySelection = true }: { requireDeliverySelection?: boolean } = {},
 ) {
   return schema.superRefine((data: z.infer<T>, ctx) => {
     const quote = data as {
       modality: 'DELIVERY' | 'PICKUP';
+      deliveryZoneId?: string;
       deliveryPostalCode?: string;
+      savedAddressReference?: string;
+      deliveryAddress?: unknown;
       items: Array<{ quantity: number }>;
     };
-    if (requireDeliveryPostalCode && quote.modality === 'DELIVERY' && !quote.deliveryPostalCode) {
+    if (
+      requireDeliverySelection &&
+      quote.modality === 'DELIVERY' &&
+      !quote.deliveryZoneId &&
+      !quote.savedAddressReference
+    ) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Informe o CEP para calcular a entrega.',
-        path: ['deliveryPostalCode'],
+        message: 'Escolha uma região atendida para calcular a entrega.',
+        path: ['deliveryZoneId'],
+      });
+    }
+    if (
+      quote.modality === 'PICKUP' &&
+      (quote.deliveryZoneId ||
+        quote.deliveryPostalCode ||
+        quote.savedAddressReference ||
+        quote.deliveryAddress)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Retirada no local não utiliza endereço de entrega.',
+        path: ['modality'],
       });
     }
     const totalUnits = quote.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -78,21 +105,14 @@ function addQuoteRefinements<T extends z.ZodTypeAny>(
 export const checkoutQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).strict());
 
 export const cartQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).strict(), {
-  requireDeliveryPostalCode: false,
+  requireDeliverySelection: false,
 });
 
 export const checkoutDeliveryAddressSchema = z
   .object({
-    postalCode: postalCodeSchema,
+    postalCode: postalCodeSchema.optional(),
     street: boundedTrimmedString(160).min(2, 'Informe a rua.'),
     number: boundedTrimmedString(30).min(1, 'Informe o número.'),
-    neighborhood: boundedTrimmedString(120).min(2, 'Informe o bairro.'),
-    city: boundedTrimmedString(120).min(2, 'Informe a cidade.'),
-    state: z
-      .string()
-      .trim()
-      .transform((value) => value.toUpperCase())
-      .pipe(z.string().regex(/^[A-Z]{2}$/, 'Informe a UF com 2 letras.')),
     complement: boundedTrimmedString(120).optional().default(''),
     reference: boundedTrimmedString(200).optional().default(''),
   })
@@ -109,6 +129,9 @@ export const checkoutSchema = addQuoteRefinements(
         .refine(validateBrazilianPhone, 'Telefone inválido. Ex: (11) 99999-9999')
         .transform((value) => formatPhone(normalizePhone(value))),
       deliveryAddress: checkoutDeliveryAddressSchema.optional(),
+      saveCustomerData: z.boolean().default(false),
+      addressLabel: z.enum(['HOME', 'WORK', 'OTHER']).default('HOME'),
+      setAddressAsDefault: z.boolean().default(false),
       paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
       changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
       notes: boundedTrimmedString(500).optional().default(''),
@@ -119,16 +142,32 @@ export const checkoutSchema = addQuoteRefinements(
     })
     .strict()
     .superRefine((data, ctx) => {
-      if (data.modality === 'DELIVERY' && !data.deliveryAddress) {
+      if (data.modality === 'DELIVERY' && !data.deliveryAddress && !data.savedAddressReference) {
         ctx.addIssue({
           code: 'custom',
-          message: 'Informe o endereço completo para entrega.',
+          message: 'Informe um novo endereço ou escolha um endereço salvo.',
           path: ['deliveryAddress'],
+        });
+      }
+      if (data.modality === 'DELIVERY' && data.deliveryAddress && data.savedAddressReference) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Escolha apenas um endereço para entrega.',
+          path: ['savedAddressReference'],
+        });
+      }
+      if (data.modality === 'DELIVERY' && data.deliveryAddress && !data.deliveryZoneId) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Escolha uma região atendida.',
+          path: ['deliveryZoneId'],
         });
       }
       if (
         data.modality === 'DELIVERY' &&
         data.deliveryAddress &&
+        data.deliveryPostalCode &&
+        data.deliveryAddress.postalCode &&
         data.deliveryPostalCode !== data.deliveryAddress.postalCode
       ) {
         ctx.addIssue({
@@ -149,6 +188,27 @@ export const checkoutSchema = addQuoteRefinements(
           code: 'custom',
           message: 'Troco é permitido somente para pagamento em dinheiro.',
           path: ['changeFor'],
+        });
+      }
+      if (!data.saveCustomerData && data.setAddressAsDefault) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Ative o salvamento dos dados para definir um endereço principal.',
+          path: ['setAddressAsDefault'],
+        });
+      }
+      if (data.savedAddressReference && data.setAddressAsDefault) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'O endereço salvo já possui suas preferências.',
+          path: ['setAddressAsDefault'],
+        });
+      }
+      if (data.setAddressAsDefault && data.modality !== 'DELIVERY') {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Somente endereços de entrega podem ser definidos como principais.',
+          path: ['setAddressAsDefault'],
         });
       }
     }),

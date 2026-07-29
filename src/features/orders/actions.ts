@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 
 import type { EffectiveStoreAvailabilityState } from '@/features/stores/availability';
+import { normalizePhone } from '@/lib/brazil';
 import { triggerNewOrder, triggerPaymentUpdated } from '@/lib/pusher/server';
 import { checkoutSchema } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
@@ -22,6 +23,7 @@ import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
 import { createOrderFingerprint } from '@/server/services/order-idempotency.service';
 import { reportCustomerPixPayment } from '@/server/services/order-payment.service';
+import { getRecognitionCookieName } from '@/server/services/customer-recognition.service';
 
 import { reportPixPaymentInputSchema } from './schemas';
 
@@ -84,6 +86,16 @@ function getClientAddress(requestHeaders: Headers) {
 
 function isDeployedEnvironment() {
   return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
+}
+
+function readCookie(requestHeaders: Headers, name: string) {
+  const value = requestHeaders
+    .get('cookie')
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  return value || null;
 }
 
 export async function reportPixPaymentAction(
@@ -164,7 +176,7 @@ export async function createOrderAction(
     const clientAddress = getClientAddress(requestHeaders);
     const strict = isDeployedEnvironment();
     const limiter = getRateLimiter();
-    const phoneHash = await sha256Hex(input.customerPhone);
+    const phoneHash = await sha256Hex(normalizePhone(input.customerPhone));
     const [ipRateLimit, phoneRateLimit] = await Promise.all([
       limiter.check({
         identifier: `order-ip:${storeSlug}:${clientAddress}`,
@@ -191,6 +203,7 @@ export async function createOrderAction(
       input,
       storeSlug,
       idempotencyFingerprint: createOrderFingerprint(input),
+      recognitionBrowserToken: readCookie(requestHeaders, getRecognitionCookieName()),
     });
 
     if (order.created) {
@@ -207,6 +220,7 @@ export async function createOrderAction(
       storeId: order.storeId,
       orderNumber: order.orderNumber,
       created: order.created,
+      customerNameConflict: Boolean(order.customerNameConflict),
       durationMs: Math.round(performance.now() - startedAt),
     });
 

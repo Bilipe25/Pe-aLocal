@@ -10,6 +10,9 @@ const input: CheckoutInput = {
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP',
+  saveCustomerData: true,
+  addressLabel: 'HOME',
+  setAddressAsDefault: false,
   paymentMethod: 'PIX',
   notes: '',
   expectedQuoteFingerprint: 'a'.repeat(64),
@@ -69,6 +72,9 @@ describe('order idempotency fingerprint', () => {
     ['cliente', { customerName: 'Outra pessoa' }],
     ['cupom', { couponCode: 'BEMVINDO10' }],
     ['CEP', { deliveryPostalCode: '01001000' }],
+    ['zona', { deliveryZoneId: '20000000-0000-4000-8000-000000000001' }],
+    ['referência salva', { savedAddressReference: 'r'.repeat(43) }],
+    ['consentimento', { saveCustomerData: false }],
     ['cotação', { expectedQuoteFingerprint: 'b'.repeat(64) }],
   ])('muda quando %s altera o conteúdo confirmado', (_label, change) => {
     expect(createOrderFingerprint({ ...input, ...change })).not.toBe(createOrderFingerprint(input));
