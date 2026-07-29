@@ -1,11 +1,11 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { CartView } from '@/components/storefront/cart-view';
-import { getPublicStoreBySlug } from '@/server/queries/public-store';
+import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
 
 export default async function CartPage({ params }: { params: Promise<{ storeSlug: string }> }) {
   const { storeSlug } = await params;
-  const store = await getPublicStoreBySlug(storeSlug);
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/cart`);
 

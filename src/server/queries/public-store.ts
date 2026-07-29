@@ -84,6 +84,40 @@ const publicStoreSelect = {
   },
 } as const;
 
+const publicPurchaseStoreSelect = {
+  id: true,
+  tenantId: true,
+  name: true,
+  slug: true,
+  logoUrl: true,
+  settings: {
+    select: {
+      primaryColor: true,
+      secondaryColor: true,
+      fontFamily: true,
+      minOrderValue: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: true,
+    },
+  },
+  customization: {
+    select: {
+      publishedConfig: true,
+      publishedVersion: true,
+      publishedAt: true,
+    },
+  },
+  address: {
+    select: {
+      city: true,
+      state: true,
+    },
+  },
+} as const;
+
 async function getStoreFromDb(slug: string) {
   const db = getDb();
   let store = await db.store.findUnique({
@@ -283,6 +317,90 @@ async function getPublicStoreBySlugForRequest(slug: string) {
  * é recalculada em cada novo request.
  */
 export const getPublicStoreBySlug = cache(getPublicStoreBySlugForRequest);
+
+async function getPurchaseStoreFromDb(slug: string) {
+  const db = getDb();
+  let store = await db.store.findUnique({
+    where: { slug },
+    select: publicPurchaseStoreSelect,
+  });
+
+  if (!store) {
+    const redirect = await db.storeSlugRedirect.findUnique({
+      where: { oldSlug: slug },
+      select: { store: { select: publicPurchaseStoreSelect } },
+    });
+    store = redirect?.store ?? null;
+  }
+
+  if (!store) return null;
+
+  const resolvedCustomization = resolvePublicCustomization({
+    publishedConfig: store.customization?.publishedConfig,
+    publishedVersion: store.customization?.publishedVersion,
+    publishedAt: store.customization?.publishedAt,
+    legacy: {
+      primaryColor: store.settings?.primaryColor,
+      secondaryColor: store.settings?.secondaryColor,
+      fontFamily: store.settings?.fontFamily,
+    },
+  });
+  const logoAssetId = resolvedCustomization.config.identity.logoAssetId;
+  const logoAsset = logoAssetId
+    ? await db.storeAsset.findFirst({
+        where: {
+          id: logoAssetId,
+          tenantId: store.tenantId,
+          storeId: store.id,
+          assetType: 'LOGO',
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      })
+    : null;
+
+  return {
+    id: store.id,
+    tenantId: store.tenantId,
+    name: store.name,
+    slug: store.slug,
+    logoUrl: store.logoUrl,
+    settings: store.settings,
+    address: store.address,
+    customization: {
+      assets: {
+        logo: logoAsset
+          ? {
+              id: logoAsset.id,
+              url: storeAssetUrl(logoAsset.id, 384),
+            }
+          : null,
+      },
+    },
+  };
+}
+
+async function getPublicPurchaseStoreBySlugForRequest(slug: string) {
+  const store = await unstable_cache(
+    () => getPurchaseStoreFromDb(slug),
+    ['public-purchase-store', slug],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.storeSlug(slug)],
+    },
+  )();
+  if (!store) return null;
+
+  const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+  return { ...store, availability };
+}
+
+/**
+ * Snapshot público mínimo para carrinho e checkout. Evita carregar banners,
+ * domínios, cupons promocionais e assets que não participam do fluxo de compra.
+ */
+export const getPublicPurchaseStoreBySlug = cache(getPublicPurchaseStoreBySlugForRequest);
 
 async function getPublicStoreScopeFromDb(slug: string) {
   const select = { id: true, tenantId: true, slug: true } as const;

@@ -6,6 +6,7 @@ import {
   getPublicCartRecommendationCandidates,
   getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
+  getPublicPurchaseStoreBySlug,
   getPublicProductDetail,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
@@ -137,6 +138,26 @@ describe('queries públicas da loja', () => {
     expect(first).toBe(second);
     expect(mocks.storeFindUnique).toHaveBeenCalledTimes(1);
     expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('carrega um snapshot enxuto para carrinho e checkout', async () => {
+    const result = await getPublicPurchaseStoreBySlug('loja-1');
+
+    expect(result).toMatchObject({
+      id: 'store-1',
+      name: 'Loja 1',
+      settings: {
+        deliveryEnabled: true,
+        pickupEnabled: true,
+        acceptsPix: true,
+      },
+      availability: { acceptingOrders: true },
+      customization: { assets: { logo: null } },
+    });
+    expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).not.toHaveProperty('description');
+    expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).not.toHaveProperty('openingHours');
+    expect(mocks.listPublicStoreBanners).not.toHaveBeenCalled();
+    expect(mocks.findActivePrimaryStoreDomain).not.toHaveBeenCalled();
   });
 
   it('não compartilha resultado entre slugs no mesmo request', async () => {

@@ -588,6 +588,7 @@ export function CheckoutForm({
     setFocus,
     clearErrors,
     trigger,
+    getValues,
     formState: { errors },
     reset,
   } = useForm<CheckoutFormValues>({
@@ -617,32 +618,49 @@ export function CheckoutForm({
     },
   });
 
-  // Todos os campos têm default e o reset sempre preserva a estrutura completa.
-  const values = useWatch({ control }) as CheckoutFormValues;
-  const normalizedPostalCode = values.deliveryPostalCode.replace(/\D/g, '');
+  const [
+    modality,
+    deliveryZoneId,
+    deliveryPostalCode,
+    savedAddressReference,
+    saveCustomerData,
+    paymentMethod,
+    cashWithoutChange,
+    couponCode,
+  ] = useWatch({
+    control,
+    name: [
+      'modality',
+      'deliveryZoneId',
+      'deliveryPostalCode',
+      'savedAddressReference',
+      'saveCustomerData',
+      'paymentMethod',
+      'cashWithoutChange',
+      'couponCode',
+    ],
+  });
+  const normalizedPostalCode = deliveryPostalCode.replace(/\D/g, '');
   const quoteInput = useMemo<CheckoutQuoteInput | null>(() => {
     if (activeStoreId !== storeId || items.length === 0) return null;
-    if (values.modality === 'DELIVERY' && !values.deliveryZoneId && !values.savedAddressReference) {
+    if (modality === 'DELIVERY' && !deliveryZoneId && !savedAddressReference) {
       return null;
     }
     if (
-      values.modality === 'DELIVERY' &&
+      modality === 'DELIVERY' &&
       normalizedPostalCode.length > 0 &&
       normalizedPostalCode.length !== 8
     ) {
       return null;
     }
     return {
-      modality: values.modality,
-      deliveryZoneId:
-        values.modality === 'DELIVERY' && values.deliveryZoneId ? values.deliveryZoneId : undefined,
+      modality,
+      deliveryZoneId: modality === 'DELIVERY' && deliveryZoneId ? deliveryZoneId : undefined,
       deliveryPostalCode:
-        values.modality === 'DELIVERY' && normalizedPostalCode ? normalizedPostalCode : undefined,
+        modality === 'DELIVERY' && normalizedPostalCode ? normalizedPostalCode : undefined,
       savedAddressReference:
-        values.modality === 'DELIVERY' && values.savedAddressReference
-          ? values.savedAddressReference
-          : undefined,
-      couponCode: values.couponCode.trim() || undefined,
+        modality === 'DELIVERY' && savedAddressReference ? savedAddressReference : undefined,
+      couponCode: couponCode.trim() || undefined,
       items: items.map((item) => ({
         lineId: item.id,
         productId: item.productId,
@@ -653,13 +671,13 @@ export function CheckoutForm({
     };
   }, [
     activeStoreId,
+    couponCode,
+    deliveryZoneId,
     items,
+    modality,
     normalizedPostalCode,
+    savedAddressReference,
     storeId,
-    values.couponCode,
-    values.deliveryZoneId,
-    values.modality,
-    values.savedAddressReference,
   ]);
   const {
     quote,
@@ -668,7 +686,8 @@ export function CheckoutForm({
     refetch: refetchQuote,
   } = useCheckoutQuote({ storeSlug, input: quoteInput });
   const effectiveQuote = acceptedChangedQuote ?? quote;
-  const selectedDeliveryZone = deliveryZones.find((zone) => zone.id === values.deliveryZoneId);
+  const selectedDeliveryZone = deliveryZones.find((zone) => zone.id === deliveryZoneId);
+  const reviewValues = step === 'review' ? getValues() : null;
 
   useEffect(() => {
     setStore(storeId, storeSlug);
@@ -816,29 +835,22 @@ export function CheckoutForm({
     const timer = window.setTimeout(() => {
       writeCheckoutDraft(getSessionStorage(), storeId, {
         step,
-        modality: values.modality,
-        deliveryZoneId: values.deliveryZoneId || undefined,
-        couponCode: values.couponCode,
-        paymentMethod: values.paymentMethod,
+        modality,
+        deliveryZoneId: deliveryZoneId || undefined,
+        couponCode,
+        paymentMethod,
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [
-    storeId,
-    values.couponCode,
-    values.deliveryZoneId,
-    values.modality,
-    values.paymentMethod,
-    step,
-  ]);
+  }, [couponCode, deliveryZoneId, modality, paymentMethod, step, storeId]);
 
   useEffect(() => {
     if (activeStoreId !== storeId || !restoredRef.current) return;
     const timer = window.setTimeout(() => {
-      setCartCouponCode(values.couponCode);
+      setCartCouponCode(couponCode);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeStoreId, setCartCouponCode, storeId, values.couponCode]);
+  }, [activeStoreId, couponCode, setCartCouponCode, storeId]);
 
   const quoteInputKey = useMemo(() => JSON.stringify(quoteInput), [quoteInput]);
 
@@ -857,10 +869,14 @@ export function CheckoutForm({
 
   function setStep(nextStep: CheckoutStep) {
     setStepState(nextStep);
-    const query = new URLSearchParams({ step: nextStep, modality: values.modality });
-    const normalizedCoupon = values.couponCode.trim().toUpperCase();
+    const query = new URLSearchParams({ step: nextStep, modality });
+    const normalizedCoupon = couponCode.trim().toUpperCase();
     if (normalizedCoupon) query.set('coupon', normalizedCoupon);
-    router.replace(`/${storeSlug}/checkout?${query.toString()}`, { scroll: false });
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `/${storeSlug}/checkout?${query.toString()}`,
+    );
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -876,12 +892,13 @@ export function CheckoutForm({
     recognitionSessionActiveRef.current = true;
 
     try {
+      const [customerPhone, customerName] = getValues(['customerPhone', 'customerName']);
       const response = await fetch(recognitionEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerPhone: values.customerPhone,
-          customerName: values.customerName,
+          customerPhone,
+          customerName,
         }),
         cache: 'no-store',
       });
@@ -1041,7 +1058,7 @@ export function CheckoutForm({
     };
     if (step === 'review') return;
     const baseFields =
-      step === 'fulfillment' && values.modality === 'DELIVERY'
+      step === 'fulfillment' && modality === 'DELIVERY'
         ? ([
             'modality',
             'deliveryZoneId',
@@ -1055,7 +1072,7 @@ export function CheckoutForm({
       await requestRecognition();
       return;
     }
-    if (step === 'fulfillment' && values.modality === 'DELIVERY') {
+    if (step === 'fulfillment' && modality === 'DELIVERY') {
       const latestQuote = await refetchQuote();
       if (!latestQuote) {
         setError('deliveryZoneId', {
@@ -1077,7 +1094,7 @@ export function CheckoutForm({
         return;
       }
       clearErrors(['deliveryZoneId', 'deliveryPostalCode']);
-      if (values.savedAddressReference) {
+      if (savedAddressReference) {
         const index = STEPS.findIndex((candidate) => candidate.id === step);
         setStep(STEPS[index + 1].id);
         return;
@@ -1496,10 +1513,10 @@ export function CheckoutForm({
                       setValue('modality', 'DELIVERY', { shouldDirty: true });
                       clearErrors('modality');
                     }}
-                    aria-pressed={values.modality === 'DELIVERY'}
+                    aria-pressed={modality === 'DELIVERY'}
                     className={cn(
                       'focus-visible:ring-pimenta flex min-h-14 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none',
-                      values.modality === 'DELIVERY'
+                      modality === 'DELIVERY'
                         ? 'storefront-selection-control storefront-selection-row text-tinta'
                         : 'border-tinta/15 text-text-muted',
                     )}
@@ -1515,10 +1532,10 @@ export function CheckoutForm({
                       setValue('modality', 'PICKUP', { shouldDirty: true });
                       clearErrors('modality');
                     }}
-                    aria-pressed={values.modality === 'PICKUP'}
+                    aria-pressed={modality === 'PICKUP'}
                     className={cn(
                       'focus-visible:ring-pimenta flex min-h-14 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none',
-                      values.modality === 'PICKUP'
+                      modality === 'PICKUP'
                         ? 'storefront-selection-control storefront-selection-row text-tinta'
                         : 'border-tinta/15 text-text-muted',
                     )}
@@ -1530,7 +1547,7 @@ export function CheckoutForm({
               </div>
               <FieldError id="modality-error" message={errors.modality?.message} />
 
-              {values.modality === 'DELIVERY' && (
+              {modality === 'DELIVERY' && (
                 <div className="space-y-4">
                   {recognitionNotice ? (
                     <p className="border-info/20 bg-info-light text-tinta rounded-xl border p-3 text-sm">
@@ -1624,7 +1641,7 @@ export function CheckoutForm({
                     </div>
                   ) : null}
 
-                  {!confirmedSavedAddress && values.deliveryZoneId ? (
+                  {!confirmedSavedAddress && deliveryZoneId ? (
                     <fieldset className="space-y-4 border-0 p-0">
                       <legend className="text-tinta text-base font-bold">
                         Endereço de entrega
@@ -1755,7 +1772,7 @@ export function CheckoutForm({
                         />
                       </div>
 
-                      {values.saveCustomerData ? (
+                      {saveCustomerData ? (
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <label
@@ -1856,7 +1873,7 @@ export function CheckoutForm({
                             className={cn(
                               'border-tinta/15 bg-papel flex min-h-16 items-center gap-3 rounded-xl border p-3 transition-colors',
                               'peer-focus-visible:ring-pimenta peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-                              values.paymentMethod === method.value &&
+                              paymentMethod === method.value &&
                                 'storefront-selection-control storefront-selection-row',
                             )}
                           >
@@ -1876,7 +1893,7 @@ export function CheckoutForm({
                                 {method.description}
                               </span>
                             </span>
-                            {values.paymentMethod === method.value && (
+                            {paymentMethod === method.value && (
                               <Check
                                 className="storefront-action-text h-5 w-5"
                                 aria-hidden="true"
@@ -1890,7 +1907,7 @@ export function CheckoutForm({
               </div>
               <FieldError id="paymentMethod-error" message={errors.paymentMethod?.message} />
 
-              {values.paymentMethod === 'CASH' && (
+              {paymentMethod === 'CASH' && (
                 <div className="border-tinta/10 rounded-xl border p-4">
                   <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
                     <input
@@ -1900,7 +1917,7 @@ export function CheckoutForm({
                     />
                     Sem troco
                   </label>
-                  {!values.cashWithoutChange && (
+                  {!cashWithoutChange && (
                     <div className="mt-3">
                       <label htmlFor="changeFor" className="text-tinta text-sm font-semibold">
                         Troco para
@@ -1977,12 +1994,12 @@ export function CheckoutForm({
                     <p className="text-tinta mt-1 font-semibold">
                       {identityMode === 'RECOGNIZED'
                         ? recognizedCustomer?.maskedName
-                        : values.customerName}
+                        : reviewValues?.customerName}
                     </p>
                     <p className="text-text-muted text-sm">
                       {identityMode === 'RECOGNIZED'
                         ? recognizedCustomer?.maskedPhone
-                        : values.customerPhone}
+                        : reviewValues?.customerPhone}
                     </p>
                   </div>
                   <button
@@ -1999,13 +2016,13 @@ export function CheckoutForm({
                       Recebimento
                     </p>
                     <p className="text-tinta mt-1 font-semibold">
-                      {values.modality === 'DELIVERY' ? 'Entrega' : 'Retirada no local'}
+                      {modality === 'DELIVERY' ? 'Entrega' : 'Retirada no local'}
                     </p>
-                    {values.modality === 'DELIVERY' && (
+                    {modality === 'DELIVERY' && (
                       <p className="text-text-muted mt-1 text-sm">
                         {confirmedSavedAddress
                           ? confirmedSavedAddress.maskedAddress
-                          : `${values.address.street}, ${values.address.number} · ${selectedDeliveryZone?.name ?? 'Região selecionada'}`}
+                          : `${reviewValues?.address.street ?? ''}, ${reviewValues?.address.number ?? ''} · ${selectedDeliveryZone?.name ?? 'Região selecionada'}`}
                       </p>
                     )}
                   </div>
@@ -2023,9 +2040,9 @@ export function CheckoutForm({
                       Pagamento
                     </p>
                     <p className="text-tinta mt-1 font-semibold">
-                      {values.paymentMethod === 'PIX'
+                      {paymentMethod === 'PIX'
                         ? 'Pix'
-                        : values.paymentMethod === 'CASH'
+                        : paymentMethod === 'CASH'
                           ? 'Dinheiro'
                           : 'Cartão na entrega'}
                     </p>
@@ -2146,7 +2163,7 @@ export function CheckoutForm({
                 <ReceiptText className="text-text-muted mx-auto h-6 w-6" />
               )}
               <p className="text-text-muted mt-2 text-sm">
-                {values.modality === 'DELIVERY'
+                {modality === 'DELIVERY'
                   ? 'Escolha uma região para calcular a entrega.'
                   : 'Atualizando valores…'}
               </p>

@@ -118,27 +118,39 @@ export function CartRecommendations({ storeSlug, storeOpen }: CartRecommendation
 
     const controller = new AbortController();
     const productIds = productIdsKey.split('|');
-
-    void fetch(`/api/storefront/${encodeURIComponent(storeSlug)}/recommendations`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productIds }),
-      cache: 'no-store',
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload: unknown = await response.json().catch(() => null);
-        if (!response.ok || !isRecommendationResponse(payload)) {
-          throw new Error('Resposta de recomendações inválida.');
-        }
-        setState({ status: 'success', recommendations: payload.recommendations });
+    const loadRecommendations = () => {
+      if (controller.signal.aborted) return;
+      void fetch(`/api/storefront/${encodeURIComponent(storeSlug)}/recommendations`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds }),
+        cache: 'no-store',
+        signal: controller.signal,
       })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setState({ status: 'error', recommendations: [] });
-      });
+        .then(async (response) => {
+          const payload: unknown = await response.json().catch(() => null);
+          if (!response.ok || !isRecommendationResponse(payload)) {
+            throw new Error('Resposta de recomendações inválida.');
+          }
+          setState({ status: 'success', recommendations: payload.recommendations });
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setState({ status: 'error', recommendations: [] });
+        });
+    };
+    const idleCallback =
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(loadRecommendations, { timeout: 750 })
+        : null;
+    const fallbackTimer =
+      idleCallback === null ? window.setTimeout(loadRecommendations, 150) : null;
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (idleCallback !== null) window.cancelIdleCallback(idleCallback);
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+    };
   }, [hasCartProducts, productIdsKey, retryKey, storeOpen, storeSlug]);
 
   useEffect(() => {

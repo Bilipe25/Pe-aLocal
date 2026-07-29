@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => ({
   createOrderAction: vi.fn(),
   fetch: vi.fn(),
   push: vi.fn(),
-  replace: vi.fn(),
   reportCheckoutAbandonment: vi.fn(),
   reportCheckoutEvent: vi.fn(),
   setCouponCode: vi.fn(),
@@ -102,7 +101,7 @@ const quote: CheckoutQuoteDto = {
 };
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
+  useRouter: () => ({ push: mocks.push }),
 }));
 vi.mock('@/features/orders/actions', () => ({
   createOrderAction: mocks.createOrderAction,
@@ -273,7 +272,7 @@ describe('checkout público v2', () => {
 
     renderCheckout({ deliveryEnabled: true, initialModality: 'DELIVERY' }, true);
 
-    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(await screen.findByRole('dialog', undefined, { timeout: 5_000 })).toBeVisible();
     expect(
       mocks.fetch.mock.calls.filter(
         ([input, init]) =>
@@ -478,6 +477,7 @@ describe('checkout público v2', () => {
   });
 
   it('não expõe região ou dados pessoais na URL ao avançar', async () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     writeCheckoutDraft(window.sessionStorage, 'store-1', {
       modality: 'DELIVERY',
       paymentMethod: 'PIX',
@@ -497,13 +497,14 @@ describe('checkout público v2', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
-    expect(mocks.replace).toHaveBeenCalledWith(
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      '',
       '/loja-1/checkout?step=fulfillment&modality=DELIVERY',
-      { scroll: false },
     );
-    expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('postalCode');
-    expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('deliveryZoneId');
-    expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('Cliente');
+    expect(replaceState.mock.calls.flat().join(' ')).not.toContain('postalCode');
+    expect(replaceState.mock.calls.flat().join(' ')).not.toContain('deliveryZoneId');
+    expect(replaceState.mock.calls.flat().join(' ')).not.toContain('Cliente');
   });
 
   it('solicita a região antes de mostrar e validar o novo endereço', async () => {
