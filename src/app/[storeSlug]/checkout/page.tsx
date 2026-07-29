@@ -8,8 +8,6 @@ import { StorePurchaseHeader } from '@/components/storefront/store-purchase-head
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
-type CheckoutStep = 'identification' | 'fulfillment' | 'payment' | 'review';
-
 interface CheckoutPageProps {
   params: Promise<{ storeSlug: string }>;
   searchParams: Promise<{
@@ -29,12 +27,6 @@ export async function generateMetadata({ params }: CheckoutPageProps): Promise<M
     description: `Revise e confirme seu pedido na ${store.name}.`,
     robots: { index: false, follow: false },
   };
-}
-
-function parseStep(value?: string): CheckoutStep {
-  return value === 'fulfillment' || value === 'payment' || value === 'review'
-    ? value
-    : 'identification';
 }
 
 function parseModality(
@@ -113,7 +105,9 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               acceptsPix={store.settings.acceptsPix}
               acceptsCash={store.settings.acceptsCash}
               acceptsCardOnDelivery={store.settings.acceptsCardOnDelivery}
-              initialStep={parseStep(query.step)}
+              deliveryZones={deliveryZones}
+              storeCity={store.address?.city ?? ''}
+              storeState={store.address?.state ?? ''}
               initialModality={parseModality(
                 query.modality,
                 deliveryEnabled,

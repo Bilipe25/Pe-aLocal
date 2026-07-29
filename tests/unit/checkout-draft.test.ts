@@ -21,16 +21,15 @@ function createMemoryStorage() {
 }
 
 const draft: CheckoutDraftData = {
-  customerName: 'Cliente',
-  customerPhone: '(11) 99999-9999',
+  step: 'fulfillment',
   modality: 'DELIVERY',
   deliveryZoneId: 'zone-a',
-  deliveryAddress: 'Rua A, 10',
   paymentMethod: 'PIX',
+  couponCode: 'BEMVINDO10',
 };
 
-describe('rascunho do checkout por sessão', () => {
-  it('persiste e restaura somente o contrato mínimo namespaced por loja', () => {
+describe('rascunho não sensível do checkout', () => {
+  it('persiste somente o contrato v3 namespaced por loja', () => {
     const storage = createMemoryStorage();
     writeCheckoutDraft(storage, 'store-a', draft, 1_000);
 
@@ -38,9 +37,35 @@ describe('rascunho do checkout por sessão', () => {
     expect(readCheckoutDraft(storage, 'store-b', 1_001)).toBeNull();
 
     const persisted = JSON.parse(storage.data.get(getCheckoutDraftStorageKey('store-a'))!);
-    expect(persisted).not.toHaveProperty('notes');
-    expect(persisted).not.toHaveProperty('changeFor');
-    expect(persisted).not.toHaveProperty('storeSlug');
+    expect(persisted).toMatchObject({ version: 3, ...draft });
+    expect(persisted).not.toHaveProperty('customerName');
+    expect(persisted).not.toHaveProperty('customerPhone');
+    expect(persisted).not.toHaveProperty('address');
+    expect(persisted).not.toHaveProperty('deliveryPostalCode');
+    expect(persisted).not.toHaveProperty('savedAddressReference');
+  });
+
+  it('descarta e remove rascunhos v1 e v2 que podiam conter PII', () => {
+    const storage = createMemoryStorage();
+    const key = getCheckoutDraftStorageKey('store-a');
+
+    for (const version of [1, 2]) {
+      storage.setItem(
+        key,
+        JSON.stringify({
+          version,
+          expiresAt: Date.now() + 1_000,
+          customerName: 'Cliente',
+          customerPhone: '(11) 99999-9999',
+          address: { street: 'Rua privada' },
+          modality: 'DELIVERY',
+          paymentMethod: 'PIX',
+        }),
+      );
+
+      expect(readCheckoutDraft(storage, 'store-a')).toBeNull();
+      expect(storage.data.has(key)).toBe(false);
+    }
   });
 
   it('expira e remove o rascunho após trinta minutos', () => {
@@ -53,7 +78,7 @@ describe('rascunho do checkout por sessão', () => {
 
   it('descarta conteúdo corrompido ou fora do contrato', () => {
     const storage = createMemoryStorage();
-    storage.setItem(getCheckoutDraftStorageKey('store-a'), '{"version":1,"customerName":');
+    storage.setItem(getCheckoutDraftStorageKey('store-a'), '{"version":3,"modality":');
 
     expect(readCheckoutDraft(storage, 'store-a')).toBeNull();
     expect(storage.data.has(getCheckoutDraftStorageKey('store-a'))).toBe(false);
@@ -91,7 +116,7 @@ describe('rascunho do checkout por sessão', () => {
     });
   });
 
-  it('transfere o CEP da sacola pelo sessionStorage sem apagar o rascunho existente', () => {
+  it('transfere somente modalidade, zona e cupom sem reintroduzir PII', () => {
     const storage = createMemoryStorage();
     writeCheckoutDraft(storage, 'store-a', draft, 1_000);
 
@@ -100,19 +125,18 @@ describe('rascunho do checkout por sessão', () => {
       'store-a',
       {
         modality: 'DELIVERY',
-        deliveryPostalCode: '01001000',
-        couponCode: 'BEMVINDO10',
+        deliveryZoneId: 'zone-b',
+        couponCode: 'NOVO10',
       },
       2_000,
     );
 
-    expect(readCheckoutDraft(storage, 'store-a', 2_001)).toMatchObject({
-      customerName: draft.customerName,
-      customerPhone: draft.customerPhone,
-      paymentMethod: draft.paymentMethod,
+    expect(readCheckoutDraft(storage, 'store-a', 2_001)).toEqual({
+      step: 'fulfillment',
+      paymentMethod: 'PIX',
       modality: 'DELIVERY',
-      deliveryPostalCode: '01001000',
-      couponCode: 'BEMVINDO10',
+      deliveryZoneId: 'zone-b',
+      couponCode: 'NOVO10',
     });
   });
 });

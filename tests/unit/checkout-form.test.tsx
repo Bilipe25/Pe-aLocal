@@ -130,6 +130,17 @@ function renderCheckout(overrides: Partial<React.ComponentProps<typeof CheckoutF
       acceptsPix
       acceptsCash={false}
       acceptsCardOnDelivery={false}
+      deliveryZones={[
+        {
+          id: quote.deliveryZoneId!,
+          name: 'Centro',
+          fee: 500,
+          estimatedTime: '30-50 min',
+          minOrderValue: 0,
+        },
+      ]}
+      storeCity="São Paulo"
+      storeState="SP"
       {...overrides}
     />,
   );
@@ -174,7 +185,7 @@ describe('checkout público v2', () => {
   it('aplica máscara nacional e registra o início sem enviar dados pessoais', () => {
     renderCheckout();
 
-    const phone = screen.getByRole('textbox', { name: 'Telefone / WhatsApp' });
+    const phone = screen.getByRole('textbox', { name: 'Celular' });
     fireEvent.change(phone, { target: { value: '+55 11 99999-9999' } });
 
     expect(phone).toHaveValue('(11) 99999-9999');
@@ -185,13 +196,212 @@ describe('checkout público v2', () => {
     });
   });
 
-  it('restaura o CEP da sacola pelo sessionStorage, sem depender da URL', () => {
+  it('consulta o reconhecimento somente ao tocar em Continuar', async () => {
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/checkout/recognition')) {
+        return {
+          ok: true,
+          json: async () => ({
+            recognized: false,
+            message:
+              'Não foi possível recuperar dados salvos. Você pode continuar preenchendo o checkout normalmente.',
+          }),
+        };
+      }
+      return { ok: true, json: async () => quote };
+    });
+    renderCheckout();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '11999999999' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+      target: { value: 'Cliente Teste' },
+    });
+
+    expect(
+      mocks.fetch.mock.calls.filter(([input]) => String(input).endsWith('/checkout/recognition')),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+
+    await screen.findByRole('heading', { name: 'Como quer receber?' });
+    expect(
+      mocks.fetch.mock.calls.filter(([input]) => String(input).endsWith('/checkout/recognition')),
+    ).toHaveLength(1);
+  });
+
+  it('mostra somente o endereço mascarado e usa a referência após confirmação', async () => {
+    const opaqueReference = 'A'.repeat(43);
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/checkout/recognition') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            recognized: true,
+            maskedName: 'João M***',
+            maskedPhone: '(11) *****-**99',
+            maskedAddresses: [
+              {
+                opaqueReference,
+                label: 'Casa',
+                maskedAddress: 'Rua das F***, nº *** — Centro',
+                isDefault: true,
+                lastUsedLabel: 'Usado recentemente',
+                requiresDeliveryZoneSelection: false,
+              },
+            ],
+          }),
+        };
+      }
+      if (url.endsWith('/checkout/recognition') && init?.method === 'PATCH') {
+        return {
+          ok: true,
+          json: async () => ({
+            confirmed: true,
+            mode: 'SAVED_ADDRESS',
+            opaqueReference,
+          }),
+        };
+      }
+      return { ok: true, json: async () => quote };
+    });
+    renderCheckout({ deliveryEnabled: true, initialModality: 'DELIVERY' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '11999999999' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+      target: { value: 'João Martins' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(screen.getByText('Rua das F***, nº *** — Centro')).toBeVisible();
+    expect(screen.queryByText(/182/)).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Casa/ })).not.toHaveAttribute(
+      'value',
+      opaqueReference,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sim, continuar' }));
+
+    await screen.findByRole('heading', { name: 'Como quer receber?' });
+    expect(screen.getByText('Rua das F***, nº *** — Centro')).toBeVisible();
+    const patchCall = mocks.fetch.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith('/checkout/recognition') && init?.method === 'PATCH',
+    );
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+      action: 'CONFIRM_ADDRESS',
+      opaqueReference,
+    });
+  });
+
+  it('não abre uma sheet vazia e confirma o modo de novo endereço', async () => {
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/checkout/recognition') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            recognized: true,
+            maskedName: 'Ana S***',
+            maskedPhone: '(11) *****-**00',
+            maskedAddresses: [],
+          }),
+        };
+      }
+      if (url.endsWith('/checkout/recognition') && init?.method === 'PATCH') {
+        return {
+          ok: true,
+          json: async () => ({ confirmed: true, mode: 'NEW_ADDRESS' }),
+        };
+      }
+      return { ok: true, json: async () => quote };
+    });
+    renderCheckout();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '11999999999' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+      target: { value: 'Ana Silva' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+
+    await screen.findByRole('heading', { name: 'Como quer receber?' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      mocks.fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/checkout/recognition') &&
+          init?.method === 'PATCH' &&
+          String(init.body).includes('USE_NEW_ADDRESS'),
+      ),
+    ).toBe(true);
+  });
+
+  it('Escape e overlay fecham sem confirmar e devolvem o foco ao Continuar', async () => {
+    const opaqueReference = 'B'.repeat(43);
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/checkout/recognition')) {
+        return {
+          ok: true,
+          json: async () => ({
+            recognized: true,
+            maskedName: 'João M***',
+            maskedPhone: '(11) *****-**99',
+            maskedAddresses: [
+              {
+                opaqueReference,
+                label: 'Casa',
+                maskedAddress: 'Rua das F***, nº *** — Centro',
+                isDefault: true,
+                requiresDeliveryZoneSelection: false,
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => quote };
+    });
+    renderCheckout();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '11999999999' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+      target: { value: 'João Martins' },
+    });
+    const continueButton = screen.getByRole('button', { name: 'Continuar' });
+
+    fireEvent.click(continueButton);
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(continueButton).toHaveFocus());
+
+    fireEvent.click(continueButton);
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    fireEvent.pointerDown(document.querySelector('.customer-recognition-overlay')!);
+    fireEvent.click(document.querySelector('.customer-recognition-overlay')!);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    expect(
+      mocks.fetch.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/checkout/recognition') && init?.method === 'PATCH',
+      ),
+    ).toBe(false);
+    expect(screen.getByRole('heading', { name: 'Vamos identificar você' })).toBeVisible();
+  });
+
+  it('restaura somente zona e cupom do rascunho não sensível', () => {
     writeCheckoutDraft(window.sessionStorage, 'store-1', {
-      customerName: '',
-      customerPhone: '',
       modality: 'DELIVERY',
       paymentMethod: 'PIX',
-      deliveryPostalCode: '01001000',
+      deliveryZoneId: quote.deliveryZoneId!,
       couponCode: 'BEMVINDO10',
     });
     renderCheckout({
@@ -202,16 +412,17 @@ describe('checkout público v2', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Entrega' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('textbox', { name: 'CEP' })).toHaveValue('01001-000');
+    expect(screen.getByRole('combobox', { name: 'Bairro ou região atendida' })).toHaveValue(
+      quote.deliveryZoneId,
+    );
+    expect(screen.getByRole('textbox', { name: /CEP/ })).toHaveValue('');
   });
 
-  it('não expõe o CEP na URL ao avançar as etapas', async () => {
+  it('não expõe região ou dados pessoais na URL ao avançar', async () => {
     writeCheckoutDraft(window.sessionStorage, 'store-1', {
-      customerName: '',
-      customerPhone: '',
       modality: 'DELIVERY',
       paymentMethod: 'PIX',
-      deliveryPostalCode: '01001000',
+      deliveryZoneId: quote.deliveryZoneId!,
     });
     renderCheckout({
       deliveryEnabled: true,
@@ -221,10 +432,10 @@ describe('checkout público v2', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
       target: { value: 'Cliente Teste' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Telefone / WhatsApp' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
       target: { value: '11999999999' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para recebimento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     expect(mocks.replace).toHaveBeenCalledWith(
@@ -232,15 +443,14 @@ describe('checkout público v2', () => {
       { scroll: false },
     );
     expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('postalCode');
+    expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('deliveryZoneId');
+    expect(mocks.replace.mock.calls.flat().join(' ')).not.toContain('Cliente');
   });
 
-  it('só valida o endereço depois de o servidor confirmar a cobertura', async () => {
+  it('solicita a região antes de mostrar e validar o novo endereço', async () => {
     writeCheckoutDraft(window.sessionStorage, 'store-1', {
-      customerName: '',
-      customerPhone: '',
       modality: 'DELIVERY',
       paymentMethod: 'PIX',
-      deliveryPostalCode: '01001000',
     });
     renderCheckout({
       deliveryEnabled: true,
@@ -249,9 +459,12 @@ describe('checkout público v2', () => {
     });
 
     expect(screen.queryByRole('textbox', { name: 'Rua' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Bairro ou região atendida' }), {
+      target: { value: quote.deliveryZoneId },
+    });
+    expect(await screen.findByRole('textbox', { name: 'Rua' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
 
-    expect(await screen.findByRole('textbox', { name: 'Rua' })).toBeVisible();
     expect(await screen.findByText('Informe a rua.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
   });
@@ -273,11 +486,9 @@ describe('checkout público v2', () => {
     'associa, anuncia e focaliza o primeiro erro real de $errorId',
     async ({ label, value, errorId, message }) => {
       writeCheckoutDraft(window.sessionStorage, 'store-1', {
-        customerName: '',
-        customerPhone: '',
         modality: 'DELIVERY',
         paymentMethod: 'PIX',
-        deliveryPostalCode: '01001000',
+        deliveryZoneId: quote.deliveryZoneId!,
       });
       const { container } = renderCheckout({
         deliveryEnabled: true,
@@ -287,24 +498,15 @@ describe('checkout público v2', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
         target: { value: 'Cliente Teste' },
       });
-      fireEvent.change(screen.getByRole('textbox', { name: 'Telefone / WhatsApp' }), {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
         target: { value: '11999999999' },
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Continuar para recebimento' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
       const street = await screen.findByRole('textbox', { name: 'Rua' }, { timeout: 5_000 });
       fireEvent.change(street, { target: { value: 'Rua das Flores' } });
-      fireEvent.change(screen.getByRole('textbox', { name: 'Bairro' }), {
-        target: { value: 'Centro' },
-      });
       fireEvent.change(screen.getByRole('textbox', { name: 'Número' }), {
         target: { value: '10' },
-      });
-      fireEvent.change(screen.getByRole('textbox', { name: 'Cidade' }), {
-        target: { value: 'São Paulo' },
-      });
-      fireEvent.change(screen.getByRole('textbox', { name: 'UF' }), {
-        target: { value: 'SP' },
       });
 
       const invalidInput = screen.getByRole('textbox', { name: label });
@@ -322,6 +524,9 @@ describe('checkout público v2', () => {
   it('persiste o cupom do checkout no carrinho da loja', async () => {
     renderCheckout({ initialStep: 'review', initialCouponCode: 'BEMVINDO10' });
 
+    expect(
+      screen.getByRole('checkbox', { name: 'Salvar meus dados para a próxima compra' }),
+    ).toBeChecked();
     const coupon = screen.getByRole('textbox', { name: 'Cupom' });
     expect(coupon).toHaveValue('BEMVINDO10');
     fireEvent.change(coupon, { target: { value: 'NOVO10' } });
@@ -352,10 +557,10 @@ describe('checkout público v2', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
       target: { value: 'Cliente Teste' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Telefone / WhatsApp' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
       target: { value: '11999999999' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para recebimento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
     expect(await screen.findByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
