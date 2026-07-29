@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   toPublicCheckoutQuote: vi.fn(),
   getStoreScope: vi.fn(),
   resolveRecognitionAddressReference: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock('@/server/rate-limit', () => ({
@@ -17,7 +18,7 @@ vi.mock('@/server/services/checkout-quote.service', () => ({
   toPublicCheckoutQuote: mocks.toPublicCheckoutQuote,
 }));
 vi.mock('@/server/database/client', () => ({
-  getDb: () => ({ marker: 'db-client' }),
+  getDb: () => ({ $transaction: mocks.transaction }),
 }));
 vi.mock('@/server/queries/public-store', () => ({
   getPublicStoreScopeBySlug: mocks.getStoreScope,
@@ -99,6 +100,10 @@ describe('POST checkout/quote', () => {
     });
     mocks.getStoreScope.mockResolvedValue({ id: 'store-a', tenantId: 'tenant-a' });
     mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
+    mocks.transaction.mockImplementation(
+      async (operation: (client: { marker: string }) => Promise<unknown>) =>
+        operation({ marker: 'transaction-client' }),
+    );
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
   });
 
@@ -178,9 +183,14 @@ describe('POST checkout/quote', () => {
       canCheckout: true,
     });
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', validPayload, {
+      client: { marker: 'transaction-client' },
       savedAddress: null,
     });
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledOnce();
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'ReadCommitted',
+      timeout: 10_000,
+    });
   });
 
   it('aceita a prévia do carrinho de uma loja somente entrega sem exigir CEP antecipado', async () => {
@@ -189,6 +199,7 @@ describe('POST checkout/quote', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith('loja-a', payload, {
+      client: { marker: 'transaction-client' },
       savedAddress: null,
     });
   });
@@ -238,6 +249,7 @@ describe('POST checkout/quote', () => {
       'loja-a',
       payload,
       expect.objectContaining({
+        client: { marker: 'transaction-client' },
         savedAddress: expect.objectContaining({
           id: 'address-a',
           mappedDeliveryZoneId: 'zone-a',

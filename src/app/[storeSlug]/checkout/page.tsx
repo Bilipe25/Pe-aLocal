@@ -6,7 +6,10 @@ import { notFound, redirect } from 'next/navigation';
 import { CheckoutFormLoader } from '@/components/storefront/checkout-form-loader';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
-import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
+import {
+  getPublicDeliveryZones,
+  getPublicPurchaseStoreBySlug,
+} from '@/server/queries/public-store';
 
 interface CheckoutPageProps {
   params: Promise<{ storeSlug: string }>;
@@ -19,7 +22,7 @@ interface CheckoutPageProps {
 
 export async function generateMetadata({ params }: CheckoutPageProps): Promise<Metadata> {
   const { storeSlug } = await params;
-  const store = await getPublicStoreBySlug(storeSlug);
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
   if (!store) return { title: 'Loja não encontrada', robots: { index: false } };
 
   return {
@@ -46,7 +49,7 @@ function parseCouponCode(value?: string) {
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
   const [{ storeSlug }, query] = await Promise.all([params, searchParams]);
-  const store = await getPublicStoreBySlug(storeSlug);
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
 
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/checkout`);

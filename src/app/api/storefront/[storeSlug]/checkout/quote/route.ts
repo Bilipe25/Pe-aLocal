@@ -122,27 +122,39 @@ export async function POST(
       );
     }
 
-    let savedAddress: ResolvedRecognitionAddress | null = null;
-    if (parsed.data.savedAddressReference) {
-      const scope = await getPublicStoreScopeBySlug(storeSlug);
-      if (!scope) throw new NotFoundError('Loja');
-      const browserToken = readCookie(request, getRecognitionCookieName());
-      savedAddress = browserToken
-        ? await resolveRecognitionAddressReference({
+    const scope = parsed.data.savedAddressReference
+      ? await getPublicStoreScopeBySlug(storeSlug)
+      : null;
+    if (parsed.data.savedAddressReference && !scope) throw new NotFoundError('Loja');
+
+    const browserToken = parsed.data.savedAddressReference
+      ? readCookie(request, getRecognitionCookieName())
+      : null;
+    const quote = await getDb().$transaction(
+      async (transaction) => {
+        let savedAddress: ResolvedRecognitionAddress | null = null;
+        if (parsed.data.savedAddressReference && scope && browserToken) {
+          savedAddress = await resolveRecognitionAddressReference({
             tenantId: scope.tenantId,
             storeId: scope.id,
             browserToken,
             opaqueReference: parsed.data.savedAddressReference,
-            client: getDb(),
-          })
-        : null;
-    }
+            client: transaction,
+          });
+        }
 
-    const quote = await calculateCheckoutQuote(storeSlug, parsed.data, {
-      savedAddress: savedAddress
-        ? { ...savedAddress.address, mappedDeliveryZoneId: savedAddress.mappedDeliveryZoneId }
-        : null,
-    });
+        return calculateCheckoutQuote(storeSlug, parsed.data, {
+          client: transaction,
+          savedAddress: savedAddress
+            ? { ...savedAddress.address, mappedDeliveryZoneId: savedAddress.mappedDeliveryZoneId }
+            : null,
+        });
+      },
+      {
+        isolationLevel: 'ReadCommitted',
+        timeout: 10_000,
+      },
+    );
     if (!quote) throw new NotFoundError('Loja');
 
     const durationMs = Math.round(performance.now() - startedAt);

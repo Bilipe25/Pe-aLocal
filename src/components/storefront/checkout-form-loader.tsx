@@ -7,7 +7,6 @@ import type { CheckoutFormProps } from '@/components/storefront/checkout-form';
 const LazyCheckoutForm = dynamic<CheckoutFormProps>(
   () => import('@/components/storefront/checkout-form').then((module) => module.CheckoutForm),
   {
-    ssr: false,
     loading: () => <CheckoutFormSkeleton />,
   },
 );
