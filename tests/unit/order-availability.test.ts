@@ -92,6 +92,7 @@ describe('checkout público v2', () => {
 
   afterEach(() => {
     restoreAppEnv();
+    vi.unstubAllEnvs();
   });
 
   it('expõe preflight público sem criar ou cotar o pedido', async () => {
@@ -159,6 +160,7 @@ describe('checkout público v2', () => {
     ['limite excedido', { allowed: false, unavailable: false }],
     ['limiter indisponível', { allowed: false, unavailable: true }],
   ])('retorna RATE_LIMITED para %s e falha antes da transação', async (_label, state) => {
+    vi.stubEnv('NODE_ENV', 'production');
     process.env.APP_ENV = 'staging';
     mocks.rateLimitCheck.mockResolvedValue(state);
 

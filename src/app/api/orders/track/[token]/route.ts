@@ -9,16 +9,13 @@ import {
 } from '@/server/errors';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { isPublicOrderTokenExpired } from '@/server/repositories/order.repository';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
 
 const trackingRequestSchema = z.object({
   token: z.string().uuid(),
   storeSlug: z.string().trim().min(1).max(120),
 });
-
-function isDeployedEnvironment() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
-}
 
 function privateErrorResponse(error: unknown) {
   const response = errorToResponse(error);
@@ -44,7 +41,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     const rateLimit = await getRateLimiter().check({
       identifier: `tracking:${clientAddress}:${parsed.data.token}`,
       ...RATE_LIMITS.publicOrderLookup,
-      strict: isDeployedEnvironment(),
+      strict: isDeployedRuntime(),
     });
     if (rateLimit.unavailable || !rateLimit.allowed) {
       throw new RateLimitError('Muitas atualizações em sequência. Aguarde um minuto.');

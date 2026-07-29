@@ -5,6 +5,7 @@ import { Prisma, type CustomerRecognitionThrottleScope } from '@prisma/client';
 import type { CustomerRecognitionInput } from '@/schemas/customer-recognition';
 import { getDb } from '@/server/database/client';
 import { RateLimitError } from '@/server/errors';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
   customerNamesMatch,
   maskCustomerName,
@@ -118,9 +119,7 @@ export class RecognitionRateLimitError extends RateLimitError {
 }
 
 export function getRecognitionCookieName() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production'
-    ? '__Host-pedidolocal_recognition'
-    : 'pedidolocal_recognition';
+  return isDeployedRuntime() ? '__Host-pedidolocal_recognition' : 'pedidolocal_recognition';
 }
 
 function bytesToBase64Url(bytes: Uint8Array) {

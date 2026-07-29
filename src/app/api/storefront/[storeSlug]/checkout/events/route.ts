@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { errorToResponse, NotFoundError, RateLimitError, ValidationError } from '@/server/errors';
 import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,10 +96,6 @@ function clientAddress(request: Request) {
   );
 }
 
-function deployedEnvironment() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ storeSlug: string }> },
@@ -114,7 +111,7 @@ export async function POST(
     const rateLimit = await getRateLimiter().check({
       identifier: `checkout-event:${store.id}:${clientAddress(request)}`,
       ...RATE_LIMITS.checkoutQuote,
-      strict: deployedEnvironment(),
+      strict: isDeployedRuntime(),
     });
     if (rateLimit.unavailable || !rateLimit.allowed) {
       throw new RateLimitError();

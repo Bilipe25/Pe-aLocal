@@ -110,6 +110,7 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
   afterEach(() => {
     if (originalAppEnv) process.env.APP_ENV = originalAppEnv;
     else Reflect.deleteProperty(process.env, 'APP_ENV');
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -177,6 +178,7 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
   });
 
   it('usa cookie __Host, Secure e exige Origin em staging', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
     process.env.APP_ENV = 'staging';
 
     const response = await POST(request('POST', validInput), context);
@@ -189,6 +191,7 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
   });
 
   it('falha de forma segura quando um binding obrigatório está indisponível', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
     process.env.APP_ENV = 'staging';
     mocks.rateLimitCheck.mockResolvedValueOnce({
       allowed: false,

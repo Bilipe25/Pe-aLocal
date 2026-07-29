@@ -19,6 +19,7 @@ import {
 } from '@/server/errors';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { createOrder } from '@/server/repositories/order.repository';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
 import { createOrderFingerprint } from '@/server/services/order-idempotency.service';
@@ -82,10 +83,6 @@ function getClientAddress(requestHeaders: Headers) {
   const forwardedFor =
     requestHeaders.get('cf-connecting-ip') ?? requestHeaders.get('x-forwarded-for');
   return forwardedFor?.split(',')[0]?.trim() || 'unknown';
-}
-
-function isDeployedEnvironment() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
 }
 
 function readCookie(requestHeaders: Headers, name: string) {
@@ -174,7 +171,7 @@ export async function createOrderAction(
     const input = parsed.data;
     const requestHeaders = await headers();
     const clientAddress = getClientAddress(requestHeaders);
-    const strict = isDeployedEnvironment();
+    const strict = isDeployedRuntime();
     const limiter = getRateLimiter();
     const phoneHash = await sha256Hex(normalizePhone(input.customerPhone));
     const [ipRateLimit, phoneRateLimit] = await Promise.all([

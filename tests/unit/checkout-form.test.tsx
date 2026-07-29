@@ -469,6 +469,35 @@ describe('checkout público v2', () => {
     expect(screen.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
   });
 
+  it('preserva o erro técnico da cotação sem acusar incorretamente a região', async () => {
+    const technicalMessage =
+      'Não foi possível validar a cotação agora. Aguarde um instante e tente novamente.';
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ code: 'RATE_LIMITED', message: technicalMessage }),
+    });
+    renderCheckout({
+      deliveryEnabled: true,
+      initialStep: 'fulfillment',
+      initialModality: 'DELIVERY',
+    });
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Bairro ou região atendida' }), {
+      target: { value: quote.deliveryZoneId },
+    });
+    expect(await screen.findByText(technicalMessage)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+
+    await waitFor(() => expect(screen.getAllByText(technicalMessage).length).toBeGreaterThan(0));
+    expect(
+      screen.queryByText(
+        'Não conseguimos confirmar a entrega para essa região. Escolha outra região ou fale com a loja.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
+  });
+
   it.each([
     {
       label: /Complemento/,

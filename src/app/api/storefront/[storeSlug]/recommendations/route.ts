@@ -12,6 +12,7 @@ import {
   getPublicStoreScopeBySlug,
 } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 
 export const dynamic = 'force-dynamic';
@@ -90,13 +91,6 @@ function clientAddress(request: Request) {
   );
 }
 
-function deployedEnvironment() {
-  return (
-    process.env.NODE_ENV === 'production' &&
-    (process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production')
-  );
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ storeSlug: string }> },
@@ -115,7 +109,7 @@ export async function POST(
     const rateLimit = await getRateLimiter().check({
       identifier: `recommendation:${store.id}:${clientAddress(request)}`,
       ...RATE_LIMITS.storefrontRecommendations,
-      strict: deployedEnvironment(),
+      strict: isDeployedRuntime(),
     });
     if (rateLimit.unavailable) {
       throw new RateLimitError(
