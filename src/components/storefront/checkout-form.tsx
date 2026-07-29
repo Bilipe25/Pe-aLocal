@@ -16,6 +16,7 @@ import {
   Tag,
   UserRound,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useMemo, useRef, useState, useTransition } from 'react';
@@ -61,7 +62,20 @@ import { cn, formatCurrency } from '@/lib/utils';
 import type { CheckoutQuoteInput } from '@/schemas/checkout';
 import { selectCartCouponCode, subscribeToCartStorage, useCartStore } from '@/stores/cart-store';
 import { useLastOrderStore } from '@/stores/last-order-store';
-import type { CheckoutQuoteDto } from '@/types/storefront';
+import type {
+  CustomerRecognitionConfirmationResult,
+  CustomerRecognitionResult,
+  MaskedCustomerAddressDto,
+} from '@/types/customer-recognition';
+import type { CheckoutQuoteDto, PublicDeliveryZoneDto } from '@/types/storefront';
+
+const CustomerRecognitionDialog = dynamic(
+  () =>
+    import('@/components/storefront/customer-recognition-dialog').then(
+      (module) => module.CustomerRecognitionDialog,
+    ),
+  { ssr: false },
+);
 
 const checkoutFormSchema = object({
   customerName: string().check(trim(), minLength(2, 'Informe seu nome.'), maxLength(100)),
@@ -70,16 +84,18 @@ const checkoutFormSchema = object({
     refine(validateBrazilianPhone, 'Informe um telefone brasileiro válido.'),
   ),
   modality: enumSchema(['DELIVERY', 'PICKUP']),
+  deliveryZoneId: string().check(maxLength(100)),
   deliveryPostalCode: string().check(maxLength(9)),
+  savedAddressReference: string().check(maxLength(128)),
   address: object({
     street: string().check(trim(), maxLength(160)),
     number: string().check(trim(), maxLength(30)),
     complement: string().check(trim(), maxLength(120, 'Use no máximo 120 caracteres.')),
-    neighborhood: string().check(trim(), maxLength(120)),
-    city: string().check(trim(), maxLength(120)),
-    state: string().check(trim(), maxLength(2)),
     reference: string().check(trim(), maxLength(200, 'Use no máximo 200 caracteres.')),
   }),
+  saveCustomerData: boolean(),
+  addressLabel: enumSchema(['HOME', 'WORK', 'OTHER']),
+  setAddressAsDefault: boolean(),
   paymentMethod: enumSchema(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
   cashWithoutChange: boolean(),
   changeFor: string().check(maxLength(20)),
@@ -88,45 +104,53 @@ const checkoutFormSchema = object({
 }).check(
   superRefine((data, ctx) => {
     if (data.modality === 'DELIVERY') {
-      if (!/^\d{5}-?\d{3}$/.test(data.deliveryPostalCode)) {
+      if (data.deliveryPostalCode && !/^\d{5}-?\d{3}$/.test(data.deliveryPostalCode)) {
         ctx.addIssue({
           code: 'custom',
           path: ['deliveryPostalCode'],
-          message: 'Informe um CEP com 8 números.',
+          message: 'Se informar o CEP, use 8 números.',
           input: data.deliveryPostalCode,
         });
       }
-      const requiredAddressFields = [
-        ['street', 'Informe a rua.'],
-        ['number', 'Informe o número.'],
-        ['neighborhood', 'Informe o bairro.'],
-        ['city', 'Informe a cidade.'],
-      ] as const;
-      for (const [field, message] of requiredAddressFields) {
-        if (data.address[field].trim().length < 2 && field !== 'number') {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['address', field],
-            message,
-            input: data.address[field],
-          });
-        } else if (field === 'number' && !data.address.number.trim()) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['address', field],
-            message,
-            input: data.address.number,
-          });
-        }
-      }
-      if (!/^[A-Za-z]{2}$/.test(data.address.state)) {
+      if (!data.deliveryZoneId && !data.savedAddressReference) {
         ctx.addIssue({
           code: 'custom',
-          path: ['address', 'state'],
-          message: 'Informe a UF com 2 letras.',
-          input: data.address.state,
+          path: ['deliveryZoneId'],
+          message: 'Escolha uma região atendida.',
+          input: data.deliveryZoneId,
         });
       }
+      if (!data.savedAddressReference) {
+        const requiredAddressFields = [
+          ['street', 'Informe a rua.'],
+          ['number', 'Informe o número.'],
+        ] as const;
+        for (const [field, message] of requiredAddressFields) {
+          if (data.address[field].trim().length < 2 && field !== 'number') {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['address', field],
+              message,
+              input: data.address[field],
+            });
+          } else if (field === 'number' && !data.address.number.trim()) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['address', field],
+              message,
+              input: data.address.number,
+            });
+          }
+        }
+      }
+    }
+    if (!data.saveCustomerData && data.setAddressAsDefault) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['setAddressAsDefault'],
+        message: 'Ative o salvamento dos dados para definir um endereço principal.',
+        input: data.setAddressAsDefault,
+      });
     }
     if (
       data.paymentMethod === 'CASH' &&
@@ -145,6 +169,8 @@ const checkoutFormSchema = object({
 
 type CheckoutFormValues = Infer<typeof checkoutFormSchema>;
 type CheckoutStep = 'identification' | 'fulfillment' | 'payment' | 'review';
+type RecognizedCustomer = Extract<CustomerRecognitionResult, { recognized: true }>;
+type RecognitionAction = 'confirm' | 'new-address' | 'not-me';
 
 export interface CheckoutFormProps {
   storeId: string;
@@ -158,8 +184,9 @@ export interface CheckoutFormProps {
   initialStep?: CheckoutStep;
   initialModality?: 'DELIVERY' | 'PICKUP';
   initialCouponCode?: string;
-  /** Compatibilidade de chamada; zonas nunca são aceitas como fonte de verdade. */
-  deliveryZones?: unknown[];
+  deliveryZones?: PublicDeliveryZoneDto[];
+  storeCity?: string;
+  storeState?: string;
 }
 
 const STEPS: Array<{ id: CheckoutStep; label: string; shortLabel: string }> = [
@@ -180,6 +207,50 @@ function getSessionStorage() {
 function formatPostalCode(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 8);
   return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMaskedAddress(value: unknown): value is MaskedCustomerAddressDto {
+  return (
+    isRecord(value) &&
+    typeof value.opaqueReference === 'string' &&
+    typeof value.label === 'string' &&
+    typeof value.maskedAddress === 'string' &&
+    typeof value.isDefault === 'boolean' &&
+    typeof value.requiresDeliveryZoneSelection === 'boolean' &&
+    (value.lastUsedLabel === undefined || typeof value.lastUsedLabel === 'string')
+  );
+}
+
+function isRecognitionResult(value: unknown): value is CustomerRecognitionResult {
+  if (!isRecord(value) || typeof value.recognized !== 'boolean') return false;
+  if (!value.recognized) {
+    return (
+      typeof value.message === 'string' &&
+      (value.recognitionUnavailable === undefined ||
+        typeof value.recognitionUnavailable === 'boolean') &&
+      (value.retryAfterSeconds === undefined || typeof value.retryAfterSeconds === 'number')
+    );
+  }
+  return (
+    typeof value.maskedName === 'string' &&
+    typeof value.maskedPhone === 'string' &&
+    Array.isArray(value.maskedAddresses) &&
+    value.maskedAddresses.length <= 5 &&
+    value.maskedAddresses.every(isMaskedAddress)
+  );
+}
+
+function isRecognitionConfirmation(value: unknown): value is CustomerRecognitionConfirmationResult {
+  return (
+    isRecord(value) &&
+    value.confirmed === true &&
+    (value.mode === 'NEW_ADDRESS' ||
+      (value.mode === 'SAVED_ADDRESS' && typeof value.opaqueReference === 'string'))
+  );
 }
 
 function quoteFromErrorDetails(
@@ -450,6 +521,9 @@ export function CheckoutForm({
   acceptsPix,
   acceptsCash,
   acceptsCardOnDelivery,
+  deliveryZones = [],
+  storeCity = '',
+  storeState = '',
   initialStep = 'identification',
   initialModality,
   initialCouponCode = '',
@@ -466,7 +540,18 @@ export function CheckoutForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [acceptedChangedQuote, setAcceptedChangedQuote] = useState<CheckoutQuoteDto | null>(null);
+  const [recognizedCustomer, setRecognizedCustomer] = useState<RecognizedCustomer | null>(null);
+  const [recognitionDialogOpen, setRecognitionDialogOpen] = useState(false);
+  const [recognitionPending, setRecognitionPending] = useState(false);
+  const [recognitionAction, setRecognitionAction] = useState<RecognitionAction | null>(null);
+  const [recognitionError, setRecognitionError] = useState<string | null>(null);
+  const [recognitionNotice, setRecognitionNotice] = useState<string | null>(null);
+  const [selectedAddressReference, setSelectedAddressReference] = useState<string | null>(null);
+  const [confirmedSavedAddress, setConfirmedSavedAddress] =
+    useState<MaskedCustomerAddressDto | null>(null);
   const idempotencyRef = useRef<CheckoutIdempotencyRecord | null>(null);
+  const recognitionTriggerRef = useRef<HTMLButtonElement>(null);
+  const recognitionSessionActiveRef = useRef(false);
   const completedRef = useRef(false);
   const restoredRef = useRef(false);
   const telemetryStartedRef = useRef(false);
@@ -477,6 +562,7 @@ export function CheckoutForm({
     field: FieldPath<CheckoutFormValues>;
   } | null>(null);
   const canDeliver = deliveryEnabled;
+  const recognitionEndpoint = `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/recognition`;
   const defaultModality =
     initialModality === 'DELIVERY' && canDeliver
       ? 'DELIVERY'
@@ -505,16 +591,18 @@ export function CheckoutForm({
       customerName: '',
       customerPhone: '',
       modality: defaultModality,
+      deliveryZoneId: '',
       deliveryPostalCode: '',
+      savedAddressReference: '',
       address: {
         street: '',
         number: '',
         complement: '',
-        neighborhood: '',
-        city: '',
-        state: '',
         reference: '',
       },
+      saveCustomerData: true,
+      addressLabel: 'HOME',
+      setAddressAsDefault: false,
       paymentMethod: defaultPayment,
       cashWithoutChange: true,
       changeFor: '',
@@ -528,10 +616,26 @@ export function CheckoutForm({
   const normalizedPostalCode = values.deliveryPostalCode.replace(/\D/g, '');
   const quoteInput = useMemo<CheckoutQuoteInput | null>(() => {
     if (activeStoreId !== storeId || items.length === 0) return null;
-    if (values.modality === 'DELIVERY' && normalizedPostalCode.length !== 8) return null;
+    if (values.modality === 'DELIVERY' && !values.deliveryZoneId && !values.savedAddressReference) {
+      return null;
+    }
+    if (
+      values.modality === 'DELIVERY' &&
+      normalizedPostalCode.length > 0 &&
+      normalizedPostalCode.length !== 8
+    ) {
+      return null;
+    }
     return {
       modality: values.modality,
-      deliveryPostalCode: values.modality === 'DELIVERY' ? normalizedPostalCode : undefined,
+      deliveryZoneId:
+        values.modality === 'DELIVERY' && values.deliveryZoneId ? values.deliveryZoneId : undefined,
+      deliveryPostalCode:
+        values.modality === 'DELIVERY' && normalizedPostalCode ? normalizedPostalCode : undefined,
+      savedAddressReference:
+        values.modality === 'DELIVERY' && values.savedAddressReference
+          ? values.savedAddressReference
+          : undefined,
       couponCode: values.couponCode.trim() || undefined,
       items: items.map((item) => ({
         lineId: item.id,
@@ -541,7 +645,16 @@ export function CheckoutForm({
         optionIds: item.selectedOptions.map((option) => option.id),
       })),
     };
-  }, [activeStoreId, items, normalizedPostalCode, storeId, values.couponCode, values.modality]);
+  }, [
+    activeStoreId,
+    items,
+    normalizedPostalCode,
+    storeId,
+    values.couponCode,
+    values.deliveryZoneId,
+    values.modality,
+    values.savedAddressReference,
+  ]);
   const {
     quote,
     error: quoteError,
@@ -549,6 +662,7 @@ export function CheckoutForm({
     refetch: refetchQuote,
   } = useCheckoutQuote({ storeSlug, input: quoteInput });
   const effectiveQuote = acceptedChangedQuote ?? quote;
+  const selectedDeliveryZone = deliveryZones.find((zone) => zone.id === values.deliveryZoneId);
 
   useEffect(() => {
     setStore(storeId, storeSlug);
@@ -591,8 +705,15 @@ export function CheckoutForm({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pagehide', handlePageHide);
+      if (recognitionSessionActiveRef.current && !completedRef.current) {
+        void fetch(recognitionEndpoint, {
+          method: 'DELETE',
+          cache: 'no-store',
+          keepalive: true,
+        }).catch(() => undefined);
+      }
     };
-  }, [storeSlug]);
+  }, [recognitionEndpoint, storeSlug]);
 
   useEffect(() => {
     if (activeStoreId !== storeId || restoredRef.current) return;
@@ -606,8 +727,6 @@ export function CheckoutForm({
     }
     reset((current) => ({
       ...current,
-      customerName: draft.customerName,
-      customerPhone: formatPhoneInput(draft.customerPhone),
       modality: initialModality
         ? defaultModality
         : draft.modality === 'DELIVERY' && canDeliver
@@ -621,8 +740,10 @@ export function CheckoutForm({
         (draft.paymentMethod === 'CARD_ON_DELIVERY' && acceptsCardOnDelivery)
           ? draft.paymentMethod
           : defaultPayment,
-      deliveryPostalCode: formatPostalCode(draft.deliveryPostalCode || ''),
-      address: draft.address ?? current.address,
+      deliveryZoneId:
+        draft.deliveryZoneId && deliveryZones.some((zone) => zone.id === draft.deliveryZoneId)
+          ? draft.deliveryZoneId
+          : '',
       couponCode: initialCouponCode || cartCouponCode || draft.couponCode || '',
     }));
   }, [
@@ -634,6 +755,7 @@ export function CheckoutForm({
     cartCouponCode,
     defaultModality,
     defaultPayment,
+    deliveryZones,
     initialCouponCode,
     initialModality,
     pickupEnabled,
@@ -646,11 +768,9 @@ export function CheckoutForm({
     if (!restoredRef.current || completedRef.current) return;
     const timer = window.setTimeout(() => {
       writeCheckoutDraft(getSessionStorage(), storeId, {
-        customerName: values.customerName,
-        customerPhone: values.customerPhone,
+        step,
         modality: values.modality,
-        deliveryPostalCode: values.deliveryPostalCode,
-        address: values.address,
+        deliveryZoneId: values.deliveryZoneId || undefined,
         couponCode: values.couponCode,
         paymentMethod: values.paymentMethod,
       });
@@ -658,13 +778,11 @@ export function CheckoutForm({
     return () => window.clearTimeout(timer);
   }, [
     storeId,
-    values.address,
     values.couponCode,
-    values.customerName,
-    values.customerPhone,
-    values.deliveryPostalCode,
+    values.deliveryZoneId,
     values.modality,
     values.paymentMethod,
+    step,
   ]);
 
   useEffect(() => {
@@ -699,43 +817,204 @@ export function CheckoutForm({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  async function requestRecognition() {
+    setRecognitionPending(true);
+    setRecognitionError(null);
+    setRecognitionNotice(null);
+    setRecognizedCustomer(null);
+    setConfirmedSavedAddress(null);
+    setSelectedAddressReference(null);
+    setValue('savedAddressReference', '');
+    recognitionSessionActiveRef.current = true;
+
+    try {
+      const response = await fetch(recognitionEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerPhone: values.customerPhone,
+          customerName: values.customerName,
+        }),
+        cache: 'no-store',
+      });
+      const body = (await response.json()) as unknown;
+      if (!isRecognitionResult(body)) {
+        throw new Error('Resposta de reconhecimento inválida.');
+      }
+
+      if (!body.recognized) {
+        setRecognitionNotice(body.message);
+        setStep('fulfillment');
+        return;
+      }
+
+      setRecognizedCustomer(body);
+      if (body.maskedAddresses.length === 0) {
+        await continueWithNewAddress(false);
+        return;
+      }
+
+      const preferredAddress =
+        body.maskedAddresses.find((address) => address.isDefault) ?? body.maskedAddresses[0];
+      setSelectedAddressReference(preferredAddress.opaqueReference);
+      setRecognitionDialogOpen(true);
+    } catch {
+      setRecognizedCustomer(null);
+      setRecognitionNotice(
+        'Não foi possível recuperar dados salvos. Você pode continuar preenchendo o checkout normalmente.',
+      );
+      setStep('fulfillment');
+    } finally {
+      setRecognitionPending(false);
+    }
+  }
+
+  async function patchRecognition(body: Record<string, string>) {
+    const response = await fetch(recognitionEndpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    });
+    const result = (await response.json()) as unknown;
+    if (!response.ok || !isRecognitionConfirmation(result)) {
+      throw new Error('Não foi possível confirmar os dados salvos.');
+    }
+    return result;
+  }
+
+  async function confirmSavedAddress() {
+    if (!selectedAddressReference || !recognizedCustomer) return;
+    setRecognitionAction('confirm');
+    setRecognitionError(null);
+    try {
+      const confirmation = await patchRecognition({
+        action: 'CONFIRM_ADDRESS',
+        opaqueReference: selectedAddressReference,
+      });
+      if (confirmation.mode !== 'SAVED_ADDRESS') {
+        throw new Error('A confirmação do endereço é inválida.');
+      }
+      const address = recognizedCustomer.maskedAddresses.find(
+        (candidate) => candidate.opaqueReference === selectedAddressReference,
+      );
+      if (!address) throw new Error('O endereço escolhido não está mais disponível.');
+
+      setConfirmedSavedAddress(address);
+      setValue('savedAddressReference', confirmation.opaqueReference, { shouldDirty: true });
+      if (!address.requiresDeliveryZoneSelection) {
+        setValue('deliveryZoneId', '', { shouldDirty: true });
+      }
+      setRecognitionDialogOpen(false);
+      setStep('fulfillment');
+    } catch (error) {
+      setRecognitionError(
+        error instanceof Error
+          ? error.message
+          : 'Este endereço não está mais disponível. Informe um novo endereço.',
+      );
+    } finally {
+      setRecognitionAction(null);
+    }
+  }
+
+  async function continueWithNewAddress(showDialogError = true) {
+    setRecognitionAction('new-address');
+    setRecognitionError(null);
+    try {
+      await patchRecognition({ action: 'USE_NEW_ADDRESS' });
+    } catch {
+      if (showDialogError) {
+        setRecognitionNotice(
+          'Não foi possível recuperar dados salvos. Você pode continuar preenchendo o checkout normalmente.',
+        );
+      }
+    } finally {
+      setConfirmedSavedAddress(null);
+      setSelectedAddressReference(null);
+      setValue('savedAddressReference', '', { shouldDirty: true });
+      setRecognitionDialogOpen(false);
+      setRecognitionAction(null);
+      setStep('fulfillment');
+    }
+  }
+
+  async function rejectRecognizedCustomer() {
+    setRecognitionAction('not-me');
+    setRecognitionError(null);
+    try {
+      await fetch(recognitionEndpoint, { method: 'DELETE', cache: 'no-store' });
+    } catch {
+      // O checkout visitante continua seguro; a sessão expira no servidor.
+    } finally {
+      recognitionSessionActiveRef.current = false;
+      setRecognizedCustomer(null);
+      setConfirmedSavedAddress(null);
+      setSelectedAddressReference(null);
+      setValue('savedAddressReference', '', { shouldDirty: true });
+      setValue('saveCustomerData', false, { shouldDirty: true });
+      setValue('setAddressAsDefault', false, { shouldDirty: true });
+      setRecognitionDialogOpen(false);
+      setRecognitionAction(null);
+      setRecognitionNotice('Continue como visitante e informe o endereço que deseja usar.');
+      setStep('fulfillment');
+    }
+  }
+
+  function handleRecognitionDialogOpenChange(open: boolean) {
+    setRecognitionDialogOpen(open);
+  }
+
   async function goForward() {
     const fieldsByStep: Record<Exclude<CheckoutStep, 'review'>, FieldPath<CheckoutFormValues>[]> = {
-      identification: ['customerName', 'customerPhone'],
+      identification: ['customerPhone', 'customerName'],
       fulfillment: ['modality'],
       payment: ['paymentMethod', 'cashWithoutChange', 'changeFor'],
     };
     if (step === 'review') return;
     const baseFields =
       step === 'fulfillment' && values.modality === 'DELIVERY'
-        ? (['modality', 'deliveryPostalCode'] as FieldPath<CheckoutFormValues>[])
+        ? ([
+            'modality',
+            'deliveryZoneId',
+            'deliveryPostalCode',
+            'savedAddressReference',
+          ] as FieldPath<CheckoutFormValues>[])
         : fieldsByStep[step];
     const valid = await trigger(baseFields, { shouldFocus: true });
     if (!valid) return;
+    if (step === 'identification') {
+      await requestRecognition();
+      return;
+    }
     if (step === 'fulfillment' && values.modality === 'DELIVERY') {
       const latestQuote = await refetchQuote();
       const coverageIssue = latestQuote?.issues.find(
         (issue) => issue.code === 'OUTSIDE_DELIVERY_AREA',
       );
       if (!latestQuote || coverageIssue || !latestQuote.deliveryZoneId) {
-        setError('deliveryPostalCode', {
+        setError('deliveryZoneId', {
           message:
             coverageIssue?.message ??
-            'Não foi possível confirmar a cobertura deste CEP. Tente novamente.',
+            'Não conseguimos confirmar a entrega para essa região. Escolha outra região ou fale com a loja.',
         });
         return;
       }
-      clearErrors('deliveryPostalCode');
+      clearErrors(['deliveryZoneId', 'deliveryPostalCode']);
+      if (values.savedAddressReference) {
+        const index = STEPS.findIndex((candidate) => candidate.id === step);
+        setStep(STEPS[index + 1].id);
+        return;
+      }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const addressValid = await trigger(
         [
           'address.street',
           'address.number',
           'address.complement',
-          'address.neighborhood',
-          'address.city',
-          'address.state',
           'address.reference',
+          'addressLabel',
+          'setAddressAsDefault',
         ],
         { shouldFocus: true },
       );
@@ -779,18 +1058,21 @@ export function CheckoutForm({
           customerName: validValues.customerName,
           customerPhone: validValues.customerPhone,
           deliveryAddress:
-            validValues.modality === 'DELIVERY'
+            validValues.modality === 'DELIVERY' && !validValues.savedAddressReference
               ? {
-                  postalCode: normalizedPostalCode,
+                  postalCode: normalizedPostalCode || undefined,
                   street: validValues.address.street,
                   number: validValues.address.number,
-                  neighborhood: validValues.address.neighborhood,
-                  city: validValues.address.city,
-                  state: validValues.address.state,
                   complement: validValues.address.complement,
                   reference: validValues.address.reference,
                 }
               : undefined,
+          saveCustomerData: validValues.saveCustomerData,
+          addressLabel: validValues.addressLabel,
+          setAddressAsDefault:
+            validValues.saveCustomerData && !validValues.savedAddressReference
+              ? validValues.setAddressAsDefault
+              : false,
           paymentMethod: validValues.paymentMethod,
           changeFor,
           notes: validValues.notes,
@@ -824,7 +1106,7 @@ export function CheckoutForm({
             }
           }
           if (result.error.code === 'OUTSIDE_DELIVERY_AREA') {
-            setError('deliveryPostalCode', { message: result.error.message });
+            setError('deliveryZoneId', { message: result.error.message });
             setStep('fulfillment');
             return;
           }
@@ -836,6 +1118,7 @@ export function CheckoutForm({
         }
 
         completedRef.current = true;
+        recognitionSessionActiveRef.current = false;
         reportCheckoutEvent(storeSlug, { event: 'checkout_completed', step: 'review' });
         idempotencyRef.current = null;
         clearCheckoutIdempotency(storage, storageKey);
@@ -865,27 +1148,25 @@ export function CheckoutForm({
       targetField = invalidFields.customerName ? 'customerName' : 'customerPhone';
     } else if (
       invalidFields.modality ||
+      invalidFields.deliveryZoneId ||
       invalidFields.deliveryPostalCode ||
+      invalidFields.savedAddressReference ||
       invalidFields.address
     ) {
       targetStep = 'fulfillment';
-      targetField = invalidFields.deliveryPostalCode
-        ? 'deliveryPostalCode'
-        : invalidFields.address?.street
-          ? 'address.street'
-          : invalidFields.address?.neighborhood
-            ? 'address.neighborhood'
+      targetField = invalidFields.deliveryZoneId
+        ? 'deliveryZoneId'
+        : invalidFields.deliveryPostalCode
+          ? 'deliveryPostalCode'
+          : invalidFields.address?.street
+            ? 'address.street'
             : invalidFields.address?.number
               ? 'address.number'
-              : invalidFields.address?.city
-                ? 'address.city'
-                : invalidFields.address?.state
-                  ? 'address.state'
-                  : invalidFields.address?.complement
-                    ? 'address.complement'
-                    : invalidFields.address?.reference
-                      ? 'address.reference'
-                      : 'modality';
+              : invalidFields.address?.complement
+                ? 'address.complement'
+                : invalidFields.address?.reference
+                  ? 'address.reference'
+                  : 'modality';
     } else if (
       invalidFields.paymentMethod ||
       invalidFields.cashWithoutChange ||
@@ -893,6 +1174,9 @@ export function CheckoutForm({
     ) {
       targetStep = 'payment';
       targetField = invalidFields.changeFor ? 'changeFor' : 'paymentMethod';
+    } else if (invalidFields.saveCustomerData || invalidFields.setAddressAsDefault) {
+      targetStep = 'review';
+      targetField = invalidFields.setAddressAsDefault ? 'setAddressAsDefault' : 'saveCustomerData';
     } else if (invalidFields.notes) {
       targetField = 'notes';
     }
@@ -930,7 +1214,7 @@ export function CheckoutForm({
   const currentStepIndex = STEPS.findIndex((candidate) => candidate.id === step);
   const nextLabel =
     step === 'identification'
-      ? 'Continuar para recebimento'
+      ? 'Continuar'
       : step === 'fulfillment'
         ? 'Continuar para pagamento'
         : 'Revisar pedido';
@@ -990,37 +1274,25 @@ export function CheckoutForm({
                     id="identification-title"
                     className="font-display text-tinta text-xl font-bold"
                   >
-                    Como podemos chamar você?
+                    Vamos identificar você
                   </h1>
                   <p className="text-text-muted mt-1 text-sm">
-                    A loja usará o telefone somente para falar sobre este pedido.
+                    Informe seus dados para continuar. Se você já pediu nesta loja, podemos
+                    recuperar seus endereços salvos.
                   </p>
                 </div>
               </header>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="customerName" className="text-tinta text-sm font-semibold">
-                    Nome
-                  </label>
-                  <Input
-                    id="customerName"
-                    autoComplete="name"
-                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
-                    aria-invalid={Boolean(errors.customerName)}
-                    aria-describedby={errors.customerName ? 'customerName-error' : undefined}
-                    {...register('customerName')}
-                  />
-                  <FieldError id="customerName-error" message={errors.customerName?.message} />
-                </div>
-                <div>
                   <label htmlFor="customerPhone" className="text-tinta text-sm font-semibold">
-                    Telefone / WhatsApp
+                    Celular
                   </label>
                   <Input
                     id="customerPhone"
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
+                    autoFocus
                     maxLength={15}
                     placeholder="(11) 99999-9999"
                     className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
@@ -1035,6 +1307,33 @@ export function CheckoutForm({
                   />
                   <FieldError id="customerPhone-error" message={errors.customerPhone?.message} />
                 </div>
+                <div>
+                  <label htmlFor="customerName" className="text-tinta text-sm font-semibold">
+                    Nome
+                  </label>
+                  <Input
+                    id="customerName"
+                    autoComplete="name"
+                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
+                    aria-invalid={Boolean(errors.customerName)}
+                    aria-describedby={errors.customerName ? 'customerName-error' : undefined}
+                    {...register('customerName')}
+                  />
+                  <FieldError id="customerName-error" message={errors.customerName?.message} />
+                </div>
+                <p className="text-text-muted text-sm">
+                  Já pediu aqui? Podemos recuperar seus endereços salvos com segurança.
+                </p>
+                <p className="sr-only" aria-live="polite">
+                  {recognitionPending
+                    ? 'Verificando dados salvos.'
+                    : (recognitionNotice ?? recognitionError ?? '')}
+                </p>
+                {recognitionNotice ? (
+                  <p className="border-info/20 bg-info-light text-tinta rounded-xl border p-3 text-sm">
+                    {recognitionNotice}
+                  </p>
+                ) : null}
               </div>
             </section>
           )}
@@ -1050,7 +1349,7 @@ export function CheckoutForm({
                     Como quer receber?
                   </h1>
                   <p className="text-text-muted mt-1 text-sm">
-                    Para entrega, validamos primeiro se o CEP está na área atendida.
+                    Para entrega, escolha uma das regiões atendidas pela loja.
                   </p>
                 </div>
               </header>
@@ -1104,108 +1403,117 @@ export function CheckoutForm({
 
               {values.modality === 'DELIVERY' && (
                 <div className="space-y-4">
-                  <div>
-                    <label
-                      htmlFor="deliveryPostalCode"
-                      className="text-tinta text-sm font-semibold"
-                    >
-                      CEP
-                    </label>
-                    <Input
-                      id="deliveryPostalCode"
-                      inputMode="numeric"
-                      autoComplete="postal-code"
-                      placeholder="00000-000"
-                      maxLength={9}
-                      className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
-                      aria-invalid={Boolean(errors.deliveryPostalCode)}
-                      aria-describedby={
-                        errors.deliveryPostalCode
-                          ? 'postal-help deliveryPostalCode-error'
-                          : 'postal-help'
-                      }
-                      {...register('deliveryPostalCode', {
-                        onChange: (event) =>
-                          setValue('deliveryPostalCode', formatPostalCode(event.target.value), {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          }),
-                      })}
-                    />
-                    <p id="postal-help" className="text-text-muted mt-1 text-sm">
-                      A região e a taxa são definidas pelo servidor.
+                  {recognitionNotice ? (
+                    <p className="border-info/20 bg-info-light text-tinta rounded-xl border p-3 text-sm">
+                      {recognitionNotice}
                     </p>
-                    <FieldError
-                      id="deliveryPostalCode-error"
-                      message={errors.deliveryPostalCode?.message}
-                    />
-                  </div>
+                  ) : null}
 
-                  {normalizedPostalCode.length === 8 && quoteLoading && (
+                  {confirmedSavedAddress ? (
+                    <div className="border-tinta/15 bg-papel rounded-xl border p-4">
+                      <div className="flex items-start gap-3">
+                        <MapPin
+                          className="storefront-action-text mt-0.5 h-5 w-5 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-tinta text-sm font-bold">
+                            {confirmedSavedAddress.label}
+                          </p>
+                          <p className="text-text-muted mt-1 text-sm text-pretty">
+                            {confirmedSavedAddress.maskedAddress}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="storefront-link mt-2 w-full"
+                        onClick={() => void continueWithNewAddress()}
+                      >
+                        Usar outro endereço
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {(!confirmedSavedAddress ||
+                    confirmedSavedAddress.requiresDeliveryZoneSelection) && (
+                    <div>
+                      <label htmlFor="deliveryZoneId" className="text-tinta text-sm font-semibold">
+                        Bairro ou região atendida
+                      </label>
+                      <select
+                        id="deliveryZoneId"
+                        className="border-tinta/15 bg-papel text-tinta focus-visible:ring-pimenta mt-1 min-h-11 w-full rounded-xl border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+                        aria-invalid={Boolean(errors.deliveryZoneId)}
+                        aria-describedby={
+                          errors.deliveryZoneId
+                            ? 'deliveryZoneId-help deliveryZoneId-error'
+                            : 'deliveryZoneId-help'
+                        }
+                        {...register('deliveryZoneId', {
+                          onChange: () => clearErrors('deliveryZoneId'),
+                        })}
+                      >
+                        <option value="">Selecione uma região</option>
+                        {deliveryZones.map((zone) => (
+                          <option key={zone.id} value={zone.id}>
+                            {zone.name} · {formatCurrency(zone.fee)}
+                          </option>
+                        ))}
+                      </select>
+                      <p id="deliveryZoneId-help" className="text-text-muted mt-1 text-sm">
+                        A taxa, o pedido mínimo e o prazo serão confirmados pelo servidor.
+                      </p>
+                      <FieldError
+                        id="deliveryZoneId-error"
+                        message={errors.deliveryZoneId?.message}
+                      />
+                    </div>
+                  )}
+
+                  {quoteLoading && quoteInput ? (
                     <p className="text-text-muted flex items-center gap-2 text-sm" role="status">
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Validando a cobertura…
+                      Confirmando a região…
                     </p>
-                  )}
-                  {normalizedPostalCode.length === 8 &&
-                    quote?.issues.some((issue) => issue.code === 'OUTSIDE_DELIVERY_AREA') && (
-                      <div className="border-error/20 bg-error-light text-tinta rounded-xl border p-3 text-sm">
-                        {
-                          quote.issues.find((issue) => issue.code === 'OUTSIDE_DELIVERY_AREA')
-                            ?.message
-                        }
-                      </div>
-                    )}
-                  {quote?.deliveryZoneId && (
+                  ) : null}
+                  {quote?.issues.some((issue) => issue.code === 'OUTSIDE_DELIVERY_AREA') ? (
+                    <div className="border-error/20 bg-error-light text-tinta rounded-xl border p-3 text-sm">
+                      {
+                        quote.issues.find((issue) => issue.code === 'OUTSIDE_DELIVERY_AREA')
+                          ?.message
+                      }
+                    </div>
+                  ) : null}
+                  {quote?.deliveryZoneId ? (
                     <div className="border-success/25 bg-success-light text-tinta rounded-xl border p-3 text-sm">
                       <p className="font-semibold">Entrega disponível · {quote.deliveryZoneName}</p>
                       <p className="mt-1">
                         Taxa {formatCurrency(quote.deliveryFee)} · prazo confirmado na revisão
                       </p>
                     </div>
-                  )}
+                  ) : null}
 
-                  {quote?.deliveryZoneId && (
+                  {!confirmedSavedAddress && values.deliveryZoneId ? (
                     <fieldset className="space-y-4 border-0 p-0">
                       <legend className="text-tinta text-base font-bold">
                         Endereço de entrega
                       </legend>
-                      <div>
-                        <label htmlFor="street" className="text-tinta text-sm font-semibold">
-                          Rua
-                        </label>
-                        <Input
-                          id="street"
-                          autoComplete="address-line1"
-                          className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1"
-                          aria-invalid={Boolean(errors.address?.street)}
-                          aria-describedby={errors.address?.street ? 'street-error' : undefined}
-                          {...register('address.street')}
-                        />
-                        <FieldError id="street-error" message={errors.address?.street?.message} />
-                      </div>
-                      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-3">
                         <div>
-                          <label
-                            htmlFor="neighborhood"
-                            className="text-tinta text-sm font-semibold"
-                          >
-                            Bairro
+                          <label htmlFor="street" className="text-tinta text-sm font-semibold">
+                            Rua
                           </label>
                           <Input
-                            id="neighborhood"
-                            autoComplete="address-level3"
+                            id="street"
+                            autoComplete="address-line1"
                             className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1"
-                            aria-invalid={Boolean(errors.address?.neighborhood)}
-                            aria-describedby={
-                              errors.address?.neighborhood ? 'neighborhood-error' : undefined
-                            }
-                            {...register('address.neighborhood')}
+                            aria-invalid={Boolean(errors.address?.street)}
+                            aria-describedby={errors.address?.street ? 'street-error' : undefined}
+                            {...register('address.street')}
                           />
-                          <FieldError
-                            id="neighborhood-error"
-                            message={errors.address?.neighborhood?.message}
-                          />
+                          <FieldError id="street-error" message={errors.address?.street?.message} />
                         </div>
                         <div>
                           <label htmlFor="number" className="text-tinta text-sm font-semibold">
@@ -1229,13 +1537,11 @@ export function CheckoutForm({
                           </label>
                           <Input
                             id="city"
-                            autoComplete="address-level2"
-                            className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1"
-                            aria-invalid={Boolean(errors.address?.city)}
-                            aria-describedby={errors.address?.city ? 'city-error' : undefined}
-                            {...register('address.city')}
+                            value={storeCity}
+                            readOnly
+                            aria-readonly="true"
+                            className="border-tinta/15 bg-tinta/5 text-tinta mt-1"
                           />
-                          <FieldError id="city-error" message={errors.address?.city?.message} />
                         </div>
                         <div>
                           <label htmlFor="state" className="text-tinta text-sm font-semibold">
@@ -1243,14 +1549,11 @@ export function CheckoutForm({
                           </label>
                           <Input
                             id="state"
-                            autoComplete="address-level1"
-                            maxLength={2}
-                            className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 uppercase"
-                            aria-invalid={Boolean(errors.address?.state)}
-                            aria-describedby={errors.address?.state ? 'state-error' : undefined}
-                            {...register('address.state')}
+                            value={storeState}
+                            readOnly
+                            aria-readonly="true"
+                            className="border-tinta/15 bg-tinta/5 text-tinta mt-1 uppercase"
                           />
-                          <FieldError id="state-error" message={errors.address?.state?.message} />
                         </div>
                       </div>
                       <div>
@@ -1291,8 +1594,69 @@ export function CheckoutForm({
                           message={errors.address?.reference?.message}
                         />
                       </div>
+                      <div>
+                        <label
+                          htmlFor="deliveryPostalCode"
+                          className="text-tinta text-sm font-semibold"
+                        >
+                          CEP <span className="text-text-muted font-normal">(opcional)</span>
+                        </label>
+                        <Input
+                          id="deliveryPostalCode"
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          placeholder="00000-000"
+                          maxLength={9}
+                          className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
+                          aria-invalid={Boolean(errors.deliveryPostalCode)}
+                          aria-describedby={
+                            errors.deliveryPostalCode ? 'deliveryPostalCode-error' : undefined
+                          }
+                          {...register('deliveryPostalCode', {
+                            onChange: (event) =>
+                              setValue('deliveryPostalCode', formatPostalCode(event.target.value), {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              }),
+                          })}
+                        />
+                        <FieldError
+                          id="deliveryPostalCode-error"
+                          message={errors.deliveryPostalCode?.message}
+                        />
+                      </div>
+
+                      {values.saveCustomerData ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label
+                              htmlFor="addressLabel"
+                              className="text-tinta text-sm font-semibold"
+                            >
+                              Salvar como
+                            </label>
+                            <select
+                              id="addressLabel"
+                              className="border-tinta/15 bg-papel text-tinta focus-visible:ring-pimenta mt-1 min-h-11 w-full rounded-xl border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+                              {...register('addressLabel')}
+                            >
+                              <option value="HOME">Casa</option>
+                              <option value="WORK">Trabalho</option>
+                              <option value="OTHER">Outro</option>
+                            </select>
+                          </div>
+                          <label className="text-tinta flex min-h-11 cursor-pointer items-center gap-3 self-end text-sm font-semibold">
+                            <input
+                              type="checkbox"
+                              className="accent-pimenta h-5 w-5"
+                              {...register('setAddressAsDefault')}
+                            />
+                            Tornar principal
+                          </label>
+                        </div>
+                      ) : null}
                     </fieldset>
-                  )}
+                  ) : null}
                 </div>
               )}
             </section>
@@ -1502,8 +1866,9 @@ export function CheckoutForm({
                     </p>
                     {values.modality === 'DELIVERY' && (
                       <p className="text-text-muted mt-1 text-sm">
-                        {values.address.street}, {values.address.number} ·{' '}
-                        {values.address.neighborhood}
+                        {confirmedSavedAddress
+                          ? confirmedSavedAddress.maskedAddress
+                          : `${values.address.street}, ${values.address.number} · ${selectedDeliveryZone?.name ?? 'Região selecionada'}`}
                       </p>
                     )}
                   </div>
@@ -1536,6 +1901,35 @@ export function CheckoutForm({
                     Editar
                   </button>
                 </div>
+              </div>
+
+              <div className="border-tinta/15 bg-papel rounded-xl border p-4">
+                <label className="text-tinta flex min-h-11 cursor-pointer items-start gap-3 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    className="accent-pimenta mt-0.5 h-5 w-5 shrink-0"
+                    aria-describedby="save-customer-data-help"
+                    {...register('saveCustomerData', {
+                      onChange: (event) => {
+                        if (!event.target.checked) {
+                          setValue('setAddressAsDefault', false, { shouldDirty: true });
+                        }
+                      },
+                    })}
+                  />
+                  <span>Salvar meus dados para a próxima compra</span>
+                </label>
+                <p
+                  id="save-customer-data-help"
+                  className="text-text-muted mt-2 text-sm text-pretty"
+                >
+                  Podemos salvar seu nome, celular e endereço para facilitar suas próximas compras
+                  nesta loja. Isso é reconhecimento rápido, não uma conta autenticada.
+                </p>
+                <FieldError
+                  id="saveCustomerData-error"
+                  message={errors.saveCustomerData?.message ?? errors.setAddressAsDefault?.message}
+                />
               </div>
 
               <div>
@@ -1616,7 +2010,7 @@ export function CheckoutForm({
               )}
               <p className="text-text-muted mt-2 text-sm">
                 {values.modality === 'DELIVERY'
-                  ? 'Informe o CEP para calcular a entrega.'
+                  ? 'Escolha uma região para calcular a entrega.'
                   : 'Atualizando valores…'}
               </p>
             </div>
@@ -1639,11 +2033,20 @@ export function CheckoutForm({
           </Button>
           {step !== 'review' ? (
             <Button
+              ref={step === 'identification' ? recognitionTriggerRef : undefined}
               type="button"
               onClick={() => void goForward()}
+              disabled={recognitionPending}
               className="storefront-primary-action min-w-0 flex-1 overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
             >
-              {nextLabel}
+              {step === 'identification' && recognitionPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Verificando…
+                </>
+              ) : (
+                nextLabel
+              )}
             </Button>
           ) : (
             <Button
@@ -1665,6 +2068,22 @@ export function CheckoutForm({
           )}
         </div>
       </div>
+
+      {recognizedCustomer && recognizedCustomer.maskedAddresses.length > 0 ? (
+        <CustomerRecognitionDialog
+          open={recognitionDialogOpen}
+          customer={recognizedCustomer}
+          selectedReference={selectedAddressReference}
+          pendingAction={recognitionAction}
+          error={recognitionError}
+          returnFocusRef={recognitionTriggerRef}
+          onOpenChange={handleRecognitionDialogOpenChange}
+          onSelectAddress={setSelectedAddressReference}
+          onConfirm={() => void confirmSavedAddress()}
+          onUseNewAddress={() => void continueWithNewAddress()}
+          onNotMe={() => void rejectRecognizedCustomer()}
+        />
+      ) : null}
     </form>
   );
 }

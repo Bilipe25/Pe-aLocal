@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  clearCheckoutIdempotency,
-  resolveCheckoutIdempotency,
-} from './checkout-idempotency';
+import { clearCheckoutIdempotency, resolveCheckoutIdempotency } from './checkout-idempotency';
 import type { CheckoutFingerprintInput } from './order-idempotency';
 
 const payload: CheckoutFingerprintInput = {
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP',
+  saveCustomerData: true,
+  addressLabel: 'HOME',
+  setAddressAsDefault: false,
   paymentMethod: 'PIX',
   notes: '',
   items: [
@@ -17,10 +17,7 @@ const payload: CheckoutFingerprintInput = {
       productId: 'd665460d-b4be-48e6-8cb2-33ab2e5cc8a1',
       quantity: 1,
       notes: '',
-      optionIds: [
-        '3d78178d-af83-4a72-8215-dcb24d3df903',
-        'fdd28ba4-e805-48a7-89db-f374ee985109',
-      ],
+      optionIds: ['3d78178d-af83-4a72-8215-dcb24d3df903', 'fdd28ba4-e805-48a7-89db-f374ee985109'],
     },
   ],
 };
@@ -46,7 +43,7 @@ describe('checkout idempotency', () => {
     expect(reload.key).toBe(first.key);
   });
 
-  it('rotates the key when checkout data changes', async () => {
+  it('does not persist or derive the browser key from customer PII', async () => {
     const storage = createStorage();
     const first = await resolveCheckoutIdempotency(payload, storage, 'checkout', null);
     const changed = await resolveCheckoutIdempotency(
@@ -56,8 +53,8 @@ describe('checkout idempotency', () => {
       first,
     );
 
-    expect(changed.key).not.toBe(first.key);
-    expect(changed.fingerprint).not.toBe(first.fingerprint);
+    expect(changed.key).toBe(first.key);
+    expect(changed.fingerprint).toBe(first.fingerprint);
   });
 
   it('reuses the key when only item and option ordering changes', async () => {

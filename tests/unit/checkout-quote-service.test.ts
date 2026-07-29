@@ -36,6 +36,7 @@ function createClient() {
       id: 'store-a',
       tenantId: 'tenant-a',
       slug: 'loja-a',
+      address: { city: 'São Paulo', state: 'SP' },
       settings: {
         minOrderValue: 0,
         estimatedTimeMinMinutes: 30,
@@ -62,9 +63,13 @@ function createClient() {
       },
     ]),
   };
-  const deliveryZone = { findMany: vi.fn().mockResolvedValue([]) };
+  const deliveryZone = {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+  };
+  const deliveryZonePostalRange = { count: vi.fn().mockResolvedValue(0) };
   const coupon = { findFirst: vi.fn().mockResolvedValue(null) };
-  return { store, product, deliveryZone, coupon };
+  return { store, product, deliveryZone, deliveryZonePostalRange, coupon };
 }
 
 describe('cotação autoritativa do checkout', () => {
@@ -195,6 +200,7 @@ describe('cotação autoritativa do checkout', () => {
         id: 'store-a',
         tenantId: 'tenant-a',
         slug: 'loja-a',
+        address: { city: 'São Paulo', state: 'SP' },
         settings: {
           minOrderValue: 0,
           estimatedTimeMinMinutes: Number.POSITIVE_INFINITY,
@@ -253,6 +259,178 @@ describe('cotação autoritativa do checkout', () => {
         expect.objectContaining({ code: 'COUPON_INVALID' }),
       ]),
     );
+  });
+
+  it('aceita zona ativa sem CEP e calcula taxa sem confiar em dados livres do cliente', async () => {
+    const client = createClient();
+    client.deliveryZone.findFirst.mockResolvedValue({
+      id: 'zone-a',
+      name: 'Centro',
+      fee: 600,
+      minOrderValue: 0,
+      estimatedTime: '40-55 min',
+    });
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({ modality: 'DELIVERY', deliveryZoneId: 'zone-a' }),
+      { client: client as never, now },
+    );
+
+    expect(client.deliveryZone.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'zone-a',
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          isActive: true,
+        }),
+      }),
+    );
+    expect(client.deliveryZonePostalRange.count).not.toHaveBeenCalled();
+    expect(quote).toMatchObject({
+      deliveryZoneId: 'zone-a',
+      deliveryZoneName: 'Centro',
+      deliveryFee: 600,
+      canCheckout: true,
+    });
+  });
+
+  it('normaliza o CEP legado do endereço salvo e vincula a versão ao fingerprint', async () => {
+    const client = createClient();
+    client.deliveryZone.findFirst.mockResolvedValue({
+      id: 'zone-a',
+      name: 'Centro',
+      fee: 600,
+      minOrderValue: 0,
+      estimatedTime: '40-55 min',
+    });
+    client.deliveryZonePostalRange.count.mockResolvedValue(1);
+    const savedAddress = {
+      id: 'address-a',
+      addressFingerprint: 'f'.repeat(64),
+      updatedAt: new Date('2026-07-20T12:00:00.000Z'),
+      street: 'Rua das Flores',
+      number: '10',
+      complement: null,
+      neighborhood: 'Centro',
+      city: 'São Paulo',
+      state: 'SP',
+      zipCode: '01001-000',
+      reference: null,
+      mappedDeliveryZoneId: 'zone-a',
+    };
+
+    const first = await calculateCheckoutQuote(
+      'loja-a',
+      input({ modality: 'DELIVERY', savedAddressReference: 'a'.repeat(43) }),
+      { client: client as never, now, savedAddress },
+    );
+    const changed = await calculateCheckoutQuote(
+      'loja-a',
+      input({ modality: 'DELIVERY', savedAddressReference: 'a'.repeat(43) }),
+      {
+        client: client as never,
+        now,
+        savedAddress: { ...savedAddress, updatedAt: new Date('2026-07-21T12:00:00.000Z') },
+      },
+    );
+
+    expect(client.deliveryZonePostalRange.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        deliveryZoneId: 'zone-a',
+        postalCodeStart: { lte: '01001000' },
+        postalCodeEnd: { gte: '01001000' },
+      }),
+    });
+    expect(first?.canCheckout).toBe(true);
+    expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
+  });
+
+  it('não permite trocar a zona autoritativa de um endereço salvo', async () => {
+    const client = createClient();
+    client.deliveryZone.findFirst.mockResolvedValue({
+      id: 'zone-mapped',
+      name: 'Centro',
+      fee: 600,
+      minOrderValue: 0,
+      estimatedTime: '40-55 min',
+    });
+    client.deliveryZonePostalRange.count.mockResolvedValue(1);
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({
+        modality: 'DELIVERY',
+        deliveryZoneId: 'zone-cheap',
+        savedAddressReference: 'a'.repeat(43),
+      }),
+      {
+        client: client as never,
+        now,
+        savedAddress: {
+          id: 'address-a',
+          addressFingerprint: 'f'.repeat(64),
+          updatedAt: new Date('2026-07-20T12:00:00.000Z'),
+          street: 'Rua das Flores',
+          number: '10',
+          complement: null,
+          neighborhood: 'Centro',
+          city: 'São Paulo',
+          state: 'SP',
+          zipCode: '01001000',
+          reference: null,
+          mappedDeliveryZoneId: 'zone-mapped',
+        },
+      },
+    );
+
+    expect(client.deliveryZone.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'zone-mapped' }) }),
+    );
+    expect(quote?.issues).toContainEqual(
+      expect.objectContaining({ code: 'SAVED_ADDRESS_UNAVAILABLE' }),
+    );
+    expect(quote?.canCheckout).toBe(false);
+  });
+
+  it('valida o CEP aninhado do endereço manual contra a zona escolhida', async () => {
+    const client = createClient();
+    client.deliveryZone.findFirst.mockResolvedValue({
+      id: 'zone-a',
+      name: 'Centro',
+      fee: 600,
+      minOrderValue: 0,
+      estimatedTime: '40-55 min',
+    });
+    client.deliveryZonePostalRange.count.mockResolvedValue(0);
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      {
+        ...input({ modality: 'DELIVERY', deliveryZoneId: 'zone-a' }),
+        deliveryAddress: {
+          street: 'Rua Nova',
+          number: '25',
+          complement: '',
+          reference: '',
+          postalCode: '99999999',
+        },
+      },
+      { client: client as never, now },
+    );
+
+    expect(client.deliveryZonePostalRange.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        deliveryZoneId: 'zone-a',
+        postalCodeStart: { lte: '99999999' },
+        postalCodeEnd: { gte: '99999999' },
+      }),
+    });
+    expect(quote?.issues).toContainEqual(
+      expect.objectContaining({ code: 'OUTSIDE_DELIVERY_AREA' }),
+    );
+    expect(quote?.canCheckout).toBe(false);
   });
 
   it('rejeita linhas semanticamente duplicadas mesmo com lineId diferente', async () => {

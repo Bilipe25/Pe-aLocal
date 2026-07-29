@@ -24,12 +24,17 @@ function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
   if (
     identifier.startsWith('checkout-quote:') ||
     identifier.startsWith('checkout-event:') ||
-    identifier.startsWith('recommendation:')
+    identifier.startsWith('recommendation:') ||
+    identifier.startsWith('recognition-store:')
   ) {
     return env.CHECKOUT_QUOTE_RATE_LIMITER;
   }
-  if (identifier.startsWith('order-ip:')) return env.ORDER_IP_RATE_LIMITER;
-  return identifier.startsWith('login:') || identifier.startsWith('password-recovery:')
+  if (identifier.startsWith('order-ip:') || identifier.startsWith('recognition-ip:')) {
+    return env.ORDER_IP_RATE_LIMITER;
+  }
+  return identifier.startsWith('login:') ||
+    identifier.startsWith('password-recovery:') ||
+    identifier.startsWith('recognition-phone:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
 }
@@ -74,6 +79,9 @@ export const RATE_LIMITS = {
   createOrderByIp: { maxAttempts: 30, windowInSeconds: 60 },
   checkoutQuote: { maxAttempts: 60, windowInSeconds: 60 },
   storefrontRecommendations: { maxAttempts: 60, windowInSeconds: 60 },
+  customerRecognitionByStore: { maxAttempts: 60, windowInSeconds: 60 },
+  customerRecognitionByIp: { maxAttempts: 30, windowInSeconds: 60 },
+  customerRecognitionByPhone: { maxAttempts: 5, windowInSeconds: 60 },
   publicOrderLookup: { maxAttempts: 30, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },

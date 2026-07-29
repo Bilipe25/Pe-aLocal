@@ -15,6 +15,21 @@ import {
   calculateCheckoutQuote,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
+import {
+  type CheckoutCustomerAddress,
+  persistCheckoutCustomerAfterOrder,
+} from '@/server/services/customer-checkout-persistence.service';
+import {
+  consumeRecognitionSession,
+  resolveActiveRecognitionSession,
+  resolveConfirmedRecognition,
+  resolveRecognitionAddressReference,
+  type ResolvedRecognitionAddress,
+} from '@/server/services/customer-recognition.service';
+import {
+  customerNamesMatch,
+  formatAddressForStore,
+} from '@/server/services/customer-recognition-formatting';
 import * as orderAudit from '@/server/services/order-audit.service';
 import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
@@ -23,6 +38,7 @@ interface CreateOrderParams {
   input: CheckoutInput;
   storeSlug: string;
   idempotencyFingerprint: string;
+  recognitionBrowserToken?: string | null;
 }
 
 interface CreateOrderResult {
@@ -33,18 +49,7 @@ interface CreateOrderResult {
   paymentReportToken: string;
   created: boolean;
   outboxEventIds: string[];
-}
-
-function formatDeliveryAddress(address: NonNullable<CheckoutInput['deliveryAddress']>) {
-  return [
-    `${address.street}, ${address.number}`,
-    address.complement,
-    address.neighborhood,
-    `${address.city} - ${address.state}`,
-    `CEP ${address.postalCode.replace(/^(\d{5})(\d{3})$/, '$1-$2')}`,
-  ]
-    .filter(Boolean)
-    .join(', ');
+  customerNameConflict: boolean;
 }
 
 /**
@@ -53,7 +58,7 @@ function formatDeliveryAddress(address: NonNullable<CheckoutInput['deliveryAddre
  * tratado como fonte de verdade.
  */
 async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderResult> {
-  const { input, storeSlug, idempotencyFingerprint } = params;
+  const { input, storeSlug, idempotencyFingerprint, recognitionBrowserToken } = params;
 
   return getDb().$transaction(
     async (tx) => {
@@ -62,6 +67,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         select: {
           id: true,
           tenantId: true,
+          address: { select: { city: true, state: true } },
           settings: {
             select: {
               acceptsPix: true,
@@ -105,10 +111,81 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           paymentReportToken: existing.paymentReportToken,
           created: false,
           outboxEventIds: [],
+          customerNameConflict: false,
         };
       }
 
-      const quote = await calculateCheckoutQuote(storeSlug, input, { client: tx });
+      const now = new Date();
+      const confirmedRecognition = recognitionBrowserToken
+        ? await resolveConfirmedRecognition({
+            tenantId: store.tenantId,
+            storeId: store.id,
+            browserToken: recognitionBrowserToken,
+            client: tx,
+            now,
+          })
+        : null;
+      const activeUnconfirmedRecognition =
+        recognitionBrowserToken && !confirmedRecognition
+          ? await resolveActiveRecognitionSession({
+              tenantId: store.tenantId,
+              storeId: store.id,
+              browserToken: recognitionBrowserToken,
+              client: tx,
+              now,
+            })
+          : null;
+      let recognizedCustomerId: string | null = null;
+      if (confirmedRecognition) {
+        const recognizedCustomer = await tx.customer.findFirst({
+          where: {
+            id: confirmedRecognition.customerId,
+            tenantId: store.tenantId,
+            phoneNormalized: normalizePhone(input.customerPhone),
+            recognitionEnabled: true,
+          },
+          select: { id: true, name: true },
+        });
+        if (recognizedCustomer && customerNamesMatch(recognizedCustomer.name, input.customerName)) {
+          recognizedCustomerId = recognizedCustomer.id;
+        }
+      }
+
+      let savedAddressResolution: ResolvedRecognitionAddress | null = null;
+      if (input.savedAddressReference) {
+        savedAddressResolution = recognitionBrowserToken
+          ? await resolveRecognitionAddressReference({
+              tenantId: store.tenantId,
+              storeId: store.id,
+              opaqueReference: input.savedAddressReference,
+              browserToken: recognitionBrowserToken,
+              client: tx,
+              now,
+            })
+          : null;
+        if (
+          !savedAddressResolution ||
+          savedAddressResolution.customerId !== recognizedCustomerId ||
+          savedAddressResolution.sessionId !== confirmedRecognition?.sessionId
+        ) {
+          throw new CheckoutError(
+            'SAVED_ADDRESS_UNAVAILABLE',
+            'Este endereço não está mais disponível. Informe um novo endereço para continuar.',
+            409,
+          );
+        }
+      }
+
+      const quote = await calculateCheckoutQuote(storeSlug, input, {
+        client: tx,
+        now,
+        savedAddress: savedAddressResolution
+          ? {
+              ...savedAddressResolution.address,
+              mappedDeliveryZoneId: savedAddressResolution.mappedDeliveryZoneId,
+            }
+          : null,
+      });
       if (!quote) throw new NotFoundError('Loja');
       const publicQuote = toPublicCheckoutQuote(quote);
 
@@ -122,11 +199,15 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             ? 'PRODUCT_UNAVAILABLE'
             : issue?.code === 'OUTSIDE_DELIVERY_AREA'
               ? 'OUTSIDE_DELIVERY_AREA'
-              : issue?.code === 'COUPON_INVALID'
-                ? 'COUPON_INVALID'
-                : issue?.code === 'STORE_UNAVAILABLE'
-                  ? 'STORE_UNAVAILABLE'
-                  : 'CART_INVALID';
+              : issue?.code === 'SAVED_ADDRESS_UNAVAILABLE'
+                ? 'SAVED_ADDRESS_UNAVAILABLE'
+                : issue?.code === 'DELIVERY_ZONE_REQUIRED'
+                  ? 'DELIVERY_ZONE_REQUIRED'
+                  : issue?.code === 'COUPON_INVALID'
+                    ? 'COUPON_INVALID'
+                    : issue?.code === 'STORE_UNAVAILABLE'
+                      ? 'STORE_UNAVAILABLE'
+                      : 'CART_INVALID';
         throw new CheckoutError(
           code,
           issue?.message ?? 'Revise o carrinho antes de confirmar o pedido.',
@@ -195,7 +276,31 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         `;
       }
 
-      const address = input.deliveryAddress;
+      let address: CheckoutCustomerAddress | null = null;
+      if (input.modality === 'DELIVERY') {
+        if (savedAddressResolution) {
+          address = {
+            ...savedAddressResolution.address,
+            zipCode: savedAddressResolution.address.zipCode?.replace(/\D/g, '') || null,
+          };
+        } else if (input.deliveryAddress && store.address && quote.deliveryZoneName) {
+          address = {
+            street: input.deliveryAddress.street,
+            number: input.deliveryAddress.number,
+            complement: input.deliveryAddress.complement || null,
+            neighborhood: quote.deliveryZoneName,
+            city: store.address.city,
+            state: store.address.state.toUpperCase(),
+            zipCode: input.deliveryAddress.postalCode ?? input.deliveryPostalCode ?? null,
+            reference: input.deliveryAddress.reference || null,
+          };
+        } else {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Não foi possível montar o endereço de entrega. Revise a região informada.',
+          );
+        }
+      }
       const order = await tx.order.create({
         data: {
           tenantId: store.tenantId,
@@ -203,16 +308,16 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           idempotencyKey: input.idempotencyKey,
           idempotencyFingerprint,
           quoteFingerprint: quote.quoteFingerprint,
-          publicTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000),
+          publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
           paymentReportToken: crypto.randomUUID(),
-          paymentReportExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000),
+          paymentReportExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
           customerName: input.customerName,
           customerPhone: input.customerPhone,
           customerPhoneNormalized: normalizePhone(input.customerPhone),
           modality: input.modality,
-          deliveryAddress: address ? formatDeliveryAddress(address) : null,
+          deliveryAddress: address ? formatAddressForStore(address) : null,
           deliveryZoneName: quote.deliveryZoneName,
-          deliveryPostalCode: address?.postalCode ?? null,
+          deliveryPostalCode: address?.zipCode ?? null,
           deliveryStreet: address?.street ?? null,
           deliveryNumber: address?.number ?? null,
           deliveryComplement: address?.complement || null,
@@ -281,6 +386,31 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
 
+      const persistedCustomer = await persistCheckoutCustomerAfterOrder({
+        tx,
+        tenantId: store.tenantId,
+        storeId: store.id,
+        orderId: order.id,
+        input,
+        recognizedCustomerId,
+        address,
+        deliveryZoneId: quote.deliveryZoneId,
+        now,
+      });
+
+      const recognitionSessionId =
+        confirmedRecognition?.sessionId ?? activeUnconfirmedRecognition?.sessionId ?? null;
+      if (recognitionSessionId) {
+        const consumed = await consumeRecognitionSession(tx, recognitionSessionId, now);
+        if (confirmedRecognition && !consumed) {
+          throw new CheckoutError(
+            'SAVED_ADDRESS_UNAVAILABLE',
+            'A sessão de reconhecimento expirou. Continue com os dados preenchidos manualmente.',
+            409,
+          );
+        }
+      }
+
       if (quote.couponId && quote.coupon) {
         await tx.coupon.update({
           where: { id: quote.couponId },
@@ -322,6 +452,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         paymentReportToken: order.paymentReportToken,
         created: true,
         outboxEventIds: [outboxEvent.id],
+        customerNameConflict: persistedCustomer.nameConflict,
       };
     },
     {

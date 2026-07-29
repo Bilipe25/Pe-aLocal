@@ -14,10 +14,7 @@ test.describe.serial('compra publica e acompanhamento', () => {
   test('cliente cria retirada, acompanha e operador conclui o fluxo', async ({
     page,
   }, testInfo) => {
-    test.skip(
-      !testInfo.project.name.includes('chromium'),
-      'Pedido mutavel roda uma unica vez.',
-    );
+    test.skip(!testInfo.project.name.includes('chromium'), 'Pedido mutavel roda uma unica vez.');
     test.skip(!storeSlug, 'E2E_STORE_SLUG nao foi configurado.');
     test.skip(!owner, 'Credenciais E2E de OWNER nao foram configuradas.');
     test.skip(
@@ -49,12 +46,34 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     await page.goto(`/${storeSlug}/cart`);
     await expect(page.getByRole('heading', { name: 'Sua sacola' })).toBeVisible();
-    await page.getByRole('link', { name: /Ir para checkout/ }).click();
+    await page.getByRole('link', { name: /Continuar para o checkout/ }).click();
 
-    await expect(page.getByRole('heading', { name: 'Como podemos chamar você?' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vamos identificar você' })).toBeVisible();
+    await page.getByLabel('Celular').fill('(85) 99999-9999');
     await page.getByLabel('Nome').fill('Cliente E2E');
-    await page.getByLabel('Telefone / WhatsApp').fill('(85) 99999-9999');
-    await page.getByRole('button', { name: 'Continuar para recebimento' }).click();
+    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+
+    await expect
+      .poll(
+        async () => {
+          const fulfillmentVisible = await page
+            .getByRole('heading', { name: 'Como quer receber?' })
+            .isVisible()
+            .catch(() => false);
+          const recognitionVisible = await page
+            .getByRole('heading', { name: /Bem-vindo de volta/ })
+            .isVisible()
+            .catch(() => false);
+          return fulfillmentVisible || recognitionVisible;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+
+    const notMe = page.getByRole('button', { name: 'Não sou eu' });
+    if (await notMe.isVisible().catch(() => false)) {
+      await notMe.click();
+    }
 
     await expect(page.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
     const pickup = page.getByRole('button', { name: 'Retirada', exact: true });

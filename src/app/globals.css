@@ -1116,6 +1116,107 @@ body {
   box-shadow: var(--store-shadow-sm);
 }
 
+.customer-recognition-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: rgb(0 0 0 / 0.52);
+  animation: customer-recognition-fade-in 180ms ease-out;
+}
+
+.customer-recognition-dialog {
+  position: fixed;
+  z-index: 90;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  max-height: min(88dvh, 46rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--store-border);
+  border-bottom: 0;
+  border-radius: min(var(--store-radius), 1rem) min(var(--store-radius), 1rem) 0 0;
+  padding: 0.5rem 1rem max(1rem, env(safe-area-inset-bottom));
+  color: var(--store-text);
+  background: var(--store-surface-raised);
+  box-shadow: 0 -6px 8px -6px rgb(0 0 0 / 0.22);
+  outline: none;
+  animation: customer-recognition-sheet-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.customer-recognition-handle {
+  display: block;
+  width: 2.5rem;
+  height: 0.25rem;
+  margin: 0 auto 0.75rem;
+  border-radius: 999px;
+  background: var(--store-border);
+}
+
+.customer-recognition-address {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.customer-recognition-address-mark.is-selected {
+  border-color: var(--store-button-background);
+  color: var(--store-button-text);
+  background: var(--store-button-background);
+}
+
+@keyframes customer-recognition-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes customer-recognition-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (min-width: 768px) {
+  .customer-recognition-overlay {
+    background: rgb(0 0 0 / 0.32);
+  }
+
+  .customer-recognition-dialog {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(calc(100vw - 2rem), 34rem);
+    max-height: min(85dvh, 44rem);
+    transform: translate(-50%, -50%);
+    border-bottom: 1px solid var(--store-border);
+    border-radius: min(var(--store-radius), 1rem);
+    padding: 1.25rem;
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.12),
+      0 4px 6px -4px rgb(0 0 0 / 0.12);
+    animation: customer-recognition-dialog-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .customer-recognition-handle {
+    display: none;
+  }
+}
+
+@keyframes customer-recognition-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 0.5rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-recognition-overlay,
+  .customer-recognition-dialog {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 .storefront-cart-heading {
   display: flex;
   align-items: center;

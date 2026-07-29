@@ -1,10 +1,17 @@
 import { cartQuoteSchema, checkoutQuoteSchema } from '@/schemas/checkout';
+import { getDb } from '@/server/database/client';
 import { CheckoutError, errorToResponse, NotFoundError, RateLimitError } from '@/server/errors';
+import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import {
   calculateCheckoutQuote,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
+import {
+  getRecognitionCookieName,
+  resolveRecognitionAddressReference,
+  type ResolvedRecognitionAddress,
+} from '@/server/services/customer-recognition.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +73,16 @@ function clientAddress(request: Request) {
   );
 }
 
+function readCookie(request: Request, name: string) {
+  const value = request.headers
+    .get('cookie')
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  return value || null;
+}
+
 function deployedEnvironment() {
   return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
 }
@@ -108,7 +125,27 @@ export async function POST(
       );
     }
 
-    const quote = await calculateCheckoutQuote(storeSlug, parsed.data);
+    let savedAddress: ResolvedRecognitionAddress | null = null;
+    if (parsed.data.savedAddressReference) {
+      const scope = await getPublicStoreScopeBySlug(storeSlug);
+      if (!scope) throw new NotFoundError('Loja');
+      const browserToken = readCookie(request, getRecognitionCookieName());
+      savedAddress = browserToken
+        ? await resolveRecognitionAddressReference({
+            tenantId: scope.tenantId,
+            storeId: scope.id,
+            browserToken,
+            opaqueReference: parsed.data.savedAddressReference,
+            client: getDb(),
+          })
+        : null;
+    }
+
+    const quote = await calculateCheckoutQuote(storeSlug, parsed.data, {
+      savedAddress: savedAddress
+        ? { ...savedAddress.address, mappedDeliveryZoneId: savedAddress.mappedDeliveryZoneId }
+        : null,
+    });
     if (!quote) throw new NotFoundError('Loja');
 
     const durationMs = Math.round(performance.now() - startedAt);

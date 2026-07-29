@@ -176,6 +176,8 @@ export class CheckoutError extends DomainError {
       | 'CART_INVALID'
       | 'PRODUCT_UNAVAILABLE'
       | 'OUTSIDE_DELIVERY_AREA'
+      | 'DELIVERY_ZONE_REQUIRED'
+      | 'SAVED_ADDRESS_UNAVAILABLE'
       | 'COUPON_INVALID'
       | 'STORE_UNAVAILABLE',
     message: string,

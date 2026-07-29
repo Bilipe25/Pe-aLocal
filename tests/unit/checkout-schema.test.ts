@@ -38,7 +38,7 @@ const validCheckout = {
 };
 
 describe('checkout v2 — contrato de pagamento e entrega', () => {
-  it('permite prévia do carrinho sem antecipar CEP, mas mantém o CEP obrigatório no checkout', () => {
+  it('permite prévia do carrinho sem antecipar a região, mas exige uma seleção no checkout', () => {
     const deliveryPreview = { modality: 'DELIVERY' as const, items: [item()] };
 
     expect(cartQuoteSchema.safeParse(deliveryPreview).success).toBe(true);
@@ -85,37 +85,89 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
     ).toBe(false);
   });
 
-  it('exige CEP e endereço estruturado e impede confirmar uma cotação de outro CEP', () => {
+  it('aceita endereço manual sem CEP e valida o CEP opcional quando informado', () => {
     expect(checkoutSchema.safeParse(validCheckout).success).toBe(true);
     expect(checkoutSchema.safeParse({ ...validCheckout, modality: 'DELIVERY' }).success).toBe(
       false,
     );
 
     const deliveryAddress = {
-      postalCode: '01001000',
       street: 'Praça da Sé',
       number: '100',
-      neighborhood: 'Sé',
-      city: 'São Paulo',
-      state: 'sp',
       complement: '',
       reference: '',
     };
     const parsed = checkoutSchema.parse({
       ...validCheckout,
       modality: 'DELIVERY',
-      deliveryPostalCode: '01001-000',
+      deliveryZoneId: uuid(999),
       deliveryAddress,
     });
-    expect(parsed.deliveryPostalCode).toBe('01001000');
-    expect(parsed.deliveryAddress?.state).toBe('SP');
+    expect(parsed.deliveryPostalCode).toBeUndefined();
+    expect(parsed.deliveryAddress?.postalCode).toBeUndefined();
+
+    const withPostalCode = checkoutSchema.parse({
+      ...validCheckout,
+      modality: 'DELIVERY',
+      deliveryZoneId: uuid(999),
+      deliveryPostalCode: '01001-000',
+      deliveryAddress: { ...deliveryAddress, postalCode: '01001000' },
+    });
+    expect(withPostalCode.deliveryPostalCode).toBe('01001000');
 
     expect(
       checkoutSchema.safeParse({
         ...validCheckout,
         modality: 'DELIVERY',
+        deliveryZoneId: uuid(999),
         deliveryPostalCode: '01001000',
         deliveryAddress: { ...deliveryAddress, postalCode: '01111000' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('aceita referência opaca sem serializar um endereço e rejeita referência junto do manual', () => {
+    const savedAddressReference = 'a'.repeat(43);
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        modality: 'DELIVERY',
+        savedAddressReference,
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        modality: 'DELIVERY',
+        deliveryZoneId: uuid(999),
+        savedAddressReference,
+        deliveryAddress: {
+          street: 'Rua Segura',
+          number: '10',
+          complement: '',
+          reference: '',
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('retirada rejeita dados residuais de entrega e preferência de endereço', () => {
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        deliveryAddress: {
+          street: 'Rua que não deveria ser enviada',
+          number: '10',
+          complement: '',
+          reference: '',
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutSchema.safeParse({
+        ...validCheckout,
+        saveCustomerData: true,
+        setAddressAsDefault: true,
       }).success,
     ).toBe(false);
   });
@@ -124,9 +176,7 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
     expect(
       checkoutSchema.safeParse({ ...validCheckout, expectedQuoteFingerprint: 'invalido' }).success,
     ).toBe(false);
-    expect(checkoutSchema.safeParse({ ...validCheckout, deliveryZoneId: uuid(999) }).success).toBe(
-      false,
-    );
+    expect(checkoutSchema.safeParse({ ...validCheckout, adminRole: 'OWNER' }).success).toBe(false);
   });
 });
 
