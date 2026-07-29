@@ -1,7 +1,7 @@
 'use client';
 
 import { ImageOff } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
 
@@ -11,9 +11,17 @@ interface ProductImageProps {
   imageAssetId: string | null;
   sizes: string;
   width: number;
+  fallback?: ReactNode;
 }
 
-export function ProductImage({ name, imageUrl, imageAssetId, sizes, width }: ProductImageProps) {
+export function ProductImage({
+  name,
+  imageUrl,
+  imageAssetId,
+  sizes,
+  width,
+  fallback,
+}: ProductImageProps) {
   const resolvedImageUrl = imageAssetId ? storeAssetUrl(imageAssetId, width) : imageUrl;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
@@ -61,8 +69,8 @@ export function ProductImage({ name, imageUrl, imageAssetId, sizes, width }: Pro
       )}
       {status !== 'loaded' && (
         <span className="storefront-product-image-placeholder" aria-hidden="true">
-          <ImageOff />
-          {(status === 'error' || status === 'missing') && (
+          {fallback ?? <ImageOff />}
+          {!fallback && (status === 'error' || status === 'missing') && (
             <span>{status === 'error' ? 'Imagem indisponível' : 'Sem imagem'}</span>
           )}
         </span>

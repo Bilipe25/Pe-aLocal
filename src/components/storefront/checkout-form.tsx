@@ -208,7 +208,7 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 
 function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
   return (
-    <div className="border-tinta/10 bg-papel rounded-2xl border p-4 shadow-sm">
+    <div className="storefront-checkout-summary rounded-2xl p-4">
       <div className="flex items-center gap-2">
         <ReceiptText className="storefront-action-text h-5 w-5" aria-hidden="true" />
         <h2 className="font-display text-tinta text-base font-bold">Resumo do pedido</h2>
@@ -936,8 +936,8 @@ export function CheckoutForm({
         : 'Revisar pedido';
 
   return (
-    <form onSubmit={submit} noValidate>
-      <nav aria-label="Etapas do checkout" className="mb-8">
+    <form className="storefront-checkout-form" onSubmit={submit} noValidate>
+      <nav aria-label="Etapas do checkout" className="storefront-checkout-progress">
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((candidate, index) => {
             const complete = index < currentStepIndex;
@@ -982,7 +982,7 @@ export function CheckoutForm({
           {step === 'identification' && (
             <section aria-labelledby="identification-title" className="space-y-6">
               <header className="flex items-start gap-3">
-                <span className="bg-pimenta/10 storefront-action-text flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <span className="storefront-checkout-section-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                   <UserRound className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
@@ -1042,7 +1042,7 @@ export function CheckoutForm({
           {step === 'fulfillment' && (
             <section aria-labelledby="fulfillment-title" className="space-y-6">
               <header className="flex items-start gap-3">
-                <span className="bg-pimenta/10 storefront-action-text flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <span className="storefront-checkout-section-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                   <MapPin className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
@@ -1301,7 +1301,7 @@ export function CheckoutForm({
           {step === 'payment' && (
             <section aria-labelledby="payment-title" className="space-y-6">
               <header className="flex items-start gap-3">
-                <span className="bg-pimenta/10 storefront-action-text flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <span className="storefront-checkout-section-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                   <CreditCard className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
@@ -1432,7 +1432,7 @@ export function CheckoutForm({
           {step === 'review' && (
             <section aria-labelledby="review-title" className="space-y-6">
               <header className="flex items-start gap-3">
-                <span className="bg-pimenta/10 storefront-action-text flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <span className="storefront-checkout-section-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                   <ReceiptText className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
@@ -1624,23 +1624,24 @@ export function CheckoutForm({
         </aside>
       </div>
 
-      <div className="purchase-step-action border-tinta/10 bg-papel/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:px-0 lg:pt-0">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
+      <div className="storefront-checkout-action-bar purchase-step-action fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:px-0 lg:pt-0">
+        <div className="mx-auto flex max-w-5xl items-center gap-2 sm:gap-3">
           <Button
             type="button"
             variant="ghost"
             onClick={goBack}
             disabled={isPending}
-            className="shrink-0"
+            aria-label="Voltar para a etapa anterior"
+            className="storefront-checkout-back h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            Voltar
+            <span className="hidden sm:inline">Voltar</span>
           </Button>
           {step !== 'review' ? (
             <Button
               type="button"
               onClick={() => void goForward()}
-              className="storefront-primary-action flex-1"
+              className="storefront-primary-action min-w-0 flex-1 overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
             >
               {nextLabel}
             </Button>
@@ -1650,7 +1651,7 @@ export function CheckoutForm({
               disabled={
                 isPending || quoteLoading || !effectiveQuote?.canCheckout || Boolean(changedQuote)
               }
-              className="storefront-primary-action flex-1"
+              className="storefront-primary-action min-w-0 flex-1 overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
             >
               {isPending ? (
                 <>

@@ -1,10 +1,10 @@
-import { ArrowLeft, Store } from 'lucide-react';
+import { Store } from 'lucide-react';
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { CheckoutFormLoader } from '@/components/storefront/checkout-form-loader';
+import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { getPublicDeliveryZones, getPublicStoreBySlug } from '@/server/queries/public-store';
 
@@ -78,75 +78,62 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   }
 
   const logoUrl = store.customization.assets.logo?.url ?? store.logoUrl;
+  const logoAssetId = store.customization.assets.logo?.id ?? null;
   const deliveryZones = store.settings.deliveryEnabled
     ? await getPublicDeliveryZones(store.id)
     : [];
   const deliveryEnabled = store.settings.deliveryEnabled && deliveryZones.length > 0;
 
   return (
-    <div className="bg-papel min-h-screen pb-28 lg:pb-12">
-      <header className="border-tinta/10 bg-papel/95 sticky top-0 z-30 border-b px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
-          <Link
-            href={`/${store.slug}/cart`}
-            aria-label="Voltar para a sacola"
-            className="text-tinta hover:bg-tinta/5 focus-visible:ring-pimenta flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-          </Link>
-          <div className="border-tinta/10 bg-papel relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border">
-            {logoUrl ? (
-              <Image src={logoUrl} alt="" fill sizes="40px" className="object-cover" />
-            ) : (
-              <Store className="text-text-muted h-5 w-5" aria-hidden="true" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
-              Checkout seguro
-            </p>
-            <p className="font-display text-tinta truncate text-base font-bold">{store.name}</p>
-          </div>
-        </div>
-      </header>
+    <div className="storefront-checkout-page">
+      <div className="storefront-checkout-shell">
+        <StorePurchaseHeader
+          backHref={`/${store.slug}/cart`}
+          backLabel="Voltar para a sacola"
+          title="Finalizar pedido"
+          storeName={store.name}
+          logoImageUrl={logoUrl}
+          logoImageAssetId={logoAssetId}
+        />
 
-      {!store.availability.acceptingOrders && (
-        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
-          <StoreClosedBanner availability={store.availability} />
-        </div>
-      )}
-
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        {store.availability.acceptingOrders ? (
-          <CheckoutFormLoader
-            storeId={store.id}
-            storeSlug={store.slug}
-            minOrderValue={store.settings.minOrderValue}
-            deliveryEnabled={deliveryEnabled}
-            pickupEnabled={store.settings.pickupEnabled}
-            acceptsPix={store.settings.acceptsPix}
-            acceptsCash={store.settings.acceptsCash}
-            acceptsCardOnDelivery={store.settings.acceptsCardOnDelivery}
-            initialStep={parseStep(query.step)}
-            initialModality={parseModality(
-              query.modality,
-              deliveryEnabled,
-              store.settings.pickupEnabled,
-            )}
-            initialCouponCode={parseCouponCode(query.coupon)}
-          />
-        ) : (
-          <div className="border-tinta/10 bg-papel mx-auto mt-8 max-w-md rounded-2xl border p-6 text-center">
-            <p className="text-text-muted text-sm">{store.availability.reason}</p>
-            <Link
-              href={`/${store.slug}`}
-              className="storefront-primary-action mt-5 inline-flex min-h-11 items-center justify-center px-4 font-semibold"
-            >
-              Voltar ao cardápio
-            </Link>
+        {!store.availability.acceptingOrders && (
+          <div className="storefront-checkout-availability">
+            <StoreClosedBanner availability={store.availability} />
           </div>
         )}
-      </main>
+
+        <main className="storefront-checkout-main">
+          {store.availability.acceptingOrders ? (
+            <CheckoutFormLoader
+              storeId={store.id}
+              storeSlug={store.slug}
+              minOrderValue={store.settings.minOrderValue}
+              deliveryEnabled={deliveryEnabled}
+              pickupEnabled={store.settings.pickupEnabled}
+              acceptsPix={store.settings.acceptsPix}
+              acceptsCash={store.settings.acceptsCash}
+              acceptsCardOnDelivery={store.settings.acceptsCardOnDelivery}
+              initialStep={parseStep(query.step)}
+              initialModality={parseModality(
+                query.modality,
+                deliveryEnabled,
+                store.settings.pickupEnabled,
+              )}
+              initialCouponCode={parseCouponCode(query.coupon)}
+            />
+          ) : (
+            <div className="storefront-checkout-unavailable">
+              <p>{store.availability.reason}</p>
+              <Link
+                href={`/${store.slug}`}
+                className="storefront-primary-action mt-5 inline-flex min-h-11 items-center justify-center px-4 font-semibold"
+              >
+                Voltar ao cardápio
+              </Link>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
