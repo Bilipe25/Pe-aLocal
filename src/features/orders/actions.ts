@@ -1,6 +1,6 @@
 'use server';
 
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 import type { EffectiveStoreAvailabilityState } from '@/features/stores/availability';
 import { normalizePhone } from '@/lib/brazil';
@@ -22,9 +22,15 @@ import { createOrder } from '@/server/repositories/order.repository';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
-import { createOrderFingerprint } from '@/server/services/order-idempotency.service';
 import { reportCustomerPixPayment } from '@/server/services/order-payment.service';
 import { getRecognitionCookieName } from '@/server/services/customer-recognition.service';
+import {
+  createStorefrontDeviceToken,
+  getStorefrontDeviceCookieName,
+  hashStorefrontDeviceToken,
+  isStorefrontDeviceToken,
+  storefrontDeviceCookieOptions,
+} from '@/server/services/customer-device-recognition.service';
 
 import { reportPixPaymentInputSchema } from './schemas';
 
@@ -83,16 +89,6 @@ function getClientAddress(requestHeaders: Headers) {
   const forwardedFor =
     requestHeaders.get('cf-connecting-ip') ?? requestHeaders.get('x-forwarded-for');
   return forwardedFor?.split(',')[0]?.trim() || 'unknown';
-}
-
-function readCookie(requestHeaders: Headers, name: string) {
-  const value = requestHeaders
-    .get('cookie')
-    ?.split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
-  return value || null;
 }
 
 export async function reportPixPaymentAction(
@@ -170,10 +166,16 @@ export async function createOrderAction(
 
     const input = parsed.data;
     const requestHeaders = await headers();
+    const cookieStore = await cookies();
     const clientAddress = getClientAddress(requestHeaders);
     const strict = isDeployedRuntime();
     const limiter = getRateLimiter();
-    const phoneHash = await sha256Hex(normalizePhone(input.customerPhone));
+    const recognitionBrowserToken = cookieStore.get(getRecognitionCookieName())?.value ?? null;
+    const identityRateKey =
+      input.identityMode === 'VISITOR'
+        ? normalizePhone(input.customerPhone)
+        : `recognized:${recognitionBrowserToken ?? 'missing'}`;
+    const phoneHash = await sha256Hex(identityRateKey);
     const [ipRateLimit, phoneRateLimit] = await Promise.all([
       limiter.check({
         identifier: `order-ip:${storeSlug}:${clientAddress}`,
@@ -196,12 +198,24 @@ export async function createOrderAction(
       throw new RateLimitError('Muitos pedidos em sequência. Aguarde um minuto.');
     }
 
+    const currentDeviceToken = cookieStore.get(getStorefrontDeviceCookieName())?.value;
+    const deviceToken = isStorefrontDeviceToken(currentDeviceToken)
+      ? currentDeviceToken
+      : createStorefrontDeviceToken();
     const order = await createOrder({
       input,
       storeSlug,
-      idempotencyFingerprint: createOrderFingerprint(input),
-      recognitionBrowserToken: readCookie(requestHeaders, getRecognitionCookieName()),
+      recognitionBrowserToken,
+      deviceTokenHash: await hashStorefrontDeviceToken(deviceToken),
     });
+
+    if (order.rememberDeviceExpiresAt) {
+      cookieStore.set(
+        getStorefrontDeviceCookieName(),
+        deviceToken,
+        storefrontDeviceCookieOptions(order.rememberDeviceExpiresAt),
+      );
+    }
 
     if (order.created) {
       await dispatchCommittedOrderEvents({

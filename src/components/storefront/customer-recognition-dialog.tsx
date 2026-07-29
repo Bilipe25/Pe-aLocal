@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { CustomerRecognitionResult } from '@/types/customer-recognition';
 
 type RecognizedCustomer = Extract<CustomerRecognitionResult, { recognized: true }>;
-type RecognitionAction = 'confirm' | 'new-address' | 'not-me';
+type RecognitionAction = 'confirm' | 'new-address' | 'not-me' | 'forget';
 
 interface CustomerRecognitionDialogProps {
   open: boolean;
@@ -23,6 +23,7 @@ interface CustomerRecognitionDialogProps {
   onConfirm: () => void;
   onUseNewAddress: () => void;
   onNotMe: () => void;
+  onForget: () => void;
 }
 
 export function CustomerRecognitionDialog({
@@ -37,6 +38,7 @@ export function CustomerRecognitionDialog({
   onConfirm,
   onUseNewAddress,
   onNotMe,
+  onForget,
 }: CustomerRecognitionDialogProps) {
   const firstAddressRef = useRef<HTMLInputElement>(null);
   const portalContainer =
@@ -94,70 +96,77 @@ export function CustomerRecognitionDialog({
             </Dialog.Close>
           </header>
 
-          <fieldset className="mt-5 space-y-2 border-0 p-0">
-            <legend className="text-tinta mb-3 text-sm font-bold">Onde você quer receber?</legend>
-            {addresses.map((address, index) => {
-              const selected = selectedReference === address.opaqueReference;
-              return (
-                <label
-                  key={address.opaqueReference}
-                  className="customer-recognition-address group block cursor-pointer"
-                >
-                  <input
-                    ref={index === 0 ? firstAddressRef : undefined}
-                    type="radio"
-                    name="recognized-address"
-                    checked={selected}
-                    onChange={() => onSelectAddress(address.opaqueReference)}
-                    disabled={busy}
-                    className="peer sr-only"
-                  />
-                  <span
-                    className={cn(
-                      'flex min-h-16 items-start gap-3 rounded-xl border p-3 transition-colors',
-                      'peer-focus-visible:ring-pimenta peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-                      selected
-                        ? 'storefront-selection-control storefront-selection-row'
-                        : 'border-tinta/15 bg-papel',
-                    )}
+          {addresses.length > 0 ? (
+            <fieldset className="mt-5 space-y-2 border-0 p-0">
+              <legend className="text-tinta mb-3 text-sm font-bold">Onde você quer receber?</legend>
+              {addresses.map((address, index) => {
+                const selected = selectedReference === address.opaqueReference;
+                return (
+                  <label
+                    key={address.opaqueReference}
+                    className="customer-recognition-address group block cursor-pointer"
                   >
-                    <span className="bg-tinta/5 text-tinta flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
-                      {address.label.toLocaleLowerCase('pt-BR').includes('casa') ? (
-                        <Home className="h-5 w-5" aria-hidden="true" />
-                      ) : (
-                        <MapPin className="h-5 w-5" aria-hidden="true" />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="text-tinta block text-sm font-bold">{address.label}</span>
-                      <span className="text-text-muted mt-0.5 block text-sm text-pretty">
-                        {address.maskedAddress}
-                      </span>
-                      {address.lastUsedLabel ? (
-                        <span className="storefront-action-text mt-1 block text-xs font-semibold">
-                          {address.lastUsedLabel}
-                        </span>
-                      ) : null}
-                      {address.requiresDeliveryZoneSelection ? (
-                        <span className="text-text-muted mt-1 block text-xs">
-                          Confirme a região atendida na próxima etapa.
-                        </span>
-                      ) : null}
-                    </span>
+                    <input
+                      ref={index === 0 ? firstAddressRef : undefined}
+                      type="radio"
+                      name="recognized-address"
+                      checked={selected}
+                      onChange={() => onSelectAddress(address.opaqueReference)}
+                      disabled={busy}
+                      className="peer sr-only"
+                    />
                     <span
                       className={cn(
-                        'customer-recognition-address-mark border-tinta/20 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
-                        selected && 'is-selected',
+                        'flex min-h-16 items-start gap-3 rounded-xl border p-3 transition-colors',
+                        'peer-focus-visible:ring-pimenta peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+                        selected
+                          ? 'storefront-selection-control storefront-selection-row'
+                          : 'border-tinta/15 bg-papel',
                       )}
-                      aria-hidden="true"
                     >
-                      {selected ? <Check className="h-3.5 w-3.5" /> : null}
+                      <span className="bg-tinta/5 text-tinta flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                        {address.label.toLocaleLowerCase('pt-BR').includes('casa') ? (
+                          <Home className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <MapPin className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="text-tinta block text-sm font-bold">{address.label}</span>
+                        <span className="text-text-muted mt-0.5 block text-sm text-pretty">
+                          {address.maskedAddress}
+                        </span>
+                        {address.lastUsedLabel ? (
+                          <span className="storefront-action-text mt-1 block text-xs font-semibold">
+                            {address.lastUsedLabel}
+                          </span>
+                        ) : null}
+                        {address.requiresDeliveryZoneSelection ? (
+                          <span className="text-text-muted mt-1 block text-xs">
+                            Confirme a região atendida na próxima etapa.
+                          </span>
+                        ) : null}
+                      </span>
+                      <span
+                        className={cn(
+                          'customer-recognition-address-mark border-tinta/20 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                          selected && 'is-selected',
+                        )}
+                        aria-hidden="true"
+                      >
+                        {selected ? <Check className="h-3.5 w-3.5" /> : null}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
+                  </label>
+                );
+              })}
+            </fieldset>
+          ) : (
+            <p className="border-tinta/10 bg-papel text-text-muted mt-5 rounded-xl border p-4 text-sm">
+              Não há endereço salvo compatível com esta loja. Você pode informar um novo endereço
+              com segurança.
+            </p>
+          )}
 
           <p className="sr-only" aria-live="polite">
             {error ?? ''}
@@ -169,17 +178,19 @@ export function CustomerRecognitionDialog({
           ) : null}
 
           <div className="mt-5 grid gap-2">
-            <Button
-              type="button"
-              className="storefront-primary-action w-full"
-              disabled={!selectedReference || busy}
-              onClick={onConfirm}
-            >
-              {pendingAction === 'confirm' ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : null}
-              Sim, continuar
-            </Button>
+            {addresses.length > 0 ? (
+              <Button
+                type="button"
+                className="storefront-primary-action w-full"
+                disabled={!selectedReference || busy}
+                onClick={onConfirm}
+              >
+                {pendingAction === 'confirm' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : null}
+                Sim, continuar
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -205,6 +216,18 @@ export function CustomerRecognitionDialog({
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : null}
               Não sou eu
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-error hover:bg-error-light hover:text-error w-full"
+              disabled={busy}
+              onClick={onForget}
+            >
+              {pendingAction === 'forget' ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : null}
+              Esquecer neste aparelho
             </Button>
           </div>
         </Dialog.Content>

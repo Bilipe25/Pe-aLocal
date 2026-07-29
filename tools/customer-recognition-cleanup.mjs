@@ -69,6 +69,51 @@ const DELETE_EXPIRED_THROTTLES_SQL = `
   FROM deleted
 `;
 
+const DELETE_EXPIRED_DEVICE_RECOGNITIONS_SQL = `
+  WITH candidates AS (
+    SELECT recognition.id
+    FROM public.customer_device_recognitions recognition
+    WHERE recognition."expiresAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+       OR (
+         recognition."revokedAt" IS NOT NULL
+         AND recognition."revokedAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+       )
+    ORDER BY COALESCE(recognition."revokedAt", recognition."expiresAt"), recognition.id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+  ), deleted AS (
+    DELETE FROM public.customer_device_recognitions recognition
+    USING candidates
+    WHERE recognition.id = candidates.id
+    RETURNING 1
+  )
+  SELECT COUNT(*)::integer AS deleted_count
+  FROM deleted
+`;
+
+const DELETE_EXPIRED_DEVICES_SQL = `
+  WITH candidates AS (
+    SELECT device.id
+    FROM public.storefront_devices device
+    WHERE device."expiresAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.customer_device_recognitions recognition
+        WHERE recognition."storefrontDeviceId" = device.id
+      )
+    ORDER BY device."expiresAt", device.id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+  ), deleted AS (
+    DELETE FROM public.storefront_devices device
+    USING candidates
+    WHERE device.id = candidates.id
+    RETURNING 1
+  )
+  SELECT COUNT(*)::integer AS deleted_count
+  FROM deleted
+`;
+
 const COUNT_ELIGIBLE_ROWS_SQL = `
   SELECT
     (
@@ -85,7 +130,26 @@ const COUNT_ELIGIBLE_ROWS_SQL = `
       SELECT COUNT(*)::bigint
       FROM public.customer_recognition_throttles throttle
       WHERE throttle."expiresAt" <= clock_timestamp() - make_interval(mins => $1::integer)
-    )::text AS expired_throttles
+    )::text AS expired_throttles,
+    (
+      SELECT COUNT(*)::bigint
+      FROM public.customer_device_recognitions recognition
+      WHERE recognition."expiresAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+         OR (
+           recognition."revokedAt" IS NOT NULL
+           AND recognition."revokedAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+         )
+    )::text AS expired_device_recognitions,
+    (
+      SELECT COUNT(*)::bigint
+      FROM public.storefront_devices device
+      WHERE device."expiresAt" <= clock_timestamp() - make_interval(mins => $1::integer)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.customer_device_recognitions recognition
+          WHERE recognition."storefrontDeviceId" = device.id
+        )
+    )::text AS expired_devices
 `;
 
 function parseBoundedInteger(flag, value, minimum, maximum) {
@@ -206,6 +270,8 @@ export async function runCustomerRecognitionCleanup({ client, options }) {
           references: eligible.expired_references,
           sessions: eligible.expired_sessions,
           throttles: eligible.expired_throttles,
+          deviceRecognitions: eligible.expired_device_recognitions,
+          devices: eligible.expired_devices,
         },
       };
     }
@@ -213,6 +279,12 @@ export async function runCustomerRecognitionCleanup({ client, options }) {
     const references = await deleteInBatches(client, DELETE_EXPIRED_REFERENCES_SQL, options);
     const sessions = await deleteInBatches(client, DELETE_EXPIRED_SESSIONS_SQL, options);
     const throttles = await deleteInBatches(client, DELETE_EXPIRED_THROTTLES_SQL, options);
+    const deviceRecognitions = await deleteInBatches(
+      client,
+      DELETE_EXPIRED_DEVICE_RECOGNITIONS_SQL,
+      options,
+    );
+    const devices = await deleteInBatches(client, DELETE_EXPIRED_DEVICES_SQL, options);
 
     return {
       status: 'applied',
@@ -224,14 +296,22 @@ export async function runCustomerRecognitionCleanup({ client, options }) {
         references: references.deleted + sessions.cascadedReferences,
         sessions: sessions.deleted,
         throttles: throttles.deleted,
+        deviceRecognitions: deviceRecognitions.deleted,
+        devices: devices.deleted,
       },
       batches: {
         references: references.batches,
         sessions: sessions.batches,
         throttles: throttles.batches,
+        deviceRecognitions: deviceRecognitions.batches,
+        devices: devices.batches,
       },
       batchLimitReached:
-        references.batchLimitReached || sessions.batchLimitReached || throttles.batchLimitReached,
+        references.batchLimitReached ||
+        sessions.batchLimitReached ||
+        throttles.batchLimitReached ||
+        deviceRecognitions.batchLimitReached ||
+        devices.batchLimitReached,
     };
   } finally {
     // Encerrar a conexão também libera o lock; uma falha de unlock não deve

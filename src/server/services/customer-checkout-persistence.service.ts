@@ -27,6 +27,8 @@ interface PersistCheckoutCustomerParams {
   storeId: string;
   orderId: string;
   input: CheckoutInput;
+  customerName?: string;
+  customerPhone?: string;
   recognizedCustomerId?: string | null;
   address?: CheckoutCustomerAddress | null;
   deliveryZoneId?: string | null;
@@ -49,6 +51,8 @@ export async function persistCheckoutCustomerAfterOrder({
   storeId,
   orderId,
   input,
+  customerName,
+  customerPhone,
   recognizedCustomerId = null,
   address = null,
   deliveryZoneId = null,
@@ -58,7 +62,15 @@ export async function persistCheckoutCustomerAfterOrder({
     return { customerId: null, addressId: null, nameConflict: false };
   }
 
-  const phoneNormalized = normalizePhone(input.customerPhone);
+  const resolvedCustomerName =
+    customerName ?? (input.identityMode === 'VISITOR' ? input.customerName : null);
+  const resolvedCustomerPhone =
+    customerPhone ?? (input.identityMode === 'VISITOR' ? input.customerPhone : null);
+  if (!resolvedCustomerName || !resolvedCustomerPhone) {
+    throw new Error('recognized_customer_identity_not_resolved');
+  }
+
+  const phoneNormalized = normalizePhone(resolvedCustomerPhone);
   const lockKey = `checkout-customer:${tenantId}:${phoneNormalized}`;
   await tx.$executeRaw`
     SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
@@ -70,7 +82,7 @@ export async function persistCheckoutCustomerAfterOrder({
   });
 
   if (
-    (existing && !customerNamesMatch(existing.name, input.customerName)) ||
+    (existing && !customerNamesMatch(existing.name, resolvedCustomerName)) ||
     (recognizedCustomerId && existing?.id !== recognizedCustomerId)
   ) {
     return { customerId: null, addressId: null, nameConflict: true };
@@ -88,8 +100,8 @@ export async function persistCheckoutCustomerAfterOrder({
     : await tx.customer.create({
         data: {
           tenantId,
-          name: input.customerName,
-          phone: input.customerPhone,
+          name: resolvedCustomerName,
+          phone: resolvedCustomerPhone,
           phoneNormalized,
           recognitionEnabled: true,
           lastOrderAt: now,

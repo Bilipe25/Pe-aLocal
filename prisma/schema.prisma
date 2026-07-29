@@ -340,6 +340,7 @@ model Tenant {
   deliveryZones        DeliveryZone[]
   deliveryPostalRanges DeliveryZonePostalRange[]
   customers            Customer[]
+  deviceRecognitions   CustomerDeviceRecognition[]
   recognitionThrottles CustomerRecognitionThrottle[]
   orders               Order[]
   coupons              Coupon[]
@@ -405,6 +406,7 @@ model Store {
   customerAddressUses          CustomerAddressStoreUse[]
   recognitionSessions          CheckoutRecognitionSession[]
   recognitionAddressReferences CheckoutRecognitionAddressReference[]
+  deviceRecognitions           CustomerDeviceRecognition[]
   recognitionThrottles         CustomerRecognitionThrottle[]
   coupons                      Coupon[]
   orders                       Order[]
@@ -890,6 +892,7 @@ model Customer {
   orders                       Order[]
   recognitionSessions          CheckoutRecognitionSession[]
   recognitionAddressReferences CheckoutRecognitionAddressReference[]
+  deviceRecognitions           CustomerDeviceRecognition[]
 
   @@unique([tenantId, phone])
   @@unique([id, tenantId])
@@ -955,6 +958,7 @@ model CheckoutRecognitionSession {
   tenantId            String
   storeId             String
   customerId          String?
+  deviceRecognitionId String?
   attemptCount        Int                                  @default(0)
   consecutiveFailures Int                                  @default(0)
   nextAttemptAt       DateTime?
@@ -969,12 +973,54 @@ model CheckoutRecognitionSession {
 
   store             Store                                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   customer          Customer?                             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  deviceRecognition CustomerDeviceRecognition?            @relation(fields: [deviceRecognitionId], references: [id], onDelete: SetNull)
   addressReferences CheckoutRecognitionAddressReference[]
 
   @@index([tenantId, storeId, expiresAt])
   @@index([customerId, expiresAt])
+  @@index([deviceRecognitionId, expiresAt])
   @@index([expiresAt])
   @@map("checkout_recognition_sessions")
+}
+
+model StorefrontDevice {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique @db.Char(64)
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  recognitions CustomerDeviceRecognition[]
+
+  @@index([expiresAt])
+  @@map("storefront_devices")
+}
+
+model CustomerDeviceRecognition {
+  id                 String    @id @default(uuid())
+  storefrontDeviceId String
+  tenantId           String
+  storeId            String
+  customerId         String
+  lastUsedAt         DateTime  @default(now())
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  storefrontDevice    StorefrontDevice             @relation(fields: [storefrontDeviceId], references: [id], onDelete: Cascade)
+  tenant              Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store               Store                        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customer            Customer                     @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  recognitionSessions CheckoutRecognitionSession[]
+
+  @@unique([storefrontDeviceId, storeId])
+  @@unique([id, tenantId, storeId, customerId])
+  @@index([tenantId, storeId, expiresAt])
+  @@index([customerId, storeId, revokedAt, lastUsedAt])
+  @@index([storefrontDeviceId, expiresAt])
+  @@map("customer_device_recognitions")
 }
 
 model CheckoutRecognitionAddressReference {

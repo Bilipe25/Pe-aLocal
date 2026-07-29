@@ -36,7 +36,15 @@ if (!connectionString) {
         to_regclass('public.customer_address_store_uses') IS NOT NULL AS has_store_uses,
         to_regclass('public.checkout_recognition_sessions') IS NOT NULL AS has_sessions,
         to_regclass('public.checkout_recognition_address_references') IS NOT NULL AS has_references,
-        to_regclass('public.customer_recognition_throttles') IS NOT NULL AS has_throttles
+        to_regclass('public.customer_recognition_throttles') IS NOT NULL AS has_throttles,
+        to_regclass('public.storefront_devices') IS NOT NULL AS has_devices,
+        to_regclass('public.customer_device_recognitions') IS NOT NULL AS has_device_recognitions,
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'checkout_recognition_sessions'
+            AND column_name = 'deviceRecognitionId'
+        ) AS has_session_device_recognition
     `);
 
     const schema = foundation.rows[0];
@@ -233,6 +241,51 @@ if (!connectionString) {
          AND zone."storeId" = usage."storeId"
         WHERE address.id IS NULL OR store.id IS NULL OR zone.id IS NULL
       `);
+      const devices = await client.query(`
+        SELECT
+          COUNT(*)::bigint AS total,
+          COUNT(*) FILTER (
+            WHERE "tokenHash" !~ '^[0-9a-f]{64}$'
+               OR "expiresAt" <= "createdAt"
+          )::bigint AS invalid_count
+        FROM storefront_devices
+      `);
+      const deviceRecognitionMismatches = await client.query(`
+        SELECT COUNT(*)::bigint AS total
+        FROM customer_device_recognitions recognition
+        LEFT JOIN storefront_devices device
+          ON device.id = recognition."storefrontDeviceId"
+        LEFT JOIN stores store
+          ON store.id = recognition."storeId"
+         AND store."tenantId" = recognition."tenantId"
+        LEFT JOIN customers customer
+          ON customer.id = recognition."customerId"
+         AND customer."tenantId" = recognition."tenantId"
+        WHERE device.id IS NULL
+           OR store.id IS NULL
+           OR customer.id IS NULL
+           OR recognition."expiresAt" <= recognition."createdAt"
+      `);
+      const excessiveActiveDevices = await client.query(`
+        SELECT COUNT(*)::integer AS customer_store_count
+        FROM (
+          SELECT "tenantId", "storeId", "customerId"
+          FROM customer_device_recognitions
+          WHERE "revokedAt" IS NULL
+            AND "expiresAt" > clock_timestamp()
+          GROUP BY "tenantId", "storeId", "customerId"
+          HAVING COUNT(*) > 5
+        ) excessive
+      `);
+      const sessionDeviceMismatches = await client.query(`
+        SELECT COUNT(*)::bigint AS total
+        FROM checkout_recognition_sessions session
+        JOIN customer_device_recognitions recognition
+          ON recognition.id = session."deviceRecognitionId"
+        WHERE recognition."tenantId" <> session."tenantId"
+           OR recognition."storeId" <> session."storeId"
+           OR recognition."customerId" <> session."customerId"
+      `);
       const invalidIndexes = await client.query(`
         SELECT expected.name
         FROM unnest(ARRAY[
@@ -241,7 +294,13 @@ if (!connectionString) {
           'customer_addresses_id_tenantId_key',
           'customer_addresses_customerId_addressFingerprint_key',
           'customer_addresses_one_default_per_customer_key',
-          'customer_addresses_tenantId_idx'
+          'customer_addresses_tenantId_idx',
+          'storefront_devices_tokenHash_key',
+          'storefront_devices_expiresAt_idx',
+          'customer_device_recognitions_storefrontDeviceId_storeId_key',
+          'customer_device_recognitions_id_tenantId_storeId_customerId_key',
+          'customer_device_recognitions_tenantId_storeId_expiresAt_idx',
+          'checkout_recognition_sessions_deviceRecognitionId_expiresAt_idx'
         ]) AS expected(name)
         LEFT JOIN (
           SELECT index_class.relname, index_config.indisready, index_config.indisvalid
@@ -264,6 +323,8 @@ if (!connectionString) {
             'public.checkout_recognition_sessions'::regclass,
             'public.checkout_recognition_address_references'::regclass,
             'public.customer_recognition_throttles'::regclass,
+            'public.storefront_devices'::regclass,
+            'public.customer_device_recognitions'::regclass,
             'public.orders'::regclass
           ]
         )
@@ -279,7 +340,9 @@ if (!connectionString) {
             'customer_address_store_uses',
             'checkout_recognition_sessions',
             'checkout_recognition_address_references',
-            'customer_recognition_throttles'
+            'customer_recognition_throttles',
+            'storefront_devices',
+            'customer_device_recognitions'
           ])
           AND NOT table_config.relrowsecurity
         ORDER BY table_config.relname
@@ -292,7 +355,9 @@ if (!connectionString) {
             'customer_address_store_uses',
             'checkout_recognition_sessions',
             'checkout_recognition_address_references',
-            'customer_recognition_throttles'
+            'customer_recognition_throttles',
+            'storefront_devices',
+            'customer_device_recognitions'
           ])
           AND grantee IN ('anon', 'authenticated')
         ORDER BY table_name, grantee, privilege_type
@@ -322,6 +387,16 @@ if (!connectionString) {
       if (Number(storeUseMismatches.rows[0].total) > 0) {
         failures.push('customer_address_store_use_scope_mismatch');
       }
+      if (Number(devices.rows[0].invalid_count) > 0) failures.push('invalid_storefront_device');
+      if (Number(deviceRecognitionMismatches.rows[0].total) > 0) {
+        failures.push('customer_device_recognition_scope_mismatch');
+      }
+      if (Number(excessiveActiveDevices.rows[0].customer_store_count) > 0) {
+        failures.push('customer_device_recognition_limit_exceeded');
+      }
+      if (Number(sessionDeviceMismatches.rows[0].total) > 0) {
+        failures.push('recognition_session_device_scope_mismatch');
+      }
       if (invalidIndexes.rows.length > 0) failures.push('recognition_index_invalid');
       if (invalidConstraints.rows.length > 0) failures.push('constraints_not_validated');
       if (rls.rows.length > 0) failures.push('recognition_rls_disabled');
@@ -342,6 +417,12 @@ if (!connectionString) {
           multipleDefaultAddressCustomerCount: multipleDefaults.rows[0].customer_count,
           orderCustomerTenantMismatchCount: orderTenantMismatches.rows[0].total,
           storeUseScopeMismatchCount: storeUseMismatches.rows[0].total,
+          storefrontDeviceCount: devices.rows[0].total,
+          invalidStorefrontDeviceCount: devices.rows[0].invalid_count,
+          deviceRecognitionScopeMismatchCount: deviceRecognitionMismatches.rows[0].total,
+          excessiveActiveDeviceCustomerStoreCount:
+            excessiveActiveDevices.rows[0].customer_store_count,
+          sessionDeviceScopeMismatchCount: sessionDeviceMismatches.rows[0].total,
           invalidIndexes: invalidIndexes.rows.map((row) => row.name),
           invalidConstraints: invalidConstraints.rows.map((row) => row.conname),
           tablesWithoutRls: rls.rows.map((row) => row.relname),

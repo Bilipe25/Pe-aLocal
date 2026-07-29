@@ -19,26 +19,27 @@ import {
   type CheckoutCustomerAddress,
   persistCheckoutCustomerAfterOrder,
 } from '@/server/services/customer-checkout-persistence.service';
+import { persistDeviceRecognitionAfterOrder } from '@/server/services/customer-device-recognition.service';
 import {
   consumeRecognitionSession,
   resolveActiveRecognitionSession,
-  resolveConfirmedRecognition,
+  resolveRecognitionIdentity,
   resolveRecognitionAddressReference,
   type ResolvedRecognitionAddress,
 } from '@/server/services/customer-recognition.service';
-import {
-  customerNamesMatch,
-  formatAddressForStore,
-} from '@/server/services/customer-recognition-formatting';
+import { formatAddressForStore } from '@/server/services/customer-recognition-formatting';
 import * as orderAudit from '@/server/services/order-audit.service';
-import { assertMatchingOrderFingerprint } from '@/server/services/order-idempotency.service';
+import {
+  assertMatchingOrderFingerprint,
+  createOrderFingerprint,
+} from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
 
 interface CreateOrderParams {
   input: CheckoutInput;
   storeSlug: string;
-  idempotencyFingerprint: string;
   recognitionBrowserToken?: string | null;
+  deviceTokenHash?: string | null;
 }
 
 interface CreateOrderResult {
@@ -50,6 +51,7 @@ interface CreateOrderResult {
   created: boolean;
   outboxEventIds: string[];
   customerNameConflict: boolean;
+  rememberDeviceExpiresAt: Date | null;
 }
 
 /**
@@ -58,7 +60,7 @@ interface CreateOrderResult {
  * tratado como fonte de verdade.
  */
 async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderResult> {
-  const { input, storeSlug, idempotencyFingerprint, recognitionBrowserToken } = params;
+  const { input, storeSlug, recognitionBrowserToken, deviceTokenHash } = params;
 
   return getDb().$transaction(
     async (tx) => {
@@ -86,6 +88,50 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyLockKey}, 0))
       `;
 
+      const now = new Date();
+      const recognizedIdentity =
+        input.identityMode === 'RECOGNIZED' && recognitionBrowserToken
+          ? await resolveRecognitionIdentity({
+              tenantId: store.tenantId,
+              storeId: store.id,
+              browserToken: recognitionBrowserToken,
+              client: tx,
+              now,
+              allowConsumed: true,
+            })
+          : null;
+      if (input.identityMode === 'RECOGNIZED' && !recognizedIdentity) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'O reconhecimento expirou. Informe seus dados novamente para continuar.',
+          409,
+        );
+      }
+      const resolvedIdentity =
+        input.identityMode === 'RECOGNIZED'
+          ? {
+              customerId: recognizedIdentity!.customerId,
+              customerName: recognizedIdentity!.customerName,
+              customerPhone: recognizedIdentity!.customerPhone,
+              phoneNormalized: recognizedIdentity!.phoneNormalized,
+            }
+          : {
+              customerId: null,
+              customerName: input.customerName,
+              customerPhone: input.customerPhone,
+              phoneNormalized: normalizePhone(input.customerPhone),
+            };
+      const idempotencyFingerprint = createOrderFingerprint(
+        input,
+        resolvedIdentity.customerId
+          ? {
+              customerId: resolvedIdentity.customerId,
+              customerName: resolvedIdentity.customerName,
+              customerPhone: resolvedIdentity.customerPhone,
+            }
+          : null,
+      );
+
       const existing = await tx.order.findUnique({
         where: {
           storeId_idempotencyKey: {
@@ -99,10 +145,22 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           orderNumber: true,
           paymentReportToken: true,
           idempotencyFingerprint: true,
+          customerId: true,
         },
       });
       if (existing) {
         assertMatchingOrderFingerprint(existing.idempotencyFingerprint, idempotencyFingerprint);
+        const remembered =
+          input.saveCustomerData && existing.customerId && deviceTokenHash
+            ? await persistDeviceRecognitionAfterOrder({
+                tx,
+                tokenHash: deviceTokenHash,
+                tenantId: store.tenantId,
+                storeId: store.id,
+                customerId: existing.customerId,
+                now,
+              })
+            : null;
         return {
           id: existing.id,
           storeId: store.id,
@@ -112,21 +170,19 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           created: false,
           outboxEventIds: [],
           customerNameConflict: false,
+          rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
         };
       }
 
-      const now = new Date();
-      const confirmedRecognition = recognitionBrowserToken
-        ? await resolveConfirmedRecognition({
-            tenantId: store.tenantId,
-            storeId: store.id,
-            browserToken: recognitionBrowserToken,
-            client: tx,
-            now,
-          })
-        : null;
+      if (recognizedIdentity?.consumedAt) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'Esta sessão de reconhecimento já foi utilizada. Revise seus dados novamente.',
+          409,
+        );
+      }
       const activeUnconfirmedRecognition =
-        recognitionBrowserToken && !confirmedRecognition
+        recognitionBrowserToken && !recognizedIdentity
           ? await resolveActiveRecognitionSession({
               tenantId: store.tenantId,
               storeId: store.id,
@@ -135,21 +191,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               now,
             })
           : null;
-      let recognizedCustomerId: string | null = null;
-      if (confirmedRecognition) {
-        const recognizedCustomer = await tx.customer.findFirst({
-          where: {
-            id: confirmedRecognition.customerId,
-            tenantId: store.tenantId,
-            phoneNormalized: normalizePhone(input.customerPhone),
-            recognitionEnabled: true,
-          },
-          select: { id: true, name: true },
-        });
-        if (recognizedCustomer && customerNamesMatch(recognizedCustomer.name, input.customerName)) {
-          recognizedCustomerId = recognizedCustomer.id;
-        }
-      }
+      const recognizedCustomerId = recognizedIdentity?.customerId ?? null;
 
       let savedAddressResolution: ResolvedRecognitionAddress | null = null;
       if (input.savedAddressReference) {
@@ -166,7 +208,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         if (
           !savedAddressResolution ||
           savedAddressResolution.customerId !== recognizedCustomerId ||
-          savedAddressResolution.sessionId !== confirmedRecognition?.sessionId
+          savedAddressResolution.sessionId !== recognizedIdentity?.sessionId
         ) {
           throw new CheckoutError(
             'SAVED_ADDRESS_UNAVAILABLE',
@@ -311,9 +353,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
           paymentReportToken: crypto.randomUUID(),
           paymentReportExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
-          customerName: input.customerName,
-          customerPhone: input.customerPhone,
-          customerPhoneNormalized: normalizePhone(input.customerPhone),
+          customerName: resolvedIdentity.customerName,
+          customerPhone: resolvedIdentity.customerPhone,
+          customerPhoneNormalized: resolvedIdentity.phoneNormalized,
           modality: input.modality,
           deliveryAddress: address ? formatAddressForStore(address) : null,
           deliveryZoneName: quote.deliveryZoneName,
@@ -392,6 +434,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         storeId: store.id,
         orderId: order.id,
         input,
+        customerName: resolvedIdentity.customerName,
+        customerPhone: resolvedIdentity.customerPhone,
         recognizedCustomerId,
         address,
         deliveryZoneId: quote.deliveryZoneId,
@@ -399,10 +443,10 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       });
 
       const recognitionSessionId =
-        confirmedRecognition?.sessionId ?? activeUnconfirmedRecognition?.sessionId ?? null;
+        recognizedIdentity?.sessionId ?? activeUnconfirmedRecognition?.sessionId ?? null;
       if (recognitionSessionId) {
         const consumed = await consumeRecognitionSession(tx, recognitionSessionId, now);
-        if (confirmedRecognition && !consumed) {
+        if (recognizedIdentity && !consumed) {
           throw new CheckoutError(
             'SAVED_ADDRESS_UNAVAILABLE',
             'A sessão de reconhecimento expirou. Continue com os dados preenchidos manualmente.',
@@ -410,6 +454,21 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           );
         }
       }
+
+      const remembered =
+        input.saveCustomerData &&
+        persistedCustomer.customerId &&
+        !persistedCustomer.nameConflict &&
+        deviceTokenHash
+          ? await persistDeviceRecognitionAfterOrder({
+              tx,
+              tokenHash: deviceTokenHash,
+              tenantId: store.tenantId,
+              storeId: store.id,
+              customerId: persistedCustomer.customerId,
+              now,
+            })
+          : null;
 
       if (quote.couponId && quote.coupon) {
         await tx.coupon.update({
@@ -453,6 +512,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         created: true,
         outboxEventIds: [outboxEvent.id],
         customerNameConflict: persistedCustomer.nameConflict,
+        rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
       };
     },
     {

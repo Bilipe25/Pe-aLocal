@@ -82,6 +82,7 @@ export const RATE_LIMITS = {
   customerRecognitionByStore: { maxAttempts: 60, windowInSeconds: 60 },
   customerRecognitionByIp: { maxAttempts: 30, windowInSeconds: 60 },
   customerRecognitionByPhone: { maxAttempts: 5, windowInSeconds: 60 },
+  customerRecognitionByDevice: { maxAttempts: 20, windowInSeconds: 300 },
   publicOrderLookup: { maxAttempts: 30, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
