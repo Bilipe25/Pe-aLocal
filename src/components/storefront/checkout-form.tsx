@@ -1270,8 +1270,19 @@ export function CheckoutForm({
     setStep(targetStep);
   };
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    void handleSubmit(handleValidSubmit, handleInvalidSubmit)(event);
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    // A confirmação do pedido exige um gesto explícito no CTA da revisão.
+    // Em etapas anteriores, Enter continua avançando e validando normalmente.
+    if (step !== 'review') {
+      void goForward();
+    }
+  }
+
+  function confirmOrder() {
+    if (step !== 'review' || isPending) return;
+    void handleSubmit(handleValidSubmit, handleInvalidSubmit)();
   }
 
   if (activeStoreId !== storeId) {
@@ -1306,7 +1317,7 @@ export function CheckoutForm({
         : 'Revisar pedido';
 
   return (
-    <form className="storefront-checkout-form" onSubmit={submit} noValidate>
+    <form className="storefront-checkout-form" onSubmit={handleFormSubmit} noValidate>
       <nav aria-label="Etapas do checkout" className="storefront-checkout-progress">
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((candidate, index) => {
@@ -2176,7 +2187,8 @@ export function CheckoutForm({
             </Button>
           ) : (
             <Button
-              type="submit"
+              type="button"
+              onClick={confirmOrder}
               disabled={
                 isPending || quoteLoading || !effectiveQuote?.canCheckout || Boolean(changedQuote)
               }

@@ -3574,6 +3574,11 @@ body {
 
 .storefront-featured-section {
   margin-top: 0;
+  padding-block: 0.85rem;
+}
+
+.storefront-featured-section > .storefront-section-title {
+  margin-bottom: 0.6rem;
 }
 
 .storefront-section-title {
@@ -3606,10 +3611,10 @@ body {
 .storefront-featured-track {
   position: relative;
   display: flex;
-  gap: 0.85rem;
+  gap: 0.7rem;
   margin-inline: calc(max(1rem, env(safe-area-inset-left)) * -1);
   overflow-x: auto;
-  padding: 0.1rem max(1rem, env(safe-area-inset-left)) 0.5rem;
+  padding: 0.1rem max(1rem, env(safe-area-inset-left)) 0.35rem;
   scroll-padding-inline: 1rem;
   scroll-snap-type: x proximity;
   overscroll-behavior-inline: contain;
@@ -4287,7 +4292,7 @@ body {
 }
 
 .storefront-product-variant-featured {
-  width: clamp(13.5rem, 62vw, 18rem);
+  width: clamp(10.75rem, 48vw, 13.5rem);
   flex: none;
   scroll-snap-align: start;
 }
@@ -4299,15 +4304,34 @@ body {
 
 .storefront-product-variant-featured .storefront-product-image-frame {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
 }
 
 .storefront-product-variant-featured .storefront-product-copy {
-  min-height: 7.5rem;
+  min-height: 6rem;
+  padding: 0.7rem 3.25rem 0.7rem 0.75rem;
+}
+
+.storefront-product-variant-featured .storefront-featured-badge {
+  display: none;
+}
+
+.storefront-product-variant-featured .storefront-product-description {
+  -webkit-line-clamp: 1;
+}
+
+.storefront-product-variant-featured .storefront-product-favorite {
+  top: 0.45rem;
+  right: 0.45rem;
+}
+
+.storefront-product-variant-featured .storefront-product-add {
+  right: 0.55rem;
+  bottom: 0.55rem;
 }
 
 .storefront-product-variant-featured .storefront-product-image-frame:is(.is-error, .is-missing) {
-  height: 8rem;
+  height: 6.5rem;
   aspect-ratio: auto;
 }
 
@@ -5202,8 +5226,7 @@ body {
 }
 
 .storefront-skeleton-featured-card {
-  width: min(62vw, 18rem);
-  min-width: 13.5rem;
+  width: clamp(10.75rem, 48vw, 13.5rem);
   flex: none;
   overflow: hidden;
   border: 1px solid var(--store-border, #ded7ce);
@@ -5213,14 +5236,14 @@ body {
 
 .storefront-skeleton-featured-image {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   background: color-mix(in srgb, var(--store-border, #ded7ce) 55%, var(--store-surface, #fff));
   animation: storefront-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
 .storefront-skeleton-featured-card .storefront-skeleton-copy {
-  min-height: 7.5rem;
-  padding: 0.85rem;
+  min-height: 6rem;
+  padding: 0.7rem 0.75rem;
 }
 
 @keyframes storefront-filter-count-in {

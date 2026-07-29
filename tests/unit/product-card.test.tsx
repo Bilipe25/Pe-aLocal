@@ -37,6 +37,15 @@ describe('imagem responsiva do produto', () => {
     expect(image).toHaveAttribute('loading', 'lazy');
   });
 
+  it('solicita imagem proporcional à variante compacta de destaque', () => {
+    const { container } = render(<ProductCard {...baseProps} variant="featured" />);
+
+    expect(container.querySelector('img')).toHaveAttribute(
+      'sizes',
+      '(max-width: 639px) 48vw, 13.5rem',
+    );
+  });
+
   it('mantém o espaço reservado e apresenta fallback quando a imagem falha', () => {
     const { container } = render(<ProductCard {...baseProps} />);
 

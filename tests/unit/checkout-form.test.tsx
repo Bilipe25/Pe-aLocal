@@ -640,7 +640,7 @@ describe('checkout público v2', () => {
         paymentReportToken: 'report-token-a',
       },
     });
-    renderCheckout();
+    const { container } = renderCheckout();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
       target: { value: 'Cliente Teste' },
@@ -659,6 +659,11 @@ describe('checkout público v2', () => {
     expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
     const confirm = screen.getByRole('button', { name: /Confirmar/ });
     await waitFor(() => expect(confirm).toBeEnabled());
+    expect(mocks.createOrderAction).not.toHaveBeenCalled();
+
+    fireEvent.submit(container.querySelector('form')!);
+    expect(mocks.createOrderAction).not.toHaveBeenCalled();
+
     fireEvent.click(confirm);
 
     await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce(), {
