@@ -4,22 +4,22 @@ import {
   ArrowLeft,
   Loader2,
   Minus,
-  MoreVertical,
   Pencil,
   Plus,
   RefreshCw,
   ShoppingBag,
-  Store,
   Trash2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
+import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCartQuote, type CartFulfillmentModality } from '@/hooks/use-cart-quote';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -80,8 +80,10 @@ export function CartView({
   const revision = useCartStore(selectCartRevision);
   const getTotal = useCartStore((state) => state.getTotal);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [cartAnnouncement, setCartAnnouncement] = useState('');
   const editingTriggerRef = useRef<HTMLButtonElement | null>(null);
   const localTotal = getTotal();
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
     setStore(storeId, storeSlug);
@@ -128,34 +130,37 @@ export function CartView({
   }
 
   function restoreSafely(snapshot: ReturnType<typeof getSnapshot>, expectedRevision: number) {
-    if (restoreSnapshot(snapshot, expectedRevision)) return;
+    if (restoreSnapshot(snapshot, expectedRevision)) return true;
     toast.info('A sacola mudou depois desta ação', {
       description: 'Para proteger as alterações mais recentes, não foi possível desfazer.',
     });
+    return false;
   }
 
-  function handleClearCart() {
-    const snapshot = getSnapshot();
-    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
-    const undoRevision = clearCart();
-    toast('Sacola limpa', {
-      description: `${itemCount} ${itemCount === 1 ? 'item foi removido' : 'itens foram removidos'}.`,
-      action: {
-        label: 'Desfazer',
-        onClick: () => restoreSafely(snapshot, undoRevision),
-      },
-      duration: 6000,
-    });
+  async function handleClearCart() {
+    if (activeStoreId !== storeId) return false;
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    setCartAnnouncement('Sacola esvaziada.');
+    clearCart();
+    toast.success('Sacola esvaziada');
+    return true;
   }
 
   function handleRemoveItem(itemId: string, productName: string) {
+    if (activeStoreId !== storeId) return;
     const snapshot = getSnapshot();
     const undoRevision = removeItem(itemId);
+    setCartAnnouncement(`${productName} removido da sacola.`);
     toast(`${productName} removido`, {
       description: 'O item saiu da sua sacola.',
       action: {
         label: 'Desfazer',
-        onClick: () => restoreSafely(snapshot, undoRevision),
+        onClick: () => {
+          if (restoreSafely(snapshot, undoRevision)) {
+            setCartAnnouncement(`${productName} restaurado na sacola.`);
+          }
+        },
       },
       duration: 6000,
     });
@@ -173,6 +178,9 @@ export function CartView({
   if (items.length === 0) {
     return (
       <main className="storefront-cart-empty">
+        <span className="sr-only" role="status" aria-live="polite">
+          {cartAnnouncement}
+        </span>
         <div className="storefront-cart-empty-icon">
           <ShoppingBag aria-hidden="true" />
         </div>
@@ -190,25 +198,36 @@ export function CartView({
 
   return (
     <main className="storefront-cart-page" aria-busy={quoteState.status === 'loading'}>
-      <StoreCartHeader
-        storeSlug={storeSlug}
+      <span className="sr-only" role="status" aria-live="polite">
+        {cartAnnouncement}
+      </span>
+      <StorePurchaseHeader
+        backHref={`/${storeSlug}`}
+        backLabel="Voltar ao cardápio"
+        title="Sua sacola"
         storeName={storeName}
         logoImageUrl={logoImageUrl}
         logoImageAssetId={logoImageAssetId}
       />
-      <header className="storefront-cart-heading">
-        <div>
-          <h1>Sua sacola</h1>
-          <p>
-            {items.reduce((sum, item) => sum + item.quantity, 0)}{' '}
-            {items.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'itens'}
-          </p>
-        </div>
-        <button type="button" onClick={handleClearCart} className="storefront-cart-clear">
-          <Trash2 aria-hidden="true" />
-          Limpar
-        </button>
-      </header>
+      <div className="storefront-cart-heading">
+        <p>
+          {itemCount} {itemCount === 1 ? 'item no pedido' : 'itens no pedido'}
+        </p>
+        <ConfirmDialog
+          trigger={
+            <button type="button" className="storefront-cart-clear">
+              <Trash2 aria-hidden="true" />
+              Esvaziar sacola
+            </button>
+          }
+          title="Esvaziar a sacola?"
+          description="Todos os itens e suas personalizações serão removidos. Esta ação não pode ser desfeita."
+          confirmLabel="Esvaziar sacola"
+          pendingLabel="Esvaziando…"
+          onConfirm={handleClearCart}
+          destructive
+        />
+      </div>
 
       <div className="storefront-cart-layout">
         <div className="storefront-cart-content">
@@ -327,17 +346,20 @@ export function CartView({
           ) : quoteState.status === 'error' ? (
             <Button
               type="button"
-              className="storefront-primary-action"
+              className="storefront-primary-action storefront-cart-summary-highlight storefront-cart-recalculate"
               data-cart-summary-action
               onClick={quoteState.retry}
             >
               <RefreshCw aria-hidden="true" />
-              Atualizar valores
+              Recalcular valores
             </Button>
           ) : canCheckout ? (
-            <Button asChild className="storefront-primary-action">
+            <Button
+              asChild
+              className="storefront-primary-action storefront-cart-summary-highlight storefront-cart-checkout-action"
+            >
               <Link href={checkoutHref} data-cart-summary-action>
-                Ir para checkout · {formatCurrency(total)}
+                Continuar para o checkout · {formatCurrency(total)}
               </Link>
             </Button>
           ) : (
@@ -399,23 +421,6 @@ function CartLineItem({
   onEdit: (trigger: HTMLButtonElement) => void;
   onQuantityChange: (qty: number) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [menuOpen]);
-
   return (
     <article className={`storefront-cart-line ${issues.length > 0 ? 'has-issue' : ''}`}>
       <div className="storefront-cart-line-media">
@@ -467,9 +472,7 @@ function CartLineItem({
               className="is-increase"
               aria-label={`Aumentar quantidade de ${displayName}`}
               aria-describedby={
-                quantity >= MAX_CART_ITEM_QUANTITY
-                  ? `cart-quantity-limit-${itemId}`
-                  : undefined
+                quantity >= MAX_CART_ITEM_QUANTITY ? `cart-quantity-limit-${itemId}` : undefined
               }
               onClick={() => onQuantityChange(quantity + 1)}
               disabled={quantity >= MAX_CART_ITEM_QUANTITY}
@@ -478,50 +481,34 @@ function CartLineItem({
             </button>
           </div>
 
-          <div className="storefront-cart-line-menu-wrap" ref={menuRef}>
+          <div className="storefront-cart-line-actions">
             <button
               type="button"
-              ref={triggerRef}
-              className="storefront-cart-line-menu-trigger"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              aria-label={`Opções de ${displayName}`}
-              aria-expanded={menuOpen}
+              className="storefront-cart-line-edit"
+              aria-label={`Editar ${displayName}`}
+              onClick={(event) => onEdit(event.currentTarget)}
             >
-              <MoreVertical aria-hidden="true" />
+              <Pencil aria-hidden="true" />
+              <span>Editar</span>
             </button>
-            {menuOpen && (
-              <div className="storefront-cart-line-menu" role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(event) => {
-                    closeMenu();
-                    onEdit(event.currentTarget);
-                  }}
-                >
-                  <Pencil aria-hidden="true" />
-                  Editar item
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="is-danger"
-                  onClick={() => {
-                    closeMenu();
-                    onRemove();
-                  }}
-                >
-                  <Trash2 aria-hidden="true" />
-                  Remover
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              className="storefront-cart-line-remove"
+              onClick={onRemove}
+              aria-label={`Remover ${displayName} da sacola`}
+            >
+              <Trash2 aria-hidden="true" />
+            </button>
           </div>
         </div>
       </div>
 
       {quantity >= MAX_CART_ITEM_QUANTITY && (
-        <p id={`cart-quantity-limit-${itemId}`} className="storefront-cart-line-issue" role="status">
+        <p
+          id={`cart-quantity-limit-${itemId}`}
+          className="storefront-cart-line-issue"
+          role="status"
+        >
           Limite de {MAX_CART_ITEM_QUANTITY} unidades.
         </p>
       )}
@@ -531,42 +518,5 @@ function CartLineItem({
         </p>
       ))}
     </article>
-  );
-}
-
-function StoreCartHeader({
-  storeSlug,
-  storeName,
-  logoImageUrl,
-  logoImageAssetId,
-}: {
-  storeSlug: string;
-  storeName: string;
-  logoImageUrl: string | null;
-  logoImageAssetId: string | null;
-}) {
-  return (
-    <header className="storefront-cart-store-header">
-      <Link href={`/${storeSlug}`} aria-label="Voltar ao cardápio">
-        <ArrowLeft aria-hidden="true" />
-      </Link>
-      <span className="storefront-cart-store-logo" aria-hidden="true">
-        {logoImageUrl || logoImageAssetId ? (
-          <ProductImage
-            name={storeName}
-            imageUrl={logoImageUrl}
-            imageAssetId={logoImageAssetId}
-            sizes="40px"
-            width={96}
-          />
-        ) : (
-          <Store />
-        )}
-      </span>
-      <p>
-        <span>Sacola de</span>
-        <strong>{storeName}</strong>
-      </p>
-    </header>
   );
 }
