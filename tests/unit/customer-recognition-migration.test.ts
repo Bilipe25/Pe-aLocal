@@ -11,6 +11,8 @@ const backfill = migration('20260729101000_customer_recognition_backfill');
 const indexes = migration('20260729102000_customer_recognition_indexes');
 const guard = migration('20260729103000_customer_recognition_guard');
 const rollback = migration('20260729100000_customer_recognition_expand', 'rollback.sql');
+const deviceRecognition = migration('20260729120000_storefront_device_recognition');
+const deviceRollback = migration('20260729120000_storefront_device_recognition', 'rollback.sql');
 const rollout = readFileSync(resolve('docs/customer-recognition-rollout.md'), 'utf8');
 
 describe('customer recognition migrations', () => {
@@ -100,5 +102,30 @@ describe('customer recognition migrations', () => {
     expect(rollback).toContain('DROP TABLE IF EXISTS "checkout_recognition_sessions"');
     expect(rollback).toContain('ADD CONSTRAINT "customer_addresses_customerId_fkey"');
     expect(rollback.trimEnd()).toMatch(/COMMIT;$/);
+  });
+
+  it('adiciona reconhecimento por aparelho sem PII e com escopo de loja', () => {
+    expect(deviceRecognition.trimStart()).toMatch(
+      /^-- Persistent storefront device recognition\.[\s\S]*BEGIN;/,
+    );
+    expect(deviceRecognition).toContain('CREATE TABLE "storefront_devices"');
+    expect(deviceRecognition).toContain('CREATE TABLE "customer_device_recognitions"');
+    expect(deviceRecognition).toContain('"tokenHash" CHAR(64) NOT NULL');
+    expect(deviceRecognition).toContain(
+      '"customer_device_recognitions_storefrontDeviceId_storeId_key"',
+    );
+    expect(deviceRecognition).toContain(
+      'CREATE FUNCTION public."_enforce_device_recognition_session_scope"()',
+    );
+    for (const table of ['storefront_devices', 'customer_device_recognitions']) {
+      expect(deviceRecognition).toContain(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
+      expect(deviceRecognition).toContain(
+        `REVOKE ALL ON TABLE "${table}" FROM anon, authenticated`,
+      );
+    }
+    expect(deviceRecognition).not.toMatch(/phone|address|customerName/i);
+    expect(deviceRollback).toContain('Prefer deploying the previous application');
+    expect(deviceRollback).toContain('DROP TABLE IF EXISTS "customer_device_recognitions"');
+    expect(deviceRollback).toContain('DROP TABLE IF EXISTS "storefront_devices"');
   });
 });

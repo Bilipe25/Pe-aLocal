@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 
 import { createOrder } from '@/server/repositories/order.repository';
+import { createOrderFingerprint } from '@/server/services/order-idempotency.service';
 
 const mocks = vi.hoisted(() => {
   const tx = {
@@ -27,8 +28,9 @@ const mocks = vi.hoisted(() => {
     writeOrderCreatedAudit: vi.fn(),
     appendOrderOutboxEvent: vi.fn(),
     persistCheckoutCustomerAfterOrder: vi.fn(),
+    persistDeviceRecognitionAfterOrder: vi.fn(),
     resolveActiveRecognitionSession: vi.fn(),
-    resolveConfirmedRecognition: vi.fn(),
+    resolveRecognitionIdentity: vi.fn(),
     resolveRecognitionAddressReference: vi.fn(),
     consumeRecognitionSession: vi.fn(),
   };
@@ -50,18 +52,21 @@ vi.mock('@/server/services/order-outbox.service', () => ({
 vi.mock('@/server/services/customer-checkout-persistence.service', () => ({
   persistCheckoutCustomerAfterOrder: mocks.persistCheckoutCustomerAfterOrder,
 }));
+vi.mock('@/server/services/customer-device-recognition.service', () => ({
+  persistDeviceRecognitionAfterOrder: mocks.persistDeviceRecognitionAfterOrder,
+}));
 vi.mock('@/server/services/customer-recognition.service', () => ({
   resolveActiveRecognitionSession: mocks.resolveActiveRecognitionSession,
-  resolveConfirmedRecognition: mocks.resolveConfirmedRecognition,
+  resolveRecognitionIdentity: mocks.resolveRecognitionIdentity,
   resolveRecognitionAddressReference: mocks.resolveRecognitionAddressReference,
   consumeRecognitionSession: mocks.consumeRecognitionSession,
 }));
 
 const expectedQuoteFingerprint = 'a'.repeat(64);
-const idempotencyFingerprint = 'b'.repeat(64);
 const now = new Date('2026-07-27T12:00:00.000Z');
 
 const input = {
+  identityMode: 'VISITOR' as const,
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP' as const,
@@ -82,6 +87,7 @@ const input = {
     },
   ],
 };
+const idempotencyFingerprint = createOrderFingerprint(input);
 
 const quote = {
   quoteFingerprint: expectedQuoteFingerprint,
@@ -163,8 +169,9 @@ describe('OrderRepository checkout v2', () => {
       addressId: null,
       nameConflict: false,
     });
+    mocks.persistDeviceRecognitionAfterOrder.mockResolvedValue(null);
     mocks.resolveActiveRecognitionSession.mockResolvedValue(null);
-    mocks.resolveConfirmedRecognition.mockResolvedValue(null);
+    mocks.resolveRecognitionIdentity.mockResolvedValue(null);
     mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
     mocks.consumeRecognitionSession.mockResolvedValue(true);
   });
@@ -184,6 +191,7 @@ describe('OrderRepository checkout v2', () => {
       created: true,
       outboxEventIds: ['outbox-a'],
       customerNameConflict: false,
+      rememberDeviceExpiresAt: null,
     });
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
@@ -248,6 +256,35 @@ describe('OrderRepository checkout v2', () => {
     expect(mocks.tx.order.create).not.toHaveBeenCalled();
     expect(mocks.writeOrderCreatedAudit).not.toHaveBeenCalled();
     expect(mocks.appendOrderOutboxEvent).not.toHaveBeenCalled();
+  });
+
+  it('cria ou renova o vínculo do aparelho somente após persistir um Customer elegível', async () => {
+    const expiresAt = new Date('2026-10-25T12:00:00.000Z');
+    mocks.persistCheckoutCustomerAfterOrder.mockResolvedValueOnce({
+      customerId: 'customer-a',
+      addressId: null,
+      nameConflict: false,
+    });
+    mocks.persistDeviceRecognitionAfterOrder.mockResolvedValueOnce({
+      remembered: true,
+      expiresAt,
+    });
+
+    const result = await createOrder({
+      ...params,
+      input: { ...input, saveCustomerData: true },
+      deviceTokenHash: 'd'.repeat(64),
+    });
+
+    expect(mocks.persistDeviceRecognitionAfterOrder).toHaveBeenCalledWith({
+      tx: mocks.tx,
+      tokenHash: 'd'.repeat(64),
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      customerId: 'customer-a',
+      now: expect.any(Date),
+    });
+    expect(result.rememberDeviceExpiresAt).toEqual(expiresAt);
   });
 
   it('rejeita reuso da chave idempotente com payload diferente', async () => {
@@ -318,6 +355,7 @@ describe('OrderRepository checkout v2', () => {
     const recognitionBrowserToken = 't'.repeat(43);
     const deliveryInput = {
       ...input,
+      identityMode: 'RECOGNIZED' as const,
       modality: 'DELIVERY' as const,
       savedAddressReference,
       saveCustomerData: true,
@@ -336,10 +374,14 @@ describe('OrderRepository checkout v2', () => {
       zipCode: '01001-000',
       reference: 'Portão azul',
     };
-    mocks.resolveConfirmedRecognition.mockResolvedValue({
+    mocks.resolveRecognitionIdentity.mockResolvedValue({
       sessionId: 'session-a',
       customerId: 'customer-a',
       confirmationMode: 'SAVED_ADDRESS',
+      customerName: 'Cliente',
+      customerPhone: '(85) 99999-9999',
+      phoneNormalized: '5585999999999',
+      consumedAt: null,
     });
     mocks.tx.customer.findFirst.mockResolvedValue({ id: 'customer-a', name: 'Cliente' });
     mocks.resolveRecognitionAddressReference.mockResolvedValue({
@@ -360,7 +402,6 @@ describe('OrderRepository checkout v2', () => {
     await createOrder({
       input: deliveryInput,
       storeSlug: 'loja-a',
-      idempotencyFingerprint,
       recognitionBrowserToken,
     });
 
@@ -419,7 +460,6 @@ describe('OrderRepository checkout v2', () => {
     await createOrder({
       input: deliveryInput,
       storeSlug: 'loja-a',
-      idempotencyFingerprint,
     });
 
     expect(mocks.tx.order.create.mock.calls[0][0].data).toMatchObject({
@@ -446,10 +486,14 @@ describe('OrderRepository checkout v2', () => {
   });
 
   it('rejeita referência ausente ou pertencente a outra loja antes de criar o pedido', async () => {
-    mocks.resolveConfirmedRecognition.mockResolvedValue({
+    mocks.resolveRecognitionIdentity.mockResolvedValue({
       sessionId: 'session-a',
       customerId: 'customer-a',
       confirmationMode: 'SAVED_ADDRESS',
+      customerName: 'Cliente',
+      customerPhone: '(85) 99999-9999',
+      phoneNormalized: '5585999999999',
+      consumedAt: null,
     });
     mocks.tx.customer.findFirst.mockResolvedValue({ id: 'customer-a', name: 'Cliente' });
     mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
@@ -458,11 +502,11 @@ describe('OrderRepository checkout v2', () => {
       createOrder({
         input: {
           ...input,
+          identityMode: 'RECOGNIZED',
           modality: 'DELIVERY',
           savedAddressReference: 'r'.repeat(43),
         },
         storeSlug: 'loja-a',
-        idempotencyFingerprint,
         recognitionBrowserToken: 't'.repeat(43),
       }),
     ).rejects.toMatchObject({ code: 'SAVED_ADDRESS_UNAVAILABLE', statusCode: 409 });
@@ -471,7 +515,7 @@ describe('OrderRepository checkout v2', () => {
   });
 
   it('consome sessão negativa ou não confirmada sem vinculá-la ao Customer', async () => {
-    mocks.resolveConfirmedRecognition.mockResolvedValue(null);
+    mocks.resolveRecognitionIdentity.mockResolvedValue(null);
     mocks.resolveActiveRecognitionSession.mockResolvedValue({ sessionId: 'session-negative' });
 
     await createOrder({

@@ -132,13 +132,25 @@ describe('customer recognition cleanup', () => {
       graceMinutes: 60,
       batchSize: 500,
       maxBatches: 20,
-      deleted: { references: 5, sessions: 1, throttles: 4 },
-      batches: { references: 1, sessions: 1, throttles: 1 },
+      deleted: {
+        references: 5,
+        sessions: 1,
+        throttles: 4,
+        deviceRecognitions: 0,
+        devices: 0,
+      },
+      batches: {
+        references: 1,
+        sessions: 1,
+        throttles: 1,
+        deviceRecognitions: 1,
+        devices: 1,
+      },
       batchLimitReached: false,
     });
 
-    expect(query.mock.calls.filter(([statement]) => statement === 'BEGIN')).toHaveLength(3);
-    expect(query.mock.calls.filter(([statement]) => statement === 'COMMIT')).toHaveLength(3);
+    expect(query.mock.calls.filter(([statement]) => statement === 'BEGIN')).toHaveLength(5);
+    expect(query.mock.calls.filter(([statement]) => statement === 'COMMIT')).toHaveLength(5);
     expect(query.mock.calls.at(-1)).toEqual([
       'SELECT pg_advisory_unlock(hashtext($1))',
       ['pedidolocal:customer-recognition-cleanup'],

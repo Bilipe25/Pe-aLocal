@@ -4,6 +4,7 @@ import { clearCheckoutIdempotency, resolveCheckoutIdempotency } from './checkout
 import type { CheckoutFingerprintInput } from './order-idempotency';
 
 const payload: CheckoutFingerprintInput = {
+  identityMode: 'VISITOR',
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP',

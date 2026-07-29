@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CheckoutForm, describeQuoteChanges } from '@/components/storefront/checkout-form';
@@ -119,8 +120,11 @@ vi.mock('@/stores/cart-store', () => ({
   ),
 }));
 
-function renderCheckout(overrides: Partial<React.ComponentProps<typeof CheckoutForm>> = {}) {
-  return render(
+function renderCheckout(
+  overrides: Partial<React.ComponentProps<typeof CheckoutForm>> = {},
+  strictMode = false,
+) {
+  const element = (
     <CheckoutForm
       storeId="store-1"
       storeSlug="loja-1"
@@ -142,8 +146,9 @@ function renderCheckout(overrides: Partial<React.ComponentProps<typeof CheckoutF
       storeCity="São Paulo"
       storeState="SP"
       {...overrides}
-    />,
+    />
   );
+  return render(strictMode ? <StrictMode>{element}</StrictMode> : element);
 }
 
 describe('checkout público v2', () => {
@@ -196,7 +201,7 @@ describe('checkout público v2', () => {
     });
   });
 
-  it('consulta o reconhecimento somente ao tocar em Continuar', async () => {
+  it('consulta o aparelho uma vez e só envia nome/telefone ao tocar em Continuar', async () => {
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/checkout/recognition')) {
@@ -222,14 +227,67 @@ describe('checkout público v2', () => {
 
     expect(
       mocks.fetch.mock.calls.filter(([input]) => String(input).endsWith('/checkout/recognition')),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(
+      mocks.fetch.mock.calls.find(([input]) => String(input).endsWith('/checkout/recognition'))?.[1]
+        ?.method,
+    ).toBe('GET');
 
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     expect(
       mocks.fetch.mock.calls.filter(([input]) => String(input).endsWith('/checkout/recognition')),
+    ).toHaveLength(2);
+    expect(
+      mocks.fetch.mock.calls.some(
+        ([input, request]) =>
+          String(input).endsWith('/checkout/recognition') && request?.method === 'POST',
+      ),
+    ).toBe(true);
+  });
+
+  it('abre automaticamente o diálogo quando o aparelho é reconhecido sem preencher PII', async () => {
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/checkout/recognition') && init?.method === 'GET') {
+        return {
+          ok: true,
+          json: async () => ({
+            recognized: true,
+            maskedName: 'João M***',
+            maskedPhone: '(11) *****-**99',
+            maskedAddresses: [
+              {
+                opaqueReference: 'D'.repeat(43),
+                label: 'Casa',
+                maskedAddress: 'Rua das F***, nº *** — Centro',
+                isDefault: true,
+                requiresDeliveryZoneSelection: false,
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => quote };
+    });
+
+    renderCheckout({ deliveryEnabled: true, initialModality: 'DELIVERY' }, true);
+
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(
+      mocks.fetch.mock.calls.filter(
+        ([input, init]) =>
+          String(input).endsWith('/checkout/recognition') && init?.method === 'GET',
+      ),
     ).toHaveLength(1);
+    expect(screen.queryByRole('textbox', { name: 'Celular' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Nome' })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('João Martins');
+    expect(document.body.textContent).not.toContain('11999999999');
+
+    fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Continuar como João M/ })).toBeVisible();
   });
 
   it('mostra somente o endereço mascarado e usa a referência após confirmação', async () => {
@@ -345,8 +403,8 @@ describe('checkout público v2', () => {
 
   it('Escape e overlay fecham sem confirmar e devolvem o foco ao Continuar', async () => {
     const opaqueReference = 'B'.repeat(43);
-    mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith('/checkout/recognition')) {
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/checkout/recognition') && init?.method === 'POST') {
         return {
           ok: true,
           json: async () => ({
@@ -380,9 +438,10 @@ describe('checkout público v2', () => {
     expect(await screen.findByRole('dialog')).toBeVisible();
     fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    await waitFor(() => expect(continueButton).toHaveFocus());
+    const reopenButton = screen.getByRole('button', { name: /Continuar como João M/ });
+    await waitFor(() => expect(reopenButton).toHaveFocus());
 
-    fireEvent.click(continueButton);
+    fireEvent.click(reopenButton);
     expect(await screen.findByRole('dialog')).toBeVisible();
     fireEvent.pointerDown(document.querySelector('.customer-recognition-overlay')!);
     fireEvent.click(document.querySelector('.customer-recognition-overlay')!);

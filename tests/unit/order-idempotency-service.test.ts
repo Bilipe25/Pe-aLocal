@@ -7,6 +7,7 @@ import {
 } from '@/server/services/order-idempotency.service';
 
 const input: CheckoutInput = {
+  identityMode: 'VISITOR',
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP',
@@ -27,6 +28,13 @@ const input: CheckoutInput = {
     },
   ],
 };
+
+function withoutVisitorPii<T extends { customerName: string; customerPhone: string }>(value: T) {
+  const result: Partial<T> = { ...value };
+  delete result.customerName;
+  delete result.customerPhone;
+  return result as Omit<T, 'customerName' | 'customerPhone'>;
+}
 
 describe('order idempotency fingerprint', () => {
   it('ignora a chave, lineId e ordenação sem alterar a semântica do checkout', () => {
@@ -85,6 +93,29 @@ describe('order idempotency fingerprint', () => {
     expect(() => assertMatchingOrderFingerprint('same', 'same')).not.toThrow();
     expect(() => assertMatchingOrderFingerprint('old', 'new')).toThrowError(
       'Esta tentativa de pedido já foi usada com outros dados.',
+    );
+  });
+
+  it('vincula o replay reconhecido à identidade resolvida no servidor', () => {
+    const recognizedInput: CheckoutInput = {
+      ...withoutVisitorPii(input),
+      identityMode: 'RECOGNIZED',
+    };
+    const firstIdentity = {
+      customerId: '10000000-0000-4000-8000-000000000001',
+      customerName: 'Cliente Um',
+      customerPhone: '(11) 99999-9999',
+    };
+    const secondIdentity = {
+      ...firstIdentity,
+      customerId: '10000000-0000-4000-8000-000000000002',
+    };
+
+    expect(createOrderFingerprint(recognizedInput, firstIdentity)).not.toBe(
+      createOrderFingerprint(recognizedInput, secondIdentity),
+    );
+    expect(createOrderFingerprint(recognizedInput, firstIdentity)).not.toBe(
+      createOrderFingerprint(input),
     );
   });
 });

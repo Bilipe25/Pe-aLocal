@@ -27,7 +27,15 @@ function item(index = 1, overrides: Record<string, unknown> = {}) {
   };
 }
 
+function withoutVisitorPii<T extends { customerName: string; customerPhone: string }>(input: T) {
+  const result: Partial<T> = { ...input };
+  delete result.customerName;
+  delete result.customerPhone;
+  return result as Omit<T, 'customerName' | 'customerPhone'>;
+}
+
 const validCheckout = {
+  identityMode: 'VISITOR' as const,
   customerName: 'Cliente',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP' as const,
@@ -68,14 +76,20 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
     'normaliza telefone celular %s no servidor',
     (customerPhone) => {
       const result = checkoutSchema.parse({ ...validCheckout, customerPhone });
-      expect(result.customerPhone).toBe('(11) 99999-9999');
+      expect(result).toMatchObject({
+        identityMode: 'VISITOR',
+        customerPhone: '(11) 99999-9999',
+      });
     },
   );
 
   it('aceita telefone fixo e rejeita letras, DDI inválido e tamanhos incorretos', () => {
-    expect(
-      checkoutSchema.parse({ ...validCheckout, customerPhone: '11 3333-4444' }).customerPhone,
-    ).toBe('(11) 3333-4444');
+    expect(checkoutSchema.parse({ ...validCheckout, customerPhone: '11 3333-4444' })).toMatchObject(
+      {
+        identityMode: 'VISITOR',
+        customerPhone: '(11) 3333-4444',
+      },
+    );
     for (const customerPhone of [
       '1199999',
       '551199999999999',
@@ -147,16 +161,20 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
 
   it('aceita referência opaca sem serializar um endereço e rejeita referência junto do manual', () => {
     const savedAddressReference = 'a'.repeat(43);
+    const recognizedCheckout = {
+      ...withoutVisitorPii(validCheckout),
+      identityMode: 'RECOGNIZED' as const,
+    };
     expect(
       checkoutSchema.safeParse({
-        ...validCheckout,
+        ...recognizedCheckout,
         modality: 'DELIVERY',
         savedAddressReference,
       }).success,
     ).toBe(true);
     expect(
       checkoutSchema.safeParse({
-        ...validCheckout,
+        ...recognizedCheckout,
         modality: 'DELIVERY',
         deliveryZoneId: uuid(999),
         savedAddressReference,
@@ -166,6 +184,27 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
           complement: '',
           reference: '',
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('aceita identidade reconhecida sem PII e rejeita PII enviada pelo navegador', () => {
+    const recognizedCheckout = {
+      ...withoutVisitorPii(validCheckout),
+      identityMode: 'RECOGNIZED' as const,
+    };
+
+    expect(checkoutSchema.safeParse(recognizedCheckout).success).toBe(true);
+    expect(
+      checkoutSchema.safeParse({
+        ...recognizedCheckout,
+        customerName: 'Nome que não deve ser aceito',
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutSchema.safeParse({
+        ...recognizedCheckout,
+        customerPhone: '(11) 99999-9999',
       }).success,
     ).toBe(false);
   });

@@ -7,6 +7,7 @@ vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 import {
   RecognitionRateLimitError,
   startCustomerRecognition,
+  startDeviceCustomerRecognition,
 } from '@/server/services/customer-recognition.service';
 
 const now = new Date('2026-07-29T15:00:00.000Z');
@@ -102,6 +103,13 @@ function database(
     },
     deliveryZonePostalRange: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    storefrontDevice: {
+      findUnique: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    customerDeviceRecognition: {
+      update: vi.fn().mockResolvedValue({}),
     },
   };
   return {
@@ -300,5 +308,74 @@ describe('startCustomerRecognition', () => {
       }),
     ).rejects.toBeInstanceOf(RecognitionRateLimitError);
     expect(attempt.client.customer.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('startDeviceCustomerRecognition', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('troca o vínculo persistente por uma sessão curta e retorna somente DTO mascarado', async () => {
+    const addresses = [savedAddress(0)];
+    const { client, db } = database(null, addresses);
+    client.storefrontDevice.findUnique.mockResolvedValue({
+      id: 'device-a',
+      expiresAt: new Date('2026-10-27T15:00:00.000Z'),
+      recognitions: [
+        {
+          id: 'device-recognition-a',
+          customerId: 'customer-a',
+          customer: {
+            id: 'customer-a',
+            name: 'João Martins',
+            phoneNormalized: '5511999999999',
+            recognitionEnabled: true,
+          },
+        },
+      ],
+    });
+    mocks.getDb.mockReturnValue(db);
+
+    const result = await startDeviceCustomerRecognition({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      deviceToken: 'd'.repeat(43),
+      now,
+    });
+
+    expect(result?.result).toMatchObject({
+      recognized: true,
+      maskedName: 'João M***',
+      maskedPhone: '(11) *****-**99',
+    });
+    expect(JSON.stringify(result?.result)).not.toMatch(
+      /customer-a|device-a|Rua das Flores 0|Apto 43|01234567/,
+    );
+    expect(client.checkoutRecognitionSession.update).toHaveBeenCalledWith({
+      where: { id: 'session-a' },
+      data: expect.objectContaining({
+        customerId: 'customer-a',
+        deviceRecognitionId: 'device-recognition-a',
+      }),
+    });
+  });
+
+  it('não revela se o token expirou, foi revogado ou pertence a outra loja', async () => {
+    const { client, db } = database(null);
+    client.storefrontDevice.findUnique.mockResolvedValue({
+      id: 'device-a',
+      expiresAt: new Date('2026-10-27T15:00:00.000Z'),
+      recognitions: [],
+    });
+    mocks.getDb.mockReturnValue(db);
+
+    await expect(
+      startDeviceCustomerRecognition({
+        tenantId: 'tenant-a',
+        storeId: 'store-b',
+        deviceToken: 'd'.repeat(43),
+        now,
+      }),
+    ).resolves.toBeNull();
+    expect(client.checkoutRecognitionSession.create).not.toHaveBeenCalled();
   });
 });

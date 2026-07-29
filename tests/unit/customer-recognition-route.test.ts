@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   invalidateSession: vi.fn(),
   rateLimitCheck: vi.fn(),
   startRecognition: vi.fn(),
+  startDeviceRecognition: vi.fn(),
 }));
 
 vi.mock('@/server/queries/public-store', () => ({
@@ -19,6 +20,7 @@ vi.mock('@/server/rate-limit', () => ({
     customerRecognitionByStore: { maxAttempts: 60, windowInSeconds: 60 },
     customerRecognitionByIp: { maxAttempts: 30, windowInSeconds: 60 },
     customerRecognitionByPhone: { maxAttempts: 5, windowInSeconds: 60 },
+    customerRecognitionByDevice: { maxAttempts: 20, windowInSeconds: 300 },
   },
   getRateLimiter: () => ({ check: mocks.rateLimitCheck }),
 }));
@@ -38,16 +40,28 @@ vi.mock('@/server/services/customer-recognition.service', () => {
     invalidateRecognitionSession: mocks.invalidateSession,
     RecognitionRateLimitError,
     startCustomerRecognition: mocks.startRecognition,
+    startDeviceCustomerRecognition: mocks.startDeviceRecognition,
   };
 });
 
-import { DELETE, PATCH, POST } from '@/app/api/storefront/[storeSlug]/checkout/recognition/route';
+vi.mock('@/server/services/customer-device-recognition.service', () => ({
+  getStorefrontDeviceCookieName: () => 'pedidolocal_device',
+  isStorefrontDeviceToken: (value: unknown) =>
+    typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value),
+}));
+
+import {
+  DELETE,
+  GET,
+  PATCH,
+  POST,
+} from '@/app/api/storefront/[storeSlug]/checkout/recognition/route';
 
 const context = { params: Promise.resolve({ storeSlug: 'burger-do-ze' }) };
 const validInput = { customerPhone: '(11) 99999-1234', customerName: 'João Martins' };
 
 function request(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   body?: unknown,
   headers: Record<string, string> = {},
 ) {
@@ -98,6 +112,16 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
       browserToken: 't'.repeat(43),
       expiresAt: new Date('2026-07-29T15:15:00.000Z'),
     });
+    mocks.startDeviceRecognition.mockResolvedValue({
+      result: {
+        recognized: true,
+        maskedName: 'João M***',
+        maskedPhone: '(11) *****-**34',
+        maskedAddresses: [],
+      },
+      browserToken: 's'.repeat(43),
+      expiresAt: new Date('2026-07-29T15:15:00.000Z'),
+    });
     mocks.confirmAddress.mockResolvedValue({
       confirmed: true,
       mode: 'SAVED_ADDRESS',
@@ -139,6 +163,32 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
       input: { customerPhone: '5511999991234', customerName: 'João Martins' },
       browserToken: null,
       clientIp: '203.0.113.20',
+    });
+  });
+
+  it('reconhece silenciosamente o aparelho por GET e cria somente uma sessão curta', async () => {
+    const response = await GET(
+      request('GET', undefined, { cookie: `pedidolocal_device=${'d'.repeat(43)}` }),
+      context,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      recognized: true,
+      maskedName: 'João M***',
+      maskedPhone: '(11) *****-**34',
+      maskedAddresses: [],
+    });
+    expect(response.headers.get('set-cookie')).toContain(
+      `pedidolocal_recognition=${'s'.repeat(43)}`,
+    );
+    expect(response.headers.get('set-cookie')).not.toContain('pedidolocal_device=');
+    expect(mocks.startDeviceRecognition).toHaveBeenCalledWith({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      deviceToken: 'd'.repeat(43),
+      browserToken: null,
     });
   });
 
@@ -267,6 +317,31 @@ describe('/api/storefront/:storeSlug/checkout/recognition', () => {
       tenantId: 'tenant-a',
       storeId: 'store-a',
       browserToken: 't'.repeat(43),
+      deviceToken: null,
+    });
+  });
+
+  it('revoga somente o reconhecimento da loja quando solicitado explicitamente', async () => {
+    const response = await DELETE(
+      new Request(
+        'https://loja.test/api/storefront/burger-do-ze/checkout/recognition?forgetDevice=1',
+        {
+          method: 'DELETE',
+          headers: {
+            origin: 'https://loja.test',
+            cookie: `pedidolocal_recognition=${'t'.repeat(43)}; pedidolocal_device=${'d'.repeat(43)}`,
+          },
+        },
+      ),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.invalidateSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      browserToken: 't'.repeat(43),
+      deviceToken: 'd'.repeat(43),
     });
   });
 });
