@@ -40,7 +40,9 @@ export const checkoutItemSchema = z
 
 const checkoutQuoteShape = {
   modality: z.enum(['DELIVERY', 'PICKUP']),
-  deliveryZoneId: z.uuid().optional(),
+  // O PostgreSQL aceita UUIDs legados sem bits RFC 4122 (usados pelo seed).
+  // A consulta autoritativa ainda limita a zona por tenant e loja.
+  deliveryZoneId: z.guid().optional(),
   deliveryPostalCode: postalCodeSchema.optional(),
   savedAddressReference: z
     .string()

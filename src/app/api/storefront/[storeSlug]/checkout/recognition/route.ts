@@ -8,6 +8,7 @@ import { slugSchema } from '@/schemas/store';
 import { errorToResponse, NotFoundError, ValidationError } from '@/server/errors';
 import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
   confirmRecognitionAddress,
   continueRecognitionWithNewAddress,
@@ -41,15 +42,11 @@ function invalidRequest(message = 'Os dados do reconhecimento são inválidos.')
   return new ValidationError(message);
 }
 
-function deployedEnvironment() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
-}
-
 function assertTrustedOrigin(request: Request) {
   if (request.headers.get('sec-fetch-site') === 'cross-site') throw invalidRequest();
   const origin = request.headers.get('origin');
   if (!origin) {
-    if (deployedEnvironment()) throw invalidRequest();
+    if (isDeployedRuntime()) throw invalidRequest();
     return;
   }
 
@@ -128,13 +125,13 @@ function readCookie(request: Request, name: string) {
 }
 
 function serializeRecognitionCookie(value: string, expiresAt: Date) {
-  const secure = deployedEnvironment() ? '; Secure' : '';
+  const secure = isDeployedRuntime() ? '; Secure' : '';
   const maxAge = Math.max(0, Math.min(900, Math.ceil((expiresAt.getTime() - Date.now()) / 1_000)));
   return `${getRecognitionCookieName()}=${value}; Path=/; Max-Age=${maxAge}; Expires=${expiresAt.toUTCString()}; HttpOnly; SameSite=Lax${secure}`;
 }
 
 function clearRecognitionCookie() {
-  const secure = deployedEnvironment() ? '; Secure' : '';
+  const secure = isDeployedRuntime() ? '; Secure' : '';
   return `${getRecognitionCookieName()}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secure}`;
 }
 
@@ -178,7 +175,7 @@ async function nativeRateLimit(params: {
     hashRecognitionSecret(`phone:${params.phoneNormalized}`),
   ]);
   const limiter = getRateLimiter();
-  const strict = deployedEnvironment();
+  const strict = isDeployedRuntime();
   const [storeResult, ipResult, phoneResult] = await Promise.all([
     limiter.check({
       identifier: `recognition-store:${params.storeId}`,

@@ -79,6 +79,7 @@ describe('POST checkout/events', () => {
 
   afterEach(() => {
     restoreAppEnv();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -217,6 +218,7 @@ describe('POST checkout/events', () => {
     ['limite excedido', { allowed: false, unavailable: false }],
     ['binding indisponível', { allowed: false, unavailable: true }],
   ])('retorna RATE_LIMITED para %s sem registrar o evento', async (_label, state) => {
+    vi.stubEnv('NODE_ENV', 'production');
     process.env.APP_ENV = 'staging';
     mocks.rateLimitCheck.mockResolvedValue({
       ...state,

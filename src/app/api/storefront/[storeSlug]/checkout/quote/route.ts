@@ -3,6 +3,7 @@ import { getDb } from '@/server/database/client';
 import { CheckoutError, errorToResponse, NotFoundError, RateLimitError } from '@/server/errors';
 import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
   calculateCheckoutQuote,
   toPublicCheckoutQuote,
@@ -83,10 +84,6 @@ function readCookie(request: Request, name: string) {
   return value || null;
 }
 
-function deployedEnvironment() {
-  return process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production';
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ storeSlug: string }> },
@@ -99,7 +96,7 @@ export async function POST(
     const rateLimit = await getRateLimiter().check({
       identifier: `checkout-quote:${storeSlug}:${clientAddress(request)}`,
       ...RATE_LIMITS.checkoutQuote,
-      strict: deployedEnvironment(),
+      strict: isDeployedRuntime(),
     });
     if (rateLimit.unavailable) {
       throw new RateLimitError(

@@ -989,10 +989,18 @@ export function CheckoutForm({
     }
     if (step === 'fulfillment' && values.modality === 'DELIVERY') {
       const latestQuote = await refetchQuote();
-      const coverageIssue = latestQuote?.issues.find(
+      if (!latestQuote) {
+        setError('deliveryZoneId', {
+          message:
+            quoteError?.message ??
+            'Não foi possível atualizar os valores da entrega agora. Aguarde um instante e tente novamente.',
+        });
+        return;
+      }
+      const coverageIssue = latestQuote.issues.find(
         (issue) => issue.code === 'OUTSIDE_DELIVERY_AREA',
       );
-      if (!latestQuote || coverageIssue || !latestQuote.deliveryZoneId) {
+      if (coverageIssue || !latestQuote.deliveryZoneId) {
         setError('deliveryZoneId', {
           message:
             coverageIssue?.message ??

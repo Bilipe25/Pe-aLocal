@@ -45,6 +45,25 @@ describe('checkout v2 — contrato de pagamento e entrega', () => {
     expect(checkoutQuoteSchema.safeParse(deliveryPreview).success).toBe(false);
   });
 
+  it('aceita a zona legada da loja demo sem afrouxar o formato GUID', () => {
+    const demoDeliveryZoneId = '00000000-0000-0000-0005-000000000001';
+
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'DELIVERY',
+        deliveryZoneId: demoDeliveryZoneId,
+        items: [item()],
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutQuoteSchema.safeParse({
+        modality: 'DELIVERY',
+        deliveryZoneId: 'zona-centro',
+        items: [item()],
+      }).success,
+    ).toBe(false);
+  });
+
   it.each(['11999999999', '(11) 99999-9999', '11 99999-9999', '+55 11 99999-9999'])(
     'normaliza telefone celular %s no servidor',
     (customerPhone) => {
