@@ -17,7 +17,12 @@ import {
   invalidateRecognitionSession,
   RecognitionRateLimitError,
   startCustomerRecognition,
+  startDeviceCustomerRecognition,
 } from '@/server/services/customer-recognition.service';
+import {
+  getStorefrontDeviceCookieName,
+  isStorefrontDeviceToken,
+} from '@/server/services/customer-device-recognition.service';
 import type { CustomerRecognitionResult } from '@/types/customer-recognition';
 
 export const dynamic = 'force-dynamic';
@@ -204,6 +209,86 @@ async function nativeRateLimit(params: {
   };
 }
 
+async function nativeDeviceRateLimit(params: {
+  tenantId: string;
+  storeId: string;
+  clientIp: string;
+  deviceToken: string;
+}) {
+  const [ipHash, deviceHash] = await Promise.all([
+    hashRecognitionSecret(`ip:${params.clientIp}`),
+    hashRecognitionSecret(`device:${params.deviceToken}`),
+  ]);
+  const limiter = getRateLimiter();
+  const strict = isDeployedRuntime();
+  const [storeResult, ipResult, deviceResult] = await Promise.all([
+    limiter.check({
+      identifier: `recognition-store:${params.storeId}`,
+      ...RATE_LIMITS.customerRecognitionByStore,
+      strict,
+    }),
+    limiter.check({
+      identifier: `recognition-ip:${params.tenantId}:${ipHash}`,
+      ...RATE_LIMITS.customerRecognitionByIp,
+      strict,
+    }),
+    limiter.check({
+      identifier: `recognition-device:${params.tenantId}:${params.storeId}:${deviceHash}`,
+      ...RATE_LIMITS.customerRecognitionByDevice,
+      strict,
+    }),
+  ]);
+  const results = [storeResult, ipResult, deviceResult];
+  return {
+    unavailable: results.some((result) => result.unavailable),
+    allowed: results.every((result) => result.allowed),
+  };
+}
+
+export async function GET(request: Request, context: { params: Promise<{ storeSlug: string }> }) {
+  try {
+    if (request.headers.get('sec-fetch-site') === 'cross-site') throw invalidRequest();
+    const store = await readScope(context);
+    const deviceToken = readCookie(request, getStorefrontDeviceCookieName());
+    if (!isStorefrontDeviceToken(deviceToken)) {
+      return secureJson({
+        recognized: false,
+        message: 'Continue informando seus dados para concluir o pedido.',
+      } satisfies CustomerRecognitionResult);
+    }
+
+    const rateLimit = await nativeDeviceRateLimit({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      clientIp: clientAddress(request),
+      deviceToken,
+    });
+    if (rateLimit.unavailable || !rateLimit.allowed) {
+      return secureJson(genericUnavailableResult);
+    }
+
+    const recognition = await startDeviceCustomerRecognition({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      deviceToken,
+      browserToken: readCookie(request, getRecognitionCookieName()),
+    });
+    if (!recognition) {
+      return secureJson({
+        recognized: false,
+        message: 'Continue informando seus dados para concluir o pedido.',
+      } satisfies CustomerRecognitionResult);
+    }
+    return secureJson(recognition.result, {
+      headers: {
+        'Set-Cookie': serializeRecognitionCookie(recognition.browserToken, recognition.expiresAt),
+      },
+    });
+  } catch (error) {
+    return secureError(error);
+  }
+}
+
 export async function POST(request: Request, context: { params: Promise<{ storeSlug: string }> }) {
   try {
     assertTrustedOrigin(request);
@@ -290,10 +375,12 @@ export async function DELETE(
   try {
     assertTrustedOrigin(request);
     const store = await readScope(context);
+    const forgetDevice = new URL(request.url).searchParams.get('forgetDevice') === '1';
     const result = await invalidateRecognitionSession({
       tenantId: store.tenantId,
       storeId: store.id,
       browserToken: readCookie(request, getRecognitionCookieName()),
+      deviceToken: forgetDevice ? readCookie(request, getStorefrontDeviceCookieName()) : null,
     });
     return secureJson(result, { headers: { 'Set-Cookie': clearRecognitionCookie() } });
   } catch (error) {

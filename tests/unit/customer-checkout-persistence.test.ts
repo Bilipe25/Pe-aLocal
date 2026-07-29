@@ -5,6 +5,7 @@ import { persistCheckoutCustomerAfterOrder } from '@/server/services/customer-ch
 
 const now = new Date('2026-07-29T12:00:00.000Z');
 const input: CheckoutInput = {
+  identityMode: 'VISITOR',
   customerName: 'João Martins',
   customerPhone: '(11) 99999-9999',
   modality: 'DELIVERY',

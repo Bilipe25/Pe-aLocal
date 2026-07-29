@@ -40,6 +40,8 @@ type RecognitionClient = Pick<
   | 'customerAddress'
   | 'deliveryZonePostalRange'
   | 'storeAddress'
+  | 'storefrontDevice'
+  | 'customerDeviceRecognition'
 >;
 
 interface RecognitionScope {
@@ -70,6 +72,12 @@ export interface StartCustomerRecognitionResponse {
   result: CustomerRecognitionResult;
   browserToken: string;
   expiresAt: Date;
+}
+
+export interface StartDeviceCustomerRecognitionParams extends RecognitionScope {
+  deviceToken?: string | null;
+  browserToken?: string | null;
+  now?: Date;
 }
 
 export interface ResolveRecognitionAddressReferenceParams extends RecognitionScope {
@@ -103,6 +111,13 @@ export interface ResolvedRecognitionSession {
   sessionId: string;
   customerId: string;
   confirmationMode: 'SAVED_ADDRESS' | 'NEW_ADDRESS';
+}
+
+export interface ResolvedRecognitionIdentity extends ResolvedRecognitionSession {
+  customerName: string;
+  customerPhone: string;
+  phoneNormalized: string;
+  consumedAt: Date | null;
 }
 
 export interface ResolvedActiveRecognitionSession {
@@ -149,7 +164,7 @@ export async function hashRecognitionSecret(value: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function isRecognitionSecret(value: string | null | undefined): value is string {
+export function isRecognitionSecret(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 }
 
@@ -481,6 +496,7 @@ async function recordFailedSessionAttempt(
       attemptCount: { increment: 1 },
       consecutiveFailures: failureCount,
       customerId: null,
+      deviceRecognitionId: null,
       nextAttemptAt,
       blockedUntil,
       confirmedAt: null,
@@ -569,6 +585,7 @@ export async function startCustomerRecognition(
         where: { id: sessionData.session.id },
         data: {
           customerId: customer.id,
+          deviceRecognitionId: null,
           attemptCount: { increment: 1 },
           consecutiveFailures: 0,
           nextAttemptAt: null,
@@ -591,6 +608,123 @@ export async function startCustomerRecognition(
           recognized: true,
           maskedName: maskCustomerName(customer.name),
           maskedPhone: maskPhone(customer.phoneNormalized),
+          maskedAddresses,
+        },
+        browserToken: sessionData.browserToken,
+        expiresAt: sessionData.session.expiresAt,
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
+/**
+ * Reconhecimento não autenticado por aparelho. O token persistente apenas
+ * localiza um vínculo previamente consentido; toda operação do checkout usa
+ * uma nova sessão curta e retorna somente dados mascarados.
+ */
+export async function startDeviceCustomerRecognition(
+  params: StartDeviceCustomerRecognitionParams,
+): Promise<StartCustomerRecognitionResponse | null> {
+  const now = params.now ?? new Date();
+  if (!isRecognitionSecret(params.deviceToken)) return null;
+  const deviceTokenHash = await hashRecognitionSecret(params.deviceToken);
+  const db = getDb();
+
+  return db.$transaction(
+    async (client) => {
+      const device = await client.storefrontDevice.findUnique({
+        where: { tokenHash: deviceTokenHash },
+        select: {
+          id: true,
+          expiresAt: true,
+          recognitions: {
+            where: {
+              tenantId: params.tenantId,
+              storeId: params.storeId,
+              revokedAt: null,
+              expiresAt: { gt: now },
+            },
+            take: 1,
+            select: {
+              id: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  name: true,
+                  phoneNormalized: true,
+                  recognitionEnabled: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const recognition = device?.recognitions[0];
+      if (
+        !device ||
+        device.expiresAt <= now ||
+        !recognition ||
+        !recognition.customer.recognitionEnabled
+      ) {
+        return null;
+      }
+
+      const deviceThrottleHash = await hashRecognitionSecret(`device:${deviceTokenHash}`);
+      await acquireThrottleLocks(client, params.tenantId, [
+        { scope: 'SESSION', keyHash: deviceThrottleHash },
+      ]);
+      await recordThrottleAttempt(
+        client,
+        params.tenantId,
+        {
+          throttleScope: 'SESSION',
+          storeId: params.storeId,
+          keyHash: deviceThrottleHash,
+          maxAttempts: 20,
+          windowMs: 5 * 60_000,
+        },
+        now,
+      );
+
+      const scope = { tenantId: params.tenantId, storeId: params.storeId };
+      const sessionData = await ensureRecognitionSession(client, scope, params.browserToken, now);
+      await client.checkoutRecognitionSession.update({
+        where: { id: sessionData.session.id },
+        data: {
+          customerId: recognition.customerId,
+          deviceRecognitionId: recognition.id,
+          consecutiveFailures: 0,
+          nextAttemptAt: null,
+          blockedUntil: null,
+          confirmedAt: null,
+          confirmationMode: null,
+        },
+      });
+      const maskedAddresses = await createMaskedAddressReferences(client, {
+        ...scope,
+        sessionId: sessionData.session.id,
+        customerId: recognition.customerId,
+        expiresAt: sessionData.session.expiresAt,
+        now,
+      });
+      await Promise.all([
+        client.storefrontDevice.update({
+          where: { id: device.id },
+          data: { lastUsedAt: now },
+        }),
+        client.customerDeviceRecognition.update({
+          where: { id: recognition.id },
+          data: { lastUsedAt: now },
+        }),
+      ]);
+
+      return {
+        result: {
+          recognized: true,
+          maskedName: maskCustomerName(recognition.customer.name),
+          maskedPhone: maskPhone(recognition.customer.phoneNormalized),
           maskedAddresses,
         },
         browserToken: sessionData.browserToken,
@@ -760,6 +894,23 @@ export async function resolveConfirmedRecognition(params: {
   client: RecognitionClient;
   now?: Date;
 }): Promise<ResolvedRecognitionSession | null> {
+  const identity = await resolveRecognitionIdentity(params);
+  if (!identity) return null;
+  return {
+    sessionId: identity.sessionId,
+    customerId: identity.customerId,
+    confirmationMode: identity.confirmationMode,
+  };
+}
+
+export async function resolveRecognitionIdentity(params: {
+  tenantId: string;
+  storeId: string;
+  browserToken: string;
+  client: RecognitionClient;
+  now?: Date;
+  allowConsumed?: boolean;
+}): Promise<ResolvedRecognitionIdentity | null> {
   const now = params.now ?? new Date();
   if (!isRecognitionSecret(params.browserToken)) return null;
   const tokenHash = await hashRecognitionSecret(params.browserToken);
@@ -775,6 +926,16 @@ export async function resolveConfirmedRecognition(params: {
       consumedAt: true,
       confirmedAt: true,
       confirmationMode: true,
+      customer: {
+        select: {
+          id: true,
+          tenantId: true,
+          name: true,
+          phone: true,
+          phoneNormalized: true,
+          recognitionEnabled: true,
+        },
+      },
     },
   });
   if (
@@ -783,9 +944,12 @@ export async function resolveConfirmedRecognition(params: {
     session.storeId !== params.storeId ||
     session.expiresAt <= now ||
     session.invalidatedAt ||
-    session.consumedAt ||
+    (!params.allowConsumed && session.consumedAt) ||
     !session.confirmedAt ||
-    !session.confirmationMode
+    !session.confirmationMode ||
+    !session.customer ||
+    session.customer.tenantId !== params.tenantId ||
+    !session.customer.recognitionEnabled
   ) {
     return null;
   }
@@ -793,6 +957,10 @@ export async function resolveConfirmedRecognition(params: {
     sessionId: session.id,
     customerId: session.customerId,
     confirmationMode: session.confirmationMode,
+    customerName: session.customer.name,
+    customerPhone: session.customer.phone,
+    phoneNormalized: session.customer.phoneNormalized,
+    consumedAt: session.consumedAt,
   };
 }
 
@@ -901,26 +1069,52 @@ export async function continueRecognitionWithNewAddress(
 export async function invalidateRecognitionSession(
   params: RecognitionScope & {
     browserToken?: string | null;
+    deviceToken?: string | null;
     now?: Date;
   },
 ): Promise<CustomerRecognitionInvalidationResult> {
   const now = params.now ?? new Date();
-  if (!isRecognitionSecret(params.browserToken)) return { invalidated: true };
-  const tokenHash = await hashRecognitionSecret(params.browserToken);
+  const browserTokenHash = isRecognitionSecret(params.browserToken)
+    ? await hashRecognitionSecret(params.browserToken)
+    : null;
+  const deviceTokenHash = isRecognitionSecret(params.deviceToken)
+    ? await hashRecognitionSecret(params.deviceToken)
+    : null;
+  if (!browserTokenHash && !deviceTokenHash) return { invalidated: true };
   const db = getDb();
   await db.$transaction(async (client) => {
-    const session = await client.checkoutRecognitionSession.findUnique({ where: { tokenHash } });
-    if (!session || session.tenantId !== params.tenantId || session.storeId !== params.storeId) {
-      return;
+    if (browserTokenHash) {
+      const session = await client.checkoutRecognitionSession.findUnique({
+        where: { tokenHash: browserTokenHash },
+      });
+      if (session && session.tenantId === params.tenantId && session.storeId === params.storeId) {
+        await client.checkoutRecognitionSession.update({
+          where: { id: session.id },
+          data: { invalidatedAt: now, customerId: null, deviceRecognitionId: null },
+        });
+        await client.checkoutRecognitionAddressReference.updateMany({
+          where: { recognitionSessionId: session.id, invalidatedAt: null, consumedAt: null },
+          data: { invalidatedAt: now },
+        });
+      }
     }
-    await client.checkoutRecognitionSession.update({
-      where: { id: session.id },
-      data: { invalidatedAt: now, customerId: null },
-    });
-    await client.checkoutRecognitionAddressReference.updateMany({
-      where: { recognitionSessionId: session.id, invalidatedAt: null, consumedAt: null },
-      data: { invalidatedAt: now },
-    });
+    if (deviceTokenHash) {
+      const device = await client.storefrontDevice.findUnique({
+        where: { tokenHash: deviceTokenHash },
+        select: { id: true },
+      });
+      if (device) {
+        await client.customerDeviceRecognition.updateMany({
+          where: {
+            storefrontDeviceId: device.id,
+            tenantId: params.tenantId,
+            storeId: params.storeId,
+            revokedAt: null,
+          },
+          data: { revokedAt: now },
+        });
+      }
+    }
   });
   return { invalidated: true };
 }

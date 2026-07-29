@@ -120,29 +120,63 @@ export const checkoutDeliveryAddressSchema = z
   })
   .strict();
 
+const checkoutOrderShape = {
+  ...checkoutQuoteShape,
+  deliveryAddress: checkoutDeliveryAddressSchema.optional(),
+  saveCustomerData: z.boolean().default(false),
+  addressLabel: z.enum(['HOME', 'WORK', 'OTHER']).default('HOME'),
+  setAddressAsDefault: z.boolean().default(false),
+  paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
+  changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
+  notes: boundedTrimmedString(500).optional().default(''),
+  expectedQuoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),
+  idempotencyKey: z.uuid(),
+} as const;
+
+const visitorCheckoutSchema = z
+  .object({
+    ...checkoutOrderShape,
+    identityMode: z.literal('VISITOR'),
+    customerName: boundedTrimmedString(100).min(2, 'Nome deve ter pelo menos 2 caracteres.'),
+    customerPhone: z
+      .string()
+      .trim()
+      .refine(validateBrazilianPhone, 'Telefone inválido. Ex: (11) 99999-9999')
+      .transform((value) => formatPhone(normalizePhone(value))),
+  })
+  .strict();
+
+const recognizedCheckoutSchema = z
+  .object({
+    ...checkoutOrderShape,
+    identityMode: z.literal('RECOGNIZED'),
+  })
+  .strict();
+
 export const checkoutSchema = addQuoteRefinements(
   z
-    .object({
-      ...checkoutQuoteShape,
-      customerName: boundedTrimmedString(100).min(2, 'Nome deve ter pelo menos 2 caracteres.'),
-      customerPhone: z
-        .string()
-        .trim()
-        .refine(validateBrazilianPhone, 'Telefone inválido. Ex: (11) 99999-9999')
-        .transform((value) => formatPhone(normalizePhone(value))),
-      deliveryAddress: checkoutDeliveryAddressSchema.optional(),
-      saveCustomerData: z.boolean().default(false),
-      addressLabel: z.enum(['HOME', 'WORK', 'OTHER']).default('HOME'),
-      setAddressAsDefault: z.boolean().default(false),
-      paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
-      changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
-      notes: boundedTrimmedString(500).optional().default(''),
-      expectedQuoteFingerprint: z
-        .string()
-        .regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),
-      idempotencyKey: z.uuid(),
+    .discriminatedUnion('identityMode', [visitorCheckoutSchema, recognizedCheckoutSchema])
+    .superRefine((data, ctx) => {
+      if (data.identityMode === 'VISITOR' && data.savedAddressReference) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Endereços salvos exigem uma sessão de reconhecimento confirmada.',
+          path: ['savedAddressReference'],
+        });
+      }
+      if (
+        data.identityMode === 'RECOGNIZED' &&
+        !data.savedAddressReference &&
+        data.modality === 'DELIVERY' &&
+        !data.deliveryAddress
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Informe um novo endereço ou escolha um endereço salvo.',
+          path: ['deliveryAddress'],
+        });
+      }
     })
-    .strict()
     .superRefine((data, ctx) => {
       if (data.modality === 'DELIVERY' && !data.deliveryAddress && !data.savedAddressReference) {
         ctx.addIssue({

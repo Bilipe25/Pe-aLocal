@@ -213,6 +213,14 @@ describe('sessão confirmada do reconhecimento', () => {
       consumedAt: null,
       confirmedAt: new Date('2026-07-29T15:00:00.000Z'),
       confirmationMode: 'NEW_ADDRESS',
+      customer: {
+        id: 'customer-a',
+        tenantId: 'tenant-a',
+        name: 'João Martins',
+        phone: '(11) 99999-9999',
+        phoneNormalized: '5511999999999',
+        recognitionEnabled: true,
+      },
     });
 
     await expect(
@@ -239,6 +247,14 @@ describe('sessão confirmada do reconhecimento', () => {
       consumedAt: null,
       confirmedAt: null,
       confirmationMode: null,
+      customer: {
+        id: 'customer-a',
+        tenantId: 'tenant-a',
+        name: 'João Martins',
+        phone: '(11) 99999-9999',
+        phoneNormalized: '5511999999999',
+        recognitionEnabled: true,
+      },
     });
     await expect(
       resolveConfirmedRecognition({

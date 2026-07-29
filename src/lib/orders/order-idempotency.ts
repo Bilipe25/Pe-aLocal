@@ -4,16 +4,26 @@ type CheckoutFingerprintItem = Omit<CheckoutInput['items'][number], 'notes' | 'l
   notes?: string;
 };
 
-export type CheckoutFingerprintInput = Omit<
-  CheckoutInput,
-  'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'
-> & {
-  notes?: string;
-  expectedQuoteFingerprint?: string;
-  items: CheckoutFingerprintItem[];
-};
+type CheckoutFingerprintInputFor<T> = T extends CheckoutInput
+  ? Omit<T, 'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'> & {
+      notes?: string;
+      expectedQuoteFingerprint?: string;
+      items: CheckoutFingerprintItem[];
+    }
+  : never;
 
-export function canonicalizeCheckoutForIdempotency(input: CheckoutFingerprintInput) {
+export type CheckoutFingerprintInput = CheckoutFingerprintInputFor<CheckoutInput>;
+
+export interface ResolvedCheckoutFingerprintIdentity {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+}
+
+export function canonicalizeCheckoutForIdempotency(
+  input: CheckoutFingerprintInput,
+  resolvedIdentity?: ResolvedCheckoutFingerprintIdentity | null,
+) {
   const items = input.items
     .map((item) =>
       JSON.stringify({
@@ -26,8 +36,17 @@ export function canonicalizeCheckoutForIdempotency(input: CheckoutFingerprintInp
     .sort();
 
   return JSON.stringify({
-    customerName: input.customerName,
-    customerPhone: input.customerPhone,
+    identityMode: input.identityMode,
+    customerName:
+      input.identityMode === 'VISITOR'
+        ? input.customerName
+        : (resolvedIdentity?.customerName ?? null),
+    customerPhone:
+      input.identityMode === 'VISITOR'
+        ? input.customerPhone
+        : (resolvedIdentity?.customerPhone ?? null),
+    recognizedCustomerId:
+      input.identityMode === 'RECOGNIZED' ? (resolvedIdentity?.customerId ?? null) : null,
     modality: input.modality,
     deliveryZoneId: input.deliveryZoneId ?? null,
     deliveryPostalCode: input.deliveryPostalCode ?? null,

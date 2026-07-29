@@ -21,6 +21,9 @@ describe('customer recognition preflight', () => {
     expect(preflight).toContain('multiple_legacy_default_addresses');
     expect(preflight).toContain('order_customer_tenant_mismatch');
     expect(preflight).toContain('customer_address_store_use_scope_mismatch');
+    expect(preflight).toContain('customer_device_recognition_scope_mismatch');
+    expect(preflight).toContain('recognition_session_device_scope_mismatch');
+    expect(preflight).toContain('customer_device_recognition_limit_exceeded');
     expect(preflight).not.toMatch(/array_agg\s*\(\s*(?:customer|address|orders)\./i);
   });
 
@@ -31,5 +34,7 @@ describe('customer recognition preflight', () => {
     expect(preflight).toContain('recognition_rls_disabled');
     expect(preflight).toContain('recognition_direct_grant_present');
     expect(preflight).toContain("grantee IN ('anon', 'authenticated')");
+    expect(preflight).toContain("'storefront_devices'");
+    expect(preflight).toContain("'customer_device_recognitions'");
   });
 });

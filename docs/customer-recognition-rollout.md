@@ -35,7 +35,10 @@ para limitar locks e permitir diagnóstico:
 3. `20260729102000_customer_recognition_indexes`: índices concorrentes, fora de
    transação;
 4. `20260729103000_customer_recognition_guard`: valida constraints, aplica
-   `NOT NULL` e instala relações compostas.
+   `NOT NULL` e instala relações compostas;
+5. `20260729120000_storefront_device_recognition`: cria o identificador opaco
+   do aparelho, os vínculos isolados por tenant/loja e a referência opcional da
+   sessão curta.
 
 O fingerprint canônico é o SHA-256 hexadecimal do UTF-8 de
 `street␟number␟complement␟neighborhood␟city␟state␟zipCode`. Cada parte textual
@@ -59,11 +62,12 @@ uma loja válida.
 
 ## Retenção operacional
 
-Sessões, referências e throttles expirados deixam de ser aceitos imediatamente,
-mas nunca são removidos durante uma requisição do checkout. Isso evita adicionar
-latência e contenção ao caminho crítico do pedido. A rotina operacional usa os
-índices de `expiresAt`, transações curtas, `FOR UPDATE SKIP LOCKED` e um lock
-consultivo para impedir duas execuções simultâneas.
+Sessões, referências, throttles, vínculos de aparelho revogados/expirados e
+aparelhos expirados sem vínculos deixam de ser aceitos imediatamente, mas nunca
+são removidos durante uma requisição do checkout. Isso evita adicionar latência
+e contenção ao caminho crítico do pedido. A rotina operacional usa os índices de
+`expiresAt`, transações curtas, `FOR UPDATE SKIP LOCKED` e um lock consultivo
+para impedir duas execuções simultâneas.
 
 Execute primeiro no modo somente leitura, que é o padrão:
 
@@ -88,10 +92,11 @@ pnpm db:customer-recognition:cleanup -- --apply --batch-size=250 --max-batches=1
 ```
 
 Referências expiradas são removidas primeiro. Sessões expiradas são removidas
-depois, com suas referências restantes por `ON DELETE CASCADE`; throttles são a
-última etapa. Se `batchLimitReached` for `true`, programe outra execução em vez
-de aumentar o lote de forma agressiva. A saída nunca inclui IDs, tokens, hashes,
-nome, telefone ou endereço.
+depois, com suas referências restantes por `ON DELETE CASCADE`; na sequência
+são removidos throttles, vínculos de aparelho expirados/revogados e, por último,
+aparelhos expirados sem vínculos. Se `batchLimitReached` for `true`, programe
+outra execução em vez de aumentar o lote de forma agressiva. A saída nunca
+inclui IDs, tokens, hashes, nome, telefone ou endereço.
 
 Agende este comando fora do Worker e fora do fluxo HTTP, por exemplo em um job
 operacional com credencial direta de staging/produção separada e de menor
@@ -131,5 +136,11 @@ manual e destrutivo. Ele só pode ser usado depois de:
 O rollback destrutivo remove sessões e referências, restaura a FK anterior de
 endereços e volta a exigir CEP no constraint legado. Ele nunca deve ser chamado
 por `prisma migrate deploy`, `db push` ou `migrate reset`.
+
+Para a etapa de aparelho, o rollback operacional também é republicar a versão
+anterior e manter as tabelas aditivas. O arquivo manual
+`prisma/migrations/20260729120000_storefront_device_recognition/rollback.sql`
+só remove a referência das sessões e as duas tabelas depois de exportar os
+consentimentos persistidos e interromper todas as escritas.
 
 Nenhuma destas etapas autoriza deploy de produção.

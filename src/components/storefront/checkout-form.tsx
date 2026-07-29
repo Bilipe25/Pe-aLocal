@@ -170,7 +170,8 @@ const checkoutFormSchema = object({
 type CheckoutFormValues = Infer<typeof checkoutFormSchema>;
 type CheckoutStep = 'identification' | 'fulfillment' | 'payment' | 'review';
 type RecognizedCustomer = Extract<CustomerRecognitionResult, { recognized: true }>;
-type RecognitionAction = 'confirm' | 'new-address' | 'not-me';
+type RecognitionAction = 'confirm' | 'new-address' | 'not-me' | 'forget';
+type CheckoutIdentityMode = 'VISITOR' | 'RECOGNIZED';
 
 export interface CheckoutFormProps {
   storeId: string;
@@ -549,9 +550,14 @@ export function CheckoutForm({
   const [selectedAddressReference, setSelectedAddressReference] = useState<string | null>(null);
   const [confirmedSavedAddress, setConfirmedSavedAddress] =
     useState<MaskedCustomerAddressDto | null>(null);
+  const [identityMode, setIdentityMode] = useState<CheckoutIdentityMode>('VISITOR');
   const idempotencyRef = useRef<CheckoutIdempotencyRecord | null>(null);
   const recognitionTriggerRef = useRef<HTMLButtonElement>(null);
   const recognitionSessionActiveRef = useRef(false);
+  const automaticRecognitionRequestRef = useRef<{
+    storeId: string;
+    request: Promise<CustomerRecognitionResult | null>;
+  } | null>(null);
   const completedRef = useRef(false);
   const restoredRef = useRef(false);
   const telemetryStartedRef = useRef(false);
@@ -674,6 +680,47 @@ export function CheckoutForm({
     const frame = requestAnimationFrame(() => setFocus(focusRequest.field));
     return () => cancelAnimationFrame(frame);
   }, [focusRequest, setFocus, step]);
+
+  useEffect(() => {
+    if (step !== 'identification' || activeStoreId !== storeId) {
+      return;
+    }
+    if (
+      !automaticRecognitionRequestRef.current ||
+      automaticRecognitionRequestRef.current.storeId !== storeId
+    ) {
+      automaticRecognitionRequestRef.current = {
+        storeId,
+        request: fetch(recognitionEndpoint, {
+          method: 'GET',
+          cache: 'no-store',
+        })
+          .then(async (response) => {
+            const body = (await response.json()) as unknown;
+            return response.ok && isRecognitionResult(body) ? body : null;
+          })
+          .catch(() => null),
+      };
+    }
+
+    let active = true;
+    void automaticRecognitionRequestRef.current.request.then((body) => {
+      if (!active || !body?.recognized) return;
+
+      recognitionSessionActiveRef.current = true;
+      setRecognizedCustomer(body);
+      setRecognitionError(null);
+      setRecognitionNotice(null);
+      const preferredAddress =
+        body.maskedAddresses.find((address) => address.isDefault) ?? body.maskedAddresses[0];
+      setSelectedAddressReference(preferredAddress?.opaqueReference ?? null);
+      setRecognitionDialogOpen(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [activeStoreId, recognitionEndpoint, step, storeId]);
 
   useEffect(() => {
     telemetryStepRef.current = step;
@@ -825,6 +872,7 @@ export function CheckoutForm({
     setConfirmedSavedAddress(null);
     setSelectedAddressReference(null);
     setValue('savedAddressReference', '');
+    setIdentityMode('VISITOR');
     recognitionSessionActiveRef.current = true;
 
     try {
@@ -901,6 +949,7 @@ export function CheckoutForm({
       if (!address) throw new Error('O endereço escolhido não está mais disponível.');
 
       setConfirmedSavedAddress(address);
+      setIdentityMode('RECOGNIZED');
       setValue('savedAddressReference', confirmation.opaqueReference, { shouldDirty: true });
       if (!address.requiresDeliveryZoneSelection) {
         setValue('deliveryZoneId', '', { shouldDirty: true });
@@ -921,8 +970,10 @@ export function CheckoutForm({
   async function continueWithNewAddress(showDialogError = true) {
     setRecognitionAction('new-address');
     setRecognitionError(null);
+    let recognized = false;
     try {
       await patchRecognition({ action: 'USE_NEW_ADDRESS' });
+      recognized = true;
     } catch {
       if (showDialogError) {
         setRecognitionNotice(
@@ -933,17 +984,21 @@ export function CheckoutForm({
       setConfirmedSavedAddress(null);
       setSelectedAddressReference(null);
       setValue('savedAddressReference', '', { shouldDirty: true });
+      setIdentityMode(recognized ? 'RECOGNIZED' : 'VISITOR');
       setRecognitionDialogOpen(false);
       setRecognitionAction(null);
       setStep('fulfillment');
     }
   }
 
-  async function rejectRecognizedCustomer() {
-    setRecognitionAction('not-me');
+  async function rejectRecognizedCustomer(action: 'not-me' | 'forget' = 'not-me') {
+    setRecognitionAction(action);
     setRecognitionError(null);
     try {
-      await fetch(recognitionEndpoint, { method: 'DELETE', cache: 'no-store' });
+      await fetch(`${recognitionEndpoint}?forgetDevice=1`, {
+        method: 'DELETE',
+        cache: 'no-store',
+      });
     } catch {
       // O checkout visitante continua seguro; a sessão expira no servidor.
     } finally {
@@ -952,13 +1007,22 @@ export function CheckoutForm({
       setConfirmedSavedAddress(null);
       setSelectedAddressReference(null);
       setValue('savedAddressReference', '', { shouldDirty: true });
+      setValue('customerName', '', { shouldDirty: true });
+      setValue('customerPhone', '', { shouldDirty: true });
       setValue('saveCustomerData', false, { shouldDirty: true });
       setValue('setAddressAsDefault', false, { shouldDirty: true });
+      setIdentityMode('VISITOR');
       setRecognitionDialogOpen(false);
       setRecognitionAction(null);
-      setRecognitionNotice('Continue como visitante e informe o endereço que deseja usar.');
-      setStep('fulfillment');
+      setRecognitionNotice(
+        'Reconhecimento removido desta loja. Informe seus dados para continuar.',
+      );
+      setStep('identification');
     }
+  }
+
+  async function forgetRecognizedCustomer() {
+    await rejectRecognizedCustomer('forget');
   }
 
   function handleRecognitionDialogOpenChange(open: boolean) {
@@ -966,6 +1030,10 @@ export function CheckoutForm({
   }
 
   async function goForward() {
+    if (step === 'identification' && recognizedCustomer && identityMode === 'VISITOR') {
+      setRecognitionDialogOpen(true);
+      return;
+    }
     const fieldsByStep: Record<Exclude<CheckoutStep, 'review'>, FieldPath<CheckoutFormValues>[]> = {
       identification: ['customerPhone', 'customerName'],
       fulfillment: ['modality'],
@@ -1061,10 +1129,8 @@ export function CheckoutForm({
           validValues.changeFor
             ? Math.round(Number(validValues.changeFor.replace(',', '.')) * 100)
             : undefined;
-        const payload = {
+        const commonPayload = {
           ...quoteInput!,
-          customerName: validValues.customerName,
-          customerPhone: validValues.customerPhone,
           deliveryAddress:
             validValues.modality === 'DELIVERY' && !validValues.savedAddressReference
               ? {
@@ -1086,6 +1152,18 @@ export function CheckoutForm({
           notes: validValues.notes,
           expectedQuoteFingerprint: effectiveQuote.quoteFingerprint,
         };
+        const payload =
+          identityMode === 'RECOGNIZED'
+            ? {
+                ...commonPayload,
+                identityMode: 'RECOGNIZED' as const,
+              }
+            : {
+                ...commonPayload,
+                identityMode: 'VISITOR' as const,
+                customerName: validValues.customerName,
+                customerPhone: validValues.customerPhone,
+              };
         const storage = getSessionStorage();
         const storageKey = `checkout-idempotency:${storeSlug}`;
         idempotencyRef.current = await resolveCheckoutIdempotency(
@@ -1192,8 +1270,19 @@ export function CheckoutForm({
     setStep(targetStep);
   };
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    void handleSubmit(handleValidSubmit, handleInvalidSubmit)(event);
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    // A confirmação do pedido exige um gesto explícito no CTA da revisão.
+    // Em etapas anteriores, Enter continua avançando e validando normalmente.
+    if (step !== 'review') {
+      void goForward();
+    }
+  }
+
+  function confirmOrder() {
+    if (step !== 'review' || isPending) return;
+    void handleSubmit(handleValidSubmit, handleInvalidSubmit)();
   }
 
   if (activeStoreId !== storeId) {
@@ -1228,7 +1317,7 @@ export function CheckoutForm({
         : 'Revisar pedido';
 
   return (
-    <form className="storefront-checkout-form" onSubmit={submit} noValidate>
+    <form className="storefront-checkout-form" onSubmit={handleFormSubmit} noValidate>
       <nav aria-label="Etapas do checkout" className="storefront-checkout-progress">
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((candidate, index) => {
@@ -1290,59 +1379,91 @@ export function CheckoutForm({
                   </p>
                 </div>
               </header>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="customerPhone" className="text-tinta text-sm font-semibold">
-                    Celular
-                  </label>
-                  <Input
-                    id="customerPhone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    autoFocus
-                    maxLength={15}
-                    placeholder="(11) 99999-9999"
-                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
-                    aria-invalid={Boolean(errors.customerPhone)}
-                    aria-describedby={errors.customerPhone ? 'customerPhone-error' : undefined}
-                    {...register('customerPhone', {
-                      onChange: (event) =>
-                        setValue('customerPhone', formatPhoneInput(event.target.value), {
-                          shouldDirty: true,
-                        }),
-                    })}
-                  />
-                  <FieldError id="customerPhone-error" message={errors.customerPhone?.message} />
-                </div>
-                <div>
-                  <label htmlFor="customerName" className="text-tinta text-sm font-semibold">
-                    Nome
-                  </label>
-                  <Input
-                    id="customerName"
-                    autoComplete="name"
-                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
-                    aria-invalid={Boolean(errors.customerName)}
-                    aria-describedby={errors.customerName ? 'customerName-error' : undefined}
-                    {...register('customerName')}
-                  />
-                  <FieldError id="customerName-error" message={errors.customerName?.message} />
-                </div>
-                <p className="text-text-muted text-sm">
-                  Já pediu aqui? Podemos recuperar seus endereços salvos com segurança.
-                </p>
-                <p className="sr-only" aria-live="polite">
-                  {recognitionPending
-                    ? 'Verificando dados salvos.'
-                    : (recognitionNotice ?? recognitionError ?? '')}
-                </p>
-                {recognitionNotice ? (
-                  <p className="border-info/20 bg-info-light text-tinta rounded-xl border p-3 text-sm">
-                    {recognitionNotice}
+              {recognizedCustomer ? (
+                <div className="border-tinta/15 bg-papel rounded-2xl border p-4">
+                  <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
+                    Reconhecimento neste aparelho
                   </p>
-                ) : null}
-              </div>
+                  <p className="text-tinta mt-1 font-bold">{recognizedCustomer.maskedName}</p>
+                  <p className="text-text-muted mt-0.5 text-sm">{recognizedCustomer.maskedPhone}</p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <Button
+                      ref={recognitionTriggerRef}
+                      type="button"
+                      className="storefront-primary-action min-h-11"
+                      onClick={() => setRecognitionDialogOpen(true)}
+                    >
+                      Continuar como {recognizedCustomer.maskedName}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-text-muted hover:text-tinta min-h-11"
+                      disabled={recognitionAction !== null}
+                      onClick={() => void forgetRecognizedCustomer()}
+                    >
+                      {recognitionAction === 'forget' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : null}
+                      Esquecer neste aparelho
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="customerPhone" className="text-tinta text-sm font-semibold">
+                      Celular
+                    </label>
+                    <Input
+                      id="customerPhone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      autoFocus
+                      maxLength={15}
+                      placeholder="(11) 99999-9999"
+                      className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
+                      aria-invalid={Boolean(errors.customerPhone)}
+                      aria-describedby={errors.customerPhone ? 'customerPhone-error' : undefined}
+                      {...register('customerPhone', {
+                        onChange: (event) =>
+                          setValue('customerPhone', formatPhoneInput(event.target.value), {
+                            shouldDirty: true,
+                          }),
+                      })}
+                    />
+                    <FieldError id="customerPhone-error" message={errors.customerPhone?.message} />
+                  </div>
+                  <div>
+                    <label htmlFor="customerName" className="text-tinta text-sm font-semibold">
+                      Nome
+                    </label>
+                    <Input
+                      id="customerName"
+                      autoComplete="name"
+                      className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1 min-h-11"
+                      aria-invalid={Boolean(errors.customerName)}
+                      aria-describedby={errors.customerName ? 'customerName-error' : undefined}
+                      {...register('customerName')}
+                    />
+                    <FieldError id="customerName-error" message={errors.customerName?.message} />
+                  </div>
+                  <p className="text-text-muted text-sm">
+                    Já pediu aqui? Podemos recuperar seus endereços salvos com segurança.
+                  </p>
+                  <p className="sr-only" aria-live="polite">
+                    {recognitionPending
+                      ? 'Verificando dados salvos.'
+                      : (recognitionNotice ?? recognitionError ?? '')}
+                  </p>
+                  {recognitionNotice ? (
+                    <p className="border-info/20 bg-info-light text-tinta rounded-xl border p-3 text-sm">
+                      {recognitionNotice}
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </section>
           )}
 
@@ -1853,8 +1974,16 @@ export function CheckoutForm({
                     <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
                       Cliente
                     </p>
-                    <p className="text-tinta mt-1 font-semibold">{values.customerName}</p>
-                    <p className="text-text-muted text-sm">{values.customerPhone}</p>
+                    <p className="text-tinta mt-1 font-semibold">
+                      {identityMode === 'RECOGNIZED'
+                        ? recognizedCustomer?.maskedName
+                        : values.customerName}
+                    </p>
+                    <p className="text-text-muted text-sm">
+                      {identityMode === 'RECOGNIZED'
+                        ? recognizedCustomer?.maskedPhone
+                        : values.customerPhone}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -2058,7 +2187,8 @@ export function CheckoutForm({
             </Button>
           ) : (
             <Button
-              type="submit"
+              type="button"
+              onClick={confirmOrder}
               disabled={
                 isPending || quoteLoading || !effectiveQuote?.canCheckout || Boolean(changedQuote)
               }
@@ -2077,7 +2207,7 @@ export function CheckoutForm({
         </div>
       </div>
 
-      {recognizedCustomer && recognizedCustomer.maskedAddresses.length > 0 ? (
+      {recognizedCustomer ? (
         <CustomerRecognitionDialog
           open={recognitionDialogOpen}
           customer={recognizedCustomer}
@@ -2090,6 +2220,7 @@ export function CheckoutForm({
           onConfirm={() => void confirmSavedAddress()}
           onUseNewAddress={() => void continueWithNewAddress()}
           onNotMe={() => void rejectRecognizedCustomer()}
+          onForget={() => void forgetRecognizedCustomer()}
         />
       ) : null}
     </form>

@@ -5,11 +5,17 @@ import { createHash } from 'node:crypto';
 import {
   canonicalizeCheckoutForIdempotency,
   type CheckoutFingerprintInput,
+  type ResolvedCheckoutFingerprintIdentity,
 } from '@/lib/orders/order-idempotency';
 import { CheckoutError } from '@/server/errors';
 
-export function createOrderFingerprint(input: CheckoutFingerprintInput) {
-  return createHash('sha256').update(canonicalizeCheckoutForIdempotency(input)).digest('hex');
+export function createOrderFingerprint(
+  input: CheckoutFingerprintInput,
+  resolvedIdentity?: ResolvedCheckoutFingerprintIdentity | null,
+) {
+  return createHash('sha256')
+    .update(canonicalizeCheckoutForIdempotency(input, resolvedIdentity))
+    .digest('hex');
 }
 
 export function assertMatchingOrderFingerprint(

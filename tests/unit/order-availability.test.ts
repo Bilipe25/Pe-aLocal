@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   createOrder: vi.fn(),
   dispatchCommittedOrderEvents: vi.fn(),
   triggerNewOrder: vi.fn(),
+  cookieSet: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({
@@ -37,9 +38,11 @@ vi.mock('@/lib/pusher/server', () => ({
 }));
 vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'cf-connecting-ip': '203.0.113.10' }),
+  cookies: async () => ({ get: vi.fn(), set: mocks.cookieSet }),
 }));
 
 const checkout = {
+  identityMode: 'VISITOR' as const,
   customerName: 'Cliente Teste',
   customerPhone: '(85) 99999-9999',
   modality: 'PICKUP' as const,
@@ -86,6 +89,7 @@ describe('checkout público v2', () => {
       paymentReportToken: 'payment-report-token',
       created: true,
       outboxEventIds: ['outbox-a'],
+      rememberDeviceExpiresAt: null,
     });
     mocks.dispatchCommittedOrderEvents.mockResolvedValue({ notificationPending: false });
   });
@@ -188,13 +192,42 @@ describe('checkout público v2', () => {
         customerPhone: '(85) 99999-9999',
       }),
       storeSlug: 'loja-a',
-      idempotencyFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       recognitionBrowserToken: null,
+      deviceTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(mocks.dispatchCommittedOrderEvents).toHaveBeenCalledWith({
       eventIds: ['outbox-a'],
       publishDirect: expect.any(Function),
     });
+  });
+
+  it('emite o cookie HttpOnly somente quando a transação confirma o vínculo do aparelho', async () => {
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1_000);
+    mocks.createOrder.mockResolvedValueOnce({
+      id: 'order-a',
+      storeId: 'store-a',
+      publicToken: 'public-token',
+      orderNumber: 10,
+      paymentReportToken: 'payment-report-token',
+      created: true,
+      outboxEventIds: ['outbox-a'],
+      rememberDeviceExpiresAt: expiresAt,
+    });
+
+    const result = await createOrderAction('loja-a', checkout);
+
+    expect(result.success).toBe(true);
+    expect(mocks.cookieSet).toHaveBeenCalledWith(
+      'pedidolocal_device',
+      expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      expect.objectContaining({
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        path: '/',
+        expires: expiresAt,
+      }),
+    );
   });
 
   it('não publica novo evento ao recuperar pedido idempotente', async () => {
@@ -206,6 +239,7 @@ describe('checkout público v2', () => {
       paymentReportToken: 'payment-report-token',
       created: false,
       outboxEventIds: [],
+      rememberDeviceExpiresAt: null,
     });
 
     const result = await createOrderAction('loja-a', checkout);

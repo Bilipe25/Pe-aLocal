@@ -49,7 +49,7 @@ export function ProductCard({
     resolvedVariant === 'horizontal'
       ? '(max-width: 639px) 104px, 128px'
       : resolvedVariant === 'featured'
-        ? '(max-width: 639px) 72vw, 19rem'
+        ? '(max-width: 639px) 48vw, 13.5rem'
         : '(max-width: 479px) calc(50vw - 1.5rem), 240px';
   const imageWidth = resolvedVariant === 'horizontal' ? 192 : 384;
 
