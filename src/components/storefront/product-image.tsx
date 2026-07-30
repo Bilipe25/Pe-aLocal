@@ -41,10 +41,19 @@ export function ProductImage({
         : undefined;
 
   useEffect(() => {
-    if (!resolvedImageUrl || !imageRef.current?.complete || imageRef.current.naturalWidth > 0) {
-      return;
-    }
-    const frame = requestAnimationFrame(() => setFailedUrl(resolvedImageUrl));
+    const image = imageRef.current;
+    if (!resolvedImageUrl || !image?.complete) return;
+
+    // O evento load pode acontecer antes de o React hidratar uma imagem já
+    // presente no cache do navegador. Sincronize o estado com o elemento para
+    // não manter a imagem carregada invisível atrás do skeleton após um reload.
+    const frame = requestAnimationFrame(() => {
+      if (image.naturalWidth > 0) {
+        setLoadedUrl(resolvedImageUrl);
+        return;
+      }
+      setFailedUrl(resolvedImageUrl);
+    });
     return () => cancelAnimationFrame(frame);
   }, [resolvedImageUrl]);
 

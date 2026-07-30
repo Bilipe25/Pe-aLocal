@@ -80,7 +80,7 @@ describe('limite de quantidade no storefront', () => {
     mocks.subscribeToCartStorage.mockReturnValue(mocks.storageCleanup);
   });
 
-  it('deixa modalidade e cupom para as etapas do checkout', () => {
+  it('mantém o checkout sem modalidade na URL', () => {
     expect(buildCartCheckoutHref('loja-1')).toBe('/loja-1/checkout');
   });
 
@@ -242,8 +242,12 @@ describe('limite de quantidade no storefront', () => {
     ).toBeDisabled();
     expect(screen.getByText('Limite de 99 unidades.')).toBeVisible();
     expect(screen.queryByText('Como você quer receber?')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Código do cupom')).not.toBeInTheDocument();
-    expect(screen.getByText('Recebimento, cupom e total final são definidos no checkout.')).toBeVisible();
+    expect(screen.getByLabelText('Código do cupom')).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Tem um cupom\?/ }));
+    expect(screen.getByLabelText('Código do cupom')).toBeVisible();
+    expect(
+      screen.getByText('Recebimento e eventual taxa de entrega são definidos no checkout.'),
+    ).toBeVisible();
     expect(mocks.updateQuantity).not.toHaveBeenCalled();
     expect(mocks.subscribeToCartStorage).toHaveBeenCalledWith('store-1', 'loja-1');
 

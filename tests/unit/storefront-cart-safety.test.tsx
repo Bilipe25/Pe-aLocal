@@ -47,18 +47,32 @@ vi.mock('@/stores/cart-store', async (importOriginal) => {
   };
 });
 vi.mock('@/hooks/use-cart-quote', () => ({
-  useCartQuote: ({ items }: { items: CartItem[] }) => {
+  useCartQuote: ({ items, couponCode }: { items: CartItem[]; couponCode?: string | null }) => {
     const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const normalizedCoupon = couponCode?.trim().toUpperCase() ?? null;
+    const couponIsValid = normalizedCoupon === 'BEMVINDO10';
+    const couponIsInvalid = Boolean(normalizedCoupon) && !couponIsValid;
+    const discount = couponIsValid ? 500 : 0;
     return {
       status: 'success',
       error: null,
       retry: mocks.retryQuote,
       quote: {
-        canCheckout: true,
+        canCheckout: !couponIsInvalid,
         subtotal,
+        discount,
+        total: subtotal - discount,
+        coupon: couponIsValid ? { code: normalizedCoupon, discount } : null,
         minOrderValue: 0,
         missingForMinimum: 0,
-        issues: [],
+        issues: couponIsInvalid
+          ? [
+              {
+                code: 'COUPON_INVALID',
+                message: 'Este cupom não está disponível para este pedido.',
+              },
+            ]
+          : [],
         lines: items.map((item) => ({
           lineId: item.id,
           productName: item.productName,
@@ -246,6 +260,54 @@ describe('segurança e clareza do carrinho público', () => {
         action: expect.objectContaining({ label: 'Desfazer' }),
       }),
     );
+  });
+
+  it('aplica e remove um cupom pela faixa expansível, atualizando desconto, total e CTA', async () => {
+    renderCart();
+
+    expect(screen.getByLabelText('Código do cupom')).not.toBeVisible();
+    const couponTrigger = screen.getByRole('button', { name: /Tem um cupom\?/ });
+    expect(couponTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(couponTrigger);
+    expect(couponTrigger).toHaveAttribute('aria-expanded', 'true');
+    const couponInput = screen.getByLabelText('Código do cupom');
+    fireEvent.change(couponInput, { target: { value: 'bemvindo10' } });
+    fireEvent.submit(couponInput.closest('form')!);
+
+    await waitFor(() => expect(useCartStore.getState().couponCode).toBe('BEMVINDO10'));
+    expect(await screen.findByText('Cupom BEMVINDO10 aplicado')).toBeVisible();
+    expect(screen.getByText('Você economizou R$ 5,00')).toBeVisible();
+    expect(screen.getByText('− R$ 5,00')).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: /Continuar para o checkout · R\$\s*50,00/ }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    await waitFor(() => expect(useCartStore.getState().couponCode).toBeNull());
+    expect(screen.getByRole('button', { name: /Tem um cupom\?/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('mantém o cupom inválido aberto, associa o erro ao campo e permite corrigi-lo', async () => {
+    renderCart();
+    fireEvent.click(screen.getByRole('button', { name: /Tem um cupom\?/ }));
+    const couponInput = screen.getByLabelText('Código do cupom');
+    fireEvent.change(couponInput, { target: { value: 'invalido' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+
+    expect(
+      await screen.findByText('Este cupom não está disponível para este pedido.'),
+    ).toHaveAttribute('role', 'alert');
+    expect(couponInput).toHaveValue('INVALIDO');
+    expect(couponInput).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Revise a sacola' })).toBeDisabled();
+
+    fireEvent.change(couponInput, { target: { value: 'bemvindo10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+    expect(await screen.findByText('Cupom BEMVINDO10 aplicado')).toBeVisible();
   });
 
   it('mantém cabeçalho leve, fallback de logo e nome longo sem seletor frágil', () => {

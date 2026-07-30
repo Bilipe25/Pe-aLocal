@@ -455,7 +455,7 @@ describe('checkout público v2', () => {
     expect(screen.getByRole('heading', { name: 'Vamos identificar você' })).toBeVisible();
   });
 
-  it('restaura somente zona e cupom do rascunho não sensível', () => {
+  it('restaura a zona, mas não ressuscita cupom removido de um rascunho antigo', async () => {
     writeCheckoutDraft(window.sessionStorage, 'store-1', {
       modality: 'DELIVERY',
       paymentMethod: 'PIX',
@@ -466,7 +466,6 @@ describe('checkout público v2', () => {
       deliveryEnabled: true,
       initialStep: 'fulfillment',
       initialModality: 'DELIVERY',
-      initialCouponCode: 'BEMVINDO10',
     });
 
     expect(screen.getByRole('button', { name: 'Entrega' })).toHaveAttribute('aria-pressed', 'true');
@@ -474,6 +473,8 @@ describe('checkout público v2', () => {
       quote.deliveryZoneId,
     );
     expect(screen.getByRole('textbox', { name: /CEP/ })).toHaveValue('');
+    await waitFor(() => expect(mocks.setCouponCode).toHaveBeenCalledWith(''));
+    expect(mocks.setCouponCode).not.toHaveBeenCalledWith('BEMVINDO10');
   });
 
   it('não expõe região ou dados pessoais na URL ao avançar', async () => {
@@ -610,26 +611,69 @@ describe('checkout público v2', () => {
     },
   );
 
-  it('persiste o cupom do checkout no carrinho da loja', async () => {
+  it('mantém o cupom validado somente como desconto na revisão', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...quote,
+        discount: 200,
+        total: 2_300,
+        coupon: { code: 'BEMVINDO10', discount: 200 },
+      }),
+    });
     renderCheckout({ initialStep: 'review', initialCouponCode: 'BEMVINDO10' });
 
     expect(
       screen.getByRole('checkbox', { name: 'Salvar meus dados para a próxima compra' }),
     ).toBeChecked();
-    const coupon = screen.getByRole('textbox', { name: 'Cupom' });
-    expect(coupon).toHaveValue('BEMVINDO10');
-    fireEvent.change(coupon, { target: { value: 'NOVO10' } });
-
-    await waitFor(() => expect(mocks.setCouponCode).toHaveBeenCalledWith('NOVO10'), {
+    expect(screen.queryByRole('textbox', { name: 'Cupom' })).not.toBeInTheDocument();
+    expect((await screen.findAllByText('Desconto BEMVINDO10')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(mocks.setCouponCode).toHaveBeenCalledWith('BEMVINDO10'), {
       timeout: 1_000,
     });
   });
 
-  it('restaura o cupom persistido na sacola ao abrir o checkout diretamente', async () => {
+  it('usa o cupom persistido na sacola sem reabrir um campo de edição', async () => {
     cartState.couponCode = 'CART10';
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...quote,
+        discount: 150,
+        total: 2_350,
+        coupon: { code: 'CART10', discount: 150 },
+      }),
+    });
     renderCheckout({ initialStep: 'review' });
 
-    expect(await screen.findByRole('textbox', { name: 'Cupom' })).toHaveValue('CART10');
+    expect((await screen.findAllByText('Desconto CART10')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('textbox', { name: 'Cupom' })).not.toBeInTheDocument();
+  });
+
+  it('direciona um cupom inválido para correção na sacola sem mostrá-lo como aplicado', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...quote,
+        canCheckout: false,
+        coupon: null,
+        issues: [
+          {
+            code: 'COUPON_INVALID',
+            message: 'Este cupom não está disponível para este pedido.',
+          },
+        ],
+      }),
+    });
+    renderCheckout({ initialStep: 'review', initialCouponCode: 'INVALIDO' });
+
+    const correction = await screen.findByRole('link', { name: 'Corrigir na sacola' });
+    expect(correction).toHaveAttribute('href', '/loja-1/cart');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Este cupom não está disponível para este pedido.',
+    );
+    expect(screen.queryByRole('textbox', { name: 'Cupom' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Desconto INVALIDO')).not.toBeInTheDocument();
   });
 
   it('conclui retirada com Pix e registra telemetria antes de navegar', async () => {
