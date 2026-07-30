@@ -2,17 +2,20 @@
 
 import {
   ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
   Loader2,
   Minus,
   Pencil,
   Plus,
   RefreshCw,
   ShoppingBag,
+  Tag,
   Trash2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
@@ -77,11 +80,19 @@ export function CartView({
   const clearCart = useCartStore((state) => state.clearCart);
   const getSnapshot = useCartStore((state) => state.getSnapshot);
   const restoreSnapshot = useCartStore((state) => state.restoreSnapshot);
+  const couponCode = useCartStore((state) => state.couponCode);
+  const setCouponCode = useCartStore((state) => state.setCouponCode);
   const revision = useCartStore(selectCartRevision);
   const getTotal = useCartStore((state) => state.getTotal);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [cartAnnouncement, setCartAnnouncement] = useState('');
+  const [couponExpanded, setCouponExpanded] = useState(false);
+  const [couponDraft, setCouponDraft] = useState(couponCode ?? '');
+  const [couponInputError, setCouponInputError] = useState<string | null>(null);
   const editingTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const couponResolutionRef = useRef<string | null>(null);
+  const couponPanelId = useId();
+  const couponErrorId = useId();
   const localTotal = getTotal();
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -100,6 +111,7 @@ export function CartView({
     items,
     revision,
     modality: quoteModality,
+    couponCode,
   });
   const quoteLines = useMemo(
     () => new Map(quoteState.quote?.lines.map((line) => [line.lineId, line]) ?? []),
@@ -115,14 +127,68 @@ export function CartView({
   }, [quoteState.quote]);
   const globalIssues =
     quoteState.quote?.issues.filter(
-      (issue) => !issue.lineId && issue.code !== 'MIN_ORDER_NOT_REACHED',
+      (issue) =>
+        !issue.lineId && issue.code !== 'MIN_ORDER_NOT_REACHED' && issue.code !== 'COUPON_INVALID',
     ) ?? [];
+  const couponIssue =
+    quoteState.quote?.issues.find((issue) => issue.code === 'COUPON_INVALID') ?? null;
+  const appliedCoupon =
+    couponCode && quoteState.quote?.coupon?.code.toUpperCase() === couponCode.toUpperCase()
+      ? quoteState.quote.coupon
+      : null;
+  const couponPending =
+    Boolean(couponCode) && (quoteState.status === 'waiting' || quoteState.status === 'loading');
+  const couponPanelOpen = couponExpanded || Boolean(couponCode && couponIssue);
   const subtotal = quoteState.quote?.subtotal ?? localTotal;
-  const total = subtotal;
+  const discount = quoteState.quote?.discount ?? 0;
+  const total = quoteState.quote?.total ?? subtotal;
   const canCheckout =
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
   const checkoutHref = buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setCouponDraft(couponCode ?? '');
+      setCouponInputError(null);
+      if (!couponCode) {
+        couponResolutionRef.current = null;
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [couponCode]);
+
+  useEffect(() => {
+    if (!couponCode || quoteState.status !== 'success') return;
+
+    let announcement: string | null = null;
+    if (appliedCoupon) {
+      const resolution = `applied:${appliedCoupon.code}`;
+      if (couponResolutionRef.current !== resolution) {
+        couponResolutionRef.current = resolution;
+        announcement = `Cupom ${appliedCoupon.code} aplicado.`;
+      }
+    } else if (couponIssue) {
+      const resolution = `invalid:${couponCode}`;
+      if (couponResolutionRef.current !== resolution) {
+        couponResolutionRef.current = resolution;
+        announcement = 'Não foi possível aplicar o cupom.';
+      }
+    }
+
+    if (!announcement) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setCartAnnouncement(announcement);
+    });
+    return () => {
+      active = false;
+    };
+  }, [appliedCoupon, couponCode, couponIssue, quoteState.status]);
 
   function closeItemEditor() {
     setEditingItemId(null);
@@ -164,6 +230,45 @@ export function CartView({
       },
       duration: 6000,
     });
+  }
+
+  function handleApplyCoupon(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (couponPending) return;
+
+    const normalizedCoupon = couponDraft.trim().toUpperCase();
+    if (!normalizedCoupon) {
+      setCouponInputError('Informe o código do cupom.');
+      return;
+    }
+    if (normalizedCoupon.length > 32) {
+      setCouponInputError('O cupom deve ter no máximo 32 caracteres.');
+      return;
+    }
+    if (!/^[A-Z0-9_-]+$/.test(normalizedCoupon)) {
+      setCouponInputError('O cupom contém caracteres inválidos.');
+      return;
+    }
+
+    setCouponDraft(normalizedCoupon);
+    setCouponInputError(null);
+    couponResolutionRef.current = null;
+    setCartAnnouncement(`Validando cupom ${normalizedCoupon}.`);
+    if (couponCode === normalizedCoupon) {
+      quoteState.retry();
+      return;
+    }
+    setCouponCode(normalizedCoupon);
+  }
+
+  function handleRemoveCoupon() {
+    if (couponPending) return;
+    const removedCoupon = appliedCoupon?.code ?? couponCode;
+    setCouponCode(null);
+    setCouponDraft('');
+    setCouponInputError(null);
+    setCouponExpanded(false);
+    setCartAnnouncement(removedCoupon ? `Cupom ${removedCoupon} removido.` : 'Cupom removido.');
   }
 
   if (activeStoreId !== storeId) {
@@ -277,6 +382,96 @@ export function CartView({
             </div>
           </section>
 
+          <section className="storefront-cart-coupon" aria-labelledby={`${couponPanelId}-title`}>
+            {appliedCoupon ? (
+              <div className="storefront-cart-coupon-applied" role="status">
+                <span className="storefront-cart-coupon-icon is-success" aria-hidden="true">
+                  <CheckCircle2 />
+                </span>
+                <div>
+                  <strong id={`${couponPanelId}-title`}>Cupom {appliedCoupon.code} aplicado</strong>
+                  <span>Você economizou {formatCurrency(discount)}</span>
+                </div>
+                <button type="button" onClick={handleRemoveCoupon} disabled={couponPending}>
+                  Remover
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="storefront-cart-coupon-trigger"
+                  aria-expanded={couponPanelOpen}
+                  aria-controls={couponPanelId}
+                  onClick={() => {
+                    setCouponExpanded(!couponPanelOpen);
+                    setCouponInputError(null);
+                  }}
+                >
+                  <span className="storefront-cart-coupon-icon" aria-hidden="true">
+                    <Tag />
+                  </span>
+                  <span>
+                    <strong id={`${couponPanelId}-title`}>Tem um cupom?</strong>
+                    <small>Aplique e veja o desconto agora</small>
+                  </span>
+                  <ChevronDown
+                    className={couponPanelOpen ? 'is-expanded' : undefined}
+                    aria-hidden="true"
+                  />
+                </button>
+                <div
+                  id={couponPanelId}
+                  className="storefront-cart-coupon-panel"
+                  hidden={!couponPanelOpen}
+                >
+                  <form onSubmit={handleApplyCoupon} noValidate>
+                    <label htmlFor={`${couponPanelId}-input`} className="sr-only">
+                      Código do cupom
+                    </label>
+                    <input
+                      id={`${couponPanelId}-input`}
+                      value={couponDraft}
+                      onChange={(event) => {
+                        setCouponDraft(event.target.value.toUpperCase());
+                        setCouponInputError(null);
+                      }}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={32}
+                      placeholder="Digite o código"
+                      aria-invalid={Boolean(couponInputError || couponIssue)}
+                      aria-describedby={couponInputError || couponIssue ? couponErrorId : undefined}
+                      disabled={couponPending}
+                    />
+                    <button type="submit" disabled={couponPending}>
+                      {couponPending ? (
+                        <>
+                          <Loader2 className="animate-spin" aria-hidden="true" />
+                          <span>Aplicando…</span>
+                        </>
+                      ) : (
+                        'Aplicar'
+                      )}
+                    </button>
+                  </form>
+                  <div className="storefront-cart-coupon-message" aria-live="polite">
+                    {couponPending ? (
+                      <span className="is-loading">Validando o cupom…</span>
+                    ) : couponInputError || couponIssue ? (
+                      <span id={couponErrorId} className="is-error" role="alert">
+                        {couponInputError ?? couponIssue?.message}
+                      </span>
+                    ) : (
+                      <span>O desconto será confirmado nos valores da sacola.</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
           <CartRecommendations storeSlug={storeSlug} storeOpen={acceptingOrders} />
 
           {quoteState.status === 'error' && (
@@ -322,8 +517,18 @@ export function CartView({
         >
           <h2 id="cart-summary-title">Resumo</h2>
           <dl>
-            <div className="is-total">
+            <div>
               <dt>Subtotal dos itens</dt>
+              <dd>{formatCurrency(subtotal)}</dd>
+            </div>
+            {appliedCoupon && discount > 0 && (
+              <div className="is-discount">
+                <dt>Cupom {appliedCoupon.code}</dt>
+                <dd>− {formatCurrency(discount)}</dd>
+              </div>
+            )}
+            <div className="is-total">
+              <dt>Total</dt>
               <dd>{formatCurrency(total)}</dd>
             </div>
           </dl>
@@ -373,7 +578,7 @@ export function CartView({
             </Button>
           )}
           <p className="storefront-cart-summary-caption">
-            Recebimento, cupom e total final são definidos no checkout.
+            Recebimento e eventual taxa de entrega são definidos no checkout.
           </p>
         </aside>
       </div>

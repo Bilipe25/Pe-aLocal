@@ -1664,6 +1664,210 @@ body {
   font-weight: 600;
 }
 
+.storefront-cart-coupon {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--store-button-background) 20%, var(--store-border));
+  border-radius: min(var(--store-radius), 0.875rem);
+  color: var(--store-text);
+  background: color-mix(in srgb, var(--store-button-background) 3%, var(--store-surface));
+}
+
+.storefront-cart-coupon-trigger,
+.storefront-cart-coupon-applied {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+}
+
+.storefront-cart-coupon-trigger {
+  transition: background-color 160ms ease-out;
+}
+
+.storefront-cart-coupon-trigger:hover {
+  background: color-mix(in srgb, var(--store-button-background) 6%, transparent);
+}
+
+.storefront-cart-coupon-trigger:focus-visible,
+.storefront-cart-coupon-panel input:focus-visible,
+.storefront-cart-coupon-panel button:focus-visible,
+.storefront-cart-coupon-applied button:focus-visible {
+  outline: 2px solid var(--store-focus-ring);
+  outline-offset: -2px;
+}
+
+.storefront-cart-coupon-icon {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: min(var(--store-radius), 0.625rem);
+  color: var(--store-button-background);
+  background: color-mix(in srgb, var(--store-button-background) 11%, var(--store-surface));
+}
+
+.storefront-cart-coupon-icon.is-success {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 11%, var(--store-surface));
+}
+
+.storefront-cart-coupon-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.storefront-cart-coupon-trigger > span:nth-child(2),
+.storefront-cart-coupon-applied > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.0625rem;
+}
+
+.storefront-cart-coupon-trigger strong,
+.storefront-cart-coupon-applied strong {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.storefront-cart-coupon-trigger small,
+.storefront-cart-coupon-applied span {
+  overflow-wrap: anywhere;
+  color: var(--store-muted-text);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.storefront-cart-coupon-trigger > svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--store-muted-text);
+  transition: transform 160ms ease-out;
+}
+
+.storefront-cart-coupon-trigger > svg.is-expanded {
+  transform: rotate(180deg);
+}
+
+.storefront-cart-coupon-panel {
+  border-top: 1px solid var(--store-border);
+  padding: 0.625rem;
+  background: var(--store-surface);
+}
+
+.storefront-cart-coupon-panel form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.storefront-cart-coupon-panel input {
+  width: 100%;
+  min-width: 0;
+  height: 2.75rem;
+  border: 1px solid var(--store-border);
+  border-radius: min(var(--store-radius), 0.625rem);
+  padding-inline: 0.75rem;
+  color: var(--store-text);
+  background: var(--store-background);
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.storefront-cart-coupon-panel input::placeholder {
+  color: var(--store-muted-text);
+  font-weight: 500;
+  text-transform: none;
+}
+
+.storefront-cart-coupon-panel input[aria-invalid='true'] {
+  border-color: var(--store-danger);
+}
+
+.storefront-cart-coupon-panel button {
+  display: inline-flex;
+  min-width: 4.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: min(var(--store-radius), 0.625rem);
+  padding-inline: 0.75rem;
+  color: var(--store-button-text);
+  background: var(--store-button-background);
+  font-size: 0.8125rem;
+  font-weight: 750;
+  transition:
+    background-color 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.storefront-cart-coupon-panel button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--store-button-background) 88%, black);
+}
+
+.storefront-cart-coupon-panel button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.storefront-cart-coupon-panel button:disabled,
+.storefront-cart-coupon-applied button:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+
+.storefront-cart-coupon-panel button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.storefront-cart-coupon-message {
+  min-height: 1rem;
+  margin-top: 0.375rem;
+  color: var(--store-muted-text);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.storefront-cart-coupon-message .is-error {
+  color: var(--store-danger);
+  font-weight: 650;
+}
+
+.storefront-cart-coupon-message .is-loading {
+  color: var(--store-button-background);
+}
+
+.storefront-cart-coupon-applied {
+  background: color-mix(in srgb, var(--color-success) 4%, var(--store-surface));
+}
+
+.storefront-cart-coupon-applied button {
+  min-height: 2.75rem;
+  border-radius: min(var(--store-radius), 0.625rem);
+  padding-inline: 0.625rem;
+  color: var(--store-muted-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.storefront-cart-coupon-applied button:hover {
+  color: var(--store-danger);
+  background: color-mix(in srgb, var(--store-danger) 7%, transparent);
+}
+
 .storefront-cart-recommendations {
   display: grid;
   min-width: 0;
@@ -5538,7 +5742,10 @@ body {
 
   .storefront-product-modal-favorite,
   .storefront-product-modal-close,
-  .storefront-product-quantity button {
+  .storefront-product-quantity button,
+  .storefront-cart-coupon-trigger,
+  .storefront-cart-coupon-trigger > svg,
+  .storefront-cart-coupon-panel button {
     transition: none;
   }
 

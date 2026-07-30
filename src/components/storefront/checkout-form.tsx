@@ -13,7 +13,6 @@ import {
   QrCode,
   ReceiptText,
   Store,
-  Tag,
   UserRound,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -539,6 +538,7 @@ export function CheckoutForm({
   const [step, setStepState] = useState<CheckoutStep>(initialStep);
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [acceptedChangedQuote, setAcceptedChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [recognizedCustomer, setRecognizedCustomer] = useState<RecognizedCustomer | null>(null);
@@ -686,6 +686,9 @@ export function CheckoutForm({
     refetch: refetchQuote,
   } = useCheckoutQuote({ storeSlug, input: quoteInput });
   const effectiveQuote = acceptedChangedQuote ?? quote;
+  const couponQuoteIssue =
+    effectiveQuote?.issues.find((issue) => issue.code === 'COUPON_INVALID') ?? null;
+  const couponCorrectionMessage = couponReviewError ?? couponQuoteIssue?.message ?? null;
   const selectedDeliveryZone = deliveryZones.find((zone) => zone.id === deliveryZoneId);
   const reviewValues = step === 'review' ? getValues() : null;
 
@@ -810,7 +813,7 @@ export function CheckoutForm({
         draft.deliveryZoneId && deliveryZones.some((zone) => zone.id === draft.deliveryZoneId)
           ? draft.deliveryZoneId
           : '',
-      couponCode: initialCouponCode || cartCouponCode || draft.couponCode || '',
+      couponCode: initialCouponCode || cartCouponCode || '',
     }));
   }, [
     acceptsCardOnDelivery,
@@ -837,12 +840,11 @@ export function CheckoutForm({
         step,
         modality,
         deliveryZoneId: deliveryZoneId || undefined,
-        couponCode,
         paymentMethod,
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [couponCode, deliveryZoneId, modality, paymentMethod, step, storeId]);
+  }, [deliveryZoneId, modality, paymentMethod, step, storeId]);
 
   useEffect(() => {
     if (activeStoreId !== storeId || !restoredRef.current) return;
@@ -861,6 +863,7 @@ export function CheckoutForm({
       setChangedQuote(null);
       setAcceptedChangedQuote(null);
       setSubmitError(null);
+      setCouponReviewError(null);
     });
     return () => {
       active = false;
@@ -1214,7 +1217,8 @@ export function CheckoutForm({
             return;
           }
           if (result.error.code === 'COUPON_INVALID') {
-            setError('couponCode', { message: result.error.message });
+            setCouponReviewError(result.error.message);
+            return;
           }
           setSubmitError(result.error.message);
           return;
@@ -1245,7 +1249,7 @@ export function CheckoutForm({
 
   const handleInvalidSubmit: SubmitErrorHandler<CheckoutFormValues> = (invalidFields) => {
     let targetStep: CheckoutStep = 'review';
-    let targetField: FieldPath<CheckoutFormValues> = 'couponCode';
+    let targetField: FieldPath<CheckoutFormValues> = 'notes';
     if (invalidFields.customerName || invalidFields.customerPhone) {
       targetStep = 'identification';
       targetField = invalidFields.customerName ? 'customerName' : 'customerPhone';
@@ -1985,6 +1989,19 @@ export function CheckoutForm({
                 </div>
               )}
 
+              {couponCorrectionMessage && (
+                <div
+                  className="border-error/20 bg-error-light text-tinta rounded-xl border p-4 text-sm"
+                  role="alert"
+                >
+                  <p className="font-semibold">O cupom precisa ser corrigido na sacola.</p>
+                  <p className="text-text-muted mt-1">{couponCorrectionMessage}</p>
+                  <Button asChild variant="outline" className="mt-3 min-h-11">
+                    <Link href={`/${storeSlug}/cart`}>Corrigir na sacola</Link>
+                  </Button>
+                </div>
+              )}
+
               <div className="border-tinta/10 bg-papel divide-tinta/10 divide-y rounded-2xl border">
                 <div className="flex items-start justify-between gap-4 p-4">
                   <div>
@@ -2084,31 +2101,6 @@ export function CheckoutForm({
                   id="saveCustomerData-error"
                   message={errors.saveCustomerData?.message ?? errors.setAddressAsDefault?.message}
                 />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="couponCode"
-                  className="text-tinta flex items-center gap-2 text-sm font-semibold"
-                >
-                  <Tag className="h-4 w-4" aria-hidden="true" />
-                  Cupom
-                </label>
-                <div className="mt-1 flex gap-2">
-                  <Input
-                    id="couponCode"
-                    autoCapitalize="characters"
-                    placeholder="Digite o código"
-                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta uppercase"
-                    aria-invalid={Boolean(errors.couponCode)}
-                    aria-describedby={errors.couponCode ? 'couponCode-error' : undefined}
-                    {...register('couponCode')}
-                  />
-                  <Button type="button" variant="outline" onClick={() => void refetchQuote()}>
-                    Aplicar
-                  </Button>
-                </div>
-                <FieldError id="couponCode-error" message={errors.couponCode?.message} />
               </div>
 
               <div>

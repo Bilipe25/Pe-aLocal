@@ -13,6 +13,7 @@ interface UseCartQuoteInput {
   items: CartItem[];
   revision: number;
   modality: CartFulfillmentModality;
+  couponCode?: string | null;
 }
 
 function responseErrorMessage(payload: unknown) {
@@ -32,15 +33,18 @@ export function useCartQuote({
   items,
   revision,
   modality,
+  couponCode,
 }: UseCartQuoteInput) {
   const [quote, setQuote] = useState<CheckoutQuoteDto | null>(null);
   const [status, setStatus] = useState<CartQuoteStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [resolvedRequestKey, setResolvedRequestKey] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const requestBody = useMemo(
-    () => ({
+  const requestBody = useMemo(() => {
+    const normalizedCouponCode = couponCode?.trim().toUpperCase();
+    return {
       modality,
+      couponCode: normalizedCouponCode || undefined,
       items: items.map((item) => ({
         lineId: item.id,
         productId: item.productId,
@@ -48,9 +52,8 @@ export function useCartQuote({
         notes: item.notes || undefined,
         optionIds: item.selectedOptions.map((option) => option.id),
       })),
-    }),
-    [items, modality],
-  );
+    };
+  }, [couponCode, items, modality]);
   const requestKey = useMemo(() => JSON.stringify(requestBody), [requestBody]);
   const canRequest = items.length > 0;
 

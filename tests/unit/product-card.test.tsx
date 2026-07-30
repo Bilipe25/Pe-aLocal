@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProductCard } from '@/components/storefront/product-card';
@@ -57,6 +57,52 @@ describe('imagem responsiva do produto', () => {
       container.querySelector('[aria-label="Imagem indisponível para Burger da casa"]'),
     ).toHaveClass('storefront-product-image-frame', 'is-error');
     expect(screen.getByText('Imagem indisponível')).toBeVisible();
+  });
+
+  it('exibe uma imagem restaurada do cache antes da hidratação', async () => {
+    const completeDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLImageElement.prototype,
+      'complete',
+    );
+    const naturalWidthDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLImageElement.prototype,
+      'naturalWidth',
+    );
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0));
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    Object.defineProperty(HTMLImageElement.prototype, 'complete', {
+      configurable: true,
+      get: () => true,
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', {
+      configurable: true,
+      get: () => 384,
+    });
+
+    try {
+      const { container } = render(<ProductCard {...baseProps} />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.storefront-product-image-frame')).toHaveClass('is-loaded');
+      });
+      expect(container.querySelector('img')).toBeVisible();
+      expect(container.querySelector('.storefront-product-image-placeholder')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      if (completeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'complete', completeDescriptor);
+      } else {
+        Reflect.deleteProperty(HTMLImageElement.prototype, 'complete');
+      }
+      if (naturalWidthDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', naturalWidthDescriptor);
+      } else {
+        Reflect.deleteProperty(HTMLImageElement.prototype, 'naturalWidth');
+      }
+    }
   });
 
   it('explica o estado sem imagem sem remover o produto do catálogo', () => {

@@ -233,21 +233,27 @@ test.describe.serial('carrinho e checkout v2', () => {
     expect(compatibleZoneFound).toBe(true);
   });
 
-  test('aplica cupom pertencente à loja somente na revisão', async ({ page }) => {
+  test('aplica cupom pertencente à loja na sacola e mostra somente o desconto na revisão', async ({
+    page,
+  }) => {
     test.skip(!couponCode, 'E2E_COUPON_CODE não foi configurado.');
     test.skip(!(await addFirstAvailableProduct(page)), 'A loja E2E não possui produto disponível.');
-    test.skip(!(await reachReviewForPickup(page)), 'Retirada ou pagamento não configurado.');
 
-    await page.getByLabel('Cupom').fill(couponCode!);
+    await page.getByRole('button', { name: /Tem um cupom\?/ }).click();
+    await page.getByLabel('Código do cupom').fill(couponCode!);
     await page.getByRole('button', { name: 'Aplicar' }).click();
+    await expect(page.getByText(new RegExp(`Cupom ${couponCode} aplicado`, 'i'))).toBeVisible();
+
+    test.skip(!(await reachReviewForPickup(page)), 'Retirada ou pagamento não configurado.');
     await expect(page.getByText(new RegExp(`Desconto ${couponCode}`, 'i'))).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Cupom' })).toHaveCount(0);
   });
 
   test('rejeita cupom inexistente sem alterar o total autoritativo', async ({ page }) => {
     test.skip(!(await addFirstAvailableProduct(page)), 'A loja E2E não possui produto disponível.');
-    test.skip(!(await reachReviewForPickup(page)), 'Retirada ou pagamento não configurado.');
 
-    await page.getByLabel('Cupom').fill('CUPOM-INEXISTENTE-E2E');
+    await page.getByRole('button', { name: /Tem um cupom\?/ }).click();
+    await page.getByLabel('Código do cupom').fill('CUPOM-INEXISTENTE-E2E');
     await page.getByRole('button', { name: 'Aplicar' }).click();
     await expect(page.getByRole('alert')).toContainText(
       'Este cupom não está disponível para este pedido.',
