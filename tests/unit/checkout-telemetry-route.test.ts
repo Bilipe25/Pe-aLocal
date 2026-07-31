@@ -135,6 +135,46 @@ describe('POST checkout/events', () => {
     expect(JSON.stringify(logged)).not.toMatch(/phone|address|postal|token|customer|cart/i);
   });
 
+  it('registra eventos das vitrines comerciais sem identidade do consumidor', async () => {
+    const info = vi.mocked(console.info);
+    const productId = '00000000-0000-0000-0002-000000000002';
+
+    expect(
+      (
+        await POST(
+          request({
+            event: 'recent_purchase_product_clicked',
+            productId,
+            position: 2,
+          }),
+          context,
+        )
+      ).status,
+    ).toBe(204);
+    expect((await POST(request({ event: 'featured_section_viewed' }), context)).status).toBe(204);
+
+    const productLog = JSON.parse(info.mock.calls[0][0] as string) as Record<string, unknown>;
+    const sectionLog = JSON.parse(info.mock.calls[1][0] as string) as Record<string, unknown>;
+    expect(productLog).toEqual({
+      event: 'storefront_recommendation_event',
+      correlationId: 'ray-test-a',
+      storeId: 'store-a',
+      recommendationEvent: 'recent_purchase_product_clicked',
+      productId,
+      position: 2,
+    });
+    expect(sectionLog).toEqual({
+      event: 'storefront_recommendation_event',
+      correlationId: 'ray-test-a',
+      storeId: 'store-a',
+      recommendationEvent: 'featured_section_viewed',
+      productId: null,
+    });
+    expect(JSON.stringify([productLog, sectionLog])).not.toMatch(
+      /phone|address|postal|token|customer|order/i,
+    );
+  });
+
   it.each([
     ['clique sem produto', { event: 'recommendation_clicked' }],
     [
@@ -145,6 +185,8 @@ describe('POST checkout/events', () => {
       },
     ],
     ['recomendação com etapa do checkout', { event: 'recommendation_viewed', step: 'payment' }],
+    ['seção recente com posição', { event: 'recent_purchases_section_viewed', position: 0 }],
+    ['produto recente sem ID', { event: 'recent_purchase_product_added', position: 0 }],
   ])('rejeita %s no contrato de telemetria', async (_label, payload) => {
     const response = await POST(request(payload), context);
 
