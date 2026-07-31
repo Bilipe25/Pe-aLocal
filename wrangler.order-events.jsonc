@@ -24,6 +24,8 @@
   "vars": {
     "APP_ENV": "staging",
     "ORDER_OUTBOX_RELAY_ENABLED": "true",
+    "ORDER_OUTBOX_RETENTION_ENABLED": "true",
+    "ORDER_OUTBOX_RETENTION_DAYS": "30",
     "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
   },
   "triggers": {
@@ -66,6 +68,8 @@
       "vars": {
         "APP_ENV": "staging",
         "ORDER_OUTBOX_RELAY_ENABLED": "true",
+        "ORDER_OUTBOX_RETENTION_ENABLED": "true",
+        "ORDER_OUTBOX_RETENTION_DAYS": "30",
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
       },
       "triggers": {
@@ -108,6 +112,8 @@
       "vars": {
         "APP_ENV": "production",
         "ORDER_OUTBOX_RELAY_ENABLED": "true",
+        "ORDER_OUTBOX_RETENTION_ENABLED": "true",
+        "ORDER_OUTBOX_RETENTION_DAYS": "30",
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
       },
       "triggers": {

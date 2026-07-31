@@ -11,6 +11,7 @@ vi.mock('@/server/database/client', () => ({
 import {
   getOrderByPublicToken,
   getOrderTrackingStateByPublicToken,
+  hasActiveOrderTrackingToken,
   isPublicOrderTokenExpired,
 } from '@/server/repositories/order.repository';
 
@@ -57,5 +58,19 @@ describe('retenção do token público do pedido', () => {
       select: { id: true },
     });
     expect(expired).toBe(false);
+  });
+
+  it('autoriza tempo real consultando somente a existência do pedido ativo', async () => {
+    mocks.findFirst.mockResolvedValue({ id: 'order-a' });
+
+    await expect(hasActiveOrderTrackingToken('token-a', 'burger-do-ze')).resolves.toBe(true);
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        publicToken: 'token-a',
+        publicTokenExpiresAt: { gt: expect.any(Date) },
+        store: { slug: 'burger-do-ze' },
+      },
+      select: { id: true },
+    });
   });
 });

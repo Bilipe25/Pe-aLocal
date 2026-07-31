@@ -8,6 +8,10 @@ import {
   ValidationError,
 } from '@/server/errors';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
+import {
+  getPublicClientAddress,
+  hashPublicRateLimitValue,
+} from '@/server/rate-limit/public-identifiers';
 import { isPublicOrderTokenExpired } from '@/server/repositories/order.repository';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
@@ -34,16 +38,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     });
     if (!parsed.success) throw new ValidationError('O acompanhamento informado é inválido.');
 
-    const clientAddress =
-      request.headers.get('cf-connecting-ip') ??
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-      'unknown';
-    const rateLimit = await getRateLimiter().check({
-      identifier: `tracking:${clientAddress}:${parsed.data.token}`,
-      ...RATE_LIMITS.publicOrderLookup,
-      strict: isDeployedRuntime(),
-    });
-    if (rateLimit.unavailable || !rateLimit.allowed) {
+    const [clientKey, tokenKey] = await Promise.all([
+      hashPublicRateLimitValue('tracking-lookup-ip', getPublicClientAddress(request)),
+      hashPublicRateLimitValue('tracking-lookup-token', parsed.data.token),
+    ]);
+    const limiter = getRateLimiter();
+    const [ipRateLimit, tokenRateLimit] = await Promise.all([
+      limiter.check({
+        identifier: `tracking-lookup-ip:${clientKey}`,
+        ...RATE_LIMITS.publicOrderLookupByIp,
+        strict: isDeployedRuntime(),
+      }),
+      limiter.check({
+        identifier: `tracking-lookup-token:${tokenKey}`,
+        ...RATE_LIMITS.publicOrderLookupByToken,
+        strict: isDeployedRuntime(),
+      }),
+    ]);
+    if (
+      ipRateLimit.unavailable ||
+      tokenRateLimit.unavailable ||
+      !ipRateLimit.allowed ||
+      !tokenRateLimit.allowed
+    ) {
       throw new RateLimitError('Muitas atualizações em sequência. Aguarde um minuto.');
     }
 

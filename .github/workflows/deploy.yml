@@ -97,6 +97,11 @@ jobs:
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Verify order module database guards
+        run: pnpm db:orders:preflight
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       - name: Verify checkout v2 rollout readiness
         run: pnpm db:checkout-v2:preflight
         env:

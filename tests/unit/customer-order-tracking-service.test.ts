@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  canAuthorizeCustomerOrderTracking,
   getCustomerOrderTrackingState,
   toCustomerOrderTrackingState,
 } from '@/server/services/customer-order-tracking.service';
 
 const mocks = vi.hoisted(() => ({
   getOrderTrackingStateByPublicToken: vi.fn(),
+  hasActiveOrderTrackingToken: vi.fn(),
 }));
 
 vi.mock('@/server/repositories/order.repository', () => ({
   getOrderTrackingStateByPublicToken: mocks.getOrderTrackingStateByPublicToken,
+  hasActiveOrderTrackingToken: mocks.hasActiveOrderTrackingToken,
 }));
 
 const base = {
@@ -98,5 +101,13 @@ describe('acompanhamento público do pedido', () => {
         maxAt: '2026-07-22T12:55:00.000Z',
       }),
     );
+  });
+
+  it('autoriza o canal com a consulta mínima de existência', async () => {
+    mocks.hasActiveOrderTrackingToken.mockResolvedValue(true);
+
+    await expect(canAuthorizeCustomerOrderTracking('token-a', 'burger-do-ze')).resolves.toBe(true);
+    expect(mocks.hasActiveOrderTrackingToken).toHaveBeenCalledWith('token-a', 'burger-do-ze');
+    expect(mocks.getOrderTrackingStateByPublicToken).not.toHaveBeenCalled();
   });
 });

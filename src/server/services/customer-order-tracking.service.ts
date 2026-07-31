@@ -7,7 +7,10 @@ import type {
   PaymentStatus,
 } from '@prisma/client';
 
-import { getOrderTrackingStateByPublicToken } from '@/server/repositories/order.repository';
+import {
+  getOrderTrackingStateByPublicToken,
+  hasActiveOrderTrackingToken,
+} from '@/server/repositories/order.repository';
 import type { CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
 
 interface TrackingSnapshot {
@@ -107,4 +110,8 @@ export async function getCustomerOrderTrackingState(publicToken: string, storeSl
     estimatedTimeMinMinutes: order.store.settings?.estimatedTimeMinMinutes ?? 30,
     estimatedTimeMaxMinutes: order.store.settings?.estimatedTimeMaxMinutes ?? 50,
   });
+}
+
+export function canAuthorizeCustomerOrderTracking(publicToken: string, storeSlug: string) {
+  return hasActiveOrderTrackingToken(publicToken, storeSlug);
 }
