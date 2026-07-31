@@ -4,6 +4,10 @@ import { decodeOrderCursor, encodeOrderCursor } from '@/lib/orders/cursor';
 import {
   getDailyOrderMetrics,
   getActiveOrderCounts,
+  getOrderBoardLane,
+  getOrderBoardBootstrap,
+  getOrderBoardSnapshot,
+  getOrderBoardTemporalSummary,
   getOrderDetails,
   getOrderHistory,
   getOrderNotificationSignals,
@@ -21,10 +25,11 @@ const mocks = vi.hoisted(() => ({
   auditFindMany: vi.fn(),
   paymentHistoryFindMany: vi.fn(),
   queryRaw: vi.fn(),
+  transaction: vi.fn(),
 }));
 
-vi.mock('@/server/database/client', () => ({
-  getDb: () => ({
+vi.mock('@/server/database/client', () => {
+  const database = {
     order: {
       findMany: mocks.orderFindMany,
       findFirst: mocks.orderFindFirst,
@@ -38,8 +43,14 @@ vi.mock('@/server/database/client', () => ({
     },
     paymentStatusHistory: { findMany: mocks.paymentHistoryFindMany },
     $queryRaw: mocks.queryRaw,
-  }),
-}));
+  };
+  mocks.transaction.mockImplementation((operation: (client: typeof database) => Promise<unknown>) =>
+    operation(database),
+  );
+  return {
+    getDb: () => ({ ...database, $transaction: mocks.transaction }),
+  };
+});
 
 const context: OrderQueryContext = {
   tenantId: 'tenant-a',
@@ -68,6 +79,8 @@ function queueOrder(id: string, createdAt: string) {
     dispatchedAt: null,
     deliveredAt: null,
     cancelledAt: null,
+    promisedFulfillmentMinAt: new Date('2026-07-21T13:30:00.000Z'),
+    promisedFulfillmentMaxAt: new Date('2026-07-21T14:00:00.000Z'),
     version: 0,
     notes: null,
     _count: { items: 2 },
@@ -97,6 +110,7 @@ describe('OrderQueryService', () => {
     vi.clearAllMocks();
     mocks.auditFindMany.mockResolvedValue([]);
     mocks.paymentHistoryFindMany.mockResolvedValue([]);
+    mocks.queryRaw.mockResolvedValue([{ watermark: new Date('2026-07-21T12:00:00.000Z') }]);
   });
 
   it('retorna DTO resumido, limite e cursor estável sem PII', async () => {
@@ -126,6 +140,312 @@ describe('OrderQueryService', () => {
         where: expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a' }),
       }),
     );
+  });
+
+  it('monta o board com totais exatos, quatro colunas e dez itens iniciais', async () => {
+    mocks.orderGroupBy
+      .mockResolvedValueOnce([
+        { status: 'PENDING', _count: { _all: 11 } },
+        { status: 'CONFIRMED', _count: { _all: 3 } },
+        { status: 'PREPARING', _count: { _all: 4 } },
+        { status: 'READY', _count: { _all: 5 } },
+        { status: 'OUT_FOR_DELIVERY', _count: { _all: 6 } },
+      ])
+      .mockResolvedValueOnce([
+        { status: 'PENDING', _count: { _all: 11 } },
+        { status: 'CONFIRMED', _count: { _all: 3 } },
+        { status: 'PREPARING', _count: { _all: 4 } },
+        { status: 'READY', _count: { _all: 5 } },
+        { status: 'OUT_FOR_DELIVERY', _count: { _all: 6 } },
+      ])
+      .mockResolvedValueOnce([
+        { status: 'DELIVERED', _count: { _all: 7 } },
+        { status: 'CANCELLED', _count: { _all: 1 } },
+      ]);
+    mocks.orderCount.mockResolvedValue(3);
+    const newOrder = {
+      ...queueOrder('order-1', '2026-07-21T12:00:00.000Z'),
+      items: [{ id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' }],
+    };
+    mocks.orderFindMany
+      .mockResolvedValueOnce([
+        newOrder,
+        ...Array.from({ length: 10 }, (_, index) =>
+          queueOrder(
+            `order-${index + 2}`,
+            `2026-07-21T${String(index + 13).padStart(2, '0')}:00:00.000Z`,
+          ),
+        ),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await getOrderBoardSnapshot(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: false,
+    });
+
+    expect(result.summary).toEqual({
+      newCount: 11,
+      preparingCount: 7,
+      readyCount: 5,
+      deliveryCount: 6,
+      delayedCount: 3,
+    });
+    expect(Object.keys(result.lanes)).toEqual([
+      'NEW',
+      'PREPARATION',
+      'READY_AND_DELIVERY',
+      'FINISHED',
+    ]);
+    expect(result.lanes.NEW).toMatchObject({ total: 11, key: 'NEW' });
+    expect(result.lanes.NEW.items).toHaveLength(10);
+    expect(result.lanes.NEW.nextCursor).not.toBeNull();
+    expect(result.lanes.PREPARATION.total).toBe(7);
+    expect(result.lanes.READY_AND_DELIVERY.total).toBe(11);
+    expect(result.lanes.FINISHED.total).toBe(8);
+    expect(result.lanes.NEW.items[0]).toMatchObject({
+      itemPreview: [{ id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' }],
+      promisedFulfillmentMinAt: '2026-07-21T13:30:00.000Z',
+      promisedFulfillmentMaxAt: '2026-07-21T14:00:00.000Z',
+    });
+    expect(result.lanes.NEW.items[0]).not.toHaveProperty('customerPhone');
+    expect(result.lanes.NEW.items[0]).not.toHaveProperty('deliveryAddress');
+    expect(mocks.orderFindMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        take: 11,
+        where: expect.objectContaining({
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          status: { in: ['PENDING'] },
+        }),
+      }),
+    );
+    expect(mocks.orderFindMany).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          status: { in: ['DELIVERED', 'CANCELLED'] },
+          AND: [
+            {
+              statusChangedAt: {
+                gte: new Date('2026-07-21T03:00:00.000Z'),
+                lt: new Date('2026-07-22T03:00:00.000Z'),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('carrega board e baseline no mesmo snapshot autoritativo do banco', async () => {
+    mocks.auditFindMany.mockResolvedValue([
+      {
+        id: 'audit-existing',
+        createdAt: new Date('2026-07-21T12:00:01.000Z'),
+      },
+    ]);
+    mocks.orderGroupBy
+      .mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 1 } }])
+      .mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 1 } }])
+      .mockResolvedValueOnce([]);
+    mocks.orderCount.mockResolvedValue(0);
+    mocks.orderFindMany.mockResolvedValue([]);
+
+    const result = await getOrderBoardBootstrap(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: false,
+    });
+
+    expect(result.initialBoard.summary.newCount).toBe(1);
+    expect(result.notificationBaseline.processedEventIds).toEqual(['audit-existing']);
+    expect(decodeOrderCursor(result.notificationBaseline.nextCursor)).toEqual({
+      createdAt: new Date('2026-07-21T12:00:01.000Z'),
+      id: 'audit-existing',
+    });
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+    });
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 250,
+        where: expect.objectContaining({
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          createdAt: { gte: new Date('2026-07-21T11:55:00.000Z') },
+        }),
+      }),
+    );
+  });
+
+  it.each(['FAILED', 'CANCELLED', 'REFUNDED'] as const)(
+    'não oferece confirmação de pagamento impossível para PIX %s',
+    async (paymentStatus) => {
+      mocks.orderFindMany.mockResolvedValue([
+        {
+          ...queueOrder('order-1', '2026-07-21T12:00:00.000Z'),
+          status: 'READY',
+          paymentStatus,
+        },
+      ]);
+      mocks.orderCount.mockResolvedValue(1);
+
+      const result = await getOrderBoardLane(context, {
+        localDate: '2026-07-21',
+        onlyActive: false,
+        delayedOnly: false,
+        lane: 'READY_AND_DELIVERY',
+        pageSize: 10,
+      });
+
+      expect(result.items[0]?.nextActionLabel).toBeNull();
+    },
+  );
+
+  it('atualiza somente o resumo temporal sem recarregar as quatro colunas', async () => {
+    mocks.orderCount.mockResolvedValue(4);
+
+    const result = await getOrderBoardTemporalSummary(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: false,
+      modality: 'DELIVERY',
+    });
+
+    expect(result).toEqual({ delayedCount: 4, asOf: '2026-07-21T12:00:00.000Z' });
+    expect(mocks.orderCount).toHaveBeenCalledTimes(1);
+    expect(mocks.orderFindMany).not.toHaveBeenCalled();
+    expect(mocks.orderGroupBy).not.toHaveBeenCalled();
+    expect(mocks.orderCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        modality: 'DELIVERY',
+      }),
+    });
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+    });
+  });
+
+  it('pagina cada coluna com cursor e total próprios', async () => {
+    mocks.orderFindMany.mockResolvedValue([
+      queueOrder('order-1', '2026-07-21T12:00:00.000Z'),
+      queueOrder('order-2', '2026-07-21T13:00:00.000Z'),
+      queueOrder('order-3', '2026-07-21T14:00:00.000Z'),
+    ]);
+    mocks.orderCount.mockResolvedValue(12);
+
+    const result = await getOrderBoardLane(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: false,
+      lane: 'PREPARATION',
+      pageSize: 2,
+    });
+
+    expect(result.key).toBe('PREPARATION');
+    expect(result.items).toHaveLength(2);
+    expect(result.total).toBe(12);
+    expect(result.nextCursor).not.toBeNull();
+    expect(mocks.orderFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        where: expect.objectContaining({
+          tenantId: 'tenant-a',
+          storeId: 'store-a',
+          status: { in: ['CONFIRMED', 'PREPARING'] },
+        }),
+      }),
+    );
+    expect(mocks.orderCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        status: { in: ['CONFIRMED', 'PREPARING'] },
+      }),
+    });
+  });
+
+  it('usa a data de finalização, não a criação, na coluna de finalizados', async () => {
+    const finishedYesterdayCreatedTodayChanged = {
+      ...queueOrder('order-9', '2026-07-20T12:00:00.000Z'),
+      status: 'DELIVERED' as const,
+      statusChangedAt: new Date('2026-07-21T12:00:00.000Z'),
+      deliveredAt: new Date('2026-07-21T12:00:00.000Z'),
+    };
+    mocks.orderFindMany.mockResolvedValue([
+      finishedYesterdayCreatedTodayChanged,
+      {
+        ...finishedYesterdayCreatedTodayChanged,
+        id: 'order-8',
+        statusChangedAt: new Date('2026-07-21T11:00:00.000Z'),
+      },
+    ]);
+    mocks.orderCount.mockResolvedValue(2);
+
+    const result = await getOrderBoardLane(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: false,
+      lane: 'FINISHED',
+      pageSize: 1,
+    });
+
+    expect(result.items[0]?.id).toBe('order-9');
+    expect(decodeOrderCursor(result.nextCursor!)).toEqual({
+      createdAt: new Date('2026-07-21T12:00:00.000Z'),
+      id: 'order-9',
+    });
+    expect(mocks.orderFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ statusChangedAt: 'desc' }, { id: 'desc' }],
+        where: expect.objectContaining({
+          AND: [
+            {
+              statusChangedAt: {
+                gte: new Date('2026-07-21T03:00:00.000Z'),
+                lt: new Date('2026-07-22T03:00:00.000Z'),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('filtra atrasos apenas por alertas operacionais e oculta finalizados', async () => {
+    mocks.orderGroupBy.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mocks.orderCount.mockResolvedValue(4);
+    mocks.orderFindMany.mockResolvedValue([]);
+
+    const result = await getOrderBoardSnapshot(context, {
+      localDate: '2026-07-21',
+      onlyActive: false,
+      delayedOnly: true,
+    });
+
+    expect(result.lanes.FINISHED).toEqual({
+      key: 'FINISHED',
+      items: [],
+      total: 0,
+      nextCursor: null,
+    });
+    const delayedWhere = mocks.orderCount.mock.calls[0]?.[0]?.where;
+    expect(JSON.stringify(delayedWhere)).not.toContain('CUSTOMER_REPORTED_PAID');
+    expect(JSON.stringify(delayedWhere)).not.toContain('paymentStatus');
+    expect(JSON.stringify(delayedWhere)).toContain('OUT_FOR_DELIVERY');
+    expect(mocks.orderFindMany).toHaveBeenCalledTimes(3);
   });
 
   it('cria baseline sem notificar pedidos já existentes', async () => {
@@ -263,6 +583,44 @@ describe('OrderQueryService', () => {
     );
   });
 
+  it('mantém overlap quando o baseline estava vazio e recupera commit tardio', async () => {
+    const cursor = encodeOrderCursor({
+      createdAt: new Date('2026-07-21T12:05:00.000Z'),
+      id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    });
+    mocks.auditFindMany.mockResolvedValue([
+      {
+        id: 'audit-late-empty-baseline',
+        action: 'ORDER_CREATED',
+        entity: 'Order',
+        entityId: 'order-late',
+        metadata: null,
+        createdAt: new Date('2026-07-21T12:04:30.000Z'),
+      },
+    ]);
+    mocks.orderFindMany.mockResolvedValue([{ id: 'order-late', orderNumber: 14 }]);
+
+    const result = await getOrderNotificationSignals(context, cursor, []);
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        eventId: 'audit-late-empty-baseline',
+        orderId: 'order-late',
+        orderNumber: 14,
+      }),
+    ]);
+    expect(result.nextCursor).toBe(cursor);
+    expect(mocks.auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { createdAt: { gte: new Date('2026-07-21T12:00:00.000Z') } },
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('aplica cursor composto e não repete a contagem de ativos', async () => {
     const first = queueOrder('order-2', '2026-07-21T13:00:00.000Z');
     mocks.orderFindMany.mockResolvedValue([
@@ -311,6 +669,14 @@ describe('OrderQueryService', () => {
       modality: 'PICKUP',
       deliveryAddress: null,
       deliveryZoneName: null,
+      deliveryStreet: null,
+      deliveryNumber: null,
+      deliveryNeighborhood: null,
+      deliveryCity: null,
+      deliveryState: null,
+      deliveryPostalCode: null,
+      promisedFulfillmentMinAt: null,
+      promisedFulfillmentMaxAt: null,
       subtotal: 2500,
       discount: 0,
       deliveryFee: 0,

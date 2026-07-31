@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import {
+  ORDER_BOARD_LANE_PAGE_SIZE,
+  ORDER_NOTIFICATION_SEEN_EVENT_LIMIT,
+} from '@/features/orders/query-constants';
+
 const orderStatusSchema = z.enum([
   'PENDING',
   'CONFIRMED',
@@ -32,6 +37,68 @@ const localDateSchema = z
     );
   }, 'A data informada é inválida.');
 
+export const orderBoardLaneKeySchema = z.enum([
+  'NEW',
+  'PREPARATION',
+  'READY_AND_DELIVERY',
+  'FINISHED',
+]);
+
+const orderBoardFilterFields = {
+  localDate: localDateSchema,
+  statuses: z.array(orderStatusSchema).max(7).optional(),
+  paymentStatus: paymentStatusSchema.optional(),
+  modality: z.enum(['DELIVERY', 'PICKUP']).optional(),
+  query: z.string().trim().max(80).optional(),
+  onlyActive: z.boolean().default(false),
+  delayedOnly: z.boolean().default(false),
+};
+
+function validateBoardQuery(value: { query?: string }, context: z.RefinementCtx) {
+  if (value.query && !/^#?\d+$/.test(value.query) && value.query.length < 2) {
+    context.addIssue({
+      code: 'custom',
+      path: ['query'],
+      message: 'A busca textual deve ter pelo menos dois caracteres.',
+    });
+  }
+}
+
+function normalizeBoardFilters<
+  T extends { query?: string; statuses?: Array<z.infer<typeof orderStatusSchema>> },
+>(value: T): T {
+  const normalized = { ...value };
+  if (!normalized.query) delete normalized.query;
+  if (normalized.statuses?.length) {
+    normalized.statuses = [...new Set(normalized.statuses)] as T['statuses'];
+  } else {
+    delete normalized.statuses;
+  }
+  return normalized;
+}
+
+export const orderBoardFiltersSchema = z
+  .object(orderBoardFilterFields)
+  .strict()
+  .superRefine(validateBoardQuery)
+  .transform(normalizeBoardFilters);
+
+export const orderBoardLaneInputSchema = z
+  .object({
+    ...orderBoardFilterFields,
+    lane: orderBoardLaneKeySchema,
+    cursor: z.string().max(2_048).optional(),
+    pageSize: z
+      .number()
+      .int()
+      .min(1)
+      .max(ORDER_BOARD_LANE_PAGE_SIZE)
+      .default(ORDER_BOARD_LANE_PAGE_SIZE),
+  })
+  .strict()
+  .superRefine(validateBoardQuery)
+  .transform(normalizeBoardFilters);
+
 export const orderQueueFiltersSchema = z
   .object({
     date: localDateSchema.optional(),
@@ -43,6 +110,7 @@ export const orderQueueFiltersSchema = z
     cursor: z.string().max(2_048).optional(),
     pageSize: z.number().int().min(1).max(100).default(30),
   })
+  .strict()
   .superRefine((value, context) => {
     if (value.status && value.statuses?.length) {
       context.addIssue({
@@ -65,9 +133,11 @@ export const orderQueueFiltersSchema = z
     statuses: value.statuses?.length ? [...new Set(value.statuses)] : undefined,
   }));
 
-export const orderDetailsInputSchema = z.object({
-  orderId: z.string().uuid('O pedido informado é inválido.'),
-});
+export const orderDetailsInputSchema = z
+  .object({
+    orderId: z.string().uuid('O pedido informado é inválido.'),
+  })
+  .strict();
 
 export const orderHistoryInputSchema = orderDetailsInputSchema.extend({
   cursor: z.string().max(2_048).optional(),
@@ -79,17 +149,24 @@ export const orderInternalNotesInputSchema = orderDetailsInputSchema.extend({
   pageSize: z.number().int().min(1).max(50).default(20),
 });
 
-export const dailyMetricsInputSchema = z.object({
-  localDate: localDateSchema,
-});
+export const dailyMetricsInputSchema = z
+  .object({
+    localDate: localDateSchema,
+  })
+  .strict();
 
-export const orderNotificationSignalsInputSchema = z.object({
-  cursor: z.string().max(2_048).optional(),
-  seenEventIds: z.array(z.string().uuid()).max(5_000).default([]),
-});
+export const orderNotificationSignalsInputSchema = z
+  .object({
+    cursor: z.string().max(2_048).optional(),
+    seenEventIds: z.array(z.string().uuid()).max(ORDER_NOTIFICATION_SEEN_EVENT_LIMIT).default([]),
+  })
+  .strict();
 
 export type OrderQueueFiltersInput = z.input<typeof orderQueueFiltersSchema>;
 export type ParsedOrderQueueFilters = z.output<typeof orderQueueFiltersSchema>;
+export type OrderBoardFiltersInput = z.input<typeof orderBoardFiltersSchema>;
+export type ParsedOrderBoardFilters = z.output<typeof orderBoardFiltersSchema>;
+export type OrderBoardLaneInput = z.output<typeof orderBoardLaneInputSchema>;
 export type OrderHistoryInput = z.output<typeof orderHistoryInputSchema>;
 export type OrderInternalNotesInput = z.output<typeof orderInternalNotesInputSchema>;
 export type OrderNotificationSignalsInput = z.output<typeof orderNotificationSignalsInputSchema>;

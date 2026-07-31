@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
-export const orderVersionInputSchema = z.object({
-  orderId: z.string().uuid('O pedido informado é inválido.'),
-  expectedVersion: z.number().int().nonnegative('A versão do pedido é inválida.'),
-});
+export const orderVersionInputSchema = z
+  .object({
+    orderId: z.string().uuid('O pedido informado é inválido.'),
+    expectedVersion: z
+      .number()
+      .int('A versão do pedido é inválida.')
+      .min(0, 'A versão do pedido é inválida.')
+      .max(2_147_483_647, 'A versão do pedido é inválida.'),
+  })
+  .strict();
 
 const cancellationReasonCodes = [
   'CUSTOMER_REQUEST',

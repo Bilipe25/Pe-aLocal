@@ -381,7 +381,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           couponId: quote.couponId,
           couponCode: quote.coupon?.code ?? null,
           items: {
-            create: quote.lines.map((item) => ({
+            create: quote.lines.map((item, position) => ({
+              position,
               productId: item.productId,
               productName: item.productName,
               unitPrice: item.unitPrice,
@@ -390,9 +391,13 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               itemTotal: item.itemTotal,
               options: {
                 create: item.options.map((option) => ({
+                  position: option.position,
                   optionId: option.id,
                   optionName: option.name,
                   optionPrice: option.price,
+                  groupId: option.groupId,
+                  groupName: option.groupName,
+                  groupPosition: option.groupPosition,
                 })),
               },
             })),
@@ -575,6 +580,7 @@ export async function getOrderByPublicToken(publicToken: string) {
       notes: true,
       createdAt: true,
       items: {
+        orderBy: [{ position: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           productName: true,
@@ -583,6 +589,7 @@ export async function getOrderByPublicToken(publicToken: string) {
           notes: true,
           itemTotal: true,
           options: {
+            orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
             select: {
               optionName: true,
               optionPrice: true,
@@ -659,4 +666,16 @@ export async function getOrderTrackingStateByPublicToken(publicToken: string, st
       },
     },
   });
+}
+
+export async function hasActiveOrderTrackingToken(publicToken: string, storeSlug: string) {
+  const order = await getDb().order.findFirst({
+    where: {
+      publicToken,
+      publicTokenExpiresAt: { gt: new Date() },
+      store: { slug: storeSlug },
+    },
+    select: { id: true },
+  });
+  return Boolean(order);
 }

@@ -4,6 +4,8 @@ import type { z } from 'zod';
 
 import {
   dailyMetricsInputSchema,
+  orderBoardFiltersSchema,
+  orderBoardLaneInputSchema,
   orderDetailsInputSchema,
   orderHistoryInputSchema,
   orderInternalNotesInputSchema,
@@ -48,6 +50,38 @@ export async function getOrderQueueAction(rawFilters: unknown) {
     const filters = parseInput(orderQueueFiltersSchema, rawFilters);
     const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
     return actionSuccess(await queryService.getOrderQueue(queryContext(context), filters));
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getOrderBoardSnapshotAction(rawFilters: unknown) {
+  try {
+    const filters = parseInput(orderBoardFiltersSchema, rawFilters);
+    const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
+    return actionSuccess(await queryService.getOrderBoardSnapshot(queryContext(context), filters));
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getOrderBoardTemporalSummaryAction(rawFilters: unknown) {
+  try {
+    const filters = parseInput(orderBoardFiltersSchema, rawFilters);
+    const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
+    return actionSuccess(
+      await queryService.getOrderBoardTemporalSummary(queryContext(context), filters),
+    );
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getOrderBoardLaneAction(rawInput: unknown) {
+  try {
+    const input = parseInput(orderBoardLaneInputSchema, rawInput);
+    const context = await requireActiveStoreContext(Permission.VIEW_ORDERS);
+    return actionSuccess(await queryService.getOrderBoardLane(queryContext(context), input));
   } catch (error) {
     return actionError(error);
   }

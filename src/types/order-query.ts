@@ -17,6 +17,25 @@ export interface OrderQueueFilters {
   pageSize: number;
 }
 
+export type OrderBoardLaneKey = 'NEW' | 'PREPARATION' | 'READY_AND_DELIVERY' | 'FINISHED';
+
+export interface OrderBoardFilters {
+  localDate: string;
+  statuses?: OrderStatus[];
+  paymentStatus?: PaymentStatus;
+  modality?: OrderModality;
+  query?: string;
+  onlyActive?: boolean;
+  delayedOnly?: boolean;
+}
+
+export interface OrderBoardItemPreviewDTO {
+  id: string;
+  productName: string;
+  quantity: number;
+  notes: string | null;
+}
+
 export interface OrderQueueItemDTO {
   id: string;
   orderNumber: number;
@@ -30,12 +49,40 @@ export interface OrderQueueItemDTO {
   createdAt: string;
   statusChangedAt: string;
   stageStartedAt: string;
+  stageElapsedMinutes?: number;
+  stageAlertThresholdMinutes?: number | null;
   stageLabel: string;
   stageAlerts: OrderOperationalAlertDTO[];
   nextActionLabel: string | null;
   version: number;
   hasCustomerNotes: boolean;
   hasOperationalAlert: boolean;
+}
+
+export interface OrderBoardItemDTO extends OrderQueueItemDTO {
+  itemPreview: OrderBoardItemPreviewDTO[];
+  promisedFulfillmentMinAt: string | null;
+  promisedFulfillmentMaxAt: string | null;
+}
+
+export interface OrderBoardLaneDTO {
+  key: OrderBoardLaneKey;
+  items: OrderBoardItemDTO[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface OrderBoardSummaryDTO {
+  newCount: number;
+  preparingCount: number;
+  readyCount: number;
+  deliveryCount: number;
+  delayedCount: number;
+}
+
+export interface OrderBoardSnapshotDTO {
+  summary: OrderBoardSummaryDTO;
+  lanes: Record<OrderBoardLaneKey, OrderBoardLaneDTO>;
 }
 
 export interface OrderOperationalAlertDTO {
@@ -145,6 +192,12 @@ export interface OrderDetailsDTO {
   delivery: {
     address: string | null;
     zoneName: string | null;
+    street: string | null;
+    number: string | null;
+    neighborhood: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
   };
   items: Array<{
     id: string;
@@ -153,7 +206,7 @@ export interface OrderDetailsDTO {
     quantity: number;
     notes: string | null;
     itemTotal: number;
-    options: Array<{ id: string; name: string; price: number }>;
+    options: Array<{ id: string; name: string; price: number; groupName: string | null }>;
   }>;
   totals: {
     subtotal: number;
@@ -176,6 +229,14 @@ export interface OrderDetailsDTO {
     refundAmount: number | null;
   };
   status: OrderStatus;
+  promisedFulfillmentMinAt: string | null;
+  promisedFulfillmentMaxAt: string | null;
+  acceptedAt: string | null;
+  preparingAt: string | null;
+  readyAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
   customerNotes: string | null;
   cancellation: {
     reasonCode: string | null;

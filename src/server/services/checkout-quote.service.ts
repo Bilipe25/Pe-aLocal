@@ -150,6 +150,10 @@ function quoteFingerprint(input: {
             id: option.id,
             name: option.name,
             price: option.price,
+            position: option.position,
+            groupId: option.groupId,
+            groupName: option.groupName,
+            groupPosition: option.groupPosition,
           })),
           unitPrice: line.unitPrice,
           itemTotal: line.itemTotal,
@@ -257,9 +261,11 @@ export async function calculateCheckoutQuote(
       category: { select: { isActive: true, archivedAt: true } },
       optionGroups: {
         where: { archivedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           title: true,
+          sortOrder: true,
           isRequired: true,
           isMultiple: true,
           minSelections: true,
@@ -268,10 +274,12 @@ export async function calculateCheckoutQuote(
           archivedAt: true,
           options: {
             where: { archivedAt: null },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
             select: {
               id: true,
               name: true,
               price: true,
+              sortOrder: true,
               isAvailable: true,
               archivedAt: true,
             },
@@ -332,10 +340,29 @@ export async function calculateCheckoutQuote(
         .flatMap((group) =>
           group.options
             .filter((option) => option.isAvailable && !option.archivedAt)
-            .map((option) => [option.id, option] as const),
+            .map(
+              (option) =>
+                [
+                  option.id,
+                  {
+                    ...option,
+                    groupId: group.id,
+                    groupName: group.title,
+                    groupPosition: group.sortOrder,
+                  },
+                ] as const,
+            ),
         ),
     );
-    const resolvedOptions = item.optionIds.map((optionId) => optionMap.get(optionId)!);
+    const resolvedOptions = item.optionIds
+      .map((optionId) => optionMap.get(optionId)!)
+      .sort(
+        (left, right) =>
+          left.groupPosition - right.groupPosition ||
+          left.groupId.localeCompare(right.groupId) ||
+          left.sortOrder - right.sortOrder ||
+          left.id.localeCompare(right.id),
+      );
     const optionsTotal = resolvedOptions.reduce((sum, option) => safeAdd(sum, option.price), 0);
     const unitPrice = safeAdd(product.basePrice, optionsTotal);
     const itemTotal = safeMultiply(unitPrice, item.quantity);
@@ -348,10 +375,14 @@ export async function calculateCheckoutQuote(
       imageAssetId: product.imageAssetId,
       quantity: item.quantity,
       notes: product.allowNotes ? item.notes : '',
-      options: resolvedOptions.map((option) => ({
+      options: resolvedOptions.map((option, position) => ({
         id: option.id,
         name: option.name,
         price: option.price,
+        position,
+        groupId: option.groupId,
+        groupName: option.groupName,
+        groupPosition: option.groupPosition,
       })),
       unitPrice,
       itemTotal,

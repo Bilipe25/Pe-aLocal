@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { orderQueueFiltersSchema } from '@/features/orders/query-schemas';
+import {
+  orderBoardFiltersSchema,
+  orderBoardLaneInputSchema,
+  orderNotificationSignalsInputSchema,
+  orderQueueFiltersSchema,
+} from '@/features/orders/query-schemas';
 
 describe('filtros serializáveis da fila', () => {
   it('aplica paginação padrão e remove busca vazia', () => {
@@ -42,5 +47,79 @@ describe('filtros serializáveis da fila', () => {
     });
     expect(parsed.statuses).toEqual(['PENDING', 'PREPARING']);
     expect(orderQueueFiltersSchema.safeParse({ pageSize: 101 }).success).toBe(false);
+  });
+});
+
+describe('filtros serializáveis do board', () => {
+  it('exige a data local e aplica defaults seguros', () => {
+    expect(orderBoardFiltersSchema.parse({ localDate: '2026-07-31' })).toEqual({
+      localDate: '2026-07-31',
+      onlyActive: false,
+      delayedOnly: false,
+    });
+    expect(orderBoardFiltersSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('mantém o input estrito, deduplica etapas e rejeita status legado', () => {
+    expect(
+      orderBoardFiltersSchema.parse({
+        localDate: '2026-07-31',
+        statuses: ['PENDING', 'PENDING', 'READY'],
+      }).statuses,
+    ).toEqual(['PENDING', 'READY']);
+    expect(
+      orderBoardFiltersSchema.safeParse({ localDate: '2026-07-31', unexpected: true }).success,
+    ).toBe(false);
+    expect(
+      orderBoardFiltersSchema.safeParse({
+        localDate: '2026-07-31',
+        statuses: ['AWAITING_PAYMENT'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('valida paginação independente por coluna', () => {
+    expect(
+      orderBoardLaneInputSchema.parse({
+        localDate: '2026-07-31',
+        lane: 'PREPARATION',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        lane: 'PREPARATION',
+        pageSize: 10,
+        onlyActive: false,
+        delayedOnly: false,
+      }),
+    );
+    expect(
+      orderBoardLaneInputSchema.safeParse({
+        localDate: '2026-07-31',
+        lane: 'UNKNOWN',
+      }).success,
+    ).toBe(false);
+    expect(
+      orderBoardLaneInputSchema.safeParse({
+        localDate: '2026-07-31',
+        lane: 'NEW',
+        pageSize: 11,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('sinais de atualização dos pedidos', () => {
+  it('limita a janela de eventos processados e rejeita campos extras', () => {
+    const ids = Array.from(
+      { length: 251 },
+      (_, index) => `00000000-0000-4000-8000-${index.toString().padStart(12, '0')}`,
+    );
+
+    expect(orderNotificationSignalsInputSchema.safeParse({ seenEventIds: ids }).success).toBe(
+      false,
+    );
+    expect(
+      orderNotificationSignalsInputSchema.safeParse({ seenEventIds: [], unexpected: true }).success,
+    ).toBe(false);
   });
 });
