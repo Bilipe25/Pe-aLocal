@@ -3,6 +3,8 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import {
+  getOrderBoardSnapshotAction,
+  getOrderBoardTemporalSummaryAction,
   getDailyOrderMetricsAction,
   getOrderDetailsAction,
   getOrderHistoryAction,
@@ -10,11 +12,40 @@ import {
   getOrderNotificationSignalsAction,
   getOrderQueueAction,
 } from '@/features/orders/query-actions';
+import { ORDER_NOTIFICATION_SEEN_EVENT_LIMIT } from '@/features/orders/query-constants';
 import type { OrderRealtimeState } from '@/hooks/use-order-realtime';
-import type { OrderNotificationSignalsDTO, OrderQueueFilters } from '@/types/order-query';
+import type {
+  OrderBoardFilters,
+  OrderBoardSnapshotDTO,
+  OrderNotificationSignalsDTO,
+  OrderQueueFilters,
+} from '@/types/order-query';
 import { useEffect, useEffectEvent } from 'react';
 
+const NOTIFICATION_CLIENT_EVENT_WINDOW = 200;
+
 export const orderQueryKeys = {
+  board: (
+    storeId: string | null,
+    authorizationScope: string,
+    filters: OrderBoardFilters,
+    searchToken = 'none',
+  ) =>
+    ['order-board', storeId, authorizationScope, safeBoardFilterKey(filters), searchToken] as const,
+  boardStore: (storeId: string | null) => ['order-board', storeId] as const,
+  boardTemporalSummary: (
+    storeId: string | null,
+    authorizationScope: string,
+    filters: OrderBoardFilters,
+    searchToken = 'none',
+  ) =>
+    [
+      'order-board-temporal-summary',
+      storeId,
+      authorizationScope,
+      safeBoardFilterKey(filters),
+      searchToken,
+    ] as const,
   queue: (
     storeId: string | null,
     authorizationScope: string,
@@ -34,6 +65,12 @@ export const orderQueryKeys = {
   notifications: (storeId: string | null, authorizationScope: string) =>
     ['order-notification-signals', storeId, authorizationScope] as const,
 };
+
+function safeBoardFilterKey(filters: OrderBoardFilters) {
+  const safeFilters = { ...filters };
+  delete safeFilters.query;
+  return safeFilters;
+}
 
 export function orderPollingInterval(state: OrderRealtimeState) {
   return state === 'connected' ? 60_000 : 20_000;
@@ -77,6 +114,65 @@ export function useOrderQueue(
   });
 }
 
+export function useOrderBoard(
+  storeId: string | null,
+  authorizationScope: string,
+  filters: OrderBoardFilters,
+  searchToken = 'none',
+  initial?: { filters: OrderBoardFilters; snapshot: OrderBoardSnapshotDTO },
+) {
+  const initialMatches =
+    initial &&
+    JSON.stringify(safeBoardFilterKey(initial.filters)) ===
+      JSON.stringify(safeBoardFilterKey(filters)) &&
+    !filters.query;
+
+  return useQuery({
+    queryKey: orderQueryKeys.board(storeId, authorizationScope, filters, searchToken),
+    queryFn: async ({ signal }) => {
+      if (signal.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+      const result = actionData(await getOrderBoardSnapshotAction(filters));
+      if (signal.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+      return result;
+    },
+    enabled: Boolean(storeId),
+    initialData: initialMatches ? initial.snapshot : undefined,
+    staleTime: 15_000,
+    retry: 2,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+}
+
+export function useOrderBoardTemporalSummary(
+  storeId: string | null,
+  authorizationScope: string,
+  filters: OrderBoardFilters,
+  searchToken: string,
+) {
+  return useQuery({
+    queryKey: orderQueryKeys.boardTemporalSummary(
+      storeId,
+      authorizationScope,
+      filters,
+      searchToken,
+    ),
+    queryFn: async ({ signal }) => {
+      if (signal.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+      const result = actionData(await getOrderBoardTemporalSummaryAction(filters));
+      if (signal.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+      return result;
+    },
+    enabled: Boolean(storeId),
+    staleTime: 55_000,
+    retry: 1,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useOrderNotificationSignals(
   storeId: string | null,
   authorizationScope: string,
@@ -107,7 +203,9 @@ export function useOrderNotificationSignals(
     let consecutiveFailures = 0;
     let timeout: number | undefined;
     const processedEventIds = new Map(
-      baseline.processedEventIds.map((eventId) => [eventId, Date.now()]),
+      baseline.processedEventIds
+        .slice(-NOTIFICATION_CLIENT_EVENT_WINDOW)
+        .map((eventId) => [eventId, Date.now()]),
     );
 
     const poll = async () => {
@@ -140,8 +238,8 @@ export function useOrderNotificationSignals(
           for (const [eventId, firstObservedAt] of processedEventIds) {
             if (firstObservedAt < observedAt - 6 * 60 * 1_000) processedEventIds.delete(eventId);
           }
-          if (processedEventIds.size >= 5_000) {
-            while (processedEventIds.size > 5_000) {
+          if (processedEventIds.size >= ORDER_NOTIFICATION_SEEN_EVENT_LIMIT) {
+            while (processedEventIds.size > NOTIFICATION_CLIENT_EVENT_WINDOW) {
               const oldest = processedEventIds.keys().next().value;
               if (!oldest) break;
               processedEventIds.delete(oldest);

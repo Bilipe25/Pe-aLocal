@@ -1,9 +1,8 @@
 'use client';
 
-import Link from 'next/link';
-import { ExternalLink, Store } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Store } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { selectStoreAction } from '@/features/stores/actions';
 import { cn } from '@/lib/utils';
 
@@ -18,77 +17,84 @@ export interface StoreSwitcherItem {
 }
 
 const STATUS_LABELS = {
-  OPEN: { label: 'Aberta', className: 'bg-success-light text-success' },
-  CLOSED: { label: 'Fechada', className: 'bg-error-light text-error' },
-  PAUSED: { label: 'Pausada', className: 'bg-warning-light text-warning' },
+  OPEN: { label: 'Aberta', dotClassName: 'bg-success' },
+  CLOSED: { label: 'Fechada', dotClassName: 'bg-error' },
+  PAUSED: { label: 'Pausada', dotClassName: 'bg-warning' },
 } as const;
 
-export function StoreSwitcher({
-  stores,
-  activeStore,
-}: {
+interface StoreSwitcherProps {
   stores: StoreSwitcherItem[];
   activeStore: StoreSwitcherItem | null;
-}) {
+  returnTo: string;
+  className?: string;
+}
+
+export function StoreSwitcher({ stores, activeStore, returnTo, className }: StoreSwitcherProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (stores.length === 0) return null;
 
   const status = activeStore ? STATUS_LABELS[activeStore.status] : null;
 
-  return (
-    <div className="bg-surface-secondary mb-5 rounded-xl p-3">
-      <div className="flex items-start gap-2">
-        <Store className="text-brand-600 mt-0.5" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="text-text-primary text-sm font-semibold">
-            {activeStore?.name ?? 'Selecione uma unidade'}
-          </p>
-          {status && (
-            <span
-              className={cn(
-                'mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold',
-                status.className,
-              )}
-            >
-              {status.label}
-            </span>
-          )}
-        </div>
+  if (stores.length === 1 && activeStore) {
+    return (
+      <div
+        className={cn(
+          'border-border bg-surface flex min-h-11 min-w-0 items-center gap-3 rounded-lg border px-3 shadow-sm',
+          className,
+        )}
+        aria-label={`Unidade ativa: ${activeStore.name}, ${status?.label ?? 'status indisponível'}`}
+      >
+        <Store className="text-brand-600 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="text-text-primary min-w-0 flex-1 truncate text-sm font-semibold">
+          {activeStore.name}
+        </span>
+        {status && (
+          <span
+            className={cn('h-2 w-2 shrink-0 rounded-full', status.dotClassName)}
+            aria-hidden="true"
+          />
+        )}
       </div>
+    );
+  }
 
-      {stores.length > 1 && (
-        <form action={selectStoreAction} className="mt-3 space-y-2">
-          <label htmlFor="dashboard-store" className="text-text-secondary text-xs font-medium">
-            Unidade ativa
-          </label>
-          <select
-            id="dashboard-store"
-            name="storeId"
-            defaultValue={activeStore?.id ?? ''}
-            required
-            className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 min-h-11 w-full rounded-lg border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-          >
-            <option value="" disabled>
-              Escolha uma loja
-            </option>
-            {stores.map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name}
-              </option>
-            ))}
-          </select>
-          <Button type="submit" variant="outline" size="sm" className="w-full">
-            Trocar unidade
-          </Button>
-        </form>
-      )}
-
-      {activeStore && (
-        <Button asChild variant="ghost" size="sm" className="mt-2 w-full justify-start">
-          <Link href={`/${activeStore.slug}`} target="_blank" rel="noreferrer">
-            <ExternalLink aria-hidden="true" /> Ver cardápio
-          </Link>
-        </Button>
-      )}
-    </div>
+  return (
+    <form
+      action={selectStoreAction}
+      className={cn('relative min-w-0', className)}
+      aria-busy={isSubmitting}
+    >
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <Store
+        className="text-brand-600 pointer-events-none absolute top-1/2 left-3 z-10 h-4 w-4 -translate-y-1/2"
+        aria-hidden="true"
+      />
+      <select
+        aria-label="Unidade ativa"
+        name="storeId"
+        defaultValue={activeStore?.id ?? ''}
+        required
+        disabled={isSubmitting}
+        onChange={(event) => {
+          setIsSubmitting(true);
+          event.currentTarget.form?.requestSubmit();
+        }}
+        className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 min-h-11 w-full appearance-none truncate rounded-lg border py-2 pr-9 pl-10 text-sm font-semibold shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-wait disabled:opacity-70"
+      >
+        <option value="" disabled>
+          Selecione uma unidade
+        </option>
+        {stores.map((store) => (
+          <option key={store.id} value={store.id}>
+            {store.name} · {STATUS_LABELS[store.status].label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        className="text-text-muted pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2"
+        aria-hidden="true"
+      />
+    </form>
   );
 }

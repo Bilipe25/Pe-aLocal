@@ -26,11 +26,13 @@ export function InternalOrderNotes({
   storeId,
   authorizationScope,
   timeZone,
+  onOrderChanged,
 }: {
   order: OrderDetailsDTO;
   storeId: string;
   authorizationScope: string;
   timeZone: string;
+  onOrderChanged?: (orderId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState('');
@@ -51,9 +53,13 @@ export function InternalOrderNotes({
       if (!result.success) {
         toast.error(result.error.message);
         if (result.error.code === 'CONFLICT') {
-          await queryClient.invalidateQueries({
-            queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
-          });
+          await Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
+            }),
+            queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
+          ]);
+          onOrderChanged?.(order.id);
         }
         return;
       }
@@ -65,12 +71,18 @@ export function InternalOrderNotes({
         queryClient.invalidateQueries({
           queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
         }),
+        queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
         queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
       ]);
+      onOrderChanged?.(order.id);
       toast.success('Observação interna adicionada.');
       if (result.data.notificationPending) {
         toast.warning('A observação foi salva; a atualização em tempo real está pendente.');
       }
+    } catch {
+      toast.error(
+        'Não foi possível adicionar a observação. Verifique sua conexão e tente novamente.',
+      );
     } finally {
       setSaving(false);
     }

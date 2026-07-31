@@ -31,12 +31,13 @@ import type {
 import { CancelOrderDialog } from './cancel-order-dialog';
 import { orderQueryKeys } from '@/hooks/use-orders';
 import { PaymentDecisionDialog } from './payment-decision-dialog';
+import { ORDER_ACTION_PRESENTATION } from './order-action-presentation';
 
 interface StatusActionsProps {
   order: OrderDetailsDTO;
   storeId: string;
   authorizationScope: string;
-  onOrderChanged?: () => void;
+  onOrderChanged?: (orderId: string) => void;
 }
 
 type OrderMutation = (input: {
@@ -55,6 +56,7 @@ export function StatusActions({
 
   function refreshOrderData() {
     return Promise.all([
+      queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
       queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
       queryClient.invalidateQueries({
         queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
@@ -93,8 +95,11 @@ export function StatusActions({
             }
           : undefined,
       );
-      onOrderChanged?.();
+      onOrderChanged?.(order.id);
       return true;
+    } catch {
+      toast.error('Não foi possível atualizar o pedido. Verifique sua conexão e tente novamente.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -111,6 +116,11 @@ export function StatusActions({
       }
       await refreshOrderData();
       toast.success('Alteração desfeita.');
+      onOrderChanged?.(order.id);
+    } catch {
+      toast.error(
+        'Não foi possível desfazer a alteração. Verifique sua conexão e tente novamente.',
+      );
     } finally {
       setLoading(false);
     }
@@ -144,7 +154,13 @@ export function StatusActions({
         toast.warning('Pagamento salvo. A atualização em tempo real está pendente.');
       }
       await refreshOrderData();
+      onOrderChanged?.(order.id);
       return true;
+    } catch {
+      toast.error(
+        'Não foi possível atualizar o pagamento. Verifique sua conexão e tente novamente.',
+      );
+      return false;
     } finally {
       setLoading(false);
     }
@@ -195,15 +211,18 @@ export function StatusActions({
       if (result.data.notificationPending) {
         toast.warning('Cancelamento salvo. A atualização em tempo real está pendente.');
       }
-      onOrderChanged?.();
+      onOrderChanged?.(order.id);
       return true;
+    } catch {
+      toast.error('Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.');
+      return false;
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex max-h-[36dvh] flex-col gap-3 overflow-y-auto sm:max-h-none sm:overflow-visible">
+    <div className="flex flex-col gap-3">
       {/* Payment Action */}
       <div className="order-2 flex flex-wrap items-center gap-2 [&_button]:w-full sm:[&_button]:w-auto">
         {order.allowedActions.confirmPayment && (
@@ -215,11 +234,11 @@ export function StatusActions({
             trigger={
               <Button
                 type="button"
-                variant="outline"
                 disabled={loading}
-                className="border-success/40 text-success hover:bg-success-light"
+                className={ORDER_ACTION_PRESENTATION.CONFIRM_PAYMENT.className}
               >
-                <CheckCircle2 aria-hidden="true" /> Confirmar pagamento
+                <CheckCircle2 aria-hidden="true" />
+                {ORDER_ACTION_PRESENTATION.CONFIRM_PAYMENT.label}
               </Button>
             }
           />
@@ -277,10 +296,10 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(acceptOrderAction, 'Pedido aceito.')}
             disabled={loading}
-            className="bg-info hover:bg-info/90 text-white"
+            className={ORDER_ACTION_PRESENTATION.CONFIRM_ORDER.className}
           >
             <Check className="mr-2 h-4 w-4" />
-            Aceitar Pedido
+            {ORDER_ACTION_PRESENTATION.CONFIRM_ORDER.label}
           </Button>
         )}
 
@@ -288,10 +307,10 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(startOrderPreparationAction, 'Preparo iniciado.')}
             disabled={loading}
-            className="bg-brand-700 hover:bg-brand-800 text-white"
+            className={ORDER_ACTION_PRESENTATION.START_PREPARATION.className}
           >
             <UtensilsCrossed className="mr-2 h-4 w-4" />
-            Iniciar Preparo
+            {ORDER_ACTION_PRESENTATION.START_PREPARATION.label}
           </Button>
         )}
 
@@ -299,10 +318,10 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(markOrderReadyAction, 'Pedido marcado como pronto.')}
             disabled={loading}
-            className="bg-brand-600 hover:bg-brand-700 text-white"
+            className={ORDER_ACTION_PRESENTATION.MARK_ORDER_READY.className}
           >
             <Package className="mr-2 h-4 w-4" />
-            Marcar como pronto
+            {ORDER_ACTION_PRESENTATION.MARK_ORDER_READY.label}
           </Button>
         )}
 
@@ -310,10 +329,10 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(dispatchOrderAction, 'Pedido despachado.')}
             disabled={loading}
-            className="bg-info hover:bg-info/90 text-white"
+            className={ORDER_ACTION_PRESENTATION.DISPATCH_FOR_DELIVERY.className}
           >
             <Truck className="mr-2 h-4 w-4" />
-            Despachar para entrega
+            {ORDER_ACTION_PRESENTATION.DISPATCH_FOR_DELIVERY.label}
           </Button>
         )}
 
@@ -331,10 +350,16 @@ export function StatusActions({
               <Button
                 type="button"
                 disabled={loading || pixNeedsPayment}
-                className="bg-success hover:bg-success/90 text-white"
+                className={
+                  order.modality === 'PICKUP'
+                    ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.className
+                    : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.className
+                }
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                Concluir pedido
+                {order.modality === 'PICKUP'
+                  ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.label
+                  : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.label}
               </Button>
             }
           />

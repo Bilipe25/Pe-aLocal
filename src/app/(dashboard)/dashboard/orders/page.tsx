@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { OrdersPanel } from '@/components/dashboard/orders-panel';
 import { getStoreLocalDate } from '@/lib/time/store-time';
 import { Permission } from '@/server/permissions';
-import { getOrderNotificationSignals } from '@/server/services/order-query.service';
+import { getOrderBoardBootstrap } from '@/server/services/order-query.service';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
 
 export const metadata = {
@@ -13,13 +13,17 @@ export const metadata = {
 export default async function OrdersPage() {
   const context = await getActiveStoreContext(Permission.VIEW_ORDERS);
   if (!context) redirect('/dashboard/stores');
-  const notificationBaseline = await getOrderNotificationSignals({
+  const initialLocalDate = getStoreLocalDate(new Date(), context.store.timeZone);
+  const queryContext = {
     tenantId: context.session.tenantId,
     storeId: context.store.id,
     timeZone: context.store.timeZone,
     userId: context.session.userId,
     tenantRole: context.session.tenantRole,
     estimatedTimeMaxMinutes: context.store.settings?.estimatedTimeMaxMinutes ?? 50,
+  };
+  const { notificationBaseline, initialBoard } = await getOrderBoardBootstrap(queryContext, {
+    localDate: initialLocalDate,
   });
 
   return (
@@ -28,9 +32,10 @@ export default async function OrdersPage() {
       storeName={context.store.name}
       storeSlug={context.store.slug}
       timeZone={context.store.timeZone}
-      initialLocalDate={getStoreLocalDate(new Date(), context.store.timeZone)}
+      initialLocalDate={initialLocalDate}
       authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
       notificationBaseline={notificationBaseline}
+      initialBoard={initialBoard}
     />
   );
 }

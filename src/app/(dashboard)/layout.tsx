@@ -4,6 +4,7 @@ import { requireAuthenticatedUser } from '@/server/auth';
 import { hasTenantPermission, Permission, PlatformRole } from '@/server/permissions';
 import { QueryProvider } from '@/providers/query-provider';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { DashboardOperationsProvider } from '@/components/dashboard/dashboard-operations-context';
 import {
   getActiveStoreContext,
   listAccessibleStores,
@@ -45,13 +46,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
     : null;
 
   return (
-    <DashboardShell
-      userName={session.name}
-      stores={storesPage.items}
-      activeStore={activeStore}
-      canViewCoupons={hasTenantPermission(session.tenantRole, Permission.VIEW_COUPONS)}
-    >
-      <QueryProvider>{children}</QueryProvider>
-    </DashboardShell>
+    <DashboardOperationsProvider>
+      <DashboardShell
+        userName={session.name}
+        tenantRole={session.tenantRole}
+        stores={storesPage.items}
+        activeStore={activeStore}
+        activeStoreTimeZone={activeContext?.store.timeZone ?? null}
+        initialNowIso={new Date().toISOString()}
+        canViewCoupons={hasTenantPermission(session.tenantRole, Permission.VIEW_COUPONS)}
+      >
+        <QueryProvider>{children}</QueryProvider>
+      </DashboardShell>
+    </DashboardOperationsProvider>
   );
 }

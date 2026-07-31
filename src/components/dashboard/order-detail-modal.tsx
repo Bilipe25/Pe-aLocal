@@ -8,7 +8,9 @@ import {
   ExternalLink,
   History,
   MapPin,
+  MessageCircle,
   Phone,
+  Printer,
   Receipt,
   Timer,
   User,
@@ -16,10 +18,10 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { useMediaQuery } from '@/hooks/use-media-query';
 import { useOrderDetails, useOrderHistory } from '@/hooks/use-orders';
 import { normalizePhone } from '@/lib/brazil';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
+import type { OrderStatus } from '@prisma/client';
 import type { OrderDetailsDTO, OrderHistoryItemDTO } from '@/types/order-query';
 import { paymentStatusMap, statusMap } from './order-card';
 import { StatusActions } from './status-actions';
@@ -32,7 +34,10 @@ interface OrderDetailModalProps {
   timeZone: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOrderChanged?: (orderId: string) => void;
 }
+
+type OperationalOrderDetails = OrderDetailsDTO;
 
 function formatDate(value: string, timeZone: string, compact = false) {
   const options: Intl.DateTimeFormatOptions = compact
@@ -94,6 +99,118 @@ function durationLabel(minutes: number | null) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
+function formatItemOptions(options: OrderDetailsDTO['items'][number]['options']) {
+  const groups: Array<{ name: string | null; options: string[] }> = [];
+  for (const option of options) {
+    const previous = groups.at(-1);
+    if (option.groupName && previous?.name === option.groupName) {
+      previous.options.push(option.name);
+    } else {
+      groups.push({ name: option.groupName, options: [option.name] });
+    }
+  }
+  return groups
+    .map((group) =>
+      group.name ? `${group.name}: ${group.options.join(', ')}` : group.options.join(', '),
+    )
+    .join(' · ');
+}
+
+function promisedWindowLabel(order: OperationalOrderDetails, timeZone: string) {
+  if (!order.promisedFulfillmentMinAt || !order.promisedFulfillmentMaxAt) return null;
+  const minAt = new Date(order.promisedFulfillmentMinAt);
+  const maxAt = new Date(order.promisedFulfillmentMaxAt);
+  if (Number.isNaN(minAt.getTime()) || Number.isNaN(maxAt.getTime())) return null;
+  const formatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${formatter.format(minAt)}–${formatter.format(maxAt)}`;
+}
+
+export function formatDeliveryAddressForOperations(delivery: OperationalOrderDetails['delivery']) {
+  const legacyAddress = delivery.address?.trim();
+  if (legacyAddress) return legacyAddress;
+
+  const streetLine = [delivery.street?.trim(), delivery.number?.trim()].filter(Boolean).join(', ');
+  const region = delivery.neighborhood?.trim() || delivery.zoneName?.trim();
+  const cityState = [delivery.city?.trim(), delivery.state?.trim()].filter(Boolean).join(' - ');
+  const postalCode = delivery.postalCode?.trim();
+  const segments = [streetLine, region, cityState, postalCode].filter(Boolean);
+  return segments.length ? segments.join(' · ') : null;
+}
+
+function getStatusTimeline(order: OperationalOrderDetails) {
+  const candidates: Array<{ status: OrderStatus; occurredAt: string | null }> = [
+    { status: 'PENDING', occurredAt: order.createdAt },
+    { status: 'CONFIRMED', occurredAt: order.acceptedAt },
+    { status: 'PREPARING', occurredAt: order.preparingAt },
+    { status: 'READY', occurredAt: order.readyAt },
+    { status: 'OUT_FOR_DELIVERY', occurredAt: order.dispatchedAt },
+    { status: 'DELIVERED', occurredAt: order.deliveredAt },
+    { status: 'CANCELLED', occurredAt: order.cancelledAt },
+  ];
+  const timeline = candidates.filter(
+    (entry): entry is { status: OrderStatus; occurredAt: string } => Boolean(entry.occurredAt),
+  );
+  if (!timeline.some((item) => item.status === order.status)) {
+    timeline.push({ status: order.status, occurredAt: order.statusChangedAt });
+  }
+  return timeline.sort(
+    (left, right) => new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime(),
+  );
+}
+
+function OrderStatusTimeline({
+  order,
+  timeZone,
+}: {
+  order: OperationalOrderDetails;
+  timeZone: string;
+}) {
+  const entries = getStatusTimeline(order);
+  return (
+    <ol className="mt-4 grid gap-0" aria-label="Linha do tempo do pedido">
+      {entries.map((entry, index) => {
+        const current = entry.status === order.status;
+        return (
+          <li
+            key={`${entry.status}-${entry.occurredAt}`}
+            className="relative grid grid-cols-[1rem_1fr] gap-3 pb-3 last:pb-0"
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                'relative z-10 mt-1 h-3 w-3 rounded-full border-2',
+                current ? 'border-brand-600 bg-brand-600' : 'border-success bg-surface',
+              )}
+            />
+            {index < entries.length - 1 ? (
+              <span
+                aria-hidden="true"
+                className="bg-border absolute top-4 bottom-0 left-[0.34375rem] w-px"
+              />
+            ) : null}
+            <span className="flex min-w-0 items-start justify-between gap-3 text-sm">
+              <span
+                className={
+                  current ? 'text-brand-700 font-semibold' : 'text-text-primary font-medium'
+                }
+              >
+                {statusMap[entry.status].label}
+              </span>
+              <time className="text-text-secondary shrink-0" dateTime={entry.occurredAt}>
+                {formatDate(entry.occurredAt, timeZone, true)}
+              </time>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 const paymentHistoryLabels: Record<string, string> = {
   INITIAL_PENDING: 'Pagamento criado',
   PENDING_CUSTOMER_REPORTED_PAID: 'Pagamento informado pelo cliente',
@@ -107,7 +224,7 @@ const paymentHistoryLabels: Record<string, string> = {
   PAID_REFUNDED: 'Pagamento reembolsado',
 };
 
-function DetailsSkeleton({ dialog, onClose }: { dialog: boolean; onClose: () => void }) {
+function DetailsSkeleton({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="flex min-h-96 flex-col"
@@ -116,12 +233,10 @@ function DetailsSkeleton({ dialog, onClose }: { dialog: boolean; onClose: () => 
     >
       <div className="border-border flex items-start justify-between gap-4 border-b p-4">
         <div>
-          {dialog ? <Dialog.Title className="sr-only">Carregando pedido</Dialog.Title> : null}
-          {dialog ? (
-            <Dialog.Description className="sr-only">
-              Aguarde os detalhes do pedido.
-            </Dialog.Description>
-          ) : null}
+          <Dialog.Title className="sr-only">Carregando pedido</Dialog.Title>
+          <Dialog.Description className="sr-only">
+            Aguarde os detalhes do pedido.
+          </Dialog.Description>
           <div className="bg-surface-tertiary h-6 w-40 animate-pulse rounded" />
           <div className="bg-surface-tertiary mt-2 h-4 w-56 animate-pulse rounded" />
         </div>
@@ -129,7 +244,7 @@ function DetailsSkeleton({ dialog, onClose }: { dialog: boolean; onClose: () => 
           <X aria-hidden="true" />
         </Button>
       </div>
-      <div className="grid flex-1 gap-4 p-4 md:grid-cols-2">
+      <div className="grid flex-1 gap-4 p-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={index} className="bg-surface-tertiary h-28 animate-pulse rounded-xl" />
         ))}
@@ -144,20 +259,26 @@ function OrderDetails({
   authorizationScope,
   timeZone,
   onClose,
-  dialog,
+  onOrderChanged,
 }: {
-  order: OrderDetailsDTO;
+  order: OperationalOrderDetails;
   storeId: string;
   authorizationScope: string;
   timeZone: string;
   onClose: () => void;
-  dialog: boolean;
+  onOrderChanged?: (orderId: string) => void;
 }) {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const historyQuery = useOrderHistory(storeId, authorizationScope, order.id, historyExpanded);
   const fullHistory = historyQuery.data?.pages.flatMap((page) => page.items) ?? null;
   const displayedHistory = fullHistory ?? order.recentHistory.slice(0, 4);
   const paymentInfo = paymentStatusMap[order.payment.status];
+  const promisedWindow = promisedWindowLabel(order, timeZone);
+  const normalizedPhone = order.customer.phone ? normalizePhone(order.customer.phone) : null;
+  const deliveryAddress = formatDeliveryAddressForOperations(order.delivery);
+  const mapUrl = deliveryAddress
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliveryAddress)}`
+    : null;
 
   async function loadHistory() {
     if (!historyExpanded) {
@@ -171,40 +292,47 @@ function OrderDetails({
 
   return (
     <>
-      <div className="border-border flex items-start justify-between gap-4 border-b p-4">
+      <style>{`@media print {
+        body * { visibility: hidden !important; }
+        [data-order-print-root], [data-order-print-root] * { visibility: visible !important; }
+        [data-order-print-root] { position: absolute !important; inset: 0 !important; width: 100% !important; max-height: none !important; overflow: visible !important; border: 0 !important; box-shadow: none !important; }
+        [data-order-print-scroll] { overflow: visible !important; }
+        [data-order-print-hide] { display: none !important; }
+      }`}</style>
+      <header className="border-border bg-surface sticky top-0 z-10 flex shrink-0 items-start justify-between gap-4 border-b p-4 print:static">
         <div>
-          {dialog ? (
-            <Dialog.Title className="text-text-primary text-xl font-bold">
-              Pedido #{order.orderNumber}
-            </Dialog.Title>
-          ) : (
-            <h2 className="text-text-primary text-xl font-bold">Pedido #{order.orderNumber}</h2>
-          )}
-          {dialog ? (
-            <Dialog.Description className="text-text-secondary mt-1 text-sm">
-              Recebido em {formatDate(order.createdAt, timeZone)}
-            </Dialog.Description>
-          ) : (
-            <p className="text-text-secondary mt-1 text-sm">
-              Recebido em {formatDate(order.createdAt, timeZone)}
-            </p>
-          )}
+          <Dialog.Title className="text-text-primary text-xl font-bold">
+            Pedido #{order.orderNumber}
+          </Dialog.Title>
+          <Dialog.Description className="text-text-secondary mt-1 text-sm">
+            Recebido em {formatDate(order.createdAt, timeZone)}
+          </Dialog.Description>
           <p className="text-text-secondary mt-1 text-xs">
             Versão {order.version}
             {order.lastChangedBy ? ` · última alteração por ${order.lastChangedBy}` : ''}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Fechar pedido ${order.orderNumber}`}
-          onClick={onClose}
-        >
-          <X aria-hidden="true" />
-        </Button>
-      </div>
+        <div className="flex shrink-0 items-center gap-1" data-order-print-hide>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Imprimir pedido ${order.orderNumber}`}
+            onClick={() => window.print()}
+          >
+            <Printer aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Fechar pedido ${order.orderNumber}`}
+            onClick={onClose}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+      </header>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 print:overflow-visible" data-order-print-scroll>
         <section
           className="border-border mb-6 border-b pb-5"
           aria-label="Tempo operacional do pedido"
@@ -214,7 +342,7 @@ function OrderDetails({
               <p className="text-text-primary flex items-center gap-2 text-sm font-semibold">
                 <Clock3 aria-hidden="true" /> {order.operational.stageLabel}
               </p>
-              <p className="text-text-secondary mt-1 text-xs">
+              <p className="text-text-secondary mt-1 text-sm">
                 Nesta etapa há {durationLabel(order.operational.elapsedMinutes)}
               </p>
             </div>
@@ -223,15 +351,16 @@ function OrderDetails({
                 key={alert.code}
                 className={
                   alert.severity === 'critical'
-                    ? 'bg-error-light text-error inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold'
-                    : 'bg-warning-light text-warning inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold'
+                    ? 'bg-error-light text-error inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold'
+                    : 'bg-warning-light text-warning inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold'
                 }
               >
                 <AlertTriangle aria-hidden="true" /> {alert.label}
               </span>
             ))}
           </div>
-          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-5">
+          <OrderStatusTimeline order={order} timeZone={timeZone} />
+          <dl className="border-border mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 text-sm">
             {[
               ['Aceite', order.operational.durations.acceptanceMinutes],
               ['Preparo', order.operational.durations.preparationMinutes],
@@ -247,8 +376,17 @@ function OrderDetails({
               </div>
             ))}
           </dl>
+          {promisedWindow ? (
+            <div className="bg-info-light mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5">
+              <Clock3 className="text-info mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="text-text-primary text-sm font-semibold">Previsão de conclusão</p>
+                <p className="text-text-secondary mt-0.5 text-sm">{promisedWindow}</p>
+              </div>
+            </div>
+          ) : null}
         </section>
-        <div className={dialog ? 'grid gap-6 md:grid-cols-2' : 'space-y-6'}>
+        <div className="space-y-6">
           <div className="space-y-6">
             <section aria-labelledby={`customer-heading-${order.id}`}>
               <h3
@@ -262,21 +400,39 @@ function OrderDetails({
                   <User className="text-text-muted" aria-hidden="true" />
                   <span className="text-text-primary font-medium">{order.customer.name}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="text-text-muted" aria-hidden="true" />
-                  {order.customer.phone ? (
-                    <a
-                      href={`https://wa.me/${normalizePhone(order.customer.phone)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-brand-700 flex min-h-11 items-center gap-1 underline-offset-4 hover:underline"
-                    >
-                      {order.customer.phone} <ExternalLink aria-hidden="true" />
-                    </a>
-                  ) : (
-                    <span className="text-text-secondary">Contato protegido</span>
-                  )}
-                </div>
+                {order.customer.phone && normalizedPhone ? (
+                  <div>
+                    <p className="text-text-secondary flex min-h-6 items-center gap-2">
+                      <Phone className="text-text-muted" aria-hidden="true" />
+                      {order.customer.phone}
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2" data-order-print-hide>
+                      <Button asChild variant="outline" size="sm">
+                        <a
+                          href={`tel:+${normalizedPhone}`}
+                          aria-label={`Ligar para ${order.customer.name}`}
+                        >
+                          <Phone aria-hidden="true" /> Ligar
+                        </a>
+                      </Button>
+                      <Button asChild variant="outline" size="sm">
+                        <a
+                          href={`https://wa.me/${normalizedPhone}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Conversar com ${order.customer.name} no WhatsApp`}
+                        >
+                          <MessageCircle aria-hidden="true" /> WhatsApp
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-text-secondary flex min-h-11 items-center gap-2">
+                    <Phone className="text-text-muted" aria-hidden="true" />
+                    <span>Contato protegido</span>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -294,9 +450,30 @@ function OrderDetails({
                     <span>{order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}</span>
                   </div>
                   {order.modality === 'DELIVERY' && (
-                    <p className="text-text-primary pl-6 font-medium break-words">
-                      {order.delivery.address ?? 'Endereço protegido'}
-                    </p>
+                    <div className="pl-6">
+                      <p className="text-text-primary font-medium break-words">
+                        {deliveryAddress ?? 'Endereço protegido'}
+                      </p>
+                      {mapUrl ? (
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 w-full"
+                          data-order-print-hide
+                        >
+                          <a
+                            href={mapUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Abrir endereço do pedido ${order.orderNumber} no mapa`}
+                          >
+                            <MapPin aria-hidden="true" /> Abrir no mapa
+                            <ExternalLink aria-hidden="true" />
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
                   )}
                 </div>
                 <div className="border-border border-t pt-3">
@@ -312,7 +489,7 @@ function OrderDetails({
                       </span>
                     </div>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${paymentInfo.color}`}
+                      className={`rounded-full px-2 py-0.5 text-sm font-medium ${paymentInfo.color}`}
                     >
                       {paymentInfo.label}
                     </span>
@@ -397,12 +574,12 @@ function OrderDetails({
                         </span>
                       </div>
                       {item.options.length > 0 && (
-                        <p className="text-text-secondary mt-1 pl-4 text-xs break-words">
-                          {item.options.map((option) => option.name).join(', ')}
+                        <p className="text-text-secondary mt-1 pl-4 text-sm break-words">
+                          {formatItemOptions(item.options)}
                         </p>
                       )}
                       {item.notes && (
-                        <p className="text-text-secondary mt-1 pl-4 text-xs break-words whitespace-pre-wrap italic">
+                        <p className="text-text-secondary mt-1 pl-4 text-sm break-words whitespace-pre-wrap italic">
                           “{item.notes}”
                         </p>
                       )}
@@ -441,6 +618,7 @@ function OrderDetails({
               storeId={storeId}
               authorizationScope={authorizationScope}
               timeZone={timeZone}
+              onOrderChanged={onOrderChanged}
             />
 
             {displayedHistory.length > 0 && (
@@ -482,14 +660,20 @@ function OrderDetails({
         </div>
       </div>
 
-      <div className="border-border bg-surface shrink-0 border-t p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-4">
+      <footer
+        className="border-border bg-surface sticky bottom-0 z-10 shrink-0 border-t p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-4 print:hidden"
+        data-order-print-hide
+      >
         <StatusActions
           order={order}
           storeId={storeId}
           authorizationScope={authorizationScope}
-          onOrderChanged={onClose}
+          onOrderChanged={(changedOrderId) => {
+            onOrderChanged?.(changedOrderId);
+            onClose();
+          }}
         />
-      </div>
+      </footer>
     </>
   );
 }
@@ -501,25 +685,22 @@ export function OrderDetailModal({
   timeZone,
   open,
   onOpenChange,
+  onOrderChanged,
 }: OrderDetailModalProps) {
-  const isDesktop = useMediaQuery('(min-width: 1280px)');
   const detailsQuery = useOrderDetails(storeId, authorizationScope, orderId);
+
   if (!orderId) return null;
 
   const content = detailsQuery.isLoading ? (
-    <DetailsSkeleton dialog={!isDesktop} onClose={() => onOpenChange(false)} />
+    <DetailsSkeleton onClose={() => onOpenChange(false)} />
   ) : detailsQuery.error || !detailsQuery.data ? (
     <div className="p-5">
-      {!isDesktop && (
-        <Dialog.Title className="text-text-primary text-lg font-semibold">
-          Detalhes do pedido
-        </Dialog.Title>
-      )}
-      {!isDesktop && (
-        <Dialog.Description className="text-text-secondary mt-1 text-sm">
-          Não foi possível carregar este pedido.
-        </Dialog.Description>
-      )}
+      <Dialog.Title className="text-text-primary text-lg font-semibold">
+        Detalhes do pedido
+      </Dialog.Title>
+      <Dialog.Description className="text-text-secondary mt-1 text-sm">
+        Não foi possível carregar este pedido.
+      </Dialog.Description>
       <p className="text-error text-sm">Não foi possível carregar os detalhes atualizados.</p>
       <div className="mt-4 flex gap-2">
         <Button variant="outline" onClick={() => detailsQuery.refetch()}>
@@ -536,27 +717,20 @@ export function OrderDetailModal({
       storeId={storeId}
       authorizationScope={authorizationScope}
       timeZone={timeZone}
-      dialog={!isDesktop}
       onClose={() => onOpenChange(false)}
+      onOrderChanged={onOrderChanged}
     />
   );
-
-  if (isDesktop) {
-    return (
-      <aside
-        className="border-border bg-surface sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-xl border"
-        aria-label="Detalhes do pedido"
-      >
-        {content}
-      </aside>
-    );
-  }
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="bg-tinta/50 fixed inset-0 z-40" />
-        <Dialog.Content className="bg-surface fixed inset-x-0 bottom-0 z-50 flex max-h-[calc(100dvh-0.75rem)] w-full flex-col overflow-hidden rounded-t-xl shadow-lg focus:outline-none sm:inset-x-4 sm:bottom-4 sm:mx-auto sm:max-w-2xl sm:rounded-xl">
+        <Dialog.Overlay className="order-details-overlay fixed inset-0 z-40" />
+        <Dialog.Content
+          id="order-details-panel"
+          className="order-details-drawer bg-surface fixed z-50 flex flex-col overflow-hidden focus:outline-none print:static print:max-h-none print:overflow-visible print:shadow-none"
+          data-order-print-root
+        >
           {content}
         </Dialog.Content>
       </Dialog.Portal>
