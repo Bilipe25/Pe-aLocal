@@ -40,6 +40,8 @@ export default async function StorefrontDisplayPage({
     showMinOrderValueInHero: store.settings?.showMinOrderValueInHero ?? true,
     showOpeningHoursInHero: store.settings?.showOpeningHoursInHero ?? false,
     showFullAddressInStoreInfo: store.settings?.showFullAddressInStoreInfo ?? false,
+    showRecentPurchasesSection: store.settings?.showRecentPurchasesSection ?? true,
+    showFeaturedProductsSection: store.settings?.showFeaturedProductsSection ?? true,
   };
   const fulfillment = [
     store.settings?.deliveryEnabled ? 'Entrega' : null,

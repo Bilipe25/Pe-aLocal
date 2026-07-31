@@ -113,7 +113,7 @@ describe('schemas de configuracao da loja', () => {
     ).toBe(false);
   });
 
-  it('aceita somente os cinco booleanos de exibição pública', () => {
+  it('aceita somente os sete booleanos de exibição pública', () => {
     expect(
       updateStorefrontDisplaySchema.parse({
         showEstimatedTimeInHero: 'true',
@@ -121,6 +121,8 @@ describe('schemas de configuracao da loja', () => {
         showMinOrderValueInHero: 'true',
         showOpeningHoursInHero: 'false',
         showFullAddressInStoreInfo: 'false',
+        showRecentPurchasesSection: 'true',
+        showFeaturedProductsSection: 'false',
       }),
     ).toEqual({
       showEstimatedTimeInHero: true,
@@ -128,6 +130,8 @@ describe('schemas de configuracao da loja', () => {
       showMinOrderValueInHero: true,
       showOpeningHoursInHero: false,
       showFullAddressInStoreInfo: false,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: false,
     });
 
     expect(
@@ -137,7 +141,21 @@ describe('schemas de configuracao da loja', () => {
         showMinOrderValueInHero: true,
         showOpeningHoursInHero: false,
         showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: true,
+        showFeaturedProductsSection: true,
         tenantId: 'tenant-injetado',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      updateStorefrontDisplaySchema.safeParse({
+        showEstimatedTimeInHero: true,
+        showFulfillmentInHero: false,
+        showMinOrderValueInHero: true,
+        showOpeningHoursInHero: false,
+        showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: 'talvez',
+        showFeaturedProductsSection: true,
       }).success,
     ).toBe(false);
   });

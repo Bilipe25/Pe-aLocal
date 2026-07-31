@@ -8,7 +8,14 @@ export type CheckoutTelemetryEvent =
 export type CheckoutTelemetryStep = 'identification' | 'fulfillment' | 'payment' | 'review';
 
 export type StorefrontRecommendationTelemetryEvent =
-  'recommendation_viewed' | 'recommendation_clicked' | 'recommendation_added';
+  | 'recommendation_viewed'
+  | 'recommendation_clicked'
+  | 'recommendation_added'
+  | 'recent_purchases_section_viewed'
+  | 'recent_purchase_product_clicked'
+  | 'recent_purchase_product_added'
+  | 'featured_section_viewed'
+  | 'featured_product_clicked';
 
 interface CheckoutTelemetryPayload {
   event: CheckoutTelemetryEvent;
@@ -17,10 +24,19 @@ interface CheckoutTelemetryPayload {
 }
 
 type StorefrontRecommendationTelemetryPayload =
-  | { event: 'recommendation_viewed' }
   | {
-      event: Exclude<StorefrontRecommendationTelemetryEvent, 'recommendation_viewed'>;
+      event:
+        'recommendation_viewed' | 'recent_purchases_section_viewed' | 'featured_section_viewed';
+    }
+  | {
+      event:
+        | 'recommendation_clicked'
+        | 'recommendation_added'
+        | 'recent_purchase_product_clicked'
+        | 'recent_purchase_product_added'
+        | 'featured_product_clicked';
       productId: string;
+      position?: number;
     };
 
 function endpoint(storeSlug: string) {

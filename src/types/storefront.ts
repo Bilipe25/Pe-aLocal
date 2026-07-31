@@ -42,6 +42,19 @@ export interface PublicStorefrontProductDetailResponseDto {
 }
 
 /**
+ * Produto atual elegível para a vitrine privada "Peça de novo".
+ * Não adicionar IDs de Customer, reconhecimento, pedidos ou sinais de ranking.
+ */
+export interface PublicRecentPurchaseProductDto extends PublicStorefrontProductSummaryDto {
+  category: {
+    id: string;
+    name: string;
+  };
+  isAvailable: boolean;
+  requiresConfiguration: boolean;
+}
+
+/**
  * Recorte público e compacto usado somente para sugestões no carrinho.
  * A ordem do array representa a prioridade comercial calculada no servidor.
  */

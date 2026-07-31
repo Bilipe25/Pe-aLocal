@@ -1,12 +1,13 @@
 'use client';
 
 import { SearchX } from 'lucide-react';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
+import { RecentPurchasesSection } from '@/components/storefront/recent-purchases-section';
 import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
@@ -17,6 +18,7 @@ import {
   filterIndexedCatalog,
   type CatalogSort,
 } from '@/features/storefront/catalog-filter';
+import { reportStorefrontEvent } from '@/lib/checkout/telemetry';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
 import { useCartStore } from '@/stores/cart-store';
 import type {
@@ -25,6 +27,7 @@ import type {
   PublicStorefrontProductDetailDto,
   PublicStorefrontProductDetailResponseDto,
   PublicStorefrontProductSummaryDto,
+  PublicRecentPurchaseProductDto,
 } from '@/types/storefront';
 import { useFavoritesStore } from '@/stores/favorites-store';
 
@@ -36,6 +39,8 @@ interface CatalogViewProps {
   customization: StoreCustomizationConfig;
   banners: PublicStorefrontBannerDto[];
   initialCouponCode?: string | null;
+  recentProducts?: PublicRecentPurchaseProductDto[];
+  showFeaturedProductsSection?: boolean;
 }
 
 const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
@@ -81,6 +86,8 @@ export function CatalogView({
   customization,
   banners,
   initialCouponCode,
+  recentProducts = [],
+  showFeaturedProductsSection = true,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
@@ -100,6 +107,8 @@ export function CatalogView({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
+  const featuredSectionRef = useRef<HTMLElement | null>(null);
+  const featuredViewedKeyRef = useRef<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const catalogRef = useRef<HTMLElement>(null);
   const selectedProductIdRef = useRef<string | null>(null);
@@ -133,12 +142,27 @@ export function CatalogView({
     });
   }, [catalogIndex, deferredSearch, onlyAvailable, sort]);
 
+  const visibleProductIds = useMemo(
+    () =>
+      new Set(
+        visibleCategories.flatMap((category) => category.products.map((product) => product.id)),
+      ),
+    [visibleCategories],
+  );
+  const visibleRecentProducts = useMemo(
+    () => recentProducts.filter((product) => visibleProductIds.has(product.id)),
+    [recentProducts, visibleProductIds],
+  );
+  const recentProductIds = useMemo(
+    () => new Set(visibleRecentProducts.map((product) => product.id)),
+    [visibleRecentProducts],
+  );
   const featuredProducts = useMemo(
     () =>
       visibleCategories
         .flatMap((category) => category.products)
-        .filter((product) => product.isFeatured),
-    [visibleCategories],
+        .filter((product) => product.isFeatured && !recentProductIds.has(product.id)),
+    [recentProductIds, visibleCategories],
   );
   const visibleProductCount = useMemo(
     () => visibleCategories.reduce((count, category) => count + category.products.length, 0),
@@ -146,6 +170,11 @@ export function CatalogView({
   );
   const favoriteProductIdSet = useMemo(() => new Set(favoriteProductIds), [favoriteProductIds]);
   const stickyCategoryNavigation = customization.layout.categoryNavigation === 'HORIZONTAL_STICKY';
+  const featuredSectionEnabled =
+    customization.layout.showFeaturedProducts && showFeaturedProductsSection;
+  const recentSectionAnchor = customization.layout.sectionOrder.includes('FEATURED')
+    ? 'FEATURED'
+    : 'CATALOG';
   const resolvedActiveCategoryId = visibleCategories.some(
     (category) => category.id === activeCategoryId,
   )
@@ -276,6 +305,30 @@ export function CatalogView({
     [],
   );
 
+  useEffect(() => {
+    if (!featuredSectionEnabled || featuredProducts.length === 0) return;
+    const viewedKey = featuredProducts.map((product) => product.id).join(',');
+    if (featuredViewedKeyRef.current === viewedKey) return;
+    const section = featuredSectionRef.current;
+    if (!section || typeof IntersectionObserver === 'undefined') {
+      featuredViewedKeyRef.current = viewedKey;
+      reportStorefrontEvent(storeSlug, { event: 'featured_section_viewed' });
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting || featuredViewedKeyRef.current === viewedKey) return;
+        featuredViewedKeyRef.current = viewedKey;
+        reportStorefrontEvent(storeSlug, { event: 'featured_section_viewed' });
+        observer.disconnect();
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [featuredProducts, featuredSectionEnabled, storeSlug]);
+
   function clearSearch() {
     setSearch('');
     requestAnimationFrame(() => searchInputRef.current?.focus());
@@ -310,6 +363,7 @@ export function CatalogView({
     product: PublicStorefrontProductSummaryDto,
     variant: 'featured' | 'horizontal' | 'compact',
     withAnchor = false,
+    featuredPosition?: number,
   ) => (
     <ProductCard
       key={product.id}
@@ -321,7 +375,16 @@ export function CatalogView({
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
       imageAssetId={product.imageAssetId}
-      onClick={() => openProduct(product)}
+      onClick={() => {
+        if (featuredPosition !== undefined) {
+          reportStorefrontEvent(storeSlug, {
+            event: 'featured_product_clicked',
+            productId: product.id,
+            position: featuredPosition,
+          });
+        }
+        openProduct(product);
+      }}
       showImage={customization.layout.showProductImages}
       showBadges={customization.layout.showProductBadges}
       variant={variant}
@@ -339,16 +402,21 @@ export function CatalogView({
       return <StoreBanners key={section} banners={banners} />;
     }
 
-    if (
-      section === 'FEATURED' &&
-      customization.layout.showFeaturedProducts &&
-      featuredProducts.length > 0
-    ) {
+    if (section === 'FEATURED' && featuredSectionEnabled && featuredProducts.length > 0) {
       return (
-        <section key={section} className="storefront-featured-section">
-          <h2 className="storefront-section-title">Destaques</h2>
+        <section
+          key={section}
+          ref={featuredSectionRef}
+          className="storefront-featured-section"
+          aria-labelledby="featured-products-title"
+        >
+          <h2 id="featured-products-title" className="storefront-section-title">
+            Destaques
+          </h2>
           <div className="storefront-featured-track" aria-label="Produtos em destaque">
-            {featuredProducts.map((product) => productCard(product, 'featured'))}
+            {featuredProducts.map((product, position) =>
+              productCard(product, 'featured', false, position),
+            )}
           </div>
         </section>
       );
@@ -498,7 +566,20 @@ export function CatalogView({
 
       {stickyCategoryNavigation && categoryNavigation}
 
-      {customization.layout.sectionOrder.map(renderSection)}
+      {customization.layout.sectionOrder.map((section) => (
+        <Fragment key={section}>
+          {section === recentSectionAnchor && visibleRecentProducts.length > 0 ? (
+            <RecentPurchasesSection
+              products={visibleRecentProducts}
+              storeSlug={storeSlug}
+              storeOpen={storeOpen}
+              showImages={customization.layout.showProductImages}
+              onOpenProduct={openProduct}
+            />
+          ) : null}
+          {renderSection(section)}
+        </Fragment>
+      ))}
 
       {selectedProduct && (
         <ProductModal

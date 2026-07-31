@@ -9,6 +9,7 @@ import {
   getPublicDeliveryZones,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
+import { getRecentPurchasedProductsForCurrentDevice } from '@/server/queries/recent-purchases';
 
 interface StorePageProps {
   params: Promise<{ storeSlug: string }>;
@@ -34,9 +35,22 @@ export default async function StorePage({ params, searchParams }: StorePageProps
     );
   }
 
-  const [categories, deliveryZones] = await Promise.all([
+  const [categories, deliveryZones, recentProducts] = await Promise.all([
     getPublicCatalog(store.id, store.tenantId, store.customization.categoryImages),
     store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
+    getRecentPurchasedProductsForCurrentDevice({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      enabled: store.settings?.showRecentPurchasesSection ?? true,
+    }).catch(() => {
+      console.error(
+        JSON.stringify({
+          event: 'recent_purchases_query_failed',
+          storeId: store.id,
+        }),
+      );
+      return [];
+    }),
   ]);
   const minDeliveryFee =
     deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
@@ -95,6 +109,8 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         customization={config}
         banners={store.customization.banners}
         initialCouponCode={initialCouponCode}
+        recentProducts={recentProducts}
+        showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
       />
 
       {config.platformBranding.showPedidoLocalBranding && (

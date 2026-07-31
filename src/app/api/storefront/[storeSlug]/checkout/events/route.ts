@@ -20,16 +20,29 @@ const checkoutTelemetrySchema = z
       'recommendation_viewed',
       'recommendation_clicked',
       'recommendation_added',
+      'recent_purchases_section_viewed',
+      'recent_purchase_product_clicked',
+      'recent_purchase_product_added',
+      'featured_section_viewed',
+      'featured_product_clicked',
     ]),
     step: z.enum(['identification', 'fulfillment', 'payment', 'review']).optional(),
     reason: z.enum(['navigation', 'page_hidden', 'quote_changed']).optional(),
     productId: z.guid().optional(),
+    position: z.number().int().min(0).max(20).optional(),
   })
   .strict()
   .superRefine((value, context) => {
-    const recommendationEvent = value.event.startsWith('recommendation_');
+    const recommendationEvent =
+      value.event.startsWith('recommendation_') ||
+      value.event.startsWith('recent_purchase') ||
+      value.event.startsWith('featured_');
     const productEvent =
-      value.event === 'recommendation_clicked' || value.event === 'recommendation_added';
+      value.event === 'recommendation_clicked' ||
+      value.event === 'recommendation_added' ||
+      value.event === 'recent_purchase_product_clicked' ||
+      value.event === 'recent_purchase_product_added' ||
+      value.event === 'featured_product_clicked';
 
     if (recommendationEvent && (value.step || value.reason)) {
       context.addIssue({ code: 'custom', message: 'Contexto incompatível com recomendação.' });
@@ -37,8 +50,11 @@ const checkoutTelemetrySchema = z
     if (productEvent && !value.productId) {
       context.addIssue({ code: 'custom', path: ['productId'], message: 'Produto obrigatório.' });
     }
-    if ((!productEvent || !recommendationEvent) && value.productId) {
+    if (!productEvent && value.productId) {
       context.addIssue({ code: 'custom', path: ['productId'], message: 'Produto não permitido.' });
+    }
+    if (!productEvent && value.position !== undefined) {
+      context.addIssue({ code: 'custom', path: ['position'], message: 'Posição não permitida.' });
     }
   });
 
@@ -122,7 +138,10 @@ export async function POST(
       throw invalidTelemetryPayload();
     }
 
-    const recommendationEvent = parsed.data.event.startsWith('recommendation_');
+    const recommendationEvent =
+      parsed.data.event.startsWith('recommendation_') ||
+      parsed.data.event.startsWith('recent_purchase') ||
+      parsed.data.event.startsWith('featured_');
     console.info(
       JSON.stringify(
         recommendationEvent
@@ -132,6 +151,7 @@ export async function POST(
               storeId: store.id,
               recommendationEvent: parsed.data.event,
               productId: parsed.data.productId ?? null,
+              ...(parsed.data.position !== undefined ? { position: parsed.data.position } : {}),
             }
           : {
               event: 'checkout_funnel_event',

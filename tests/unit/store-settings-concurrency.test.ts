@@ -159,6 +159,8 @@ describe('concorrência das configurações da loja', () => {
       showMinOrderValueInHero: true,
       showOpeningHoursInHero: false,
       showFullAddressInStoreInfo: false,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
     });
 
     await expect(
@@ -168,6 +170,8 @@ describe('concorrência das configurações da loja', () => {
         showMinOrderValueInHero: false,
         showOpeningHoursInHero: true,
         showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: false,
+        showFeaturedProductsSection: true,
       }),
     ).resolves.toMatchObject({ storeId: 'store-a', configurationVersion: 8 });
 
@@ -187,6 +191,8 @@ describe('concorrência das configurações da loja', () => {
         showMinOrderValueInHero: false,
         showOpeningHoursInHero: true,
         showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: false,
+        showFeaturedProductsSection: true,
       },
       create: {
         storeId: 'store-a',
@@ -195,6 +201,8 @@ describe('concorrência das configurações da loja', () => {
         showMinOrderValueInHero: false,
         showOpeningHoursInHero: true,
         showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: false,
+        showFeaturedProductsSection: true,
       },
     });
     expect(mocks.createAuditLog).toHaveBeenCalledWith(
@@ -208,6 +216,7 @@ describe('concorrência das configurações da loja', () => {
             'showFulfillmentInHero',
             'showMinOrderValueInHero',
             'showOpeningHoursInHero',
+            'showRecentPurchasesSection',
           ]),
         }),
       }),
@@ -225,6 +234,8 @@ describe('concorrência das configurações da loja', () => {
         showMinOrderValueInHero: false,
         showOpeningHoursInHero: false,
         showFullAddressInStoreInfo: false,
+        showRecentPurchasesSection: false,
+        showFeaturedProductsSection: false,
       }),
     ).rejects.toBeInstanceOf(ConflictError);
 
