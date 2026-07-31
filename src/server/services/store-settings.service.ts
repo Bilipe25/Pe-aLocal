@@ -497,6 +497,8 @@ export async function updateStorefrontDisplaySettings(
         showMinOrderValueInHero: true,
         showOpeningHoursInHero: true,
         showFullAddressInStoreInfo: true,
+        showRecentPurchasesSection: true,
+        showFeaturedProductsSection: true,
       },
     });
 

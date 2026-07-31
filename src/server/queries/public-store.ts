@@ -52,6 +52,8 @@ const publicStoreSelect = {
       showMinOrderValueInHero: true,
       showOpeningHoursInHero: true,
       showFullAddressInStoreInfo: true,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
     },
   },
   customization: {

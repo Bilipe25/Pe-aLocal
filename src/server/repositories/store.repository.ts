@@ -171,6 +171,8 @@ export async function findStorefrontDisplaySettingsById(id: string, tenantId: st
           showMinOrderValueInHero: true,
           showOpeningHoursInHero: true,
           showFullAddressInStoreInfo: true,
+          showRecentPurchasesSection: true,
+          showFeaturedProductsSection: true,
         },
       },
       openingHours: {
@@ -236,6 +238,8 @@ export async function findStoreScopeById(id: string, tenantId: string) {
           showMinOrderValueInHero: true,
           showOpeningHoursInHero: true,
           showFullAddressInStoreInfo: true,
+          showRecentPurchasesSection: true,
+          showFeaturedProductsSection: true,
         },
       },
       tenant: {

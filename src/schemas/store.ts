@@ -97,10 +97,15 @@ export const expectedConfigurationVersionSchema = z.coerce
   .int('A versão da configuração deve ser um número inteiro.')
   .nonnegative('A versão da configuração é inválida.');
 
-const formBooleanSchema = z.preprocess(
-  (value) => value === true || value === 'true' || value === 'on' || value === 1 || value === '1',
-  z.boolean(),
-);
+const formBooleanSchema = z.preprocess((value) => {
+  if (value === true || value === 'true' || value === 'on' || value === 1 || value === '1') {
+    return true;
+  }
+  if (value === false || value === 'false' || value === 'off' || value === 0 || value === '0') {
+    return false;
+  }
+  return value;
+}, z.boolean());
 
 export const updateStoreSettingsSchema = z
   .object({
@@ -164,6 +169,8 @@ export const updateStorefrontDisplaySchema = z
     showMinOrderValueInHero: formBooleanSchema.default(true),
     showOpeningHoursInHero: formBooleanSchema.default(false),
     showFullAddressInStoreInfo: formBooleanSchema.default(false),
+    showRecentPurchasesSection: formBooleanSchema.default(true),
+    showFeaturedProductsSection: formBooleanSchema.default(true),
   })
   .strict();
 

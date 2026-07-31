@@ -202,7 +202,11 @@ async function main() {
 
   await prisma.storeSettings.upsert({
     where: { storeId: store.id },
-    update: { showFullAddressInStoreInfo: true },
+    update: {
+      showFullAddressInStoreInfo: true,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
+    },
     create: {
       storeId: store.id,
       minOrderValue: 2000,
@@ -210,6 +214,8 @@ async function main() {
       deliveryEnabled: true,
       pickupEnabled: true,
       showFullAddressInStoreInfo: true,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
       pixKeyType: 'PHONE',
       pixKey: '(11) 99999-9999',
       pixRecipient: 'José da Silva',

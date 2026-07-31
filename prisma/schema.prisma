@@ -446,11 +446,13 @@ model StoreSettings {
   pickupEnabled           Boolean @default(true)
 
   // Exibição no cardápio público
-  showEstimatedTimeInHero    Boolean @default(true)
-  showFulfillmentInHero      Boolean @default(false)
-  showMinOrderValueInHero    Boolean @default(true)
-  showOpeningHoursInHero     Boolean @default(false)
-  showFullAddressInStoreInfo Boolean @default(false)
+  showEstimatedTimeInHero     Boolean @default(true)
+  showFulfillmentInHero       Boolean @default(false)
+  showMinOrderValueInHero     Boolean @default(true)
+  showOpeningHoursInHero      Boolean @default(false)
+  showFullAddressInStoreInfo  Boolean @default(false)
+  showRecentPurchasesSection  Boolean @default(true)
+  showFeaturedProductsSection Boolean @default(true)
 
   // Formas de pagamento aceitas
   acceptsPix            Boolean @default(true)

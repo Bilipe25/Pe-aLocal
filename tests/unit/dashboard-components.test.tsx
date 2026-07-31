@@ -194,6 +194,8 @@ describe('componentes do painel do tenant', () => {
       showMinOrderValueInHero: true,
       showOpeningHoursInHero: false,
       showFullAddressInStoreInfo: false,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
     };
     const preview = {
       estimatedTime: '30–50 min',
@@ -213,6 +215,17 @@ describe('componentes do painel do tenant', () => {
 
     const fulfillment = screen.getByRole('switch', { name: 'Entrega e retirada' });
     expect(fulfillment).not.toBeChecked();
+    expect(
+      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+    ).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeChecked();
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+    ).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeChecked();
     fireEvent.click(fulfillment);
     expect(fulfillment).toBeChecked();
     expect(screen.getByRole('button', { name: 'Salvar exibição' })).toBeEnabled();
@@ -229,6 +242,10 @@ describe('componentes do painel do tenant', () => {
       />,
     );
     expect(screen.getByRole('switch', { name: 'Prazo estimado' })).toBeDisabled();
+    expect(
+      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+    ).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Salvar exibição' })).not.toBeInTheDocument();
   });
 

@@ -89,6 +89,8 @@ function publicStore() {
       showMinOrderValueInHero: true,
       showOpeningHoursInHero: false,
       showFullAddressInStoreInfo: false,
+      showRecentPurchasesSection: true,
+      showFeaturedProductsSection: true,
     },
     customization: {
       publishedConfig: createDefaultCustomization(),
