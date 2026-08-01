@@ -12,6 +12,17 @@ import type {
 
 export type CustomerTrackingConnection = 'unavailable' | 'connecting' | 'connected' | 'degraded';
 
+const TRACKING_POLL_INTERVAL_MS: Record<CustomerTrackingConnection, number> = {
+  unavailable: 20_000,
+  degraded: 20_000,
+  connecting: 30_000,
+  connected: 120_000,
+};
+
+export function customerTrackingPollInterval(connection: CustomerTrackingConnection) {
+  return TRACKING_POLL_INTERVAL_MS[connection];
+}
+
 function isExpiredTokenResponse(value: unknown) {
   return Boolean(
     value && typeof value === 'object' && 'code' in value && value.code === 'TOKEN_EXPIRED',
@@ -131,7 +142,7 @@ export function useCustomerOrderTracking({
       timeout = window.setTimeout(() => {
         timeout = undefined;
         void refreshAndSchedule();
-      }, 20_000);
+      }, customerTrackingPollInterval(connection));
     };
     const refreshAndSchedule = async () => {
       if (stopped || !canPoll()) return;
@@ -160,7 +171,7 @@ export function useCustomerOrderTracking({
       window.removeEventListener('offline', clearScheduledPoll);
       document.removeEventListener('visibilitychange', resumePolling);
     };
-  }, [expired, refresh]);
+  }, [connection, expired, refresh]);
 
   useEffect(() => {
     if (!configured || expired) return;

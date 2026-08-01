@@ -1,7 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useCustomerOrderTracking } from '@/hooks/use-customer-order-tracking';
+import {
+  customerTrackingPollInterval,
+  useCustomerOrderTracking,
+} from '@/hooks/use-customer-order-tracking';
 
 const mocks = vi.hoisted(() => {
   const channelHandlers = new Map<string, (value?: unknown) => void>();
@@ -97,6 +100,13 @@ describe('acompanhamento automático do cliente', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('reduz o polling de segurança quando o tempo real está conectado', () => {
+    expect(customerTrackingPollInterval('connected')).toBe(120_000);
+    expect(customerTrackingPollInterval('connecting')).toBe(30_000);
+    expect(customerTrackingPollInterval('degraded')).toBe(20_000);
+    expect(customerTrackingPollInterval('unavailable')).toBe(20_000);
   });
 
   it('reconcilia o estado pelo endpoint ao receber evento privado mínimo', async () => {

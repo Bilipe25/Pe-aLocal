@@ -57,6 +57,9 @@ describe('componentes do painel do tenant', () => {
     render(
       <DashboardShell
         userName="Dono da loja"
+        tenantRole="OWNER"
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
         stores={[
           {
             id: '00000000-0000-0000-0000-000000000001',

@@ -233,11 +233,53 @@ describe('OrderRepository checkout v2', () => {
       },
     });
     expect(createData.publicTokenExpiresAt).toEqual(new Date('2026-08-26T12:00:00.000Z'));
+    expect(createData.items.create[0]).toMatchObject({ position: 0 });
     expect(createData).not.toHaveProperty('orderNumber');
     expect(mocks.tx.$executeRaw.mock.calls[0][1]).toBe(`store-a:${params.input.idempotencyKey}`);
     expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.tx.order.findUnique.mock.invocationCallOrder[0],
     );
+  });
+
+  it('persiste posição e grupo dos adicionais sem consultar o catálogo novamente', async () => {
+    mocks.calculateCheckoutQuote.mockResolvedValueOnce({
+      ...quote,
+      lines: [
+        {
+          ...quote.lines[0],
+          options: [
+            {
+              id: '40000000-0000-4000-8000-000000000001',
+              name: 'Bacon',
+              price: 300,
+              position: 0,
+              groupId: '30000000-0000-4000-8000-000000000001',
+              groupName: 'Adicionais',
+              groupPosition: 10,
+            },
+          ],
+        },
+      ],
+    });
+
+    await createOrder(params);
+
+    expect(mocks.tx.order.create.mock.calls[0][0].data.items.create[0]).toMatchObject({
+      position: 0,
+      options: {
+        create: [
+          {
+            position: 0,
+            optionId: '40000000-0000-4000-8000-000000000001',
+            optionName: 'Bacon',
+            optionPrice: 300,
+            groupId: '30000000-0000-4000-8000-000000000001',
+            groupName: 'Adicionais',
+            groupPosition: 10,
+          },
+        ],
+      },
+    });
   });
 
   it('retorna pedido idempotente antes de recalcular cotação ou criar efeitos duplicados', async () => {

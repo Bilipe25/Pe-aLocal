@@ -120,6 +120,128 @@ describe('cotação autoritativa do checkout', () => {
     expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
   });
 
+  it('preserva grupo e ordem comercial das opções no snapshot da cotação', async () => {
+    const client = createClient();
+    const groupA = '30000000-0000-4000-8000-000000000001';
+    const groupB = '30000000-0000-4000-8000-000000000002';
+    const optionA1 = '40000000-0000-4000-8000-000000000001';
+    const optionA2 = '40000000-0000-4000-8000-000000000002';
+    const optionB = '40000000-0000-4000-8000-000000000003';
+    client.product.findMany.mockResolvedValueOnce([
+      {
+        id: productId,
+        name: 'X-Salada',
+        basePrice: 2000,
+        imageUrl: null,
+        imageAssetId: null,
+        allowNotes: true,
+        isAvailable: true,
+        isSoldOut: false,
+        archivedAt: null,
+        category: { isActive: true, archivedAt: null },
+        optionGroups: [
+          {
+            id: groupB,
+            title: 'Bebida',
+            sortOrder: 20,
+            isRequired: false,
+            isMultiple: false,
+            minSelections: 0,
+            maxSelections: 1,
+            isActive: true,
+            archivedAt: null,
+            options: [
+              {
+                id: optionB,
+                name: 'Refrigerante',
+                price: 500,
+                sortOrder: 0,
+                isAvailable: true,
+                archivedAt: null,
+              },
+            ],
+          },
+          {
+            id: groupA,
+            title: 'Adicionais',
+            sortOrder: 10,
+            isRequired: false,
+            isMultiple: true,
+            minSelections: 0,
+            maxSelections: 2,
+            isActive: true,
+            archivedAt: null,
+            options: [
+              {
+                id: optionA2,
+                name: 'Ovo',
+                price: 200,
+                sortOrder: 20,
+                isAvailable: true,
+                archivedAt: null,
+              },
+              {
+                id: optionA1,
+                name: 'Bacon',
+                price: 300,
+                sortOrder: 10,
+                isAvailable: true,
+                archivedAt: null,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({
+        items: [{ ...input().items[0], quantity: 1, optionIds: [optionB, optionA2, optionA1] }],
+      }),
+      { client: client as never, now },
+    );
+
+    expect(quote?.lines[0]?.options).toEqual([
+      {
+        id: optionA1,
+        name: 'Bacon',
+        price: 300,
+        position: 0,
+        groupId: groupA,
+        groupName: 'Adicionais',
+        groupPosition: 10,
+      },
+      {
+        id: optionA2,
+        name: 'Ovo',
+        price: 200,
+        position: 1,
+        groupId: groupA,
+        groupName: 'Adicionais',
+        groupPosition: 10,
+      },
+      {
+        id: optionB,
+        name: 'Refrigerante',
+        price: 500,
+        position: 2,
+        groupId: groupB,
+        groupName: 'Bebida',
+        groupPosition: 20,
+      },
+    ]);
+    expect(client.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          optionGroups: expect.objectContaining({
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          }),
+        }),
+      }),
+    );
+  });
+
   it('resolve entrega por CEP e cupom somente dentro de tenant e loja', async () => {
     const client = createClient();
     client.deliveryZone.findMany.mockResolvedValue([

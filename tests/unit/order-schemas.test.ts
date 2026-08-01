@@ -25,6 +25,19 @@ describe('schemas de mutação de pedidos', () => {
     expect(orderVersionInputSchema.safeParse({ ...validBase, expectedVersion: 1.5 }).success).toBe(
       false,
     );
+    expect(
+      orderVersionInputSchema.safeParse({ ...validBase, expectedVersion: 2_147_483_648 }).success,
+    ).toBe(false);
+    expect(orderVersionInputSchema.safeParse({ ...validBase, tenantId: 'tenant-a' }).success).toBe(
+      false,
+    );
+    expect(
+      cancelOrderInputSchema.safeParse({
+        ...validBase,
+        reasonCode: 'CUSTOMER_REQUEST',
+        tenantId: 'tenant-a',
+      }).success,
+    ).toBe(false);
   });
 
   it('exige observação para o motivo OTHER', () => {

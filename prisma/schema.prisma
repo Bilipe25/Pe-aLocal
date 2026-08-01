@@ -1161,7 +1161,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store       Store     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
@@ -1182,6 +1182,8 @@ model Order {
   @@index([paymentStatus])
   @@index([createdAt])
   @@index([customerPhone])
+  @@index([customerId])
+  @@index([cancelledById])
   @@index([publicToken])
   @@index([publicTokenExpiresAt])
   @@index([tenantId, storeId, createdAt, id])
@@ -1211,8 +1213,9 @@ model OrderInternalNote {
 }
 
 model OrderItem {
-  id      String @id @default(uuid())
-  orderId String
+  id       String @id @default(uuid())
+  orderId  String
+  position Int    @default(0)
 
   // Snapshot do produto no momento do pedido
   productId   String
@@ -1225,7 +1228,7 @@ model OrderItem {
   order   Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   options OrderItemOption[]
 
-  @@index([orderId])
+  @@index([orderId, position, id])
   @@index([productId])
   @@map("order_items")
 }
@@ -1233,15 +1236,19 @@ model OrderItem {
 model OrderItemOption {
   id          String @id @default(uuid())
   orderItemId String
+  position    Int    @default(0)
 
   // Snapshot da opção no momento do pedido
-  optionId    String
-  optionName  String
-  optionPrice Int // Em centavos
+  optionId      String
+  optionName    String
+  optionPrice   Int // Em centavos
+  groupId       String?
+  groupName     String?
+  groupPosition Int     @default(0)
 
   orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
-  @@index([orderItemId])
+  @@index([orderItemId, groupPosition, position, id])
   @@map("order_item_options")
 }
 
@@ -1338,6 +1345,8 @@ model PaymentStatusHistory {
 }
 
 model OrderOutboxEvent {
+  /// Partial SQL-managed retention index:
+  /// order_outbox_events_processed_retention_idx ON processedAt WHERE status = 'PROCESSED'.
   id               String               @id @default(uuid())
   tenantId         String
   storeId          String

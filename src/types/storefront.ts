@@ -10,6 +10,17 @@ export interface PublicStorefrontOptionDto {
   price: number;
 }
 
+/**
+ * Snapshot ordenado da opção usado pela cotação e persistido no pedido.
+ * Os campos do grupo evitam consultar o catálogo mutável ao exibir o histórico.
+ */
+export interface CheckoutQuoteOptionDto extends PublicStorefrontOptionDto {
+  position: number;
+  groupId: string;
+  groupName: string;
+  groupPosition: number;
+}
+
 export interface PublicStorefrontOptionGroupDto {
   id: string;
   title: string;
@@ -137,7 +148,7 @@ export interface CheckoutQuoteLineDto {
   imageAssetId: string | null;
   quantity: number;
   notes: string;
-  options: PublicStorefrontOptionDto[];
+  options: CheckoutQuoteOptionDto[];
   unitPrice: number;
   itemTotal: number;
 }

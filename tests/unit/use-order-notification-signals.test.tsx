@@ -38,27 +38,30 @@ describe('useOrderNotificationSignals', () => {
       .mockResolvedValueOnce({
         success: true,
         data: {
-          items: [{
-            eventId: 'event-2',
-            orderId: 'order-2',
-            orderNumber: 2,
-            isNew: true,
-            createdAt: '2026-07-22T12:00:00.000Z',
-          }],
+          items: [
+            {
+              eventId: 'event-2',
+              orderId: 'order-2',
+              orderNumber: 2,
+              isNew: true,
+              createdAt: '2026-07-22T12:00:00.000Z',
+            },
+          ],
           processedEventIds: ['event-2'],
           nextCursor: 'cursor-2',
           hasMore: false,
         },
       });
     const { rerender } = renderHook(
-      ({ interval, initialBaseline }) => useOrderNotificationSignals(
-        'store-a',
-        'scope-a',
-        initialBaseline,
-        interval,
-        onSignals,
-        vi.fn(),
-      ),
+      ({ interval, initialBaseline }) =>
+        useOrderNotificationSignals(
+          'store-a',
+          'scope-a',
+          initialBaseline,
+          interval,
+          onSignals,
+          vi.fn(),
+        ),
       { initialProps: { interval: 20_000, initialBaseline: baseline } },
     );
     await act(async () => vi.advanceTimersByTimeAsync(0));
@@ -84,14 +87,9 @@ describe('useOrderNotificationSignals', () => {
       success: true,
       data: { items: [], processedEventIds: [], nextCursor: 'cursor-1', hasMore: false },
     });
-    renderHook(() => useOrderNotificationSignals(
-      'store-a',
-      'scope-a',
-      baseline,
-      20_000,
-      vi.fn(),
-      vi.fn(),
-    ));
+    renderHook(() =>
+      useOrderNotificationSignals('store-a', 'scope-a', baseline, 20_000, vi.fn(), vi.fn()),
+    );
     await act(async () => vi.advanceTimersByTimeAsync(60_000));
     expect(mocks.getOrderNotificationSignalsAction).not.toHaveBeenCalled();
 
@@ -125,14 +123,9 @@ describe('useOrderNotificationSignals', () => {
           hasMore: false,
         },
       });
-    renderHook(() => useOrderNotificationSignals(
-      'store-a',
-      'scope-a',
-      baseline,
-      20_000,
-      onSignals,
-      vi.fn(),
-    ));
+    renderHook(() =>
+      useOrderNotificationSignals('store-a', 'scope-a', baseline, 20_000, onSignals, vi.fn()),
+    );
     await act(async () => vi.advanceTimersByTimeAsync(0));
 
     expect(mocks.getOrderNotificationSignalsAction).toHaveBeenCalledTimes(2);
@@ -147,17 +140,39 @@ describe('useOrderNotificationSignals', () => {
     ]);
   });
 
+  it('mantém uma janela curta de eventos processados no navegador', async () => {
+    const processedEventIds = Array.from(
+      { length: 250 },
+      (_, index) => `event-${index.toString().padStart(3, '0')}`,
+    );
+    mocks.getOrderNotificationSignalsAction.mockResolvedValue({
+      success: true,
+      data: { items: [], processedEventIds: [], nextCursor: 'cursor-1', hasMore: false },
+    });
+
+    renderHook(() =>
+      useOrderNotificationSignals(
+        'store-a',
+        'scope-a',
+        { ...baseline, processedEventIds },
+        20_000,
+        vi.fn(),
+        vi.fn(),
+      ),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+
+    const request = mocks.getOrderNotificationSignalsAction.mock.calls[0]?.[0];
+    expect(request.seenEventIds).toHaveLength(200);
+    expect(request.seenEventIds[0]).toBe('event-050');
+  });
+
   it('solicita reconciliação da fila após três falhas consecutivas', async () => {
     const reconcile = vi.fn();
     mocks.getOrderNotificationSignalsAction.mockRejectedValue(new Error('unavailable'));
-    renderHook(() => useOrderNotificationSignals(
-      'store-a',
-      'scope-a',
-      baseline,
-      20_000,
-      vi.fn(),
-      reconcile,
-    ));
+    renderHook(() =>
+      useOrderNotificationSignals('store-a', 'scope-a', baseline, 20_000, vi.fn(), reconcile),
+    );
 
     await act(async () => vi.advanceTimersByTimeAsync(40_000));
 

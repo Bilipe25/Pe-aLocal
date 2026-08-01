@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { Search } from 'lucide-react';
 import type { OrderStatus } from '@prisma/client';
+import { CalendarDays, SlidersHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { OrderQueueFilters } from '@/types/order-query';
+import { Switch } from '@/components/ui/switch';
+import type { OrderBoardFilters } from '@/types/order-query';
+import { cn } from '@/lib/utils';
 
 export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'PENDING',
@@ -16,149 +17,167 @@ export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'OUT_FOR_DELIVERY',
 ];
 
-export function initialOrderFilters(localDate: string): Omit<OrderQueueFilters, 'cursor'> {
-  return { date: localDate, pageSize: 30 };
-}
-
-export function activeOrderFilters(): Omit<OrderQueueFilters, 'cursor'> {
-  return { statuses: ACTIVE_ORDER_STATUSES, pageSize: 30 };
+export function initialOrderBoardFilters(localDate: string): OrderBoardFilters {
+  return { localDate };
 }
 
 interface OrderFiltersProps {
-  filters: Omit<OrderQueueFilters, 'cursor'>;
+  filters: OrderBoardFilters;
   localDate: string;
   timeZone: string;
-  onChange: Dispatch<SetStateAction<Omit<OrderQueueFilters, 'cursor'>>>;
+  onChange: (filters: OrderBoardFilters) => void;
 }
 
-export function OrderFilters({
-  filters,
-  localDate,
-  timeZone,
-  onChange,
-}: OrderFiltersProps) {
-  const [search, setSearch] = useState(filters.query ?? '');
+function sameStatuses(current: OrderStatus[] | undefined, expected: OrderStatus[] | undefined) {
+  if (!current?.length && !expected?.length) return true;
+  if (!current || !expected || current.length !== expected.length) return false;
+  return expected.every((status) => current.includes(status));
+}
 
-  useEffect(() => {
-    const trimmed = search.trim();
-    if (/^#?\d+$/.test(trimmed)) {
-      onChange((current) => ({ ...current, query: trimmed || undefined }));
-      return;
-    }
+const STAGE_FILTERS: Array<{ label: string; statuses?: OrderStatus[] }> = [
+  { label: 'Todos' },
+  { label: 'Novos', statuses: ['PENDING'] },
+  { label: 'Em preparo', statuses: ['CONFIRMED', 'PREPARING'] },
+  { label: 'Prontos', statuses: ['READY'] },
+  { label: 'Em entrega', statuses: ['OUT_FOR_DELIVERY'] },
+  { label: 'Finalizados', statuses: ['DELIVERED', 'CANCELLED'] },
+];
 
-    const timeout = window.setTimeout(() => {
-      onChange((current) => ({
-        ...current,
-        query: trimmed.length >= 2 ? trimmed : undefined,
-      }));
-    }, 400);
-    return () => window.clearTimeout(timeout);
-  }, [onChange, search]);
+export function OrderFilters({ filters, localDate, timeZone, onChange }: OrderFiltersProps) {
+  const activeOnly = sameStatuses(filters.statuses, ACTIVE_ORDER_STATUSES);
 
-  function keepQuery(next: Omit<OrderQueueFilters, 'cursor'>) {
-    return filters.query ? { ...next, query: filters.query } : next;
+  function update(patch: Partial<OrderBoardFilters>) {
+    onChange({ ...filters, ...patch, localDate: patch.localDate ?? filters.localDate });
   }
 
-  const activeSelected =
-    filters.statuses?.length === ACTIVE_ORDER_STATUSES.length &&
-    ACTIVE_ORDER_STATUSES.every((status) => filters.statuses?.includes(status));
-
-  const presets: Array<{
-    label: string;
-    selected: boolean;
-    filters: Omit<OrderQueueFilters, 'cursor'>;
-  }> = [
-    {
-      label: 'Hoje',
-      selected: filters.date === localDate && !filters.status && !filters.statuses?.length && !filters.paymentStatus,
-      filters: initialOrderFilters(localDate),
-    },
-    { label: 'Em andamento', selected: Boolean(activeSelected), filters: activeOrderFilters() },
-    {
-      label: 'Novos',
-      selected: filters.status === 'PENDING',
-      filters: { status: 'PENDING', pageSize: 30 },
-    },
-    {
-      label: 'Pagamento pendente',
-      selected: filters.paymentStatus === 'PENDING',
-      filters: { paymentStatus: 'PENDING', date: localDate, pageSize: 30 },
-    },
-    {
-      label: 'Em preparo',
-      selected: filters.statuses?.length === 2 && filters.statuses.includes('CONFIRMED') && filters.statuses.includes('PREPARING'),
-      filters: { statuses: ['CONFIRMED', 'PREPARING'], pageSize: 30 },
-    },
-    {
-      label: 'Prontos',
-      selected: filters.status === 'READY',
-      filters: { status: 'READY', pageSize: 30 },
-    },
-    {
-      label: 'Concluídos',
-      selected: filters.status === 'DELIVERED',
-      filters: { status: 'DELIVERED', date: localDate, pageSize: 30 },
-    },
-    {
-      label: 'Cancelados',
-      selected: filters.status === 'CANCELLED',
-      filters: { status: 'CANCELLED', date: localDate, pageSize: 30 },
-    },
-  ];
-
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-surface p-3">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar pedidos">
-        {presets.map((preset) => (
-          <Button
-            key={preset.label}
-            variant={preset.selected ? 'secondary' : 'outline'}
-            onClick={() => onChange(keepQuery(preset.filters))}
-            size="sm"
-            aria-pressed={preset.selected}
-          >
-            {preset.label}
-          </Button>
-        ))}
+    <section
+      className="orders-toolbar border-border bg-surface rounded-xl border p-3"
+      aria-label="Filtros da central de pedidos"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label="Filtrar por etapa">
+          {STAGE_FILTERS.map((stage) => {
+            const selected = sameStatuses(filters.statuses, stage.statuses);
+            return (
+              <Button
+                key={stage.label}
+                type="button"
+                size="sm"
+                variant={selected ? 'default' : 'ghost'}
+                aria-pressed={selected}
+                onClick={() => update({ statuses: stage.statuses, delayedOnly: false })}
+                className={cn(!selected && 'text-text-secondary')}
+              >
+                {stage.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        <label className="text-text-primary flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
+          <span>Somente em andamento</span>
+          <Switch
+            checked={activeOnly}
+            onCheckedChange={(checked) =>
+              update({
+                statuses: checked ? ACTIVE_ORDER_STATUSES : undefined,
+                delayedOnly: false,
+              })
+            }
+            aria-label="Mostrar somente pedidos em andamento"
+          />
+        </label>
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-end">
-        <div className="relative min-w-0 flex-1 sm:max-w-sm">
-          <label htmlFor="orders-search" className="mb-1.5 block text-sm font-medium text-text-primary">
-            Buscar pedidos
+      <div className="border-border mt-3 flex flex-wrap items-end gap-3 border-t pt-3">
+        <div className="min-w-40 flex-1 sm:max-w-52">
+          <label
+            htmlFor="orders-payment-filter"
+            className="text-text-secondary mb-1 block text-xs font-medium"
+          >
+            Pagamento
           </label>
-          <Search className="pointer-events-none absolute bottom-3 left-3 text-text-muted" aria-hidden="true" />
-          <Input
-            id="orders-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Número, cliente, telefone ou pagamento"
-            className="pl-10"
-          />
-        </div>
-        <div className="sm:w-48">
-          <label htmlFor="orders-date" className="mb-1.5 block text-sm font-medium text-text-primary">
-            Data da loja
-          </label>
-          <Input
-            id="orders-date"
-            type="date"
-            value={filters.date ?? ''}
+          <select
+            id="orders-payment-filter"
+            value={filters.paymentStatus ?? ''}
             onChange={(event) =>
-              onChange(
-                keepQuery({
-                  date: event.target.value || undefined,
-                  pageSize: filters.pageSize,
-                }),
-              )
+              update({
+                paymentStatus: event.target.value
+                  ? (event.target.value as OrderBoardFilters['paymentStatus'])
+                  : undefined,
+              })
             }
-          />
+            className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 min-h-10 w-full rounded-lg border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            <option value="">Todos</option>
+            <option value="PENDING">Pendente</option>
+            <option value="CUSTOMER_REPORTED_PAID">Informado pelo cliente</option>
+            <option value="PAID">Pago</option>
+            <option value="FAILED">Falhou</option>
+            <option value="REFUNDED">Reembolsado</option>
+            <option value="CANCELLED">Cancelado</option>
+          </select>
         </div>
+
+        <div className="min-w-40 flex-1 sm:max-w-48">
+          <label
+            htmlFor="orders-modality-filter"
+            className="text-text-secondary mb-1 block text-xs font-medium"
+          >
+            Recebimento
+          </label>
+          <select
+            id="orders-modality-filter"
+            value={filters.modality ?? ''}
+            onChange={(event) =>
+              update({
+                modality: event.target.value
+                  ? (event.target.value as OrderBoardFilters['modality'])
+                  : undefined,
+              })
+            }
+            className="border-border bg-surface text-text-primary focus-visible:ring-brand-500 min-h-10 w-full rounded-lg border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            <option value="">Todos</option>
+            <option value="DELIVERY">Entrega</option>
+            <option value="PICKUP">Retirada</option>
+          </select>
+        </div>
+
+        <div className="min-w-44 flex-1 sm:max-w-52">
+          <label
+            htmlFor="orders-date"
+            className="text-text-secondary mb-1 block text-xs font-medium"
+          >
+            Finalizados em
+          </label>
+          <div className="relative">
+            <CalendarDays
+              className="text-text-muted pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+              aria-hidden="true"
+            />
+            <Input
+              id="orders-date"
+              type="date"
+              value={filters.localDate}
+              onChange={(event) => update({ localDate: event.target.value || localDate })}
+              className="h-10 pl-9"
+            />
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange(initialOrderBoardFilters(localDate))}
+          className="text-text-secondary"
+        >
+          <SlidersHorizontal aria-hidden="true" /> Limpar filtros
+        </Button>
       </div>
-      <p className="text-xs text-text-secondary">
-        Datas e métricas seguem o fuso da loja: {timeZone}.
-      </p>
-    </div>
+      <p className="sr-only">Datas e métricas usam o fuso {timeZone}.</p>
+    </section>
   );
 }

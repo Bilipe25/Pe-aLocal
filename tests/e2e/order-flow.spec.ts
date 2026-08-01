@@ -194,7 +194,9 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     async function advanceOrder(actionName: string, customerStatus: string, confirmation = false) {
       await operatorPage.goto('/dashboard/orders');
-      await operatorPage.getByPlaceholder('Cliente, telefone ou pedido').fill(`#${orderNumber}`);
+      await operatorPage
+        .getByRole('searchbox', { name: 'Buscar na central de pedidos' })
+        .fill(`#${orderNumber}`);
       const card = operatorPage.getByRole('button', {
         name: new RegExp(`Abrir pedido ${orderNumber},`),
       });

@@ -775,7 +775,17 @@ describe('checkout público v2', () => {
           ...quote.lines[0],
           productName: 'Produto artesanal',
           quantity: 2,
-          options: [{ id: 'option-1', name: 'Bacon', price: 300 }],
+          options: [
+            {
+              id: 'option-1',
+              name: 'Bacon',
+              price: 300,
+              position: 0,
+              groupId: 'group-1',
+              groupName: 'Adicionais',
+              groupPosition: 0,
+            },
+          ],
           unitPrice: 2_300,
           itemTotal: 4_600,
           notes: 'Sem cebola',

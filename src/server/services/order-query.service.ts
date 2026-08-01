@@ -1,8 +1,16 @@
 import 'server-only';
 
-import type { OrderModality, OrderStatus, PaymentMethodType, Prisma } from '@prisma/client';
+import {
+  Prisma,
+  type OrderModality,
+  type OrderStatus,
+  type PaymentMethodType,
+} from '@prisma/client';
 
-import { getOrderOperationalSnapshot } from '@/domain/orders/order-operations';
+import {
+  getOrderOperationalSnapshot,
+  getOrderStageAlertThresholdMinutes,
+} from '@/domain/orders/order-operations';
 import {
   canTransitionOrder,
   getNextOperationalAction,
@@ -11,7 +19,11 @@ import {
 } from '@/domain/orders/order-workflow';
 import { canTransitionPayment } from '@/domain/orders/payment-workflow';
 import { getOrderCapabilities } from '@/features/orders/capabilities';
-import type { OrderHistoryInput } from '@/features/orders/query-schemas';
+import {
+  ORDER_BOARD_LANE_PAGE_SIZE,
+  ORDER_NOTIFICATION_SEEN_EVENT_LIMIT,
+} from '@/features/orders/query-constants';
+import type { OrderBoardLaneInput, OrderHistoryInput } from '@/features/orders/query-schemas';
 import { normalizePhone } from '@/lib/brazil';
 import { decodeOrderCursor, encodeOrderCursor } from '@/lib/orders/cursor';
 import { getStoreDayRangeUtc } from '@/lib/time/store-time';
@@ -22,6 +34,11 @@ import { hasTenantPermission, Permission } from '@/server/permissions';
 import type {
   ActiveOrderCountsDTO,
   DailyOrderMetricsDTO,
+  OrderBoardFilters,
+  OrderBoardItemDTO,
+  OrderBoardLaneDTO,
+  OrderBoardLaneKey,
+  OrderBoardSnapshotDTO,
   OrderAllowedActionsDTO,
   OrderDetailsDTO,
   OrderHistoryItemDTO,
@@ -44,8 +61,64 @@ const MAX_UNDATED_SEARCH_DAYS = 90;
 const SLOW_QUERY_MS = 750;
 const NOTIFICATION_SIGNAL_PAGE_SIZE = 50;
 const NOTIFICATION_OVERLAP_MS = 5 * 60 * 1_000;
-const NOTIFICATION_SEEN_EVENT_LIMIT = 5_000;
 const MAX_NOTIFICATION_CURSOR_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+const ORDER_READ_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+} as const;
+const ORDER_BOARD_LANES: OrderBoardLaneKey[] = [
+  'NEW',
+  'PREPARATION',
+  'READY_AND_DELIVERY',
+  'FINISHED',
+];
+const ORDER_BOARD_LANE_STATUSES: Record<OrderBoardLaneKey, OrderStatus[]> = {
+  NEW: ['PENDING'],
+  PREPARATION: ['CONFIRMED', 'PREPARING'],
+  READY_AND_DELIVERY: ['READY', 'OUT_FOR_DELIVERY'],
+  FINISHED: ['DELIVERED', 'CANCELLED'],
+};
+
+const ORDER_BOARD_ITEM_SELECT = {
+  id: true,
+  orderNumber: true,
+  customerName: true,
+  modality: true,
+  paymentMethod: true,
+  paymentStatus: true,
+  status: true,
+  total: true,
+  createdAt: true,
+  statusChangedAt: true,
+  acceptedAt: true,
+  preparingAt: true,
+  readyAt: true,
+  dispatchedAt: true,
+  deliveredAt: true,
+  cancelledAt: true,
+  promisedFulfillmentMinAt: true,
+  promisedFulfillmentMaxAt: true,
+  version: true,
+  notes: true,
+  _count: { select: { items: true } },
+  items: {
+    orderBy: [{ position: 'asc' as const }, { id: 'asc' as const }],
+    take: 3,
+    select: { id: true, productName: true, quantity: true, notes: true },
+  },
+} satisfies Prisma.OrderSelect;
+
+type OrderBoardRow = Prisma.OrderGetPayload<{ select: typeof ORDER_BOARD_ITEM_SELECT }>;
+type OrderReadClient = Pick<Prisma.TransactionClient, 'order' | 'auditLog' | '$queryRaw'>;
+
+export interface OrderBoardBootstrapDTO {
+  notificationBaseline: OrderNotificationSignalsDTO;
+  initialBoard: OrderBoardSnapshotDTO;
+}
+
+export interface OrderBoardTemporalSummaryDTO {
+  delayedCount: number;
+  asOf: string;
+}
 
 export interface OrderQueryContext {
   tenantId: string;
@@ -86,29 +159,12 @@ export async function getOrderNotificationSignals(
   } satisfies Prisma.AuditLogWhereInput;
 
   if (!cursor) {
-    const watermark = new Date();
-    const baseline = await measured('notification-baseline', context, () =>
-      getDb().auditLog.findMany({
-        where: {
-          ...auditScope,
-          createdAt: { gte: new Date(watermark.getTime() - NOTIFICATION_OVERLAP_MS) },
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: NOTIFICATION_SEEN_EVENT_LIMIT,
-        select: { id: true, createdAt: true },
-      }),
+    return measured('notification-baseline', context, () =>
+      getDb().$transaction(async (tx) => {
+        const watermark = await getDatabaseWatermark(tx);
+        return loadOrderNotificationBaseline(context, tx, watermark);
+      }, ORDER_READ_TRANSACTION_OPTIONS),
     );
-    const latest = baseline[0];
-    const baselineCursor =
-      latest && latest.createdAt > watermark
-        ? { createdAt: latest.createdAt, id: latest.id }
-        : { createdAt: watermark, id: MAX_NOTIFICATION_CURSOR_ID };
-    return {
-      items: [],
-      processedEventIds: [...baseline].reverse().map((entry) => entry.id),
-      hasMore: false,
-      nextCursor: encodeOrderCursor(baselineCursor),
-    };
   }
 
   const after = decodeOrderCursor(cursor);
@@ -121,7 +177,7 @@ export async function getOrderNotificationSignals(
         OR: [
           { createdAt: { gt: after.createdAt } },
           { createdAt: after.createdAt, id: { gt: after.id } },
-          ...(seenEventIds.length && seenEventIds.length < NOTIFICATION_SEEN_EVENT_LIMIT
+          ...(seenEventIds.length < ORDER_NOTIFICATION_SEEN_EVENT_LIMIT
             ? [{ createdAt: { gte: overlapStart } }]
             : []),
         ],
@@ -187,6 +243,47 @@ export async function getOrderNotificationSignals(
   };
 }
 
+async function getDatabaseWatermark(database: Pick<OrderReadClient, '$queryRaw'>): Promise<Date> {
+  const rows = await database.$queryRaw<Array<{ watermark: Date }>>(
+    Prisma.sql`SELECT CURRENT_TIMESTAMP AS "watermark"`,
+  );
+  const watermark = rows[0]?.watermark;
+  if (!(watermark instanceof Date) || Number.isNaN(watermark.getTime())) {
+    throw new Error('Não foi possível obter o watermark do banco para os pedidos.');
+  }
+  return watermark;
+}
+
+async function loadOrderNotificationBaseline(
+  context: OrderQueryContext,
+  database: Pick<OrderReadClient, 'auditLog'>,
+  watermark: Date,
+): Promise<OrderNotificationSignalsDTO> {
+  const baseline = await database.auditLog.findMany({
+    where: {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      entity: { in: ['Order', 'Payment', 'OrderInternalNote'] },
+      createdAt: { gte: new Date(watermark.getTime() - NOTIFICATION_OVERLAP_MS) },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: ORDER_NOTIFICATION_SEEN_EVENT_LIMIT,
+    select: { id: true, createdAt: true },
+  });
+  const latest = baseline[0];
+  const baselineCursor =
+    latest && latest.createdAt > watermark
+      ? { createdAt: latest.createdAt, id: latest.id }
+      : { createdAt: watermark, id: MAX_NOTIFICATION_CURSOR_ID };
+
+  return {
+    items: [],
+    processedEventIds: [...baseline].reverse().map((entry) => entry.id),
+    hasMore: false,
+    nextCursor: encodeOrderCursor(baselineCursor),
+  };
+}
+
 async function measured<T>(
   operation: string,
   context: Pick<OrderQueryContext, 'tenantId' | 'storeId'>,
@@ -210,7 +307,14 @@ async function measured<T>(
 
 function searchConditions(query: string): Prisma.OrderWhereInput[] {
   const normalized = query.replace(/^#/, '');
-  const orderNumber = /^\d+$/.test(normalized) ? Number(normalized) : null;
+  const parsedOrderNumber = /^\d+$/.test(normalized) ? Number(normalized) : null;
+  const orderNumber =
+    parsedOrderNumber !== null &&
+    Number.isSafeInteger(parsedOrderNumber) &&
+    parsedOrderNumber > 0 &&
+    parsedOrderNumber <= 2_147_483_647
+      ? parsedOrderNumber
+      : null;
   const lowerQuery = query.toLocaleLowerCase('pt-BR');
   const phoneDigits = query.replace(/\D/g, '');
   const phone =
@@ -299,16 +403,413 @@ function nextActionLabel(
   if (order.status === 'AWAITING_PAYMENT') return null;
   const capabilities = getOrderCapabilities(context.tenantRole);
   const action = getNextOperationalAction(order);
+  const canConfirmCurrentPayment = canTransitionPayment(
+    {
+      status: order.paymentStatus,
+      method: order.paymentMethod,
+      orderStatus: order.status,
+    },
+    'CONFIRM_MANUALLY',
+  );
   const allowed: Record<OrderOperationalAction, boolean> = {
     CONFIRM_ORDER: capabilities.canAcceptOrder,
     START_PREPARATION: capabilities.canStartPreparation,
     MARK_ORDER_READY: capabilities.canMarkReady,
     DISPATCH_FOR_DELIVERY: capabilities.canDispatch,
-    CONFIRM_PAYMENT: capabilities.canConfirmPayment,
+    CONFIRM_PAYMENT: capabilities.canConfirmPayment && canConfirmCurrentPayment,
     COMPLETE_PICKUP: capabilities.canComplete,
     COMPLETE_DELIVERY: capabilities.canComplete,
   };
   return action && allowed[action] ? getOrderWorkflowLabel(action) : null;
+}
+
+function boardStatusesForLane(
+  lane: OrderBoardLaneKey,
+  filters: Pick<OrderBoardFilters, 'statuses' | 'onlyActive' | 'delayedOnly'>,
+) {
+  if (lane === 'FINISHED' && (filters.onlyActive || filters.delayedOnly)) return [];
+  const laneStatuses = ORDER_BOARD_LANE_STATUSES[lane];
+  if (!filters.statuses?.length) return laneStatuses;
+  const selectedStatuses = new Set<OrderStatus>(filters.statuses);
+  return laneStatuses.filter((status) => selectedStatuses.has(status));
+}
+
+function orderBoardWhere(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+  statuses: OrderStatus[],
+  options: { lane: OrderBoardLaneKey; cursor?: string; now?: Date },
+): Prisma.OrderWhereInput {
+  const prioritizeOldest = options.lane !== 'FINISHED';
+  const timestampField = options.lane === 'FINISHED' ? 'statusChangedAt' : 'createdAt';
+  const and: Prisma.OrderWhereInput[] = [];
+
+  if (options.lane === 'FINISHED') {
+    const range = getStoreDayRangeUtc(filters.localDate, context.timeZone);
+    and.push({ statusChangedAt: { gte: range.start, lt: range.end } });
+  }
+  if (filters.query) and.push({ OR: searchConditions(filters.query) });
+  if (filters.delayedOnly && options.lane !== 'FINISHED') {
+    and.push(operationalDelayCondition(context, options.now ?? new Date()));
+  }
+  if (options.cursor) {
+    const cursor = decodeOrderCursor(options.cursor);
+    and.push({
+      OR: [
+        { [timestampField]: { [prioritizeOldest ? 'gt' : 'lt']: cursor.createdAt } },
+        {
+          [timestampField]: cursor.createdAt,
+          id: { [prioritizeOldest ? 'gt' : 'lt']: cursor.id },
+        },
+      ],
+    });
+  }
+
+  return {
+    tenantId: context.tenantId,
+    storeId: context.storeId,
+    status: { in: statuses },
+    paymentStatus: filters.paymentStatus,
+    modality: filters.modality,
+    AND: and.length ? and : undefined,
+  };
+}
+
+function boardSummaryWhere(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+): Prisma.OrderWhereInput {
+  return {
+    tenantId: context.tenantId,
+    storeId: context.storeId,
+    paymentStatus: filters.paymentStatus,
+    modality: filters.modality,
+    AND: filters.query ? [{ OR: searchConditions(filters.query) }] : undefined,
+  };
+}
+
+function delayedOperationalWhere(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+  now: Date,
+): Prisma.OrderWhereInput {
+  const base = boardSummaryWhere(context, filters);
+
+  return {
+    ...base,
+    AND: [...(Array.isArray(base.AND) ? base.AND : []), operationalDelayCondition(context, now)],
+  };
+}
+
+function operationalDelayCondition(context: OrderQueryContext, now: Date): Prisma.OrderWhereInput {
+  const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+  const preparationLimit = Math.max(1, context.estimatedTimeMaxMinutes ?? 50);
+  const deliveryLimit = Math.max(15, context.estimatedTimeMaxMinutes ?? 50);
+
+  return {
+    OR: [
+      { status: 'PENDING', createdAt: { lte: minutesAgo(3) } },
+      {
+        status: 'CONFIRMED',
+        OR: [
+          { acceptedAt: { lte: minutesAgo(5) } },
+          { acceptedAt: null, statusChangedAt: { lte: minutesAgo(5) } },
+        ],
+      },
+      {
+        status: 'PREPARING',
+        OR: [
+          { preparingAt: { lte: minutesAgo(preparationLimit) } },
+          {
+            preparingAt: null,
+            statusChangedAt: { lte: minutesAgo(preparationLimit) },
+          },
+        ],
+      },
+      {
+        status: 'READY',
+        modality: 'PICKUP',
+        OR: [
+          { readyAt: { lte: minutesAgo(15) } },
+          { readyAt: null, statusChangedAt: { lte: minutesAgo(15) } },
+        ],
+      },
+      {
+        status: 'READY',
+        modality: 'DELIVERY',
+        OR: [
+          { readyAt: { lte: minutesAgo(5) } },
+          { readyAt: null, statusChangedAt: { lte: minutesAgo(5) } },
+        ],
+      },
+      {
+        status: 'OUT_FOR_DELIVERY',
+        OR: [
+          { dispatchedAt: { lte: minutesAgo(deliveryLimit) } },
+          {
+            dispatchedAt: null,
+            statusChangedAt: { lte: minutesAgo(deliveryLimit) },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoardItemDTO {
+  const operational = getOrderOperationalSnapshot({
+    ...order,
+    estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
+  });
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerDisplayName: order.customerName,
+    modality: order.modality,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    status: order.status,
+    total: order.total,
+    itemCount: order._count.items,
+    itemPreview: order.items.map((item) => ({
+      id: item.id,
+      productName: item.productName,
+      quantity: item.quantity,
+      notes: item.notes?.slice(0, 120) ?? null,
+    })),
+    createdAt: order.createdAt.toISOString(),
+    statusChangedAt: order.statusChangedAt.toISOString(),
+    stageStartedAt: operational.stageStartedAt.toISOString(),
+    stageElapsedMinutes: operational.elapsedMinutes,
+    stageAlertThresholdMinutes: getOrderStageAlertThresholdMinutes({
+      status: order.status,
+      modality: order.modality,
+      estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
+    }),
+    stageLabel: operational.stageLabel,
+    stageAlerts: operational.alerts,
+    nextActionLabel: nextActionLabel(context, order),
+    version: order.version,
+    hasCustomerNotes: Boolean(order.notes) || order.items.some((item) => Boolean(item.notes)),
+    hasOperationalAlert: operational.alerts.length > 0,
+    promisedFulfillmentMinAt: order.promisedFulfillmentMinAt?.toISOString() ?? null,
+    promisedFulfillmentMaxAt: order.promisedFulfillmentMaxAt?.toISOString() ?? null,
+  };
+}
+
+async function findOrderBoardLaneItems(
+  database: Pick<OrderReadClient, 'order'>,
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+  lane: OrderBoardLaneKey,
+  pageSize: number,
+  cursor?: string,
+  now?: Date,
+) {
+  const statuses = boardStatusesForLane(lane, filters);
+  if (!statuses.length) return { items: [] as OrderBoardItemDTO[], nextCursor: null };
+  const prioritizeOldest = lane !== 'FINISHED';
+  const rows = await database.order.findMany({
+    where: orderBoardWhere(context, filters, statuses, { lane, cursor, now }),
+    orderBy: prioritizeOldest
+      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : [{ statusChangedAt: 'desc' }, { id: 'desc' }],
+    take: pageSize + 1,
+    select: ORDER_BOARD_ITEM_SELECT,
+  });
+  const hasNextPage = rows.length > pageSize;
+  const page = hasNextPage ? rows.slice(0, pageSize) : rows;
+  const last = page.at(-1);
+  const cursorTimestamp = last
+    ? lane === 'FINISHED'
+      ? last.statusChangedAt
+      : last.createdAt
+    : null;
+  return {
+    items: page.map((order) => boardItem(context, order)),
+    nextCursor:
+      hasNextPage && last && cursorTimestamp
+        ? encodeOrderCursor({ createdAt: cursorTimestamp, id: last.id })
+        : null,
+  };
+}
+
+function laneTotalFromStatusCounts(
+  lane: OrderBoardLaneKey,
+  filters: OrderBoardFilters,
+  counts: Map<OrderStatus, number>,
+) {
+  return boardStatusesForLane(lane, filters).reduce(
+    (total, status) => total + (counts.get(status) ?? 0),
+    0,
+  );
+}
+
+async function loadOrderBoardSnapshot(
+  database: Pick<OrderReadClient, 'order'>,
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+  boardNow: Date,
+): Promise<OrderBoardSnapshotDTO> {
+  const selectedStatuses = filters.statuses?.length ? new Set<OrderStatus>(filters.statuses) : null;
+  const activeLaneStatuses = ACTIVE_STATUSES.filter(
+    (status) => !selectedStatuses || selectedStatuses.has(status),
+  );
+  const finishedLaneStatuses = ORDER_BOARD_LANE_STATUSES.FINISHED.filter(
+    (status) => !selectedStatuses || selectedStatuses.has(status),
+  );
+  const activeSummaryWhere = {
+    ...boardSummaryWhere(context, filters),
+    status: { in: ACTIVE_STATUSES },
+  } satisfies Prisma.OrderWhereInput;
+  const activeLaneWhere = {
+    ...boardSummaryWhere(context, filters),
+    status: { in: activeLaneStatuses },
+    AND: [
+      ...(filters.query ? [{ OR: searchConditions(filters.query) }] : []),
+      ...(filters.delayedOnly ? [operationalDelayCondition(context, boardNow)] : []),
+    ],
+  } satisfies Prisma.OrderWhereInput;
+  const finishedRange = getStoreDayRangeUtc(filters.localDate, context.timeZone);
+  const finishedWhere = {
+    ...boardSummaryWhere(context, filters),
+    status: { in: filters.onlyActive || filters.delayedOnly ? [] : finishedLaneStatuses },
+    statusChangedAt: { gte: finishedRange.start, lt: finishedRange.end },
+  } satisfies Prisma.OrderWhereInput;
+
+  const [summaryGroups, activeLaneGroups, finishedGroups, delayed, ...laneItems] =
+    await Promise.all([
+      database.order.groupBy({
+        by: ['status'],
+        where: activeSummaryWhere,
+        _count: { _all: true },
+      }),
+      activeLaneStatuses.length
+        ? database.order.groupBy({
+            by: ['status'],
+            where: activeLaneWhere,
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      !filters.onlyActive && !filters.delayedOnly && finishedLaneStatuses.length
+        ? database.order.groupBy({
+            by: ['status'],
+            where: finishedWhere,
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      database.order.count({ where: delayedOperationalWhere(context, filters, boardNow) }),
+      ...ORDER_BOARD_LANES.map((lane) =>
+        findOrderBoardLaneItems(
+          database,
+          context,
+          filters,
+          lane,
+          ORDER_BOARD_LANE_PAGE_SIZE,
+          undefined,
+          boardNow,
+        ),
+      ),
+    ]);
+
+  const summaryCounts = new Map(summaryGroups.map((group) => [group.status, group._count._all]));
+  const laneCounts = new Map<OrderStatus, number>([
+    ...activeLaneGroups.map((group) => [group.status, group._count._all] as const),
+    ...finishedGroups.map((group) => [group.status, group._count._all] as const),
+  ]);
+  const lanes = Object.fromEntries(
+    ORDER_BOARD_LANES.map((key, index) => [
+      key,
+      {
+        key,
+        items: laneItems[index]?.items ?? [],
+        total: laneTotalFromStatusCounts(key, filters, laneCounts),
+        nextCursor: laneItems[index]?.nextCursor ?? null,
+      } satisfies OrderBoardLaneDTO,
+    ]),
+  ) as Record<OrderBoardLaneKey, OrderBoardLaneDTO>;
+
+  return {
+    summary: {
+      newCount: summaryCounts.get('PENDING') ?? 0,
+      preparingCount: (summaryCounts.get('CONFIRMED') ?? 0) + (summaryCounts.get('PREPARING') ?? 0),
+      readyCount: summaryCounts.get('READY') ?? 0,
+      deliveryCount: summaryCounts.get('OUT_FOR_DELIVERY') ?? 0,
+      delayedCount: delayed,
+    },
+    lanes,
+  };
+}
+
+export async function getOrderBoardSnapshot(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+): Promise<OrderBoardSnapshotDTO> {
+  return measured('getOrderBoardSnapshot', context, () =>
+    getDb().$transaction(async (tx) => {
+      const boardNow = await getDatabaseWatermark(tx);
+      return loadOrderBoardSnapshot(tx, context, filters, boardNow);
+    }, ORDER_READ_TRANSACTION_OPTIONS),
+  );
+}
+
+export async function getOrderBoardBootstrap(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+): Promise<OrderBoardBootstrapDTO> {
+  return measured('getOrderBoardBootstrap', context, () =>
+    getDb().$transaction(async (tx) => {
+      const watermark = await getDatabaseWatermark(tx);
+      const notificationBaseline = await loadOrderNotificationBaseline(context, tx, watermark);
+      const initialBoard = await loadOrderBoardSnapshot(tx, context, filters, watermark);
+      return { notificationBaseline, initialBoard };
+    }, ORDER_READ_TRANSACTION_OPTIONS),
+  );
+}
+
+export async function getOrderBoardTemporalSummary(
+  context: OrderQueryContext,
+  filters: OrderBoardFilters,
+): Promise<OrderBoardTemporalSummaryDTO> {
+  return measured('getOrderBoardTemporalSummary', context, () =>
+    getDb().$transaction(async (tx) => {
+      const asOf = await getDatabaseWatermark(tx);
+      const delayedCount = await tx.order.count({
+        where: delayedOperationalWhere(context, filters, asOf),
+      });
+      return { delayedCount, asOf: asOf.toISOString() };
+    }, ORDER_READ_TRANSACTION_OPTIONS),
+  );
+}
+
+export async function getOrderBoardLane(
+  context: OrderQueryContext,
+  input: OrderBoardLaneInput,
+): Promise<OrderBoardLaneDTO> {
+  return measured('getOrderBoardLane', context, () =>
+    getDb().$transaction(async (tx) => {
+      const boardNow = await getDatabaseWatermark(tx);
+      const statuses = boardStatusesForLane(input.lane, input);
+      if (!statuses.length) {
+        return { key: input.lane, items: [], total: 0, nextCursor: null };
+      }
+      const [page, total] = await Promise.all([
+        findOrderBoardLaneItems(
+          tx,
+          context,
+          input,
+          input.lane,
+          input.pageSize,
+          input.cursor,
+          boardNow,
+        ),
+        tx.order.count({
+          where: orderBoardWhere(context, input, statuses, { lane: input.lane, now: boardNow }),
+        }),
+      ]);
+      return { key: input.lane, total, ...page };
+    }, ORDER_READ_TRANSACTION_OPTIONS),
+  );
 }
 
 export async function getOrderQueue(
@@ -421,6 +922,12 @@ export async function getOrderQueue(
           createdAt: order.createdAt.toISOString(),
           statusChangedAt: order.statusChangedAt.toISOString(),
           stageStartedAt: operational.stageStartedAt.toISOString(),
+          stageElapsedMinutes: operational.elapsedMinutes,
+          stageAlertThresholdMinutes: getOrderStageAlertThresholdMinutes({
+            status: order.status,
+            modality: order.modality,
+            estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
+          }),
           stageLabel: operational.stageLabel,
           stageAlerts: operational.alerts,
           nextActionLabel: nextActionLabel(context, order),
@@ -519,6 +1026,14 @@ export async function getOrderDetails(
         modality: true,
         deliveryAddress: true,
         deliveryZoneName: true,
+        deliveryStreet: true,
+        deliveryNumber: true,
+        deliveryNeighborhood: true,
+        deliveryCity: true,
+        deliveryState: true,
+        deliveryPostalCode: true,
+        promisedFulfillmentMinAt: true,
+        promisedFulfillmentMaxAt: true,
         subtotal: true,
         discount: true,
         deliveryFee: true,
@@ -540,7 +1055,7 @@ export async function getOrderDetails(
         cancellationNote: true,
         cancelledAt: true,
         items: {
-          orderBy: { id: 'asc' },
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
             productName: true,
@@ -549,8 +1064,13 @@ export async function getOrderDetails(
             notes: true,
             itemTotal: true,
             options: {
-              orderBy: { id: 'asc' },
-              select: { id: true, optionName: true, optionPrice: true },
+              orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
+              select: {
+                id: true,
+                optionName: true,
+                optionPrice: true,
+                groupName: true,
+              },
             },
           },
         },
@@ -639,6 +1159,12 @@ export async function getOrderDetails(
       delivery: {
         address: capabilities.canViewCustomerContact ? order.deliveryAddress : null,
         zoneName: order.deliveryZoneName,
+        street: capabilities.canViewCustomerContact ? order.deliveryStreet : null,
+        number: capabilities.canViewCustomerContact ? order.deliveryNumber : null,
+        neighborhood: capabilities.canViewCustomerContact ? order.deliveryNeighborhood : null,
+        city: capabilities.canViewCustomerContact ? order.deliveryCity : null,
+        state: capabilities.canViewCustomerContact ? order.deliveryState : null,
+        postalCode: capabilities.canViewCustomerContact ? order.deliveryPostalCode : null,
       },
       items: order.items.map((item) => ({
         id: item.id,
@@ -651,6 +1177,7 @@ export async function getOrderDetails(
           id: option.id,
           name: option.optionName,
           price: option.optionPrice,
+          groupName: option.groupName ?? null,
         })),
       })),
       totals: {
@@ -693,6 +1220,14 @@ export async function getOrderDetails(
         refundAmount: capabilities.canViewPaymentDetails ? order.payment.refundAmount : null,
       },
       status: order.status,
+      promisedFulfillmentMinAt: order.promisedFulfillmentMinAt?.toISOString() ?? null,
+      promisedFulfillmentMaxAt: order.promisedFulfillmentMaxAt?.toISOString() ?? null,
+      acceptedAt: order.acceptedAt?.toISOString() ?? null,
+      preparingAt: order.preparingAt?.toISOString() ?? null,
+      readyAt: order.readyAt?.toISOString() ?? null,
+      dispatchedAt: order.dispatchedAt?.toISOString() ?? null,
+      deliveredAt: order.deliveredAt?.toISOString() ?? null,
+      cancelledAt: order.cancelledAt?.toISOString() ?? null,
       customerNotes: order.notes,
       cancellation: {
         reasonCode: capabilities.canViewHistory ? order.cancellationReasonCode : null,

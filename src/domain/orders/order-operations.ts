@@ -45,6 +45,29 @@ const READY_PICKUP_ALERT_MINUTES = 15;
 const READY_DISPATCH_ALERT_MINUTES = 5;
 const PAYMENT_ALERT_MINUTES = 10;
 
+export function getOrderStageAlertThresholdMinutes(
+  input: Pick<OrderOperationalInput, 'status' | 'modality' | 'estimatedTimeMaxMinutes'>,
+) {
+  switch (input.status) {
+    case 'PENDING':
+    case 'AWAITING_PAYMENT':
+      return ACCEPTANCE_ALERT_MINUTES;
+    case 'CONFIRMED':
+      return CONFIRMED_ALERT_MINUTES;
+    case 'PREPARING':
+      return Math.max(1, input.estimatedTimeMaxMinutes);
+    case 'READY':
+      return input.modality === 'PICKUP'
+        ? READY_PICKUP_ALERT_MINUTES
+        : READY_DISPATCH_ALERT_MINUTES;
+    case 'OUT_FOR_DELIVERY':
+      return Math.max(15, input.estimatedTimeMaxMinutes);
+    case 'DELIVERED':
+    case 'CANCELLED':
+      return null;
+  }
+}
+
 function minutesBetween(start: Date | null, end: Date | null) {
   if (!start || !end) return null;
   return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 60_000));

@@ -12,6 +12,7 @@ Variáveis:
   ORDER_PERF_ACKNOWLEDGE_STAGING=true    Confirma que o banco não é produção
   ORDER_PERF_SAMPLES                     Amostras por consulta, padrão 5
   ORDER_PERF_BUDGET_MS                   Orçamento por consulta, padrão 750
+  ORDER_PERF_SEARCH_TERM                 Termo sintético opcional para busca
 `;
 
 function integer(name, fallback, max) {
@@ -37,39 +38,121 @@ function collectPlanDetails(node, details = { indexes: new Set(), sharedHit: 0, 
 
 const QUERIES = [
   {
-    name: 'active-queue',
+    name: 'board-summary',
     text: `
-      SELECT "id", "orderNumber", "status", "paymentStatus", "total", "createdAt", "version"
+      SELECT "status", COUNT(*)::integer AS "count"
       FROM "orders"
       WHERE "tenantId" = $1
         AND "storeId" = $2
         AND "status" IN ('PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY')
-      ORDER BY "createdAt" ASC, "id" ASC
-      LIMIT 31
+      GROUP BY "status"
     `,
   },
   {
-    name: 'recent-history',
+    name: 'board-lane-new',
     text: `
       SELECT "id", "orderNumber", "status", "paymentStatus", "total", "createdAt", "version"
       FROM "orders"
-      WHERE "tenantId" = $1 AND "storeId" = $2
-      ORDER BY "createdAt" DESC, "id" DESC
-      LIMIT 31
+      WHERE "tenantId" = $1 AND "storeId" = $2 AND "status" = 'PENDING'
+      ORDER BY "createdAt" ASC, "id" ASC
+      LIMIT 11
     `,
   },
   {
-    name: 'daily-metrics',
+    name: 'board-lane-preparation',
     text: `
-      SELECT "status", "paymentStatus", COUNT(*)::integer AS "count", COALESCE(SUM("total"), 0)::bigint AS "total"
+      SELECT "id", "orderNumber", "status", "paymentStatus", "total", "createdAt", "version"
       FROM "orders"
       WHERE "tenantId" = $1
         AND "storeId" = $2
-        AND "createdAt" >= date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE $3) AT TIME ZONE $3
-        AND "createdAt" < (date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE $3) + interval '1 day') AT TIME ZONE $3
-      GROUP BY "status", "paymentStatus"
+        AND "status" IN ('CONFIRMED', 'PREPARING')
+      ORDER BY "createdAt" ASC, "id" ASC
+      LIMIT 11
+    `,
+  },
+  {
+    name: 'board-lane-ready-delivery',
+    text: `
+      SELECT "id", "orderNumber", "status", "paymentStatus", "total", "createdAt", "version"
+      FROM "orders"
+      WHERE "tenantId" = $1
+        AND "storeId" = $2
+        AND "status" IN ('READY', 'OUT_FOR_DELIVERY')
+      ORDER BY "createdAt" ASC, "id" ASC
+      LIMIT 11
+    `,
+  },
+  {
+    name: 'board-lane-finished',
+    text: `
+      SELECT "id", "orderNumber", "status", "paymentStatus", "total", "statusChangedAt", "version"
+      FROM "orders"
+      WHERE "tenantId" = $1
+        AND "storeId" = $2
+        AND "status" IN ('DELIVERED', 'CANCELLED')
+        AND "statusChangedAt" >= date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE $3) AT TIME ZONE $3
+        AND "statusChangedAt" < (date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE $3) + interval '1 day') AT TIME ZONE $3
+      ORDER BY "statusChangedAt" DESC, "id" DESC
+      LIMIT 11
     `,
     timeZone: true,
+  },
+  {
+    name: 'board-delayed',
+    text: `
+      SELECT COUNT(*)::integer AS "count"
+      FROM "orders"
+      WHERE "tenantId" = $1
+        AND "storeId" = $2
+        AND (
+          ("status" = 'PENDING' AND "createdAt" <= CURRENT_TIMESTAMP - interval '3 minutes')
+          OR ("status" = 'CONFIRMED' AND COALESCE("acceptedAt", "statusChangedAt") <= CURRENT_TIMESTAMP - interval '5 minutes')
+          OR ("status" = 'PREPARING' AND COALESCE("preparingAt", "statusChangedAt") <= CURRENT_TIMESTAMP - interval '50 minutes')
+          OR ("status" = 'READY' AND "modality" = 'PICKUP' AND COALESCE("readyAt", "statusChangedAt") <= CURRENT_TIMESTAMP - interval '15 minutes')
+          OR ("status" = 'READY' AND "modality" = 'DELIVERY' AND COALESCE("readyAt", "statusChangedAt") <= CURRENT_TIMESTAMP - interval '5 minutes')
+          OR ("status" = 'OUT_FOR_DELIVERY' AND COALESCE("dispatchedAt", "statusChangedAt") <= CURRENT_TIMESTAMP - interval '50 minutes')
+        )
+    `,
+  },
+  {
+    name: 'board-search',
+    text: `
+      SELECT "id", "orderNumber", "customerName", "status", "createdAt"
+      FROM "orders"
+      WHERE "tenantId" = $1
+        AND "storeId" = $2
+        AND "customerName" ILIKE '%' || $3 || '%'
+      ORDER BY "createdAt" DESC, "id" DESC
+      LIMIT 11
+    `,
+    search: true,
+  },
+  {
+    name: 'board-keyset-pagination',
+    text: `
+      WITH cursor AS (
+        SELECT "createdAt", "id"
+        FROM "orders"
+        WHERE "tenantId" = $1
+          AND "storeId" = $2
+          AND "status" IN ('PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY')
+        ORDER BY "createdAt" ASC, "id" ASC
+        OFFSET 9
+        LIMIT 1
+      )
+      SELECT orders."id", orders."orderNumber", orders."status", orders."createdAt"
+      FROM "orders" AS orders
+      CROSS JOIN cursor
+      WHERE orders."tenantId" = $1
+        AND orders."storeId" = $2
+        AND orders."status" IN ('PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY')
+        AND (
+          orders."createdAt" > cursor."createdAt"
+          OR (orders."createdAt" = cursor."createdAt" AND orders."id" > cursor."id")
+        )
+      ORDER BY orders."createdAt" ASC, orders."id" ASC
+      LIMIT 11
+    `,
   },
 ];
 
@@ -107,7 +190,13 @@ async function main() {
       for (let sample = 0; sample < samples; sample += 1) {
         const parameters = query.timeZone
           ? [store.tenantId, storeId, store.timeZone]
-          : [store.tenantId, storeId];
+          : query.search
+            ? [
+                store.tenantId,
+                storeId,
+                process.env.ORDER_PERF_SEARCH_TERM ?? '__pedidolocal_benchmark_no_match__',
+              ]
+            : [store.tenantId, storeId];
         const result = await client.query(
           `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.text}`,
           parameters,

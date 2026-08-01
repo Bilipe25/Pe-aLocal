@@ -22,7 +22,56 @@ import {
 
 export async function selectStoreAction(formData: FormData) {
   const context = await rememberActiveStore(String(formData.get('storeId') ?? ''));
-  redirect(`/dashboard/stores/${context.store.id}`);
+  const rawReturnTo = formData.get('returnTo');
+  const fallback = `/dashboard/stores/${context.store.id}`;
+
+  if (typeof rawReturnTo !== 'string' || rawReturnTo.length === 0 || rawReturnTo.length > 2048) {
+    redirect(fallback);
+  }
+
+  const returnTo = rawReturnTo.trim();
+  if (
+    !returnTo.startsWith('/dashboard') ||
+    returnTo.startsWith('//') ||
+    returnTo.includes('\\') ||
+    /[\u0000-\u001F\u007F]/u.test(returnTo)
+  ) {
+    redirect(fallback);
+  }
+
+  let destination: URL;
+  try {
+    destination = new URL(returnTo, 'https://dashboard.pedidolocal.invalid');
+  } catch {
+    redirect(fallback);
+  }
+
+  if (
+    destination.origin !== 'https://dashboard.pedidolocal.invalid' ||
+    (destination.pathname !== '/dashboard' && !destination.pathname.startsWith('/dashboard/'))
+  ) {
+    redirect(fallback);
+  }
+
+  if (destination.pathname === '/dashboard/stores') {
+    redirect(fallback);
+  }
+
+  if (/^\/dashboard\/catalog\/(?:products|categories)\/[^/]+\/edit$/u.test(destination.pathname)) {
+    redirect('/dashboard/catalog');
+  }
+
+  if (destination.pathname === '/dashboard/orders') {
+    destination.searchParams.delete('order');
+  }
+
+  const storeSettingsMatch = destination.pathname.match(/^\/dashboard\/stores\/[^/]+(\/.*)?$/u);
+  if (storeSettingsMatch) {
+    const suffix = storeSettingsMatch[1] ?? '';
+    redirect(`/dashboard/stores/${context.store.id}${suffix}${destination.search}`);
+  }
+
+  redirect(`${destination.pathname}${destination.search}`);
 }
 
 function invalidateStore(result: StoreConfigurationMutationResult) {
