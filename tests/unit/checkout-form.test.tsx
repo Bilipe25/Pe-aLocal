@@ -289,6 +289,41 @@ describe('checkout público v2', () => {
     expect(screen.getByRole('button', { name: /Continuar como João M/ })).toBeVisible();
   });
 
+  it('consome o reconhecimento iniciado pelo loader sem repetir a consulta automatica', async () => {
+    const request = Promise.resolve({
+      recognized: true,
+      maskedName: 'Joao M***',
+      maskedPhone: '(11) *****-**99',
+      maskedAddresses: [
+        {
+          opaqueReference: 'D'.repeat(43),
+          label: 'Casa',
+          maskedAddress: 'Rua das F***, numero *** - Centro',
+          isDefault: true,
+          requiresDeliveryZoneSelection: false,
+        },
+      ],
+    });
+
+    renderCheckout(
+      {
+        deliveryEnabled: true,
+        initialModality: 'DELIVERY',
+        automaticRecognitionManaged: true,
+        automaticRecognitionBootstrap: { storeSlug: 'loja-1', request },
+      },
+      true,
+    );
+
+    expect(await screen.findByRole('dialog', undefined, { timeout: 5_000 })).toBeVisible();
+    expect(
+      mocks.fetch.mock.calls.filter(
+        ([input, init]) =>
+          String(input).endsWith('/checkout/recognition') && init?.method === 'GET',
+      ),
+    ).toHaveLength(0);
+  });
+
   it('mostra somente o endereço mascarado e usa a referência após confirmação', async () => {
     const opaqueReference = 'A'.repeat(43);
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -354,6 +389,31 @@ describe('checkout público v2', () => {
       action: 'CONFIRM_ADDRESS',
       opaqueReference,
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+    expect(await screen.findByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar pedido' }));
+    expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
+
+    const confirm = screen.getByRole('button', { name: /Confirmar/ });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce(), {
+      timeout: 5_000,
+    });
+    const submittedPayload = mocks.createOrderAction.mock.calls[0]?.[1];
+    expect(submittedPayload).toMatchObject({
+      identityMode: 'RECOGNIZED',
+      savedAddressReference: opaqueReference,
+    });
+    expect(submittedPayload).not.toHaveProperty('customerName');
+    expect(submittedPayload).not.toHaveProperty('customerPhone');
+    expect(submittedPayload.deliveryAddress).toBeUndefined();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Vamos identificar você' }),
+    ).not.toBeInTheDocument();
   });
 
   it('não abre uma sheet vazia e confirma o modo de novo endereço', async () => {

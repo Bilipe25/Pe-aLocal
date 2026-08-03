@@ -30,9 +30,7 @@ import {
   boolean,
   enum as enumSchema,
   maxLength,
-  minLength,
   object,
-  refine,
   string,
   superRefine,
   trim,
@@ -68,20 +66,24 @@ import type {
 } from '@/types/customer-recognition';
 import type { CheckoutQuoteDto, PublicDeliveryZoneDto } from '@/types/storefront';
 
+export function preloadCustomerRecognitionDialog() {
+  return import('@/components/storefront/customer-recognition-dialog');
+}
+
 const CustomerRecognitionDialog = dynamic(
-  () =>
-    import('@/components/storefront/customer-recognition-dialog').then(
-      (module) => module.CustomerRecognitionDialog,
-    ),
+  () => preloadCustomerRecognitionDialog().then((module) => module.CustomerRecognitionDialog),
   { ssr: false },
 );
 
+export interface AutomaticRecognitionBootstrap {
+  storeSlug: string;
+  request: Promise<unknown>;
+}
+
 const checkoutFormSchema = object({
-  customerName: string().check(trim(), minLength(2, 'Informe seu nome.'), maxLength(100)),
-  customerPhone: string().check(
-    trim(),
-    refine(validateBrazilianPhone, 'Informe um telefone brasileiro válido.'),
-  ),
+  identityMode: enumSchema(['VISITOR', 'RECOGNIZED']),
+  customerName: string().check(trim(), maxLength(100)),
+  customerPhone: string().check(trim(), maxLength(20)),
   modality: enumSchema(['DELIVERY', 'PICKUP']),
   deliveryZoneId: string().check(maxLength(100)),
   deliveryPostalCode: string().check(maxLength(9)),
@@ -102,6 +104,24 @@ const checkoutFormSchema = object({
   notes: string().check(trim(), maxLength(500, 'Use no máximo 500 caracteres.')),
 }).check(
   superRefine((data, ctx) => {
+    if (data.identityMode === 'VISITOR') {
+      if (data.customerName.length < 2) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['customerName'],
+          message: 'Informe seu nome.',
+          input: data.customerName,
+        });
+      }
+      if (!validateBrazilianPhone(data.customerPhone)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['customerPhone'],
+          message: 'Informe um telefone brasileiro válido.',
+          input: data.customerPhone,
+        });
+      }
+    }
     if (data.modality === 'DELIVERY') {
       if (data.deliveryPostalCode && !/^\d{5}-?\d{3}$/.test(data.deliveryPostalCode)) {
         ctx.addIssue({
@@ -170,7 +190,6 @@ type CheckoutFormValues = Infer<typeof checkoutFormSchema>;
 type CheckoutStep = 'identification' | 'fulfillment' | 'payment' | 'review';
 type RecognizedCustomer = Extract<CustomerRecognitionResult, { recognized: true }>;
 type RecognitionAction = 'confirm' | 'new-address' | 'not-me' | 'forget';
-type CheckoutIdentityMode = 'VISITOR' | 'RECOGNIZED';
 
 export interface CheckoutFormProps {
   storeId: string;
@@ -187,6 +206,8 @@ export interface CheckoutFormProps {
   deliveryZones?: PublicDeliveryZoneDto[];
   storeCity?: string;
   storeState?: string;
+  automaticRecognitionManaged?: boolean;
+  automaticRecognitionBootstrap?: AutomaticRecognitionBootstrap | null;
 }
 
 const STEPS: Array<{ id: CheckoutStep; label: string; shortLabel: string }> = [
@@ -527,6 +548,8 @@ export function CheckoutForm({
   initialStep = 'identification',
   initialModality,
   initialCouponCode = '',
+  automaticRecognitionManaged = false,
+  automaticRecognitionBootstrap,
 }: CheckoutFormProps) {
   const router = useRouter();
   const items = useCartStore((state) => state.items);
@@ -550,7 +573,6 @@ export function CheckoutForm({
   const [selectedAddressReference, setSelectedAddressReference] = useState<string | null>(null);
   const [confirmedSavedAddress, setConfirmedSavedAddress] =
     useState<MaskedCustomerAddressDto | null>(null);
-  const [identityMode, setIdentityMode] = useState<CheckoutIdentityMode>('VISITOR');
   const idempotencyRef = useRef<CheckoutIdempotencyRecord | null>(null);
   const recognitionTriggerRef = useRef<HTMLButtonElement>(null);
   const recognitionSessionActiveRef = useRef(false);
@@ -595,6 +617,7 @@ export function CheckoutForm({
     resolver: zodResolver(checkoutFormSchema),
     mode: 'onBlur',
     defaultValues: {
+      identityMode: 'VISITOR',
       customerName: '',
       customerPhone: '',
       modality: defaultModality,
@@ -619,6 +642,7 @@ export function CheckoutForm({
   });
 
   const [
+    identityMode,
     modality,
     deliveryZoneId,
     deliveryPostalCode,
@@ -630,6 +654,7 @@ export function CheckoutForm({
   ] = useWatch({
     control,
     name: [
+      'identityMode',
       'modality',
       'deliveryZoneId',
       'deliveryPostalCode',
@@ -704,12 +729,17 @@ export function CheckoutForm({
   }, [focusRequest, setFocus, step]);
 
   useEffect(() => {
-    if (step !== 'identification' || activeStoreId !== storeId) {
-      return;
-    }
+    if (step !== 'identification') return;
+
+    const bootstrappedRequest =
+      automaticRecognitionBootstrap?.storeSlug === storeSlug
+        ? automaticRecognitionBootstrap.request
+        : null;
+    if (automaticRecognitionManaged && !bootstrappedRequest) return;
     if (
-      !automaticRecognitionRequestRef.current ||
-      automaticRecognitionRequestRef.current.storeId !== storeId
+      !bootstrappedRequest &&
+      (!automaticRecognitionRequestRef.current ||
+        automaticRecognitionRequestRef.current.storeId !== storeId)
     ) {
       automaticRecognitionRequestRef.current = {
         storeId,
@@ -725,8 +755,13 @@ export function CheckoutForm({
       };
     }
 
+    const request = bootstrappedRequest
+      ? bootstrappedRequest.then((body) => (isRecognitionResult(body) ? body : null))
+      : automaticRecognitionRequestRef.current?.request;
+    if (!request) return;
+
     let active = true;
-    void automaticRecognitionRequestRef.current.request.then((body) => {
+    void request.then((body) => {
       if (!active || !body?.recognized) return;
 
       recognitionSessionActiveRef.current = true;
@@ -742,7 +777,14 @@ export function CheckoutForm({
     return () => {
       active = false;
     };
-  }, [activeStoreId, recognitionEndpoint, step, storeId]);
+  }, [
+    automaticRecognitionBootstrap,
+    automaticRecognitionManaged,
+    recognitionEndpoint,
+    step,
+    storeId,
+    storeSlug,
+  ]);
 
   useEffect(() => {
     telemetryStepRef.current = step;
@@ -891,7 +933,7 @@ export function CheckoutForm({
     setConfirmedSavedAddress(null);
     setSelectedAddressReference(null);
     setValue('savedAddressReference', '');
-    setIdentityMode('VISITOR');
+    setValue('identityMode', 'VISITOR', { shouldDirty: false });
     recognitionSessionActiveRef.current = true;
 
     try {
@@ -969,7 +1011,7 @@ export function CheckoutForm({
       if (!address) throw new Error('O endereço escolhido não está mais disponível.');
 
       setConfirmedSavedAddress(address);
-      setIdentityMode('RECOGNIZED');
+      setValue('identityMode', 'RECOGNIZED', { shouldDirty: false });
       setValue('savedAddressReference', confirmation.opaqueReference, { shouldDirty: true });
       if (!address.requiresDeliveryZoneSelection) {
         setValue('deliveryZoneId', '', { shouldDirty: true });
@@ -1004,7 +1046,9 @@ export function CheckoutForm({
       setConfirmedSavedAddress(null);
       setSelectedAddressReference(null);
       setValue('savedAddressReference', '', { shouldDirty: true });
-      setIdentityMode(recognized ? 'RECOGNIZED' : 'VISITOR');
+      setValue('identityMode', recognized ? 'RECOGNIZED' : 'VISITOR', {
+        shouldDirty: false,
+      });
       setRecognitionDialogOpen(false);
       setRecognitionAction(null);
       setStep('fulfillment');
@@ -1031,7 +1075,7 @@ export function CheckoutForm({
       setValue('customerPhone', '', { shouldDirty: true });
       setValue('saveCustomerData', false, { shouldDirty: true });
       setValue('setAddressAsDefault', false, { shouldDirty: true });
-      setIdentityMode('VISITOR');
+      setValue('identityMode', 'VISITOR', { shouldDirty: false });
       setRecognitionDialogOpen(false);
       setRecognitionAction(null);
       setRecognitionNotice(
@@ -1050,8 +1094,12 @@ export function CheckoutForm({
   }
 
   async function goForward() {
-    if (step === 'identification' && recognizedCustomer && identityMode === 'VISITOR') {
-      setRecognitionDialogOpen(true);
+    if (step === 'identification' && recognizedCustomer) {
+      if (identityMode === 'VISITOR') {
+        setRecognitionDialogOpen(true);
+      } else {
+        setStep('fulfillment');
+      }
       return;
     }
     const fieldsByStep: Record<Exclude<CheckoutStep, 'review'>, FieldPath<CheckoutFormValues>[]> = {
@@ -1250,7 +1298,7 @@ export function CheckoutForm({
   const handleInvalidSubmit: SubmitErrorHandler<CheckoutFormValues> = (invalidFields) => {
     let targetStep: CheckoutStep = 'review';
     let targetField: FieldPath<CheckoutFormValues> = 'notes';
-    if (invalidFields.customerName || invalidFields.customerPhone) {
+    if (identityMode === 'VISITOR' && (invalidFields.customerName || invalidFields.customerPhone)) {
       targetStep = 'identification';
       targetField = invalidFields.customerName ? 'customerName' : 'customerPhone';
     } else if (

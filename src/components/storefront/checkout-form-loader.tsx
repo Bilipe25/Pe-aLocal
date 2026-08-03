@@ -1,8 +1,39 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useEffect, useState } from 'react';
 
-import type { CheckoutFormProps } from '@/components/storefront/checkout-form';
+import type {
+  AutomaticRecognitionBootstrap,
+  CheckoutFormProps,
+} from '@/components/storefront/checkout-form';
+
+type CheckoutFormLoaderProps = Omit<
+  CheckoutFormProps,
+  'automaticRecognitionBootstrap' | 'automaticRecognitionManaged'
+>;
+
+const automaticRecognitionRequests = new Map<string, Promise<unknown>>();
+
+function startAutomaticRecognition(storeSlug: string) {
+  const recognitionEndpoint = `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/recognition`;
+  const pendingRequest = automaticRecognitionRequests.get(recognitionEndpoint);
+  if (pendingRequest) return pendingRequest;
+
+  const request = fetch(recognitionEndpoint, {
+    method: 'GET',
+    cache: 'no-store',
+  })
+    .then(async (response) => (response.ok ? ((await response.json()) as unknown) : null))
+    .catch(() => null)
+    .finally(() => {
+      if (automaticRecognitionRequests.get(recognitionEndpoint) === request) {
+        automaticRecognitionRequests.delete(recognitionEndpoint);
+      }
+    });
+  automaticRecognitionRequests.set(recognitionEndpoint, request);
+  return request;
+}
 
 const LazyCheckoutForm = dynamic<CheckoutFormProps>(
   () => import('@/components/storefront/checkout-form').then((module) => module.CheckoutForm),
@@ -11,8 +42,31 @@ const LazyCheckoutForm = dynamic<CheckoutFormProps>(
   },
 );
 
-export function CheckoutFormLoader(props: CheckoutFormProps) {
-  return <LazyCheckoutForm {...props} />;
+export function CheckoutFormLoader(props: CheckoutFormLoaderProps) {
+  const [automaticRecognitionBootstrap, setAutomaticRecognitionBootstrap] =
+    useState<AutomaticRecognitionBootstrap | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const request = startAutomaticRecognition(props.storeSlug);
+    queueMicrotask(() => {
+      if (active) {
+        setAutomaticRecognitionBootstrap({ storeSlug: props.storeSlug, request });
+      }
+    });
+    void import('@/components/storefront/customer-recognition-dialog');
+    return () => {
+      active = false;
+    };
+  }, [props.storeSlug]);
+
+  return (
+    <LazyCheckoutForm
+      {...props}
+      automaticRecognitionManaged
+      automaticRecognitionBootstrap={automaticRecognitionBootstrap}
+    />
+  );
 }
 
 function CheckoutFormSkeleton() {
