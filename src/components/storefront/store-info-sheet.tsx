@@ -222,7 +222,7 @@ export function StoreInfoSheet(props: StoreInfoSheetProps) {
       ? { label: 'Dinheiro', icon: Banknote, tone: 'cash', color: '#3f7d58' }
       : null,
     props.acceptsCardOnDelivery
-      ? { label: 'Cartão na entrega', icon: CreditCard, tone: 'card', color: '#c77a00' }
+      ? { label: 'Cartão no recebimento', icon: CreditCard, tone: 'card', color: '#c77a00' }
       : null,
   ].filter((payment) => payment !== null);
   const todayKey = useSyncExternalStore(subscribeToLocalDay, getTodayKey, () => '');

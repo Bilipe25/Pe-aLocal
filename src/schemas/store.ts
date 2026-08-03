@@ -107,16 +107,8 @@ const formBooleanSchema = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
-export const updateStoreSettingsSchema = z
+export const updateStoreOperationalSettingsSchema = z
   .object({
-    primaryColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
-      .optional(),
-    secondaryColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida.')
-      .optional(),
     minOrderValue: z.coerce
       .number()
       .min(0, 'O pedido mínimo não pode ser negativo.')
@@ -134,10 +126,8 @@ export const updateStoreSettingsSchema = z
       .max(1440, 'O prazo máximo deve ser de até 1440 minutos.'),
     deliveryEnabled: formBooleanSchema.default(true),
     pickupEnabled: formBooleanSchema.default(true),
-    acceptsPix: formBooleanSchema.default(true),
-    acceptsCash: formBooleanSchema.default(true),
-    acceptsCardOnDelivery: formBooleanSchema.default(true),
   })
+  .strict()
   .superRefine((settings, context) => {
     if (settings.estimatedTimeMaxMinutes < settings.estimatedTimeMinMinutes) {
       context.addIssue({
@@ -151,13 +141,6 @@ export const updateStoreSettingsSchema = z
         code: 'custom',
         path: ['deliveryEnabled'],
         message: 'Mantenha entrega ou retirada habilitada.',
-      });
-    }
-    if (!settings.acceptsPix && !settings.acceptsCash && !settings.acceptsCardOnDelivery) {
-      context.addIssue({
-        code: 'custom',
-        path: ['acceptsPix'],
-        message: 'Mantenha ao menos uma forma de pagamento habilitada.',
       });
     }
   });
@@ -174,28 +157,53 @@ export const updateStorefrontDisplaySchema = z
   })
   .strict();
 
-export type UpdateStoreSettingsInput = z.infer<typeof updateStoreSettingsSchema>;
+export type UpdateStoreSettingsInput = z.infer<typeof updateStoreOperationalSettingsSchema>;
 
-export const updatePixConfigSchema = z
+const pixKeyTypeSchema = z.preprocess(
+  (value) => (value === '' || value == null ? null : value),
+  z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']).nullable(),
+);
+
+export const updateStorePaymentSettingsSchema = z
   .object({
-    pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']).nullable().optional(),
+    acceptsPix: formBooleanSchema.default(false),
+    acceptsCash: formBooleanSchema.default(false),
+    acceptsCardOnDelivery: formBooleanSchema.default(false),
+    replacePixKey: formBooleanSchema.default(false),
+    pixKeyType: pixKeyTypeSchema.default(null),
     pixKey: z.string().trim().max(100).optional().default(''),
     pixRecipient: z.string().trim().max(100).optional().default(''),
     pixBank: z.string().trim().max(60).optional().default(''),
     pixInstructions: z.string().trim().max(300).optional().default(''),
   })
+  .strict()
   .superRefine((settings, context) => {
-    if (!settings.pixKeyType && settings.pixKey) {
+    if (!settings.acceptsPix && !settings.acceptsCash && !settings.acceptsCardOnDelivery) {
+      context.addIssue({
+        code: 'custom',
+        path: ['acceptsPix'],
+        message: 'Mantenha ao menos uma forma de pagamento habilitada.',
+      });
+    }
+    if (settings.replacePixKey && !settings.acceptsPix) {
+      context.addIssue({
+        code: 'custom',
+        path: ['replacePixKey'],
+        message: 'Habilite o Pix antes de substituir a chave.',
+      });
+    }
+    if (settings.replacePixKey && !settings.pixKeyType) {
       context.addIssue({
         code: 'custom',
         path: ['pixKeyType'],
         message: 'Selecione o tipo da chave Pix.',
       });
     }
-    if (settings.pixKeyType && !settings.pixKey) {
+    if (settings.replacePixKey && !settings.pixKey) {
       context.addIssue({ code: 'custom', path: ['pixKey'], message: 'Informe a chave Pix.' });
     }
     if (
+      settings.replacePixKey &&
       settings.pixKeyType &&
       settings.pixKey &&
       !validatePixKey(settings.pixKeyType, settings.pixKey)
@@ -206,7 +214,7 @@ export const updatePixConfigSchema = z
         message: `A chave ${settings.pixKeyType} é inválida.`,
       });
     }
-    if (settings.pixKeyType && settings.pixRecipient.length < 2) {
+    if (settings.acceptsPix && settings.pixRecipient.length < 2) {
       context.addIssue({
         code: 'custom',
         path: ['pixRecipient'],
@@ -216,12 +224,13 @@ export const updatePixConfigSchema = z
   })
   .transform((settings) => ({
     ...settings,
-    pixKey: settings.pixKeyType
-      ? normalizePixKey(settings.pixKeyType as PixKeyKind, settings.pixKey)
-      : '',
+    pixKey:
+      settings.replacePixKey && settings.pixKeyType
+        ? normalizePixKey(settings.pixKeyType as PixKeyKind, settings.pixKey)
+        : '',
   }));
 
-export type UpdatePixConfigInput = z.infer<typeof updatePixConfigSchema>;
+export type UpdateStorePaymentSettingsInput = z.infer<typeof updateStorePaymentSettingsSchema>;
 
 export const updateAddressSchema = z.object({
   street: z.string().min(2, 'Rua é obrigatória.').max(200),

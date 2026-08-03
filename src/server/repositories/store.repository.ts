@@ -49,6 +49,13 @@ export async function findStoreOverviewById(id: string, tenantId: string) {
         where: { isActive: true },
         select: { dayOfWeek: true },
       },
+      _count: {
+        select: {
+          categories: { where: { archivedAt: null } },
+          products: { where: { archivedAt: null } },
+          deliveryZones: true,
+        },
+      },
     },
   });
 }
@@ -126,6 +133,7 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
     where: { id, tenantId },
     select: {
       id: true,
+      status: true,
       configurationVersion: true,
       settings: {
         select: {
@@ -138,6 +146,8 @@ export async function findStoreOperationalSettingsById(id: string, tenantId: str
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
+          pixKeyType: true,
+          pixKey: true,
         },
       },
       deliveryZones: {
@@ -203,6 +213,9 @@ export async function findStorePaymentSettingsById(id: string, tenantId: string)
       configurationVersion: true,
       settings: {
         select: {
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
           pixKeyType: true,
           pixKey: true,
           pixRecipient: true,
@@ -232,6 +245,10 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       configurationVersion: true,
       settings: {
         select: {
+          deliveryEnabled: true,
+          pickupEnabled: true,
+          minOrderValue: true,
+          estimatedTimeMinMinutes: true,
           estimatedTimeMaxMinutes: true,
           showEstimatedTimeInHero: true,
           showFulfillmentInHero: true,

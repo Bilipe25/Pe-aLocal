@@ -9,6 +9,7 @@ import { fieldErrorsFromDetails, type StoreFormActionResult } from '@/features/s
 import { rememberActiveStore } from '@/server/services/store-context.service';
 import {
   removeStoreScheduleException,
+  removeStorePixConfiguration,
   saveStoreScheduleException,
   updateStoreAddressSettings,
   updateStoreGeneralSettings,
@@ -137,13 +138,22 @@ export async function updateStorefrontDisplaySettingsAction(
   );
 }
 
-export async function updatePixConfigAction(
+export async function updateStorePaymentSettingsAction(
   storeId: string,
   expectedConfigurationVersion: number,
   formData: FormData,
 ) {
   return executeStoreMutation(() =>
     updateStorePaymentSettings(storeId, expectedConfigurationVersion, formData),
+  );
+}
+
+export async function removePixConfigurationAction(
+  storeId: string,
+  expectedConfigurationVersion: number,
+) {
+  return executeStoreMutation(() =>
+    removeStorePixConfiguration(storeId, expectedConfigurationVersion),
   );
 }
 

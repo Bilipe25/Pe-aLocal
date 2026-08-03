@@ -60,6 +60,8 @@ describe('StoreSettingsService', () => {
   it('retorna operaÃ§Ãµes ao MANAGER somente para leitura', async () => {
     const store = {
       id: 'store-a',
+      status: 'OPEN',
+      configurationVersion: 4,
       settings: {
         minOrderValue: 2000,
         estimatedTime: '30-50 min',
@@ -70,14 +72,36 @@ describe('StoreSettingsService', () => {
         acceptsPix: true,
         acceptsCash: true,
         acceptsCardOnDelivery: true,
+        pixKeyType: 'EMAIL',
+        pixKey: 'financeiro@example.com',
       },
       deliveryZones: [{ id: 'zone-a' }],
     };
     mocks.findStoreOperationalSettingsById.mockResolvedValue(store);
 
     await expect(getStoreOperationalSettings('store-a')).resolves.toEqual({
-      store,
+      store: {
+        id: 'store-a',
+        status: 'OPEN',
+        configurationVersion: 4,
+        settings: {
+          minOrderValue: 2000,
+          estimatedTime: '30-50 min',
+          estimatedTimeMinMinutes: 30,
+          estimatedTimeMaxMinutes: 50,
+          deliveryEnabled: true,
+          pickupEnabled: true,
+        },
+        hasActiveDeliveryZone: true,
+        paymentSummary: {
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+          pixConfigured: true,
+        },
+      },
       canEdit: false,
+      canViewPayments: false,
     });
     expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
       'store-a',
@@ -123,6 +147,39 @@ describe('StoreSettingsService', () => {
     expect(mocks.findStorePaymentSettingsById).not.toHaveBeenCalled();
   });
 
+  it('nunca devolve a chave Pix completa para a pÃ¡gina de pagamentos', async () => {
+    mocks.requireTenantStoreAccess.mockResolvedValueOnce({
+      session: { tenantId: 'tenant-a', tenantRole: 'OWNER' },
+      store: { id: 'store-a' },
+    });
+    mocks.findStorePaymentSettingsById.mockResolvedValueOnce({
+      id: 'store-a',
+      configurationVersion: 9,
+      settings: {
+        acceptsPix: true,
+        acceptsCash: true,
+        acceptsCardOnDelivery: false,
+        pixKeyType: 'EMAIL',
+        pixKey: 'financeiro@example.com',
+        pixRecipient: 'PedidoLocal',
+        pixBank: 'Banco Teste',
+        pixInstructions: 'Envie o comprovante.',
+      },
+    });
+
+    const result = await getStorePaymentSettings('store-a');
+
+    expect(JSON.stringify(result)).not.toContain('financeiro@example.com');
+    expect(result.store.settings).toMatchObject({
+      acceptsPix: true,
+      hasPixKey: true,
+      hasValidPixConfiguration: true,
+      pixRecipient: 'PedidoLocal',
+    });
+    expect(result.store.settings).not.toHaveProperty('pixKey');
+    expect(result.canEdit).toBe(true);
+  });
+
   it('usa DTO de visÃ£o geral sem chave Pix', async () => {
     const store = {
       id: 'store-a',
@@ -133,12 +190,30 @@ describe('StoreSettingsService', () => {
       tenant: { status: 'ACTIVE' },
       address: { id: 'address-a' },
       openingHours: [{ dayOfWeek: 'MONDAY' }],
+      _count: { categories: 2, products: 8, deliveryZones: 3 },
     };
     mocks.findStoreOverviewById.mockResolvedValue(store);
 
     const result = await getStoreOverview('store-a');
 
-    expect(result.store).toEqual(store);
+    expect(result.store).toEqual({
+      id: 'store-a',
+      name: 'Loja A',
+      slug: 'loja-a',
+      status: 'OPEN',
+      isActive: true,
+      tenant: { status: 'ACTIVE' },
+      address: { id: 'address-a' },
+      openingHours: [{ dayOfWeek: 'MONDAY' }],
+    });
+    expect(result.summary).toEqual({
+      categoryCount: 2,
+      productCount: 8,
+      deliveryZoneCount: 3,
+      activeHourCount: 1,
+      hasAddress: true,
+    });
+    expect(result.store).not.toHaveProperty('_count');
     expect(result.store).not.toHaveProperty('settings');
     expect(result.availability).toMatchObject({ acceptingOrders: true, state: 'OPEN' });
     expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(

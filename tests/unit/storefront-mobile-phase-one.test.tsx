@@ -132,7 +132,7 @@ describe('storefront mobile — fase 1', () => {
     expect(screen.getByText('Pix')).toBeVisible();
     expect(screen.getByText('Pix').querySelector('svg')).toHaveAttribute('stroke', '#168f83');
     expect(screen.getByText('Dinheiro').querySelector('svg')).toHaveAttribute('stroke', '#3f7d58');
-    expect(screen.getByText('Cartão na entrega').querySelector('svg')).toHaveAttribute(
+    expect(screen.getByText('Cartão no recebimento').querySelector('svg')).toHaveAttribute(
       'stroke',
       '#c77a00',
     );

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -54,11 +54,35 @@ export function CatalogOrderControls({
 
   return (
     <div className="flex items-center gap-1" role="group" aria-label={`Ordenar ${label}`}>
-      <Button type="button" variant="ghost" size="icon" disabled={!canMoveUp || moving !== null} aria-label={`Mover ${label} para cima`} onClick={() => move('up')}>
-        <ArrowUp aria-hidden="true" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={!canMoveUp || moving !== null}
+        aria-label={`Mover ${label} para cima`}
+        aria-busy={moving === 'up'}
+        onClick={() => move('up')}
+      >
+        {moving === 'up' ? (
+          <LoaderCircle className="animate-spin" aria-hidden="true" />
+        ) : (
+          <ArrowUp aria-hidden="true" />
+        )}
       </Button>
-      <Button type="button" variant="ghost" size="icon" disabled={!canMoveDown || moving !== null} aria-label={`Mover ${label} para baixo`} onClick={() => move('down')}>
-        <ArrowDown aria-hidden="true" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={!canMoveDown || moving !== null}
+        aria-label={`Mover ${label} para baixo`}
+        aria-busy={moving === 'down'}
+        onClick={() => move('down')}
+      >
+        {moving === 'down' ? (
+          <LoaderCircle className="animate-spin" aria-hidden="true" />
+        ) : (
+          <ArrowDown aria-hidden="true" />
+        )}
       </Button>
     </div>
   );

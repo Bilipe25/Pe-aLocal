@@ -2,7 +2,7 @@
 
 import { updateTag } from 'next/cache';
 
-import { createDeliveryZoneSchema } from '@/schemas/delivery';
+import { createDeliveryZoneSchema, deliveryZoneVersionSchema } from '@/schemas/delivery';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionError, actionSuccess, ValidationError, type ActionResult } from '@/server/errors';
 import { Permission } from '@/server/permissions';
@@ -35,6 +35,7 @@ function parsedDeliveryZone(formData: FormData) {
       'Revise os dados da zona de entrega.',
       parsed.error.issues.map((issue) => ({
         path: issue.path.join('.'),
+        field: issue.path.join('.'),
         message: issue.message,
       })),
     );
@@ -45,6 +46,14 @@ function parsedDeliveryZone(formData: FormData) {
     minOrderValue:
       parsed.data.minOrderValue == null ? null : Math.round(parsed.data.minOrderValue * 100),
   };
+}
+
+function parsedExpectedUpdatedAt(value: FormDataEntryValue | string | null) {
+  const parsed = deliveryZoneVersionSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ValidationError('A versão da zona de entrega é inválida. Atualize a página.');
+  }
+  return new Date(parsed.data);
 }
 
 function invalidateDelivery(storeId: string) {
@@ -81,12 +90,16 @@ export async function updateDeliveryZoneAction(
 ): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_DELIVERY);
-    await deliveryZoneRepo.updateDeliveryZone(id, {
-      tenantId: session.tenantId,
-      storeId: store.id,
-      userId: session.userId,
-      ...parsedDeliveryZone(formData),
-    });
+    await deliveryZoneRepo.updateDeliveryZone(
+      id,
+      parsedExpectedUpdatedAt(formData.get('expectedUpdatedAt')),
+      {
+        tenantId: session.tenantId,
+        storeId: store.id,
+        userId: session.userId,
+        ...parsedDeliveryZone(formData),
+      },
+    );
     invalidateDelivery(store.id);
     return actionSuccess(undefined);
   } catch (error) {
@@ -94,10 +107,19 @@ export async function updateDeliveryZoneAction(
   }
 }
 
-export async function deleteDeliveryZoneAction(id: string): Promise<ActionResult> {
+export async function deleteDeliveryZoneAction(
+  id: string,
+  expectedUpdatedAt: string,
+): Promise<ActionResult> {
   try {
     const { session, store } = await requireActiveStoreContext(Permission.MANAGE_DELIVERY);
-    await deliveryZoneRepo.deleteDeliveryZone(id, session.tenantId, store.id, session.userId);
+    await deliveryZoneRepo.deleteDeliveryZone(
+      id,
+      parsedExpectedUpdatedAt(expectedUpdatedAt),
+      session.tenantId,
+      store.id,
+      session.userId,
+    );
     invalidateDelivery(store.id);
     return actionSuccess(undefined);
   } catch (error) {

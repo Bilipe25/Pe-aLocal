@@ -7,6 +7,7 @@ import { setProductAvailabilityAction } from '@/features/catalog/actions';
 
 interface ProductAvailabilityToggleProps {
   productId: string;
+  productName: string;
   isSoldOut: boolean;
 }
 
@@ -16,6 +17,7 @@ interface ProductAvailabilityToggleProps {
  */
 export function ProductAvailabilityToggle({
   productId,
+  productName,
   isSoldOut: initialSoldOut,
 }: ProductAvailabilityToggleProps) {
   const router = useRouter();
@@ -46,14 +48,18 @@ export function ProductAvailabilityToggle({
       onClick={handleToggle}
       disabled={pending}
       aria-busy={pending}
-      aria-label={initialSoldOut ? 'Marcar como disponível' : 'Marcar como esgotado'}
+      aria-label={
+        initialSoldOut
+          ? `Marcar ${productName} como disponível`
+          : `Marcar ${productName} como esgotado`
+      }
       title={
         initialSoldOut ? 'Clique para marcar como disponível' : 'Clique para marcar como esgotado'
       }
-      className={`flex min-h-11 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${
+      className={`focus-visible:ring-brand-500 flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-wait disabled:opacity-60 ${
         initialSoldOut
           ? 'bg-warning/15 text-warning hover:bg-warning/25'
-          : 'bg-surface-secondary text-text-tertiary hover:bg-surface-secondary hover:text-text-secondary border-border border'
+          : 'border-border bg-surface-secondary text-text-secondary hover:bg-surface-tertiary hover:text-text-primary border'
       }`}
     >
       <span

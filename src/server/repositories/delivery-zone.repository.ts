@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import type { DeliveryPostalRangeInput } from '@/schemas/delivery';
 import { getDb } from '@/server/database/client';
-import { ConflictError, NotFoundError } from '@/server/errors';
+import { ConcurrencyError, ConflictError, NotFoundError } from '@/server/errors';
 
 interface DeliveryZoneWrite {
   tenantId: string;
@@ -11,7 +11,7 @@ interface DeliveryZoneWrite {
   name: string;
   fee: number;
   minOrderValue: number | null;
-  estimatedTime: string;
+  estimatedTime: string | null;
   isActive: boolean;
   sortOrder: number;
   postalRanges: DeliveryPostalRangeInput[];
@@ -49,7 +49,7 @@ export async function listDeliveryZones(tenantId: string, storeId: string) {
         orderBy: [{ postalCodeStart: 'asc' }, { postalCodeEnd: 'asc' }],
       },
     },
-    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
   });
 }
 
@@ -138,14 +138,21 @@ export async function createDeliveryZone(data: DeliveryZoneWrite) {
   });
 }
 
-export async function updateDeliveryZone(id: string, data: DeliveryZoneWrite) {
+export async function updateDeliveryZone(
+  id: string,
+  expectedUpdatedAt: Date,
+  data: DeliveryZoneWrite,
+) {
   return runSerializable(async (tx) => {
     await lockStoreCoverage(tx, data.storeId);
     const existing = await tx.deliveryZone.findFirst({
       where: { id, tenantId: data.tenantId, storeId: data.storeId },
-      select: { id: true },
+      select: { id: true, updatedAt: true },
     });
     if (!existing) throw new NotFoundError('Zona de entrega');
+    if (existing.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new ConcurrencyError('A zona de entrega');
+    }
 
     await assertNoPostalRangeOverlap(tx, {
       ...data,
@@ -194,6 +201,7 @@ export async function updateDeliveryZone(id: string, data: DeliveryZoneWrite) {
 
 export async function deleteDeliveryZone(
   id: string,
+  expectedUpdatedAt: Date,
   tenantId: string,
   storeId: string,
   userId: string,
@@ -202,9 +210,12 @@ export async function deleteDeliveryZone(
     await lockStoreCoverage(tx, storeId);
     const zone = await tx.deliveryZone.findFirst({
       where: { id, tenantId, storeId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, updatedAt: true },
     });
     if (!zone) throw new NotFoundError('Zona de entrega');
+    if (zone.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new ConcurrencyError('A zona de entrega');
+    }
 
     await tx.deliveryZone.delete({ where: { id } });
     await tx.auditLog.create({

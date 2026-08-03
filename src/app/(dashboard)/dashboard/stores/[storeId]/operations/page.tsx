@@ -12,27 +12,29 @@ export default async function StoreOperationsPage({
   params: Promise<{ storeId: string }>;
 }) {
   const { storeId } = await params;
-  const { store, canEdit } = await loadStorePageData(() => getStoreOperationalSettings(storeId));
+  const { store, canEdit, canViewPayments } = await loadStorePageData(() =>
+    getStoreOperationalSettings(storeId),
+  );
 
   return (
     <div>
       <PageHeader
         title="Operações"
-        description="Defina modalidades, pedido mínimo, prazo e formas de pagamento da unidade."
+        description="Defina modalidades, pedido mínimo e prazo; confira os pagamentos ativos."
         backHref={`/dashboard/stores/${storeId}`}
       />
-      <section
-        className="border-border bg-surface max-w-3xl rounded-xl border p-4 sm:p-6"
-        aria-label="Configurações operacionais"
-      >
+      <section className="max-w-6xl" aria-label="Configurações operacionais">
         {!canEdit && (
           <ReadOnlyNotice message="Seu perfil pode consultar a operação, mas somente o proprietário pode alterá-la." />
         )}
         <StoreSettingsForm
           storeId={storeId}
+          storeStatus={store.status}
           expectedConfigurationVersion={store.configurationVersion}
           settings={store.settings}
-          hasActiveDeliveryZone={store.deliveryZones.length > 0}
+          hasActiveDeliveryZone={store.hasActiveDeliveryZone}
+          paymentSummary={store.paymentSummary}
+          paymentsHref={canViewPayments ? `/dashboard/stores/${storeId}/payments` : null}
           readOnly={!canEdit}
         />
       </section>
