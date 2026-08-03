@@ -691,7 +691,7 @@ async function getDeliveryZonesFromDb(storeId: string): Promise<PublicDeliveryZo
         some: { isActive: true },
       },
     },
-    orderBy: { sortOrder: 'asc' },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
     select: {
       id: true,
       name: true,

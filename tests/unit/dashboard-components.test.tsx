@@ -2,9 +2,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
 import { HoursForm } from '@/features/stores/components/hours-form';
 import { ProductOptionGroupsEditor } from '@/features/catalog/components/product-option-groups-editor';
 import { ProductSetupProgress } from '@/features/catalog/components/product-setup-progress';
+import { PaymentSettingsForm } from '@/features/stores/components/payment-settings-form';
 import { StoreSettingsForm } from '@/features/stores/components/store-settings-form';
 import { StorefrontDisplaySettingsForm } from '@/features/stores/components/storefront-display-settings-form';
 import { StoreReadinessChecklist } from '@/features/stores/components/store-readiness-checklist';
@@ -12,6 +14,8 @@ import { StoreReadinessChecklist } from '@/features/stores/components/store-read
 const mocks = vi.hoisted(() => ({
   pathname: '/dashboard/catalog',
   refresh: vi.fn(),
+  removePixConfigurationAction: vi.fn(),
+  updateStorePaymentSettingsAction: vi.fn(),
   updateStorefrontDisplaySettingsAction: vi.fn(),
 }));
 
@@ -22,7 +26,9 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/features/stores/actions', () => ({
   selectStoreAction: vi.fn(),
+  removePixConfigurationAction: mocks.removePixConfigurationAction,
   updateHoursAction: vi.fn(),
+  updateStorePaymentSettingsAction: mocks.updateStorePaymentSettingsAction,
   updateStoreSettingsAction: vi.fn(),
   updateStorefrontDisplaySettingsAction: mocks.updateStorefrontDisplaySettingsAction,
 }));
@@ -84,6 +90,105 @@ describe('componentes do painel do tenant', () => {
     const currentLinks = screen.getAllByRole('link', { name: 'Catálogo' });
     expect(currentLinks.some((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
     expect(screen.getByText('Conteúdo')).toBeInTheDocument();
+  });
+
+  it('prioriza operação, resultado do dia e preparação da loja na visão geral', () => {
+    render(
+      <DashboardOverview
+        store={{ id: 'store-a', name: 'Loja A', slug: 'loja-a' }}
+        summary={{
+          categoryCount: 3,
+          productCount: 12,
+          deliveryZoneCount: 2,
+          activeHourCount: 7,
+          hasAddress: true,
+        }}
+        readiness={{ isReady: true, blockers: [], warnings: [], issues: [] }}
+        availability={{
+          acceptingOrders: true,
+          state: 'OPEN',
+          reason: 'Aberta agora. Fecha às 23:00.',
+          nextTransitionAt: null,
+        }}
+        orderCounts={{ total: 8, pending: 4, preparing: 3, ready: 1 }}
+        dailyMetrics={{
+          financialMetricsVisible: true,
+          orderCount: 14,
+          activeCount: 8,
+          completedCount: 6,
+          cancelledCount: 0,
+          grossSales: 134_900,
+          paidRevenue: 102_000,
+          pendingRevenue: 32_900,
+          averageTicket: 9_636,
+          pendingPaymentCount: 2,
+          averageAcceptanceMinutes: 5,
+          averagePreparationMinutes: 22,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Operação agora' })).toBeInTheDocument();
+    expect(screen.getByText('8 pedidos exigem acompanhamento.')).toBeInTheDocument();
+    expect(screen.getByText('R$ 1.349,00')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Resultado de hoje' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pronta para vender' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Abrir central/ })).toHaveAttribute(
+      'href',
+      '/dashboard/orders',
+    );
+  });
+
+  it('mantém a visão geral útil quando pedidos e métricas estão indisponíveis', () => {
+    render(
+      <DashboardOverview
+        store={{ id: 'store-a', name: 'Loja A', slug: 'loja-a' }}
+        summary={{
+          categoryCount: 0,
+          productCount: 0,
+          deliveryZoneCount: 0,
+          activeHourCount: 0,
+          hasAddress: false,
+        }}
+        readiness={{
+          isReady: false,
+          blockers: [
+            {
+              code: 'CATALOG_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Cardápio incompleto',
+              description: 'Cadastre um produto.',
+              actionHref: '/dashboard/catalog',
+            },
+          ],
+          warnings: [],
+          issues: [
+            {
+              code: 'CATALOG_REQUIRED',
+              severity: 'BLOCKER',
+              title: 'Cardápio incompleto',
+              description: 'Cadastre um produto.',
+              actionHref: '/dashboard/catalog',
+            },
+          ],
+        }}
+        availability={{
+          acceptingOrders: false,
+          state: 'NOT_READY',
+          reason: 'A loja ainda não está pronta para receber pedidos.',
+          nextTransitionAt: null,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText('Não foi possível atualizar a fila neste momento.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/O resumo de hoje está temporariamente indisponível/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 bloqueador exige correção.')).toBeInTheDocument();
+    expect(screen.getByText('Revisar')).toBeInTheDocument();
   });
 
   it('compacta dias fechados e expõe horários somente quando ativos', () => {
@@ -163,31 +268,78 @@ describe('componentes do painel do tenant', () => {
     render(
       <StoreSettingsForm
         storeId="00000000-0000-0000-0000-000000000001"
+        storeStatus="CLOSED"
         expectedConfigurationVersion={0}
         settings={null}
         hasActiveDeliveryZone
+        paymentSummary={{
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+          pixConfigured: true,
+        }}
+        paymentsHref="/dashboard/stores/00000000-0000-0000-0000-000000000001/payments"
       />,
     );
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Modalidades' })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Formas de pagamento' }),
+      screen.getByRole('heading', { level: 2, name: 'Como os pedidos são recebidos' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Regras do pedido' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Pagamentos' })).toBeInTheDocument();
   });
 
   it('apresenta operações sem controles de salvamento no modo somente leitura', () => {
     render(
       <StoreSettingsForm
         storeId="00000000-0000-0000-0000-000000000001"
+        storeStatus="CLOSED"
         expectedConfigurationVersion={0}
         settings={null}
         hasActiveDeliveryZone
+        paymentSummary={{
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+          pixConfigured: true,
+        }}
+        paymentsHref={null}
         readOnly
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Entrega habilitada' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Salvar alterações' })).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Entrega' })).toBeDisabled();
+  });
+
+  it('mostra apenas a chave Pix mascarada e exige substituição explícita', () => {
+    render(
+      <PaymentSettingsForm
+        storeId="00000000-0000-0000-0000-000000000001"
+        expectedConfigurationVersion={3}
+        settings={{
+          acceptsPix: true,
+          acceptsCash: true,
+          acceptsCardOnDelivery: false,
+          pixKeyType: 'EMAIL',
+          pixKeyMasked: 'fi***@example.com',
+          hasPixKey: true,
+          hasValidPixConfiguration: true,
+          pixRecipient: 'PedidoLocal',
+          pixBank: 'Banco Teste',
+          pixInstructions: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/fi\*\*\*@example\.com/)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('financeiro@example.com')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nova chave Pix')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Substituir chave' }));
+
+    expect(screen.getByLabelText('Nova chave Pix')).toHaveAttribute('type', 'password');
+    expect(screen.getByRole('button', { name: 'Salvar pagamentos' })).toBeEnabled();
   });
 
   it('mantém preferências da vitrine independentes, restauráveis e somente leitura para manager', () => {
@@ -232,7 +384,7 @@ describe('componentes do painel do tenant', () => {
     fireEvent.click(fulfillment);
     expect(fulfillment).toBeChecked();
     expect(screen.getByRole('button', { name: 'Salvar exibição' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Restaurar valores' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar valores salvos' }));
     expect(fulfillment).not.toBeChecked();
 
     rerender(

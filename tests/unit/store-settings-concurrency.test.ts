@@ -4,6 +4,7 @@ import { BusinessRuleError, ConflictError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import {
   removeStoreScheduleException,
+  removeStorePixConfiguration,
   saveStoreScheduleException,
   updateStoreGeneralSettings,
   updateStoreAddressSettings,
@@ -29,6 +30,9 @@ const mocks = vi.hoisted(() => {
     storeSettings: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
+    },
+    deliveryZone: {
+      count: vi.fn(),
     },
     storeAddress: {
       findUnique: vi.fn(),
@@ -102,6 +106,7 @@ describe('concorrência das configurações da loja', () => {
     mocks.tx.storeSlugRedirect.delete.mockResolvedValue({ id: 'redirect-a' });
     mocks.tx.storeSlugRedirect.upsert.mockResolvedValue({ id: 'redirect-a' });
     mocks.tx.storeSettings.findUnique.mockResolvedValue(null);
+    mocks.tx.deliveryZone.count.mockResolvedValue(1);
     mocks.tx.storeAddress.findUnique.mockResolvedValue(null);
     mocks.tx.storeScheduleException.findUnique.mockResolvedValue(null);
     mocks.tx.storeScheduleException.upsert.mockResolvedValue({
@@ -122,9 +127,6 @@ describe('concorrência das configurações da loja', () => {
         estimatedTimeMaxMinutes: 50,
         deliveryEnabled: true,
         pickupEnabled: true,
-        acceptsPix: false,
-        acceptsCash: false,
-        acceptsCardOnDelivery: true,
       }),
     ).resolves.toMatchObject({ storeId: 'store-a', configurationVersion: 8 });
 
@@ -150,6 +152,47 @@ describe('concorrência das configurações da loja', () => {
       }),
       mocks.tx,
     );
+  });
+
+  it('impede que uma loja aberta fique somente com entrega sem região ativa', async () => {
+    mocks.tx.deliveryZone.count.mockResolvedValueOnce(0);
+
+    await expect(
+      updateStoreOperationalSettings('store-a', 7, {
+        minOrderValue: 20,
+        estimatedTimeMinMinutes: 30,
+        estimatedTimeMaxMinutes: 50,
+        deliveryEnabled: true,
+        pickupEnabled: false,
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+
+    expect(mocks.tx.deliveryZone.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        isActive: true,
+        postalRanges: { some: { isActive: true } },
+      },
+    });
+    expect(mocks.tx.storeSettings.upsert).not.toHaveBeenCalled();
+  });
+
+  it('permite preparar entrega sem região enquanto a loja está fechada', async () => {
+    mocks.tx.store.findFirst.mockResolvedValueOnce({ status: 'CLOSED' });
+    mocks.tx.deliveryZone.count.mockResolvedValueOnce(0);
+
+    await expect(
+      updateStoreOperationalSettings('store-a', 7, {
+        minOrderValue: 20,
+        estimatedTimeMinMinutes: 30,
+        estimatedTimeMaxMinutes: 50,
+        deliveryEnabled: true,
+        pickupEnabled: false,
+      }),
+    ).resolves.toMatchObject({ configurationVersion: 8 });
+
+    expect(mocks.tx.deliveryZone.count).not.toHaveBeenCalled();
   });
 
   it('atualiza somente a exibição pública, com versão, tenant e auditoria específica', async () => {
@@ -350,6 +393,9 @@ describe('concorrência das configurações da loja', () => {
 
   it('nunca inclui a chave Pix nos metadados seguros de auditoria', async () => {
     mocks.tx.storeSettings.findUnique.mockResolvedValueOnce({
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: false,
       pixKeyType: 'EMAIL',
       pixKey: 'chave-anterior@example.com',
       pixRecipient: 'Pedido Local',
@@ -358,6 +404,10 @@ describe('concorrência das configurações da loja', () => {
     });
 
     await updateStorePaymentSettings('store-a', 2, {
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: false,
+      replacePixKey: true,
       pixKeyType: 'RANDOM',
       pixKey: '4da03571-bffd-45ef-8c44-20686c487838',
       pixRecipient: 'Pedido Local',
@@ -377,6 +427,90 @@ describe('concorrência das configurações da loja', () => {
         pixKeyChanged: true,
       },
     });
+  });
+
+  it('preserva a chave Pix existente quando ela não é substituída', async () => {
+    mocks.tx.storeSettings.findUnique.mockResolvedValueOnce({
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: false,
+      pixKeyType: 'EMAIL',
+      pixKey: 'financeiro@example.com',
+      pixRecipient: 'Pedido Local',
+      pixBank: 'Banco A',
+      pixInstructions: 'Instrução atual',
+    });
+
+    await updateStorePaymentSettings('store-a', 2, {
+      acceptsPix: true,
+      acceptsCash: false,
+      acceptsCardOnDelivery: true,
+      replacePixKey: false,
+      pixKeyType: 'EMAIL',
+      pixRecipient: 'Pedido Local',
+      pixBank: 'Banco B',
+      pixInstructions: 'Nova instrução',
+    });
+
+    expect(mocks.tx.storeSettings.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          pixKeyType: 'EMAIL',
+          pixKey: 'financeiro@example.com',
+          acceptsCardOnDelivery: true,
+        }),
+      }),
+    );
+    expect(JSON.stringify(mocks.createAuditLog.mock.calls[0]?.[0])).not.toContain(
+      'financeiro@example.com',
+    );
+  });
+
+  it('remove os dados Pix sem eliminar a última forma de pagamento alternativa', async () => {
+    mocks.tx.storeSettings.findUnique.mockResolvedValueOnce({
+      acceptsPix: true,
+      acceptsCash: true,
+      acceptsCardOnDelivery: false,
+      pixKeyType: 'EMAIL',
+      pixKey: 'financeiro@example.com',
+      pixRecipient: 'Pedido Local',
+      pixBank: 'Banco A',
+      pixInstructions: 'Instrução atual',
+    });
+
+    await removeStorePixConfiguration('store-a', 2);
+
+    expect(mocks.tx.storeSettings.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          acceptsPix: false,
+          pixKeyType: null,
+          pixKey: null,
+          pixRecipient: null,
+        }),
+      }),
+    );
+    expect(JSON.stringify(mocks.createAuditLog.mock.calls[0]?.[0])).not.toContain(
+      'financeiro@example.com',
+    );
+  });
+
+  it('bloqueia a remoção do Pix quando ele é a única forma de pagamento', async () => {
+    mocks.tx.storeSettings.findUnique.mockResolvedValueOnce({
+      acceptsPix: true,
+      acceptsCash: false,
+      acceptsCardOnDelivery: false,
+      pixKeyType: 'EMAIL',
+      pixKey: 'financeiro@example.com',
+      pixRecipient: 'Pedido Local',
+      pixBank: null,
+      pixInstructions: null,
+    });
+
+    await expect(removeStorePixConfiguration('store-a', 2)).rejects.toBeInstanceOf(
+      BusinessRuleError,
+    );
+    expect(mocks.tx.storeSettings.upsert).not.toHaveBeenCalled();
   });
 
   it('protege mudança de status com versão e registra antes/depois', async () => {

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   updateAddressSchema,
-  updatePixConfigSchema,
   updateStoreSchema,
-  updateStoreSettingsSchema,
+  updateStoreOperationalSettingsSchema,
+  updateStorePaymentSettingsSchema,
   updateStorefrontDisplaySchema,
 } from '@/schemas/store';
 
@@ -26,17 +26,14 @@ describe('schemas de configuracao da loja', () => {
     });
   });
 
-  it('mantem modalidades, pagamentos e prazo estruturado consistentes', () => {
+  it('mantem modalidades e prazo estruturado consistentes sem aceitar pagamentos', () => {
     expect(
-      updateStoreSettingsSchema.parse({
+      updateStoreOperationalSettingsSchema.parse({
         minOrderValue: '20',
         estimatedTimeMinMinutes: '30',
         estimatedTimeMaxMinutes: '50',
         deliveryEnabled: 'false',
         pickupEnabled: 'true',
-        acceptsPix: 'false',
-        acceptsCash: 'true',
-        acceptsCardOnDelivery: 'false',
       }),
     ).toMatchObject({
       minOrderValue: 20,
@@ -44,30 +41,39 @@ describe('schemas de configuracao da loja', () => {
       estimatedTimeMaxMinutes: 50,
       deliveryEnabled: false,
       pickupEnabled: true,
-      acceptsPix: false,
-      acceptsCash: true,
-      acceptsCardOnDelivery: false,
     });
 
-    const noPayment = updateStoreSettingsSchema.safeParse({
+    const invalidOperations = updateStoreOperationalSettingsSchema.safeParse({
       minOrderValue: '20',
       estimatedTimeMinMinutes: '50',
       estimatedTimeMaxMinutes: '30',
       deliveryEnabled: 'false',
       pickupEnabled: 'false',
-      acceptsPix: 'false',
-      acceptsCash: 'false',
-      acceptsCardOnDelivery: 'false',
     });
 
-    expect(noPayment.success).toBe(false);
-    expect(noPayment.error?.issues.map((issue) => issue.path.join('.'))).toEqual(
-      expect.arrayContaining(['estimatedTimeMaxMinutes', 'deliveryEnabled', 'acceptsPix']),
+    expect(invalidOperations.success).toBe(false);
+    expect(invalidOperations.error?.issues.map((issue) => issue.path.join('.'))).toEqual(
+      expect.arrayContaining(['estimatedTimeMaxMinutes', 'deliveryEnabled']),
     );
+
+    expect(
+      updateStoreOperationalSettingsSchema.safeParse({
+        minOrderValue: '20',
+        estimatedTimeMinMinutes: '30',
+        estimatedTimeMaxMinutes: '50',
+        deliveryEnabled: 'true',
+        pickupEnabled: 'true',
+        acceptsPix: 'true',
+      }).success,
+    ).toBe(false);
   });
 
-  it('exige tipo, chave e beneficiario Pix juntos e salva chave normalizada', () => {
-    const parsed = updatePixConfigSchema.parse({
+  it('valida pagamentos em contrato separado e salva nova chave Pix normalizada', () => {
+    const parsed = updateStorePaymentSettingsSchema.parse({
+      acceptsPix: 'true',
+      acceptsCash: 'false',
+      acceptsCardOnDelivery: 'false',
+      replacePixKey: 'true',
       pixKeyType: 'PHONE',
       pixKey: '(85) 99999-9999',
       pixRecipient: 'PedidoLocal LTDA',
@@ -77,7 +83,11 @@ describe('schemas de configuracao da loja', () => {
 
     expect(parsed.pixKey).toBe('+5585999999999');
 
-    const invalid = updatePixConfigSchema.safeParse({
+    const invalid = updateStorePaymentSettingsSchema.safeParse({
+      acceptsPix: 'true',
+      acceptsCash: 'false',
+      acceptsCardOnDelivery: 'false',
+      replacePixKey: 'true',
       pixKeyType: 'EMAIL',
       pixKey: 'email-invalido',
       pixRecipient: '',
@@ -87,6 +97,14 @@ describe('schemas de configuracao da loja', () => {
     expect(invalid.error?.issues.map((issue) => issue.path.join('.'))).toEqual(
       expect.arrayContaining(['pixKey', 'pixRecipient']),
     );
+
+    expect(
+      updateStorePaymentSettingsSchema.safeParse({
+        acceptsPix: 'false',
+        acceptsCash: 'false',
+        acceptsCardOnDelivery: 'false',
+      }).success,
+    ).toBe(false);
   });
 
   it('normaliza endereco e rejeita UF ou CEP invalidos', () => {

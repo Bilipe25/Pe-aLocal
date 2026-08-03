@@ -63,6 +63,7 @@ const zoneInput = {
 
 const createdZone = {
   id: 'zone-a',
+  updatedAt: new Date('2026-07-28T12:00:00.000Z'),
   ...zoneInput,
   postalRanges: zoneInput.postalRanges.map((range, index) => ({
     id: `range-${index + 1}`,
@@ -80,7 +81,10 @@ describe('delivery zone repository postal coverage', () => {
     mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.deliveryZonePostalRange.findFirst.mockResolvedValue(null);
     mocks.tx.deliveryZonePostalRange.deleteMany.mockResolvedValue({ count: 2 });
-    mocks.tx.deliveryZone.findFirst.mockResolvedValue({ id: createdZone.id });
+    mocks.tx.deliveryZone.findFirst.mockResolvedValue({
+      id: createdZone.id,
+      updatedAt: createdZone.updatedAt,
+    });
     mocks.tx.deliveryZone.create.mockResolvedValue(createdZone);
     mocks.tx.deliveryZone.update.mockResolvedValue(createdZone);
     mocks.tx.deliveryZone.delete.mockResolvedValue(createdZone);
@@ -206,11 +210,11 @@ describe('delivery zone repository postal coverage', () => {
   });
 
   it('no update exclui somente a própria zona da detecção e mantém todo o escopo', async () => {
-    await updateDeliveryZone('zone-a', zoneInput);
+    await updateDeliveryZone('zone-a', createdZone.updatedAt, zoneInput);
 
     expect(mocks.tx.deliveryZone.findFirst).toHaveBeenCalledWith({
       where: { id: 'zone-a', tenantId: 'tenant-a', storeId: 'store-a' },
-      select: { id: true },
+      select: { id: true, updatedAt: true },
     });
     expect(mocks.tx.deliveryZonePostalRange.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -247,7 +251,9 @@ describe('delivery zone repository postal coverage', () => {
   it('não altera zona de outro tenant ou estabelecimento', async () => {
     mocks.tx.deliveryZone.findFirst.mockResolvedValueOnce(null);
 
-    await expect(updateDeliveryZone('zone-b', zoneInput)).rejects.toMatchObject({
+    await expect(
+      updateDeliveryZone('zone-b', createdZone.updatedAt, zoneInput),
+    ).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
     });
@@ -262,13 +268,14 @@ describe('delivery zone repository postal coverage', () => {
     mocks.tx.deliveryZone.findFirst.mockResolvedValueOnce({
       id: 'zone-a',
       name: 'Centro',
+      updatedAt: createdZone.updatedAt,
     });
 
-    await deleteDeliveryZone('zone-a', 'tenant-a', 'store-a', 'owner-a');
+    await deleteDeliveryZone('zone-a', createdZone.updatedAt, 'tenant-a', 'store-a', 'owner-a');
 
     expect(mocks.tx.deliveryZone.findFirst).toHaveBeenCalledWith({
       where: { id: 'zone-a', tenantId: 'tenant-a', storeId: 'store-a' },
-      select: { id: true, name: true },
+      select: { id: true, name: true, updatedAt: true },
     });
     expect(mocks.tx.deliveryZone.delete).toHaveBeenCalledWith({ where: { id: 'zone-a' } });
     expect(mocks.tx.auditLog.create).toHaveBeenCalledWith({
@@ -282,6 +289,42 @@ describe('delivery zone repository postal coverage', () => {
         metadata: { name: 'Centro' },
       },
     });
+  });
+
+  it('bloqueia update quando outra sessão alterou a zona', async () => {
+    mocks.tx.deliveryZone.findFirst.mockResolvedValueOnce({
+      id: 'zone-a',
+      updatedAt: new Date('2026-07-28T12:05:00.000Z'),
+    });
+
+    await expect(
+      updateDeliveryZone('zone-a', createdZone.updatedAt, zoneInput),
+    ).rejects.toMatchObject({
+      code: 'CONCURRENCY_CONFLICT',
+      statusCode: 409,
+    });
+
+    expect(mocks.tx.deliveryZonePostalRange.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.deliveryZone.update).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia exclusão quando a versão exibida ficou desatualizada', async () => {
+    mocks.tx.deliveryZone.findFirst.mockResolvedValueOnce({
+      id: 'zone-a',
+      name: 'Centro',
+      updatedAt: new Date('2026-07-28T12:05:00.000Z'),
+    });
+
+    await expect(
+      deleteDeliveryZone('zone-a', createdZone.updatedAt, 'tenant-a', 'store-a', 'owner-a'),
+    ).rejects.toMatchObject({
+      code: 'CONCURRENCY_CONFLICT',
+      statusCode: 409,
+    });
+
+    expect(mocks.tx.deliveryZone.delete).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('repete conflitos serializáveis sem duplicar a escrita confirmada', async () => {

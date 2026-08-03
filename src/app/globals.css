@@ -754,6 +754,12 @@ body {
   contain-intrinsic-block-size: auto 18rem;
 }
 
+/* Catálogo administrativo: evita pintar categorias longas fora da viewport. */
+.catalog-category-section {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 14rem;
+}
+
 .order-card-mobile-modality,
 .order-card-more-mobile,
 .order-card-mobile-total-label {

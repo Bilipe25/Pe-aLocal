@@ -288,7 +288,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       } else if (input.paymentMethod === 'CARD_ON_DELIVERY' && !settings.acceptsCardOnDelivery) {
         throw new CheckoutError(
           'STORE_UNAVAILABLE',
-          'O cartão na entrega não está disponível.',
+          'O cartão no recebimento não está disponível.',
           409,
         );
       }

@@ -1857,7 +1857,7 @@ export function CheckoutForm({
                   acceptsCardOnDelivery
                     ? {
                         value: 'CARD_ON_DELIVERY' as const,
-                        label: 'Cartão na entrega',
+                        label: 'Cartão no recebimento',
                         description: 'Pague na maquininha ao receber',
                         Icon: CreditCard,
                         iconClass: 'text-amber-700 bg-amber-50',
@@ -2061,7 +2061,7 @@ export function CheckoutForm({
                         ? 'Pix'
                         : paymentMethod === 'CASH'
                           ? 'Dinheiro'
-                          : 'Cartão na entrega'}
+                          : 'Cartão no recebimento'}
                     </p>
                   </div>
                   <button

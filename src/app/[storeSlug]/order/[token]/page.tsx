@@ -53,7 +53,7 @@ const modalityMap = {
 const paymentMap = {
   PIX: 'Pix',
   CASH: 'Dinheiro',
-  CARD_ON_DELIVERY: 'Cartão na Entrega',
+  CARD_ON_DELIVERY: 'Cartão no recebimento',
 };
 
 const paymentStatusMap = {

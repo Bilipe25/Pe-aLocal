@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDeliveryZoneSchema } from '@/schemas/delivery';
+import { MAX_DELIVERY_MONEY_REAIS } from '@/domain/delivery/constants';
+import { createDeliveryZoneSchema, deliveryZoneVersionSchema } from '@/schemas/delivery';
 
 const validZone = {
   name: 'Centro',
@@ -31,6 +32,35 @@ describe('delivery zone schema', () => {
         postalCodeEnd: '01099999',
       },
     ]);
+  });
+
+  it('normaliza prazo vazio para null e preserva o fallback da loja', () => {
+    const result = createDeliveryZoneSchema.parse({
+      ...validZone,
+      estimatedTime: '   ',
+    });
+
+    expect(result.estimatedTime).toBeNull();
+  });
+
+  it.each([
+    ['fee', String(MAX_DELIVERY_MONEY_REAIS + 0.01)],
+    ['minOrderValue', String(MAX_DELIVERY_MONEY_REAIS + 0.01)],
+  ])('rejeita %s acima do limite seguro do PostgreSQL', (field, value) => {
+    const result = createDeliveryZoneSchema.safeParse({
+      ...validZone,
+      [field]: value,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path[0] === field)).toBe(true);
+    }
+  });
+
+  it('aceita somente versões ISO com fuso para concorrência otimista', () => {
+    expect(deliveryZoneVersionSchema.safeParse('2026-07-28T12:00:00.000Z').success).toBe(true);
+    expect(deliveryZoneVersionSchema.safeParse('28/07/2026 12:00').success).toBe(false);
   });
 
   it('rejeita intervalo invertido', () => {

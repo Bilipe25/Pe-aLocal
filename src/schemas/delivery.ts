@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MAX_DELIVERY_MONEY_REAIS } from '@/domain/delivery/constants';
+
 const formBooleanSchema = z.preprocess(
   (value) => value === true || value === 'true' || value === 'on',
   z.boolean(),
@@ -11,8 +13,7 @@ const postalCodeSchema = z
   .pipe(z.string().regex(/^\d{8}$/, 'Informe um CEP com 8 números.'));
 
 const MAX_ESTIMATED_TIME_MINUTES = 1440;
-const estimatedTimePattern =
-  /^([1-9]\d{0,3})(?:\s*[-\u2013]\s*([1-9]\d{0,3}))?\s*min(?:uto)?s?$/i;
+const estimatedTimePattern = /^([1-9]\d{0,3})(?:\s*[-\u2013]\s*([1-9]\d{0,3}))?\s*min(?:uto)?s?$/i;
 
 const estimatedTimeSchema = z
   .string()
@@ -45,7 +46,8 @@ const estimatedTimeSchema = z
         message: 'O prazo máximo precisa ser maior ou igual ao mínimo.',
       });
     }
-  });
+  })
+  .transform((value) => value || null);
 
 export const deliveryPostalRangeSchema = z
   .object({
@@ -62,9 +64,21 @@ export const deliveryPostalRangeSchema = z
 export const createDeliveryZoneSchema = z
   .object({
     name: z.string().trim().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(80),
-    fee: z.coerce.number().finite().min(0, 'Taxa não pode ser negativa.').default(0),
+    fee: z.coerce
+      .number()
+      .finite()
+      .min(0, 'Taxa não pode ser negativa.')
+      .max(MAX_DELIVERY_MONEY_REAIS, 'A taxa informada excede o limite permitido.')
+      .default(0),
     minOrderValue: z
-      .union([z.literal(''), z.coerce.number().finite().min(0)])
+      .union([
+        z.literal(''),
+        z.coerce
+          .number()
+          .finite()
+          .min(0, 'Pedido mínimo não pode ser negativo.')
+          .max(MAX_DELIVERY_MONEY_REAIS, 'O pedido mínimo excede o limite permitido.'),
+      ])
       .optional()
       .transform((value) => (value === '' || value === undefined ? null : value)),
     estimatedTime: estimatedTimeSchema,
@@ -93,6 +107,8 @@ export const createDeliveryZoneSchema = z
   });
 
 export const updateDeliveryZoneSchema = createDeliveryZoneSchema;
+
+export const deliveryZoneVersionSchema = z.iso.datetime({ offset: true });
 
 export type DeliveryPostalRangeInput = z.infer<typeof deliveryPostalRangeSchema>;
 export type CreateDeliveryZoneInput = z.infer<typeof createDeliveryZoneSchema>;

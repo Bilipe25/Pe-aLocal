@@ -88,7 +88,7 @@ async function reachReviewForPickup(page: Page) {
   await page.getByRole('button', { name: 'Continuar para pagamento' }).click();
 
   const pix = page.getByRole('radio', { name: /Pix/ });
-  const card = page.getByRole('radio', { name: /Cartão na entrega/ });
+  const card = page.getByRole('radio', { name: /Cartão no recebimento/ });
   const cash = page.getByRole('radio', { name: /Dinheiro/ });
   if ((await pix.count()) > 0) {
     await pix.check();

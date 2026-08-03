@@ -9,9 +9,9 @@ import {
   expectedConfigurationVersionSchema,
   updateAddressSchema,
   updateHoursSchema,
-  updatePixConfigSchema,
+  updateStoreOperationalSettingsSchema,
+  updateStorePaymentSettingsSchema,
   updateStoreSchema,
-  updateStoreSettingsSchema,
   updateStorefrontDisplaySchema,
 } from '@/schemas/store';
 import { requireTenantStoreAccess } from '@/server/auth';
@@ -171,14 +171,23 @@ async function writeStoreAudit(
 
 export async function getStoreOverview(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_STORE_OVERVIEW);
-  const [store, state] = await Promise.all([
+  const [storeRecord, state] = await Promise.all([
     storeRepo.findStoreOverviewById(storeId, session.tenantId),
     getStoreAvailabilityStateForTenant(session.tenantId, storeId),
   ]);
-  if (!store) missingStore();
+  if (!storeRecord) missingStore();
+
+  const { _count, ...store } = storeRecord;
 
   return {
     store,
+    summary: {
+      categoryCount: _count.categories,
+      productCount: _count.products,
+      deliveryZoneCount: _count.deliveryZones,
+      activeHourCount: store.openingHours.length,
+      hasAddress: Boolean(store.address),
+    },
     readiness: state.readiness,
     availability: state.availability,
     capabilities: getStorePageCapabilities(session.tenantRole),
@@ -228,9 +237,38 @@ export async function getStoreOperationalSettings(storeId: string) {
   const store = await storeRepo.findStoreOperationalSettingsById(storeId, session.tenantId);
   if (!store) missingStore();
 
+  const settings = store.settings;
+  const paymentSummary = {
+    acceptsPix: settings?.acceptsPix ?? false,
+    acceptsCash: settings?.acceptsCash ?? false,
+    acceptsCardOnDelivery: settings?.acceptsCardOnDelivery ?? false,
+    pixConfigured: Boolean(
+      settings?.pixKeyType &&
+      settings.pixKey &&
+      validatePixKey(settings.pixKeyType, settings.pixKey),
+    ),
+  };
+
   return {
-    store,
+    store: {
+      id: store.id,
+      status: store.status,
+      configurationVersion: store.configurationVersion,
+      settings: settings
+        ? {
+            minOrderValue: settings.minOrderValue,
+            estimatedTime: settings.estimatedTime,
+            estimatedTimeMinMinutes: settings.estimatedTimeMinMinutes,
+            estimatedTimeMaxMinutes: settings.estimatedTimeMaxMinutes,
+            deliveryEnabled: settings.deliveryEnabled,
+            pickupEnabled: settings.pickupEnabled,
+          }
+        : null,
+      hasActiveDeliveryZone: store.deliveryZones.length > 0,
+      paymentSummary,
+    },
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_STORE_OPERATIONS),
+    canViewPayments: hasTenantPermission(session.tenantRole, Permission.VIEW_PAYMENT_SETTINGS),
   };
 }
 
@@ -252,12 +290,22 @@ export async function getStorePaymentSettings(storeId: string) {
 
   return {
     store: {
-      ...store,
+      id: store.id,
+      configurationVersion: store.configurationVersion,
       settings: store.settings
-        ? {
-            ...store.settings,
-            pixKeyMasked: maskPixKey(store.settings.pixKeyType, store.settings.pixKey),
-          }
+        ? (() => {
+            const { pixKey, ...safeSettings } = store.settings;
+            return {
+              ...safeSettings,
+              hasPixKey: Boolean(pixKey),
+              hasValidPixConfiguration: Boolean(
+                store.settings.pixKeyType &&
+                pixKey &&
+                validatePixKey(store.settings.pixKeyType, pixKey),
+              ),
+              pixKeyMasked: maskPixKey(store.settings.pixKeyType, pixKey),
+            };
+          })()
         : null,
     },
     canEdit: hasTenantPermission(session.tenantRole, Permission.EDIT_PAYMENT_SETTINGS),
@@ -395,7 +443,7 @@ export async function updateStoreOperationalSettings(
   );
   const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
   const parsed = parseInput(
-    updateStoreSettingsSchema,
+    updateStoreOperationalSettingsSchema,
     asRecord(input),
     'As configurações operacionais são inválidas.',
   );
@@ -406,6 +454,12 @@ export async function updateStoreOperationalSettings(
   };
 
   await getDb().$transaction(async (tx) => {
+    const currentStore = await tx.store.findFirst({
+      where: { id: store.id, tenantId: session.tenantId, configurationVersion },
+      select: { status: true },
+    });
+    if (!currentStore) throw new ConflictError(CONFIGURATION_CONFLICT_MESSAGE);
+
     const previous = await tx.storeSettings.findUnique({
       where: { storeId: store.id },
       select: {
@@ -415,23 +469,35 @@ export async function updateStoreOperationalSettings(
         estimatedTimeMaxMinutes: true,
         deliveryEnabled: true,
         pickupEnabled: true,
-        acceptsPix: true,
-        acceptsCash: true,
-        acceptsCardOnDelivery: true,
-        pixKeyType: true,
-        pixKey: true,
       },
     });
+
     if (
-      settingsData.acceptsPix &&
-      (!previous?.pixKeyType ||
-        !previous.pixKey ||
-        !validatePixKey(previous.pixKeyType, previous.pixKey))
+      currentStore.status === 'OPEN' &&
+      settingsData.deliveryEnabled &&
+      !settingsData.pickupEnabled
     ) {
-      throw new BusinessRuleError('Configure uma chave Pix válida antes de habilitar o Pix.', [
-        { field: 'acceptsPix', message: 'A chave Pix está ausente ou inválida.' },
-      ]);
+      const activeDeliveryZoneCount = await tx.deliveryZone.count({
+        where: {
+          tenantId: session.tenantId,
+          storeId: store.id,
+          isActive: true,
+          postalRanges: { some: { isActive: true } },
+        },
+      });
+      if (activeDeliveryZoneCount === 0) {
+        throw new BusinessRuleError(
+          'A loja aberta precisa manter ao menos uma modalidade disponível.',
+          [
+            {
+              field: 'deliveryEnabled',
+              message: 'Cadastre uma região de entrega ativa ou mantenha a retirada habilitada.',
+            },
+          ],
+        );
+      }
     }
+
     const previousValues = previous
       ? {
           minOrderValue: previous.minOrderValue,
@@ -440,9 +506,6 @@ export async function updateStoreOperationalSettings(
           estimatedTimeMaxMinutes: previous.estimatedTimeMaxMinutes,
           deliveryEnabled: previous.deliveryEnabled,
           pickupEnabled: previous.pickupEnabled,
-          acceptsPix: previous.acceptsPix,
-          acceptsCash: previous.acceptsCash,
-          acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
         }
       : null;
     await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
@@ -540,17 +603,19 @@ export async function updateStorePaymentSettings(
     Permission.EDIT_PAYMENT_SETTINGS,
   );
   const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
-  const raw = asRecord(input);
   const parsed = parseInput(
-    updatePixConfigSchema,
-    { ...raw, pixKeyType: raw.pixKeyType || null },
-    'A configuração de Pix é inválida.',
+    updateStorePaymentSettingsSchema,
+    asRecord(input),
+    'As configurações de pagamento são inválidas.',
   );
 
   await getDb().$transaction(async (tx) => {
     const previous = await tx.storeSettings.findUnique({
       where: { storeId: store.id },
       select: {
+        acceptsPix: true,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
         pixKeyType: true,
         pixKey: true,
         pixRecipient: true,
@@ -558,11 +623,69 @@ export async function updateStorePaymentSettings(
         pixInstructions: true,
       },
     });
+
+    const preservePixConfiguration = !parsed.acceptsPix && !parsed.replacePixKey;
+    const nextPixKeyType = parsed.replacePixKey
+      ? parsed.pixKeyType
+      : (previous?.pixKeyType ?? null);
+    const nextPixKey = parsed.replacePixKey ? parsed.pixKey : (previous?.pixKey ?? null);
+    const nextPixRecipient = preservePixConfiguration
+      ? (previous?.pixRecipient ?? null)
+      : parsed.pixRecipient || null;
+    const nextPixBank = preservePixConfiguration
+      ? (previous?.pixBank ?? null)
+      : parsed.pixBank || null;
+    const nextPixInstructions = preservePixConfiguration
+      ? (previous?.pixInstructions ?? null)
+      : parsed.pixInstructions || null;
+
+    if (
+      parsed.acceptsPix &&
+      (!nextPixKeyType || !nextPixKey || !validatePixKey(nextPixKeyType, nextPixKey))
+    ) {
+      throw new BusinessRuleError('Configure uma chave Pix válida antes de habilitar o Pix.', [
+        { field: 'pixKey', message: 'Informe ou substitua a chave Pix desta unidade.' },
+      ]);
+    }
+
+    const settingsData = {
+      acceptsPix: parsed.acceptsPix,
+      acceptsCash: parsed.acceptsCash,
+      acceptsCardOnDelivery: parsed.acceptsCardOnDelivery,
+      pixKeyType: nextPixKeyType,
+      pixKey: nextPixKey || null,
+      pixRecipient: nextPixRecipient,
+      pixBank: nextPixBank,
+      pixInstructions: nextPixInstructions,
+    };
+    const previousSafe = previous
+      ? {
+          acceptsPix: previous.acceptsPix,
+          acceptsCash: previous.acceptsCash,
+          acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
+          pixKeyType: previous.pixKeyType,
+          pixKeyMasked: maskPixKey(previous.pixKeyType, previous.pixKey),
+          pixRecipientConfigured: Boolean(previous.pixRecipient),
+          pixBankConfigured: Boolean(previous.pixBank),
+          pixInstructionsConfigured: Boolean(previous.pixInstructions),
+        }
+      : null;
+    const nextSafe = {
+      acceptsPix: settingsData.acceptsPix,
+      acceptsCash: settingsData.acceptsCash,
+      acceptsCardOnDelivery: settingsData.acceptsCardOnDelivery,
+      pixKeyType: settingsData.pixKeyType,
+      pixKeyMasked: maskPixKey(settingsData.pixKeyType, settingsData.pixKey),
+      pixRecipientConfigured: Boolean(settingsData.pixRecipient),
+      pixBankConfigured: Boolean(settingsData.pixBank),
+      pixInstructionsConfigured: Boolean(settingsData.pixInstructions),
+    };
+
     await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
     await tx.storeSettings.upsert({
       where: { storeId: store.id },
-      update: parsed,
-      create: { storeId: store.id, ...parsed },
+      update: settingsData,
+      create: { storeId: store.id, ...settingsData },
     });
     await writeStoreAudit(tx, {
       tenantId: session.tenantId,
@@ -571,15 +694,96 @@ export async function updateStorePaymentSettings(
       section: 'payments',
       expectedConfigurationVersion: configurationVersion,
       metadata: {
-        changedFields: changedFields(previous, parsed),
+        changedFields: changedFields(previousSafe, nextSafe),
         previousPixKeyType: previous?.pixKeyType ?? null,
-        nextPixKeyType: parsed.pixKeyType ?? null,
+        nextPixKeyType: settingsData.pixKeyType,
         previousPixKeyMasked: maskPixKey(previous?.pixKeyType ?? null, previous?.pixKey ?? null),
-        nextPixKeyMasked: maskPixKey(parsed.pixKeyType ?? null, parsed.pixKey || null),
-        pixKeyChanged: (previous?.pixKey ?? '') !== parsed.pixKey,
-        pixRecipientChanged: (previous?.pixRecipient ?? '') !== parsed.pixRecipient,
-        pixBankChanged: (previous?.pixBank ?? '') !== parsed.pixBank,
-        pixInstructionsChanged: (previous?.pixInstructions ?? '') !== parsed.pixInstructions,
+        nextPixKeyMasked: nextSafe.pixKeyMasked,
+        pixKeyChanged: (previous?.pixKey ?? null) !== settingsData.pixKey,
+        pixRecipientChanged: (previous?.pixRecipient ?? null) !== settingsData.pixRecipient,
+        pixBankChanged: (previous?.pixBank ?? null) !== settingsData.pixBank,
+        pixInstructionsChanged:
+          (previous?.pixInstructions ?? null) !== settingsData.pixInstructions,
+      },
+    });
+  });
+
+  return {
+    storeId: store.id,
+    configurationVersion: configurationVersion + 1,
+    storeSlug: store.slug,
+  };
+}
+
+export async function removeStorePixConfiguration(
+  storeId: string,
+  expectedVersion: unknown,
+): Promise<StoreConfigurationMutationResult> {
+  const { session, store } = await requireTenantStoreAccess(
+    storeId,
+    Permission.EDIT_PAYMENT_SETTINGS,
+  );
+  const configurationVersion = parseExpectedConfigurationVersion(expectedVersion);
+
+  await getDb().$transaction(async (tx) => {
+    const previous = await tx.storeSettings.findUnique({
+      where: { storeId: store.id },
+      select: {
+        acceptsPix: true,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+        pixKeyType: true,
+        pixKey: true,
+        pixRecipient: true,
+        pixBank: true,
+        pixInstructions: true,
+      },
+    });
+    if (!previous?.pixKey) {
+      throw new BusinessRuleError('Nenhuma chave Pix está configurada nesta unidade.');
+    }
+    if (!previous.acceptsCash && !previous.acceptsCardOnDelivery) {
+      throw new BusinessRuleError('Habilite outra forma de pagamento antes de remover o Pix.', [
+        { field: 'acceptsPix', message: 'A loja precisa manter uma forma de pagamento ativa.' },
+      ]);
+    }
+
+    await advanceConfigurationVersion(tx, store.id, session.tenantId, configurationVersion);
+    await tx.storeSettings.upsert({
+      where: { storeId: store.id },
+      update: {
+        acceptsPix: false,
+        pixKeyType: null,
+        pixKey: null,
+        pixRecipient: null,
+        pixBank: null,
+        pixInstructions: null,
+      },
+      create: {
+        storeId: store.id,
+        acceptsPix: false,
+        acceptsCash: previous.acceptsCash,
+        acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
+      },
+    });
+    await writeStoreAudit(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      userId: session.userId,
+      section: 'payments',
+      expectedConfigurationVersion: configurationVersion,
+      metadata: {
+        changedFields: [
+          'acceptsPix',
+          'pixKeyType',
+          'pixKey',
+          'pixRecipient',
+          'pixBank',
+          'pixInstructions',
+        ],
+        pixConfigurationRemoved: true,
+        previousPixKeyType: previous.pixKeyType,
+        previousPixKeyMasked: maskPixKey(previous.pixKeyType, previous.pixKey),
       },
     });
   });

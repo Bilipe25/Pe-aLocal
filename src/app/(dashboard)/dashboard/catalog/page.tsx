@@ -36,32 +36,37 @@ export default async function CatalogPage() {
         title="Catálogo"
         description={
           canManageCatalog
-            ? 'Gerencie categorias e produtos do cardápio.'
+            ? 'Organize produtos, preços e disponibilidade do cardápio.'
             : 'Consulte o cardápio e atualize a disponibilidade dos produtos.'
         }
         actions={
-          <div className="flex flex-wrap gap-2">
-            {canArchiveCatalog && (
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/dashboard/catalog/archived">
-                  <Archive className="h-4 w-4" />
-                  Arquivados
-                </Link>
-              </Button>
-            )}
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             {canManageCatalog && (
               <>
-                <Button asChild variant="outline" size="sm">
-                  <Link href="/dashboard/catalog/categories/new">
-                    <Plus className="h-4 w-4" /> Categoria
+                <Button asChild size="sm" className="flex-1 sm:flex-none">
+                  <Link href="/dashboard/catalog/products/new">
+                    <Plus className="h-4 w-4" /> Novo produto
                   </Link>
                 </Button>
-                <Button asChild size="sm">
-                  <Link href="/dashboard/catalog/products/new">
-                    <Plus className="h-4 w-4" /> Produto
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href="/dashboard/catalog/categories/new"
+                    aria-label="Criar nova categoria"
+                    title="Nova categoria"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">Categoria</span>
                   </Link>
                 </Button>
               </>
+            )}
+            {canArchiveCatalog && (
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/dashboard/catalog/archived" aria-label="Ver itens arquivados">
+                  <Archive className="h-4 w-4" />
+                  <span className="hidden sm:inline">Arquivados</span>
+                </Link>
+              </Button>
             )}
           </div>
         }

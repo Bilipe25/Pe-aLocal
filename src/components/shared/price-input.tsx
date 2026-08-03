@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { Input } from '@/components/ui/input';
 
-interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'type'> {
+interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'value' | 'type'> {
   /** Preço em reais (ex: 24.90) */
-  defaultPrice?: number;
+  defaultPrice?: number | null;
   name: string;
 }
 
@@ -16,7 +16,10 @@ interface PriceInputProps extends Omit<React.ComponentProps<'input'>, 'onChange'
 export function PriceInput({ defaultPrice = 0, name, ...props }: PriceInputProps) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary" aria-hidden="true">
+      <span
+        className="text-text-secondary pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm"
+        aria-hidden="true"
+      >
         R$
       </span>
       <Input
@@ -26,7 +29,7 @@ export function PriceInput({ defaultPrice = 0, name, ...props }: PriceInputProps
         step="0.01"
         min="0"
         name={name}
-        defaultValue={defaultPrice.toFixed(2)}
+        defaultValue={defaultPrice == null ? '' : defaultPrice.toFixed(2)}
         className="pl-10"
       />
     </div>

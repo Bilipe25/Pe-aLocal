@@ -84,7 +84,7 @@ test.describe.serial('compra publica e acompanhamento', () => {
     await expect(page.getByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
     const pix = page.getByRole('radio', { name: /Pix/ });
     const cash = page.getByRole('radio', { name: /Dinheiro/ });
-    const card = page.getByRole('radio', { name: /Cartão na entrega/ });
+    const card = page.getByRole('radio', { name: /Cartão no recebimento/ });
     if ((await pix.count()) > 0) {
       await pix.check();
     } else if ((await cash.count()) > 0) {

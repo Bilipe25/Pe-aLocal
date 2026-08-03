@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/shared/page-header';
-import { PixForm } from '@/features/stores/components/pix-form';
+import { PaymentSettingsForm } from '@/features/stores/components/payment-settings-form';
 import { loadStorePageData } from '@/features/stores/page-access';
 import { getStorePaymentSettings } from '@/server/services/store-settings.service';
 
@@ -17,14 +17,11 @@ export default async function StorePaymentsPage({
     <div>
       <PageHeader
         title="Pagamentos"
-        description="Configure o pagamento por Pix desta unidade."
+        description="Defina as formas aceitas e mantenha os dados Pix desta unidade protegidos."
         backHref={`/dashboard/stores/${storeId}`}
       />
-      <section
-        className="border-border bg-surface max-w-3xl rounded-xl border p-4 sm:p-6"
-        aria-label="Dados do Pix"
-      >
-        <PixForm
+      <section className="max-w-5xl" aria-label="Configurações de pagamento">
+        <PaymentSettingsForm
           storeId={storeId}
           expectedConfigurationVersion={store.configurationVersion}
           settings={store.settings}

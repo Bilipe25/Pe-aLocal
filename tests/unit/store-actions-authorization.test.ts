@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  removePixConfigurationAction,
   toggleStoreStatusAction,
-  updatePixConfigAction,
+  updateStorePaymentSettingsAction,
   updateStoreSettingsAction,
   updateStorefrontDisplaySettingsAction,
 } from '@/features/stores/actions';
@@ -38,8 +39,17 @@ describe('autorizaÃ§Ã£o das aÃ§Ãµes de configuraÃ§Ã£o', () => {
     );
   });
 
-  it('protege a chave Pix com permissÃ£o especÃ­fica', async () => {
-    await expect(updatePixConfigAction('store-a', 0, new FormData())).resolves.toMatchObject({
+  it('protege pagamentos e remoção do Pix com permissão específica', async () => {
+    await expect(
+      updateStorePaymentSettingsAction('store-a', 0, new FormData()),
+    ).resolves.toMatchObject({ success: false, error: { code: 'AUTHORIZATION_ERROR' } });
+    expect(mocks.requireTenantStoreAccess).toHaveBeenCalledWith(
+      'store-a',
+      Permission.EDIT_PAYMENT_SETTINGS,
+    );
+
+    mocks.requireTenantStoreAccess.mockClear();
+    await expect(removePixConfigurationAction('store-a', 0)).resolves.toMatchObject({
       success: false,
       error: { code: 'AUTHORIZATION_ERROR' },
     });
