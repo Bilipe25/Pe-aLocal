@@ -70,6 +70,39 @@ describe('OrderCard operacional', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('oferece uma hierarquia mobile compacta sem remover os detalhes do desktop', () => {
+    render(
+      <OrderCard
+        order={order}
+        onClick={vi.fn()}
+        footer={<button type="button">Aceitar pedido</button>}
+      />,
+    );
+
+    const article = screen.getByRole('article');
+    const preview = screen.getByRole('list', { name: 'Prévia dos itens' });
+    const previewItems = preview.querySelectorAll('.order-card-item');
+
+    expect(previewItems).toHaveLength(3);
+    expect(previewItems[2]).toHaveClass('order-card-item-mobile-hidden');
+    expect(screen.getByText('+ 2 itens')).toHaveClass('order-card-more-mobile');
+    expect(screen.getByText('+ mais itens no pedido')).toHaveClass('order-card-more-desktop');
+    expect(screen.getByText('Obs:')).toHaveClass('sm:hidden');
+    expect(screen.getByText(/Pix/).closest('.order-card-meta-payment')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aceitar pedido' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir pedido 1042' })).toBeInTheDocument();
+    expect(article.querySelector('button button')).not.toBeInTheDocument();
+  });
+
+  it('resume a quantidade quando a prévia de produtos não está disponível', () => {
+    render(
+      <OrderCard order={{ ...order, itemCount: 1, itemPreview: undefined }} onClick={vi.fn()} />,
+    );
+
+    expect(screen.getByText('1 item')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Prévia dos itens' })).not.toBeInTheDocument();
+  });
+
   it('amadurece alerta temporal no próprio card sem refetch do board', () => {
     render(
       <OrderCard
@@ -90,7 +123,7 @@ describe('OrderCard operacional', () => {
     expect(screen.queryByText(/Sem aceite há/)).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
 
-    expect(screen.getByText('Sem aceite há 3 min')).toBeInTheDocument();
+    expect(screen.getByText('Aceite atingiu o limite de 3 min')).toBeInTheDocument();
     expect(screen.getByRole('article')).toHaveClass('order-card-operational');
   });
 
@@ -111,8 +144,49 @@ describe('OrderCard operacional', () => {
       />,
     );
 
-    expect(screen.queryByText('Preparo acima de 50 min')).not.toBeInTheDocument();
+    expect(screen.queryByText('Preparo atingiu o limite de 50 min')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
-    expect(screen.getByText('Preparo acima de 50 min')).toBeInTheDocument();
+    expect(screen.getByText('Preparo atingiu o limite de 50 min')).toBeInTheDocument();
+  });
+
+  it('resume tempos extremos e deixa nomes longos quebrarem em duas linhas', () => {
+    const customerDisplayName = 'Mariana de Souza Albuquerque dos Santos';
+    render(
+      <OrderCard
+        order={{
+          ...order,
+          customerDisplayName,
+          paymentMethod: 'CASH',
+          stageStartedAt: '2026-07-28T13:07:00.000Z',
+          stageElapsedMinutes: 4_270,
+        }}
+        onClick={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('há 2 dias e 23 horas')).toBeInTheDocument();
+    expect(screen.getByText(customerDisplayName)).toHaveClass('line-clamp-2', 'break-words');
+  });
+
+  it('explicita quando a previsão já venceu', () => {
+    render(
+      <OrderCard
+        order={{
+          ...order,
+          promisedFulfillmentMinAt: '2026-07-31T12:00:00.000Z',
+          promisedFulfillmentMaxAt: '2026-07-31T12:10:00.000Z',
+        }}
+        onClick={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Previsão vencida há 7 min')).toHaveClass(
+      'text-error',
+      'order-card-promised',
+    );
+    expect(screen.getByText('Previsão vencida há 7 min')).toHaveAttribute(
+      'data-order-promised-overdue',
+      'true',
+    );
   });
 });

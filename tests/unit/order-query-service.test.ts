@@ -152,20 +152,18 @@ describe('OrderQueryService', () => {
         { status: 'OUT_FOR_DELIVERY', _count: { _all: 6 } },
       ])
       .mockResolvedValueOnce([
-        { status: 'PENDING', _count: { _all: 11 } },
-        { status: 'CONFIRMED', _count: { _all: 3 } },
-        { status: 'PREPARING', _count: { _all: 4 } },
-        { status: 'READY', _count: { _all: 5 } },
-        { status: 'OUT_FOR_DELIVERY', _count: { _all: 6 } },
-      ])
-      .mockResolvedValueOnce([
         { status: 'DELIVERED', _count: { _all: 7 } },
         { status: 'CANCELLED', _count: { _all: 1 } },
       ]);
     mocks.orderCount.mockResolvedValue(3);
     const newOrder = {
       ...queueOrder('order-1', '2026-07-21T12:00:00.000Z'),
-      items: [{ id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' }],
+      items: [
+        { id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' },
+        { id: 'item-b', productName: 'Batata', quantity: 1, notes: null },
+        { id: 'item-c', productName: 'Refrigerante', quantity: 1, notes: null },
+        { id: 'item-d', productName: 'Sobremesa', quantity: 1, notes: null },
+      ],
     };
     mocks.orderFindMany
       .mockResolvedValueOnce([
@@ -207,12 +205,18 @@ describe('OrderQueryService', () => {
     expect(result.lanes.READY_AND_DELIVERY.total).toBe(11);
     expect(result.lanes.FINISHED.total).toBe(8);
     expect(result.lanes.NEW.items[0]).toMatchObject({
-      itemPreview: [{ id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' }],
+      itemCount: 4,
+      itemPreview: [
+        { id: 'item-a', productName: 'X-Burguer', quantity: 2, notes: 'Sem cebola' },
+        { id: 'item-b', productName: 'Batata', quantity: 1, notes: null },
+        { id: 'item-c', productName: 'Refrigerante', quantity: 1, notes: null },
+      ],
       promisedFulfillmentMinAt: '2026-07-21T13:30:00.000Z',
       promisedFulfillmentMaxAt: '2026-07-21T14:00:00.000Z',
     });
     expect(result.lanes.NEW.items[0]).not.toHaveProperty('customerPhone');
     expect(result.lanes.NEW.items[0]).not.toHaveProperty('deliveryAddress');
+    expect(mocks.orderGroupBy).toHaveBeenCalledTimes(2);
     expect(mocks.orderFindMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -224,6 +228,9 @@ describe('OrderQueryService', () => {
         }),
       }),
     );
+    const boardSelect = mocks.orderFindMany.mock.calls[0]?.[0]?.select;
+    expect(boardSelect).not.toHaveProperty('_count');
+    expect(boardSelect?.items).not.toHaveProperty('take');
     expect(mocks.orderFindMany).toHaveBeenNthCalledWith(
       4,
       expect.objectContaining({
@@ -253,7 +260,6 @@ describe('OrderQueryService', () => {
     ]);
     mocks.orderGroupBy
       .mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 1 } }])
-      .mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 1 } }])
       .mockResolvedValueOnce([]);
     mocks.orderCount.mockResolvedValue(0);
     mocks.orderFindMany.mockResolvedValue([]);
@@ -274,6 +280,7 @@ describe('OrderQueryService', () => {
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'RepeatableRead',
     });
+    expect(mocks.orderGroupBy).toHaveBeenCalledTimes(2);
     expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     expect(mocks.auditFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -425,8 +432,9 @@ describe('OrderQueryService', () => {
   });
 
   it('filtra atrasos apenas por alertas operacionais e oculta finalizados', async () => {
-    mocks.orderGroupBy.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    mocks.orderCount.mockResolvedValue(4);
+    mocks.orderGroupBy
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ status: 'PENDING', _count: { _all: 4 } }]);
     mocks.orderFindMany.mockResolvedValue([]);
 
     const result = await getOrderBoardSnapshot(context, {
@@ -441,10 +449,12 @@ describe('OrderQueryService', () => {
       total: 0,
       nextCursor: null,
     });
-    const delayedWhere = mocks.orderCount.mock.calls[0]?.[0]?.where;
+    expect(result.summary.delayedCount).toBe(4);
+    const delayedWhere = mocks.orderGroupBy.mock.calls[1]?.[0]?.where;
     expect(JSON.stringify(delayedWhere)).not.toContain('CUSTOMER_REPORTED_PAID');
     expect(JSON.stringify(delayedWhere)).not.toContain('paymentStatus');
     expect(JSON.stringify(delayedWhere)).toContain('OUT_FOR_DELIVERY');
+    expect(mocks.orderCount).not.toHaveBeenCalled();
     expect(mocks.orderFindMany).toHaveBeenCalledTimes(3);
   });
 

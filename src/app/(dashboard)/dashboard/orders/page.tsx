@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { OrdersPanel } from '@/components/dashboard/orders-panel';
+import { ORDER_ACTIVE_STATUSES } from '@/features/orders/query-constants';
 import { getStoreLocalDate } from '@/lib/time/store-time';
 import { Permission } from '@/server/permissions';
 import { getOrderBoardBootstrap } from '@/server/services/order-query.service';
@@ -24,6 +25,7 @@ export default async function OrdersPage() {
   };
   const { notificationBaseline, initialBoard } = await getOrderBoardBootstrap(queryContext, {
     localDate: initialLocalDate,
+    statuses: ORDER_ACTIVE_STATUSES,
   });
 
   return (

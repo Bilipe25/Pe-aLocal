@@ -122,4 +122,45 @@ describe('ações de status no drawer', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: orderQueryKeys.boardStore('store-a') });
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Pagamento confirmado.');
   });
+
+  it('prioriza a confirmação do Pix sem bloquear um despacho permitido pelo workflow', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StatusActions
+          order={{
+            ...order,
+            status: 'READY',
+            modality: 'DELIVERY',
+            payment: { ...order.payment, method: 'PIX', status: 'PENDING', amount: null },
+            allowedActions: {
+              ...order.allowedActions,
+              accept: false,
+              dispatch: true,
+              cancel: true,
+              confirmPayment: true,
+            },
+          }}
+          storeId="store-a"
+          authorizationScope="user-a:OWNER"
+        />
+      </QueryClientProvider>,
+    );
+
+    const confirmPayment = screen.getByRole('button', { name: 'Confirmar pagamento' });
+    const dispatch = screen.getByRole('button', { name: 'Despachar para entrega' });
+    const cancel = screen.getByRole('button', { name: 'Cancelar pedido' });
+
+    expect(screen.getByText(/O Pix ainda está pendente/)).toBeInTheDocument();
+    expect(confirmPayment).toHaveClass('bg-info');
+    expect(confirmPayment.closest('.order-detail-payment-actions')).toBeInTheDocument();
+    expect(dispatch.closest('.order-detail-primary-actions')).toBeInTheDocument();
+    expect(confirmPayment).toHaveAttribute('aria-describedby', 'pix-payment-priority-hint');
+    expect(dispatch).toHaveClass('border', 'border-border');
+    expect(dispatch).not.toHaveClass('bg-info');
+    expect(dispatch).toHaveAttribute('aria-describedby', 'pix-payment-priority-hint');
+    expect(cancel).toHaveClass('text-error');
+  });
 });

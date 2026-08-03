@@ -26,7 +26,10 @@ test.describe('painel operacional autenticado', () => {
       .getByRole('group', { name: 'Filtrar por etapa' })
       .getByRole('button', { name: 'Em preparo' })
       .click();
-    await page.getByRole('searchbox', { name: 'Buscar na central de pedidos' }).fill('#');
+    await page.getByRole('button', { name: /Buscar pedidos|Abrir busca/ }).click();
+    const mobileSearch = page.getByRole('dialog', { name: 'Buscar pedidos' });
+    await mobileSearch.getByRole('searchbox', { name: 'Buscar pedidos' }).fill('#');
+    await mobileSearch.getByRole('button', { name: 'Ver pedidos' }).click();
 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

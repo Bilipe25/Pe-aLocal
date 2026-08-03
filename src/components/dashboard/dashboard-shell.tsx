@@ -23,6 +23,7 @@ import {
   Search,
   Settings,
   ShoppingBag,
+  SlidersHorizontal,
   TicketPercent,
   Truck,
   UtensilsCrossed,
@@ -55,7 +56,13 @@ const TENANT_ROLE_LABELS: Record<TenantRole, string> = {
   ATTENDANT: 'Atendente',
 };
 
-function Brand({ inverse = false }: { inverse?: boolean }) {
+function Brand({
+  inverse = false,
+  compactOnNarrow = false,
+}: {
+  inverse?: boolean;
+  compactOnNarrow?: boolean;
+}) {
   return (
     <Link
       href="/dashboard"
@@ -75,7 +82,7 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
       >
         <ConciergeBell className="h-5 w-5" aria-hidden="true" />
       </span>
-      <span>
+      <span className={compactOnNarrow ? 'hidden min-[360px]:inline' : undefined}>
         Pedido<span className={inverse ? 'text-brand-300' : 'text-brand-600'}>Local</span>
       </span>
     </Link>
@@ -411,8 +418,25 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const isOrdersWorkspace = pathname.startsWith('/dashboard/orders');
   const operations = useDashboardOperations();
+  const trimmedSearch = operations.search.trim();
+  const hasActiveSearch = /^#?\d+$/.test(trimmedSearch) || trimmedSearch.length >= 2;
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+
+    const desktopQuery = window.matchMedia('(min-width: 80rem)');
+    const closeOnDesktop = (event: MediaQueryListEvent) => {
+      if (!event.matches) return;
+      setMobileSearchOpen(false);
+    };
+
+    desktopQuery.addEventListener('change', closeOnDesktop);
+    return () => desktopQuery.removeEventListener('change', closeOnDesktop);
+  }, []);
 
   const realtimeLabel = {
     unavailable: 'Atualização automática',
@@ -459,50 +483,197 @@ export function DashboardShell({
 
       <div className="min-w-0">
         <header className="border-border bg-surface sticky top-0 z-30 flex min-h-16 items-center justify-between border-b px-4 xl:hidden">
-          <Brand />
-          <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
-            <Dialog.Trigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Abrir menu do painel">
-                <Menu aria-hidden="true" />
+          <Brand compactOnNarrow={isOrdersWorkspace} />
+          <div className="flex items-center gap-1">
+            {isOrdersWorkspace ? (
+              <Dialog.Root open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+                <Dialog.Trigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="relative"
+                    id="orders-mobile-search-trigger"
+                    aria-label={hasActiveSearch ? 'Abrir busca, busca ativa' : 'Buscar pedidos'}
+                  >
+                    <Search aria-hidden="true" />
+                    {hasActiveSearch ? (
+                      <span
+                        className="bg-brand-600 absolute top-1 right-1 h-2 w-2 rounded-full ring-2 ring-white"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </Button>
+                </Dialog.Trigger>
+                <Dialog.Portal>
+                  <Dialog.Overlay className="orders-mobile-search-overlay bg-tinta/50 fixed inset-0 z-40" />
+                  <Dialog.Content
+                    className="orders-mobile-search-sheet border-border bg-surface fixed top-0 right-0 left-0 z-50 mx-auto w-full max-w-xl rounded-b-2xl border border-t-0 px-4 pb-4 shadow-md focus:outline-none"
+                    style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+                    aria-describedby="orders-mobile-search-description"
+                    onOpenAutoFocus={(event) => {
+                      event.preventDefault();
+                      mobileSearchInputRef.current?.focus();
+                    }}
+                    onCloseAutoFocus={(event) => {
+                      if (
+                        typeof window.matchMedia === 'function' &&
+                        window.matchMedia('(min-width: 80rem)').matches
+                      ) {
+                        event.preventDefault();
+                        document.getElementById('orders-desktop-search-input')?.focus();
+                      }
+                    }}
+                  >
+                    <header className="flex min-h-11 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Dialog.Title className="text-text-primary text-lg font-bold">
+                          Buscar pedidos
+                        </Dialog.Title>
+                        <Dialog.Description
+                          id="orders-mobile-search-description"
+                          className="text-text-secondary mt-0.5 text-sm"
+                        >
+                          Localize por número, cliente, telefone ou pagamento.
+                        </Dialog.Description>
+                      </div>
+                      <Dialog.Close asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          aria-label="Fechar busca"
+                        >
+                          <X aria-hidden="true" />
+                        </Button>
+                      </Dialog.Close>
+                    </header>
+
+                    <form
+                      role="search"
+                      aria-label="Buscar na central de pedidos"
+                      className="mt-4"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        setMobileSearchOpen(false);
+                      }}
+                    >
+                      <div className="relative">
+                        <Search
+                          className="text-text-muted pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2"
+                          aria-hidden="true"
+                        />
+                        <input
+                          ref={mobileSearchInputRef}
+                          id="orders-mobile-search-input"
+                          type="search"
+                          inputMode="search"
+                          enterKeyHint="search"
+                          autoComplete="off"
+                          spellCheck={false}
+                          maxLength={80}
+                          value={operations.search}
+                          onChange={(event) => operations.setSearch(event.target.value)}
+                          placeholder="Pedido, cliente, telefone…"
+                          aria-label="Buscar pedidos"
+                          className="border-border bg-surface text-text-primary placeholder:text-text-muted focus-visible:ring-brand-500 h-12 w-full rounded-lg border pr-12 pl-10 text-base focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        />
+                        {operations.search ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-1/2 right-0.5 -translate-y-1/2"
+                            aria-label="Limpar busca"
+                            onClick={() => {
+                              operations.setSearch('');
+                              mobileSearchInputRef.current?.focus();
+                            }}
+                          >
+                            <X aria-hidden="true" />
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <Button type="submit" className="mt-3 w-full">
+                        Ver pedidos
+                      </Button>
+                    </form>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            ) : null}
+            {isOrdersWorkspace ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="relative"
+                id="orders-mobile-filter-trigger"
+                aria-haspopup="dialog"
+                aria-expanded={operations.filtersOpen}
+                aria-controls="orders-mobile-filter-sheet"
+                aria-label={
+                  operations.activeFilterCount > 0
+                    ? `Abrir filtros avançados, ${operations.activeFilterCount} ${operations.activeFilterCount === 1 ? 'filtro ativo' : 'filtros ativos'}`
+                    : 'Abrir filtros avançados'
+                }
+                disabled={!operations.onOpenFilters}
+                onClick={() => operations.onOpenFilters?.()}
+              >
+                <SlidersHorizontal aria-hidden="true" />
+                {operations.activeFilterCount > 0 ? (
+                  <span className="bg-brand-600 absolute -top-0.5 -right-0.5 min-w-4 rounded-full px-1 font-mono text-[0.625rem] leading-4 text-white">
+                    {Math.min(operations.activeFilterCount, 9)}
+                  </span>
+                ) : null}
               </Button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className="bg-tinta/50 fixed inset-0 z-40" />
-              <Dialog.Content className="bg-surface fixed inset-y-0 right-0 z-50 flex w-[min(88vw,20rem)] flex-col p-4 shadow-lg focus:outline-none">
-                <div className="flex min-h-11 items-center justify-between">
-                  <Dialog.Title className="text-text-primary text-lg font-bold">
-                    Menu do painel
-                  </Dialog.Title>
-                  <Dialog.Close asChild>
-                    <Button variant="ghost" size="icon" aria-label="Fechar menu do painel">
-                      <X aria-hidden="true" />
-                    </Button>
-                  </Dialog.Close>
-                </div>
-                <div className="mt-4 flex-1 overflow-y-auto" onKeyDown={handleMenuKeyDown}>
-                  <StoreSwitcher
-                    stores={stores}
-                    activeStore={activeStore}
-                    returnTo={pathname}
-                    className="mb-5 w-full"
-                  />
-                  {isOrdersWorkspace ? (
-                    <MobileOperationsPanel
-                      realtimeLabel={realtimeLabel}
-                      realtimeDot={realtimeDot}
+            ) : null}
+            <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
+              <Dialog.Trigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Abrir menu do painel">
+                  <Menu aria-hidden="true" />
+                </Button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="bg-tinta/50 fixed inset-0 z-40" />
+                <Dialog.Content className="bg-surface fixed inset-y-0 right-0 z-50 flex w-[min(88vw,20rem)] flex-col p-4 shadow-lg focus:outline-none">
+                  <div className="flex min-h-11 items-center justify-between">
+                    <Dialog.Title className="text-text-primary text-lg font-bold">
+                      Menu do painel
+                    </Dialog.Title>
+                    <Dialog.Close asChild>
+                      <Button variant="ghost" size="icon" aria-label="Fechar menu do painel">
+                        <X aria-hidden="true" />
+                      </Button>
+                    </Dialog.Close>
+                  </div>
+                  <div className="mt-4 flex-1 overflow-y-auto" onKeyDown={handleMenuKeyDown}>
+                    <StoreSwitcher
+                      stores={stores}
+                      activeStore={activeStore}
+                      returnTo={pathname}
+                      className="mb-5 w-full"
                     />
-                  ) : null}
-                  <Navigation
-                    pathname={pathname}
-                    activeStoreId={activeStore?.id ?? null}
-                    canViewCoupons={canViewCoupons}
-                    onNavigate={() => setMenuOpen(false)}
-                  />
-                </div>
-                <AccountFooter userName={userName} tenantRole={tenantRole} />
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+                    {isOrdersWorkspace ? (
+                      <MobileOperationsPanel
+                        realtimeLabel={realtimeLabel}
+                        realtimeDot={realtimeDot}
+                      />
+                    ) : null}
+                    <Navigation
+                      pathname={pathname}
+                      activeStoreId={activeStore?.id ?? null}
+                      canViewCoupons={canViewCoupons}
+                      onNavigate={() => setMenuOpen(false)}
+                    />
+                  </div>
+                  <AccountFooter userName={userName} tenantRole={tenantRole} />
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+          </div>
         </header>
 
         <header className="border-border bg-surface sticky top-0 z-30 hidden h-[4.125rem] items-center gap-4 border-b px-4 xl:flex">
@@ -519,7 +690,9 @@ export function DashboardShell({
                 aria-hidden="true"
               />
               <input
+                id="orders-desktop-search-input"
                 type="search"
+                maxLength={80}
                 value={operations.search}
                 onChange={(event) => operations.setSearch(event.target.value)}
                 placeholder="Buscar pedido, cliente, telefone ou pagamento"
