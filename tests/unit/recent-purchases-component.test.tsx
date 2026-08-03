@@ -186,6 +186,8 @@ describe('vitrine Peça de novo', () => {
     expect(css).toContain('overflow-x: auto');
     expect(css).toContain('scroll-snap-type: x proximity');
     expect(css).toContain('min-height: 2.75rem');
-    expect(css).toContain('width: min(72vw, 17rem)');
+    expect(css).toContain('width: min(70vw, 16.5rem)');
+    expect(css).toContain('margin-inline: 0');
+    expect(css).toContain('font-variant-numeric: tabular-nums');
   });
 });
