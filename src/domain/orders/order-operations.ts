@@ -1,4 +1,5 @@
 import type { OrderModality, OrderStatus, PaymentMethod, PaymentStatus } from '@/types';
+import { formatSlaAlertLabel } from './order-time';
 
 export type OrderOperationalAlertCode =
   | 'ACCEPTANCE_OVERDUE'
@@ -107,7 +108,7 @@ function operationalAlert(
       return elapsedMinutes >= ACCEPTANCE_ALERT_MINUTES
         ? {
             code: 'ACCEPTANCE_OVERDUE',
-            label: `Sem aceite há ${elapsedMinutes} min`,
+            label: formatSlaAlertLabel('Aceite', elapsedMinutes, ACCEPTANCE_ALERT_MINUTES),
             severity: critical(ACCEPTANCE_ALERT_MINUTES) ? 'critical' : 'warning',
           }
         : null;
@@ -115,7 +116,11 @@ function operationalAlert(
       return elapsedMinutes >= CONFIRMED_ALERT_MINUTES
         ? {
             code: 'PREPARATION_OVERDUE',
-            label: `Preparo ainda não iniciado há ${elapsedMinutes} min`,
+            label: formatSlaAlertLabel(
+              'Início do preparo',
+              elapsedMinutes,
+              CONFIRMED_ALERT_MINUTES,
+            ),
             severity: critical(CONFIRMED_ALERT_MINUTES) ? 'critical' : 'warning',
           }
         : null;
@@ -124,7 +129,7 @@ function operationalAlert(
       return elapsedMinutes >= threshold
         ? {
             code: 'PREPARATION_OVERDUE',
-            label: `Preparo acima de ${threshold} min`,
+            label: formatSlaAlertLabel('Preparo', elapsedMinutes, threshold),
             severity: critical(threshold) ? 'critical' : 'warning',
           }
         : null;
@@ -135,9 +140,7 @@ function operationalAlert(
       return elapsedMinutes >= threshold
         ? {
             code: pickup ? 'READY_WAITING_PICKUP' : 'READY_WAITING_DISPATCH',
-            label: pickup
-              ? `Pronto aguardando retirada há ${elapsedMinutes} min`
-              : `Pronto aguardando despacho há ${elapsedMinutes} min`,
+            label: formatSlaAlertLabel(pickup ? 'Retirada' : 'Despacho', elapsedMinutes, threshold),
             severity: critical(threshold) ? 'critical' : 'warning',
           }
         : null;
@@ -147,7 +150,7 @@ function operationalAlert(
       return elapsedMinutes >= threshold
         ? {
             code: 'DELIVERY_OVERDUE',
-            label: `Entrega em rota há ${elapsedMinutes} min`,
+            label: formatSlaAlertLabel('Entrega', elapsedMinutes, threshold),
             severity: critical(threshold) ? 'critical' : 'warning',
           }
         : null;
@@ -175,7 +178,7 @@ function paymentAlert(input: OrderOperationalInput, now: Date): OrderOperational
   ) {
     return {
       code: 'PAYMENT_OVERDUE',
-      label: `Pix pendente há ${elapsed} min`,
+      label: formatSlaAlertLabel('Pix', elapsed, PAYMENT_ALERT_MINUTES),
       severity: elapsed >= PAYMENT_ALERT_MINUTES * 2 ? 'critical' : 'warning',
     };
   }

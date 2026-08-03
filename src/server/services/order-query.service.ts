@@ -99,10 +99,8 @@ const ORDER_BOARD_ITEM_SELECT = {
   promisedFulfillmentMaxAt: true,
   version: true,
   notes: true,
-  _count: { select: { items: true } },
   items: {
     orderBy: [{ position: 'asc' as const }, { id: 'asc' as const }],
-    take: 3,
     select: { id: true, productName: true, quantity: true, notes: true },
   },
 } satisfies Prisma.OrderSelect;
@@ -570,8 +568,8 @@ function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoard
     paymentStatus: order.paymentStatus,
     status: order.status,
     total: order.total,
-    itemCount: order._count.items,
-    itemPreview: order.items.map((item) => ({
+    itemCount: order.items.length,
+    itemPreview: order.items.slice(0, 3).map((item) => ({
       id: item.id,
       productName: item.productName,
       quantity: item.quantity,
@@ -677,20 +675,20 @@ async function loadOrderBoardSnapshot(
     statusChangedAt: { gte: finishedRange.start, lt: finishedRange.end },
   } satisfies Prisma.OrderWhereInput;
 
-  const [summaryGroups, activeLaneGroups, finishedGroups, delayed, ...laneItems] =
+  const [summaryGroups, delayedActiveLaneGroups, finishedGroups, delayed, ...laneItems] =
     await Promise.all([
       database.order.groupBy({
         by: ['status'],
         where: activeSummaryWhere,
         _count: { _all: true },
       }),
-      activeLaneStatuses.length
+      filters.delayedOnly && activeLaneStatuses.length
         ? database.order.groupBy({
             by: ['status'],
             where: activeLaneWhere,
             _count: { _all: true },
           })
-        : Promise.resolve([]),
+        : Promise.resolve(null),
       !filters.onlyActive && !filters.delayedOnly && finishedLaneStatuses.length
         ? database.order.groupBy({
             by: ['status'],
@@ -698,7 +696,9 @@ async function loadOrderBoardSnapshot(
             _count: { _all: true },
           })
         : Promise.resolve([]),
-      database.order.count({ where: delayedOperationalWhere(context, filters, boardNow) }),
+      filters.delayedOnly && !selectedStatuses
+        ? Promise.resolve(null)
+        : database.order.count({ where: delayedOperationalWhere(context, filters, boardNow) }),
       ...ORDER_BOARD_LANES.map((lane) =>
         findOrderBoardLaneItems(
           database,
@@ -713,6 +713,7 @@ async function loadOrderBoardSnapshot(
     ]);
 
   const summaryCounts = new Map(summaryGroups.map((group) => [group.status, group._count._all]));
+  const activeLaneGroups = delayedActiveLaneGroups ?? summaryGroups;
   const laneCounts = new Map<OrderStatus, number>([
     ...activeLaneGroups.map((group) => [group.status, group._count._all] as const),
     ...finishedGroups.map((group) => [group.status, group._count._all] as const),
@@ -735,7 +736,8 @@ async function loadOrderBoardSnapshot(
       preparingCount: (summaryCounts.get('CONFIRMED') ?? 0) + (summaryCounts.get('PREPARING') ?? 0),
       readyCount: summaryCounts.get('READY') ?? 0,
       deliveryCount: summaryCounts.get('OUT_FOR_DELIVERY') ?? 0,
-      delayedCount: delayed,
+      delayedCount:
+        delayed ?? activeLaneGroups.reduce((total, group) => total + group._count._all, 0),
     },
     lanes,
   };

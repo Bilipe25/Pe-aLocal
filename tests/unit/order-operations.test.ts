@@ -50,7 +50,10 @@ describe('tempo e alertas operacionais do pedido', () => {
 
     expect(snapshot.durations.preparationMinutes).toBe(41);
     expect(snapshot.alerts).toContainEqual(
-      expect.objectContaining({ code: 'PREPARATION_OVERDUE', label: 'Preparo acima de 40 min' }),
+      expect.objectContaining({
+        code: 'PREPARATION_OVERDUE',
+        label: 'Preparo em atraso há 1 min',
+      }),
     );
   });
 
