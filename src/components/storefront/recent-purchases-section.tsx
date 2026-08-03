@@ -170,7 +170,7 @@ export function RecentPurchasesSection({
                       name={product.name}
                       imageUrl={product.imageUrl}
                       imageAssetId={product.imageAssetId}
-                      sizes="(max-width: 639px) 44vw, 10rem"
+                      sizes="(max-width: 639px) 5rem, 5.5rem"
                       width={384}
                     />
                   </span>

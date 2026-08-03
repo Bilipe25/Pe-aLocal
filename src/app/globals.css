@@ -4863,13 +4863,12 @@ body {
   display: flex;
   gap: 0.65rem;
   margin-top: 0.75rem;
-  margin-inline-start: calc(max(1rem, env(safe-area-inset-left)) * -1);
-  margin-inline-end: calc(max(1rem, env(safe-area-inset-right)) * -1);
+  margin-inline: 0;
+  max-width: 100%;
   overflow-x: auto;
   padding-block: 0.1rem 0.35rem;
-  padding-inline-start: max(1.8rem, calc(env(safe-area-inset-left) + 0.8rem));
-  padding-inline-end: max(1.8rem, calc(env(safe-area-inset-right) + 0.8rem));
-  scroll-padding-inline: max(1.8rem, calc(env(safe-area-inset-left) + 0.8rem));
+  padding-inline: 0.8rem;
+  scroll-padding-inline: 0.8rem;
   scroll-snap-type: x proximity;
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
@@ -4882,8 +4881,8 @@ body {
 .storefront-recent-card {
   position: relative;
   display: grid;
-  width: min(72vw, 17rem);
-  min-width: min(72vw, 17rem);
+  width: min(70vw, 16.5rem);
+  min-width: min(70vw, 16.5rem);
   overflow: hidden;
   border: 1px solid var(--store-border);
   border-radius: min(var(--store-radius), 0.9rem);
@@ -4894,7 +4893,7 @@ body {
 .storefront-recent-product {
   display: grid;
   min-width: 0;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
+  grid-template-columns: 5rem minmax(0, 1fr);
   color: var(--store-text);
   text-align: left;
 }
@@ -4905,7 +4904,7 @@ body {
 
 .storefront-recent-media {
   position: relative;
-  min-height: 6.75rem;
+  min-height: 6.25rem;
   overflow: hidden;
   background: var(--store-surface-muted);
 }
@@ -4959,10 +4958,11 @@ body {
   margin-top: auto;
   padding-top: 0.45rem;
   color: var(--store-text);
-  font-family: var(--font-space-mono), ui-monospace, monospace;
   font-size: 0.875rem;
   font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .storefront-recent-action {
