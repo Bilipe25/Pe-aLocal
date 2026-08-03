@@ -4,6 +4,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useState } from 'react';
 import {
   AlertTriangle,
+  ChevronDown,
   Clock3,
   ExternalLink,
   History,
@@ -12,12 +13,18 @@ import {
   Phone,
   Printer,
   Receipt,
+  ShoppingBag,
   Timer,
   User,
   X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  formatElapsedMinutes,
+  formatOperationalDuration,
+  formatPromisedFulfillment,
+} from '@/domain/orders/order-time';
 import { useOrderDetails, useOrderHistory } from '@/hooks/use-orders';
 import { normalizePhone } from '@/lib/brazil';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -93,12 +100,6 @@ function HistoryList({ entries, timeZone }: { entries: OrderHistoryItemDTO[]; ti
   );
 }
 
-function durationLabel(minutes: number | null) {
-  if (minutes === null) return '—';
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
-}
-
 function formatItemOptions(options: OrderDetailsDTO['items'][number]['options']) {
   const groups: Array<{ name: string | null; options: string[] }> = [];
   for (const option of options) {
@@ -114,19 +115,6 @@ function formatItemOptions(options: OrderDetailsDTO['items'][number]['options'])
       group.name ? `${group.name}: ${group.options.join(', ')}` : group.options.join(', '),
     )
     .join(' · ');
-}
-
-function promisedWindowLabel(order: OperationalOrderDetails, timeZone: string) {
-  if (!order.promisedFulfillmentMinAt || !order.promisedFulfillmentMaxAt) return null;
-  const minAt = new Date(order.promisedFulfillmentMinAt);
-  const maxAt = new Date(order.promisedFulfillmentMaxAt);
-  if (Number.isNaN(minAt.getTime()) || Number.isNaN(maxAt.getTime())) return null;
-  const formatter = new Intl.DateTimeFormat('pt-BR', {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  return `${formatter.format(minAt)}–${formatter.format(maxAt)}`;
 }
 
 export function formatDeliveryAddressForOperations(delivery: OperationalOrderDetails['delivery']) {
@@ -272,22 +260,36 @@ function OrderDetails({
   const historyQuery = useOrderHistory(storeId, authorizationScope, order.id, historyExpanded);
   const fullHistory = historyQuery.data?.pages.flatMap((page) => page.items) ?? null;
   const displayedHistory = fullHistory ?? order.recentHistory.slice(0, 4);
+  const currentStatus = statusMap[order.status];
+  const CurrentStatusIcon = currentStatus.icon;
   const paymentInfo = paymentStatusMap[order.payment.status];
-  const promisedWindow = promisedWindowLabel(order, timeZone);
+  const stageStartedAtMs = new Date(order.operational.stageStartedAt).getTime();
+  const snapshotNow = Number.isFinite(stageStartedAtMs)
+    ? stageStartedAtMs + order.operational.elapsedMinutes * 60_000
+    : new Date(order.createdAt).getTime();
+  const promisedWindow = formatPromisedFulfillment(
+    order.promisedFulfillmentMinAt,
+    order.promisedFulfillmentMaxAt,
+    timeZone,
+    snapshotNow,
+    order.status !== 'DELIVERED' && order.status !== 'CANCELLED',
+  );
   const normalizedPhone = order.customer.phone ? normalizePhone(order.customer.phone) : null;
   const deliveryAddress = formatDeliveryAddressForOperations(order.delivery);
   const mapUrl = deliveryAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliveryAddress)}`
     : null;
 
-  async function loadHistory() {
-    if (!historyExpanded) {
-      setHistoryExpanded(true);
-    } else if (historyQuery.hasNextPage) {
+  function toggleHistory() {
+    setHistoryExpanded((current) => !current);
+  }
+
+  async function loadMoreHistory() {
+    if (historyQuery.hasNextPage) {
       await historyQuery.fetchNextPage();
-    } else {
-      await historyQuery.refetch();
+      return;
     }
+    await historyQuery.refetch();
   }
 
   return (
@@ -299,20 +301,24 @@ function OrderDetails({
         [data-order-print-scroll] { overflow: visible !important; }
         [data-order-print-hide] { display: none !important; }
       }`}</style>
-      <header className="border-border bg-surface sticky top-0 z-10 flex shrink-0 items-start justify-between gap-4 border-b p-4 print:static">
-        <div>
-          <Dialog.Title className="text-text-primary text-xl font-bold">
-            Pedido #{order.orderNumber}
-          </Dialog.Title>
-          <Dialog.Description className="text-text-secondary mt-1 text-sm">
+      <header className="order-detail-header border-border bg-surface sticky top-0 z-10 flex shrink-0 items-start justify-between gap-3 border-b p-3 sm:p-4 print:static">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Dialog.Title className="text-text-primary text-lg font-bold sm:text-xl">
+              Pedido #{order.orderNumber}
+            </Dialog.Title>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${currentStatus.color}`}
+            >
+              <CurrentStatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {currentStatus.label}
+            </span>
+          </div>
+          <Dialog.Description className="text-text-secondary mt-0.5 text-xs sm:text-sm">
             Recebido em {formatDate(order.createdAt, timeZone)}
           </Dialog.Description>
-          <p className="text-text-secondary mt-1 text-xs">
-            Versão {order.version}
-            {order.lastChangedBy ? ` · última alteração por ${order.lastChangedBy}` : ''}
-          </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1" data-order-print-hide>
+        <div className="flex shrink-0 items-center gap-0.5" data-order-print-hide>
           <Button
             variant="ghost"
             size="icon"
@@ -332,186 +338,270 @@ function OrderDetails({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 print:overflow-visible" data-order-print-scroll>
-        <section
-          className="border-border mb-6 border-b pb-5"
-          aria-label="Tempo operacional do pedido"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-text-primary flex items-center gap-2 text-sm font-semibold">
-                <Clock3 aria-hidden="true" /> {order.operational.stageLabel}
-              </p>
-              <p className="text-text-secondary mt-1 text-sm">
-                Nesta etapa há {durationLabel(order.operational.elapsedMinutes)}
-              </p>
-            </div>
-            {order.operational.alerts.map((alert) => (
-              <span
-                key={alert.code}
-                className={
-                  alert.severity === 'critical'
-                    ? 'bg-error-light text-error inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold'
-                    : 'bg-warning-light text-warning inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold'
-                }
-              >
-                <AlertTriangle aria-hidden="true" /> {alert.label}
-              </span>
-            ))}
-          </div>
-          <OrderStatusTimeline order={order} timeZone={timeZone} />
-          <dl className="border-border mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 text-sm">
-            {[
-              ['Aceite', order.operational.durations.acceptanceMinutes],
-              ['Preparo', order.operational.durations.preparationMinutes],
-              ['Pronto', order.operational.durations.readyMinutes],
-              ['Entrega', order.operational.durations.deliveryMinutes],
-              ['Total', order.operational.durations.totalMinutes],
-            ].map(([label, value]) => (
-              <div key={label as string}>
-                <dt className="text-text-secondary">{label}</dt>
-                <dd className="text-text-primary mt-0.5 flex items-center gap-1 font-mono font-bold">
-                  <Timer aria-hidden="true" /> {durationLabel(value as number | null)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {promisedWindow ? (
-            <div className="bg-info-light mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5">
-              <Clock3 className="text-info mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <div>
-                <p className="text-text-primary text-sm font-semibold">Previsão de conclusão</p>
-                <p className="text-text-secondary mt-0.5 text-sm">{promisedWindow}</p>
-              </div>
-            </div>
-          ) : null}
-        </section>
-        <div className="space-y-6">
-          <div className="space-y-6">
-            <section aria-labelledby={`customer-heading-${order.id}`}>
-              <h3
-                id={`customer-heading-${order.id}`}
-                className="text-text-primary mb-3 text-sm font-semibold"
-              >
-                Cliente
-              </h3>
-              <div className="bg-surface-secondary space-y-3 rounded-lg p-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <User className="text-text-muted" aria-hidden="true" />
-                  <span className="text-text-primary font-medium">{order.customer.name}</span>
-                </div>
-                {order.customer.phone && normalizedPhone ? (
-                  <div>
-                    <p className="text-text-secondary flex min-h-6 items-center gap-2">
-                      <Phone className="text-text-muted" aria-hidden="true" />
-                      {order.customer.phone}
-                    </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2" data-order-print-hide>
-                      <Button asChild variant="outline" size="sm">
-                        <a
-                          href={`tel:+${normalizedPhone}`}
-                          aria-label={`Ligar para ${order.customer.name}`}
-                        >
-                          <Phone aria-hidden="true" /> Ligar
-                        </a>
-                      </Button>
-                      <Button asChild variant="outline" size="sm">
-                        <a
-                          href={`https://wa.me/${normalizedPhone}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Conversar com ${order.customer.name} no WhatsApp`}
-                        >
-                          <MessageCircle aria-hidden="true" /> WhatsApp
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-text-secondary flex min-h-11 items-center gap-2">
-                    <Phone className="text-text-muted" aria-hidden="true" />
-                    <span>Contato protegido</span>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section aria-labelledby={`fulfillment-heading-${order.id}`}>
-              <h3
-                id={`fulfillment-heading-${order.id}`}
-                className="text-text-primary mb-3 text-sm font-semibold"
-              >
-                Entrega e pagamento
-              </h3>
-              <div className="bg-surface-secondary space-y-3 rounded-lg p-3 text-sm">
-                <div>
-                  <div className="text-text-secondary mb-1 flex items-center gap-2">
-                    <MapPin aria-hidden="true" />
-                    <span>{order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}</span>
-                  </div>
-                  {order.modality === 'DELIVERY' && (
-                    <div className="pl-6">
-                      <p className="text-text-primary font-medium break-words">
-                        {deliveryAddress ?? 'Endereço protegido'}
-                      </p>
-                      {mapUrl ? (
-                        <Button
-                          asChild
-                          variant="outline"
-                          size="sm"
-                          className="mt-2 w-full"
-                          data-order-print-hide
-                        >
-                          <a
-                            href={mapUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`Abrir endereço do pedido ${order.orderNumber} no mapa`}
-                          >
-                            <MapPin aria-hidden="true" /> Abrir no mapa
-                            <ExternalLink aria-hidden="true" />
-                          </a>
-                        </Button>
-                      ) : null}
-                    </div>
+      <div
+        className="order-detail-scroll flex-1 overflow-y-auto px-3 py-3 sm:p-4 print:overflow-visible"
+        data-order-print-scroll
+      >
+        <div className="space-y-4">
+          {order.operational.alerts.length > 0 ? (
+            <section className="space-y-2" aria-label="Alertas operacionais do pedido">
+              {order.operational.alerts.map((alert) => (
+                <div
+                  key={alert.code}
+                  className={cn(
+                    'flex items-start gap-2 rounded-lg px-3 py-2 text-sm font-semibold',
+                    alert.severity === 'critical'
+                      ? 'bg-error-light text-error'
+                      : 'bg-warning-light text-warning',
                   )}
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{alert.label}</span>
                 </div>
-                <div className="border-border border-t pt-3">
-                  <div className="text-text-secondary mb-1 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Receipt aria-hidden="true" />
-                      <span>
-                        {order.payment.method === 'PIX'
-                          ? 'Pix'
-                          : order.payment.method === 'CASH'
-                            ? 'Dinheiro'
-                            : 'Cartão'}
+              ))}
+            </section>
+          ) : null}
+
+          <section className="order-detail-section" aria-labelledby={`items-heading-${order.id}`}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3
+                id={`items-heading-${order.id}`}
+                className="text-text-primary flex items-center gap-2 text-sm font-semibold"
+              >
+                <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+                Produtos ({order.items.length})
+              </h3>
+              <strong className="text-brand-700 shrink-0 font-mono text-base">
+                {formatCurrency(order.totals.total)}
+              </strong>
+            </div>
+            <div className="border-border bg-surface-secondary overflow-hidden rounded-lg border">
+              {order.customerNotes ? (
+                <div className="bg-warning-light border-border border-b px-3 py-2">
+                  <p className="text-warning text-xs font-semibold">Observação do cliente</p>
+                  <p className="text-text-primary mt-0.5 text-sm break-words whitespace-pre-wrap">
+                    {order.customerNotes}
+                  </p>
+                </div>
+              ) : null}
+              <div className="divide-border divide-y px-3">
+                {order.items.map((item) => (
+                  <div key={item.id} className="py-2.5">
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span className="text-text-primary min-w-0 font-semibold break-words">
+                        {item.quantity}× {item.productName}
+                      </span>
+                      <span className="text-text-primary shrink-0 font-mono">
+                        {formatCurrency(item.itemTotal)}
                       </span>
                     </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-sm font-medium ${paymentInfo.color}`}
-                    >
-                      {paymentInfo.label}
-                    </span>
+                    {item.options.length > 0 ? (
+                      <p className="text-text-secondary mt-0.5 text-sm break-words">
+                        {formatItemOptions(item.options)}
+                      </p>
+                    ) : null}
+                    {item.notes ? (
+                      <p className="text-warning mt-0.5 text-sm font-medium break-words whitespace-pre-wrap">
+                        Obs: {item.notes}
+                      </p>
+                    ) : null}
                   </div>
-                  {order.payment.method === 'CASH' && order.payment.changeFor && (
-                    <p className="text-text-primary pl-6">
-                      Troco para {formatCurrency(order.payment.changeFor)}
-                    </p>
-                  )}
-                  {order.payment.paidAt && (
-                    <p className="text-text-secondary pl-6 text-xs">
-                      Confirmado em {formatDate(order.payment.paidAt, timeZone, true)}
-                    </p>
-                  )}
-                  {order.payment.refundAmount !== null && (
-                    <p className="text-text-secondary pl-6 text-xs">
-                      Reembolso integral: {formatCurrency(order.payment.refundAmount)}
-                    </p>
-                  )}
+                ))}
+              </div>
+              <dl className="border-border grid grid-cols-2 gap-x-3 gap-y-1 border-t px-3 py-2 text-xs">
+                <div className="text-text-secondary flex justify-between gap-2">
+                  <dt>Subtotal</dt>
+                  <dd>{formatCurrency(order.totals.subtotal)}</dd>
                 </div>
-                {order.recentPaymentHistory.length > 0 && (
-                  <ol className="border-border space-y-2 border-t pt-3 text-xs">
+                {order.totals.deliveryFee > 0 ? (
+                  <div className="text-text-secondary flex justify-between gap-2">
+                    <dt>Entrega</dt>
+                    <dd>{formatCurrency(order.totals.deliveryFee)}</dd>
+                  </div>
+                ) : null}
+                {order.totals.discount > 0 ? (
+                  <div className="text-success col-span-2 flex justify-between gap-2">
+                    <dt>Desconto</dt>
+                    <dd>-{formatCurrency(order.totals.discount)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          </section>
+
+          <section
+            className="order-detail-section"
+            aria-labelledby={`customer-heading-${order.id}`}
+          >
+            <h3
+              id={`customer-heading-${order.id}`}
+              className="text-text-primary mb-2 text-sm font-semibold"
+            >
+              Cliente e entrega
+            </h3>
+            <div className="border-border bg-surface-secondary divide-border divide-y overflow-hidden rounded-lg border text-sm">
+              <div className="order-detail-contact-row p-3">
+                <div className="flex min-w-0 items-start gap-2">
+                  <User className="text-text-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-text-primary font-semibold break-words">
+                      {order.customer.name}
+                    </p>
+                    <p className="text-text-secondary mt-0.5 flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      {order.customer.phone && normalizedPhone
+                        ? order.customer.phone
+                        : 'Contato protegido'}
+                    </p>
+                  </div>
+                </div>
+                {order.customer.phone && normalizedPhone ? (
+                  <div className="order-detail-contact-actions flex gap-2" data-order-print-hide>
+                    <Button asChild variant="outline" size="sm">
+                      <a
+                        href={`tel:+${normalizedPhone}`}
+                        aria-label={`Ligar para ${order.customer.name}`}
+                      >
+                        <Phone aria-hidden="true" /> Ligar
+                      </a>
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <a
+                        href={`https://wa.me/${normalizedPhone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Conversar com ${order.customer.name} no WhatsApp`}
+                      >
+                        <MessageCircle aria-hidden="true" /> WhatsApp
+                      </a>
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="order-detail-address-row flex items-start gap-2 p-3">
+                <MapPin className="text-text-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-text-secondary text-xs font-medium">
+                    {order.modality === 'DELIVERY' ? 'Endereço de entrega' : 'Retirada no local'}
+                  </p>
+                  <p className="text-text-primary mt-0.5 font-medium break-words">
+                    {order.modality === 'DELIVERY'
+                      ? (deliveryAddress ?? 'Endereço protegido')
+                      : 'Cliente retira o pedido no estabelecimento'}
+                  </p>
+                </div>
+                {order.modality === 'DELIVERY' && mapUrl ? (
+                  <Button asChild variant="outline" size="sm" data-order-print-hide>
+                    <a
+                      href={mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Abrir endereço do pedido ${order.orderNumber} no mapa`}
+                    >
+                      <MapPin aria-hidden="true" /> Mapa
+                      <ExternalLink aria-hidden="true" />
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="order-detail-section"
+            aria-labelledby={`operation-heading-${order.id}`}
+          >
+            <h3
+              id={`operation-heading-${order.id}`}
+              className="text-text-primary mb-2 text-sm font-semibold"
+            >
+              Operação
+            </h3>
+            <div className="border-border bg-surface-secondary rounded-lg border p-3">
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+                <div>
+                  <dt className="text-text-secondary text-xs">Etapa atual</dt>
+                  <dd className="text-text-primary mt-0.5 flex items-center gap-1.5 font-semibold">
+                    <Clock3 className="h-4 w-4" aria-hidden="true" />
+                    {order.operational.stageLabel}
+                  </dd>
+                  <dd className="text-text-secondary mt-0.5 text-xs">
+                    {formatElapsedMinutes(order.operational.elapsedMinutes)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-text-secondary text-xs">Pagamento</dt>
+                  <dd className="text-text-primary mt-0.5 flex items-center gap-1.5 font-semibold">
+                    <Receipt className="h-4 w-4" aria-hidden="true" />
+                    {order.payment.method === 'PIX'
+                      ? 'Pix'
+                      : order.payment.method === 'CASH'
+                        ? 'Dinheiro'
+                        : 'Cartão'}
+                  </dd>
+                  <dd
+                    className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 text-xs ${paymentInfo.color}`}
+                  >
+                    {paymentInfo.label}
+                  </dd>
+                </div>
+                {promisedWindow ? (
+                  <div className="border-border col-span-2 border-t pt-2.5">
+                    <dt className="sr-only">Previsão</dt>
+                    <dd
+                      className={cn(
+                        'flex items-start gap-2 text-sm font-semibold',
+                        promisedWindow.isOverdue ? 'text-error' : 'text-info',
+                      )}
+                    >
+                      <Clock3 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      {promisedWindow.label}
+                    </dd>
+                  </div>
+                ) : null}
+                {order.payment.method === 'CASH' && order.payment.changeFor ? (
+                  <div className="border-border col-span-2 border-t pt-2.5">
+                    <dt className="text-text-secondary text-xs">Troco</dt>
+                    <dd className="text-text-primary mt-0.5 font-medium">
+                      Para {formatCurrency(order.payment.changeFor)}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+
+            <details className="order-detail-disclosure border-border mt-2 border-t">
+              <summary className="text-text-primary flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium">
+                Linha do tempo e métricas
+                <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </summary>
+              <div className="pb-3">
+                <OrderStatusTimeline order={order} timeZone={timeZone} />
+                <dl className="border-border mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-3 text-sm">
+                  {[
+                    ['Aceite', order.operational.durations.acceptanceMinutes],
+                    ['Preparo', order.operational.durations.preparationMinutes],
+                    ['Pronto', order.operational.durations.readyMinutes],
+                    ['Entrega', order.operational.durations.deliveryMinutes],
+                    ['Total', order.operational.durations.totalMinutes],
+                  ].map(([label, value]) => (
+                    <div key={label as string}>
+                      <dt className="text-text-secondary text-xs">{label}</dt>
+                      <dd className="text-text-primary mt-0.5 flex items-center gap-1 font-mono font-bold">
+                        <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                        {formatOperationalDuration(value as number | null)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {order.lastChangedBy ? (
+                  <p className="text-text-secondary border-border mt-3 border-t pt-3 text-xs">
+                    Última alteração por {order.lastChangedBy}
+                  </p>
+                ) : null}
+                {order.recentPaymentHistory.length > 0 ? (
+                  <ol className="border-border mt-3 space-y-2 border-t pt-3 text-xs">
                     {order.recentPaymentHistory.map((entry) => (
                       <li key={entry.id} className="flex items-start justify-between gap-3">
                         <span>
@@ -519,11 +609,11 @@ function OrderDetails({
                             {paymentHistoryLabels[entry.action] ?? 'Pagamento atualizado'}
                           </span>
                           <span className="text-text-secondary">{entry.actorName}</span>
-                          {entry.note && (
+                          {entry.note ? (
                             <span className="text-text-secondary mt-0.5 block whitespace-pre-wrap">
                               {entry.note}
                             </span>
-                          )}
+                          ) : null}
                         </span>
                         <time className="text-text-secondary shrink-0" dateTime={entry.createdAt}>
                           {formatDate(entry.createdAt, timeZone, true)}
@@ -531,137 +621,75 @@ function OrderDetails({
                       </li>
                     ))}
                   </ol>
-                )}
+                ) : null}
               </div>
-            </section>
+            </details>
+          </section>
 
-            {order.customerNotes && (
-              <section aria-labelledby={`notes-heading-${order.id}`}>
-                <h3
-                  id={`notes-heading-${order.id}`}
-                  className="text-text-primary mb-2 text-sm font-semibold"
-                >
-                  Observação do cliente
-                </h3>
-                <p className="bg-warning-light text-text-primary rounded-lg p-3 text-sm break-words whitespace-pre-wrap">
-                  {order.customerNotes}
-                </p>
-              </section>
-            )}
-          </div>
+          <InternalOrderNotes
+            order={order}
+            storeId={storeId}
+            authorizationScope={authorizationScope}
+            timeZone={timeZone}
+            onOrderChanged={onOrderChanged}
+          />
 
-          <div className="space-y-6">
-            <section aria-labelledby={`items-heading-${order.id}`}>
-              <h3
-                id={`items-heading-${order.id}`}
-                className="text-text-primary mb-3 text-sm font-semibold"
+          {displayedHistory.length > 0 ? (
+            <section aria-labelledby={`history-heading-${order.id}`}>
+              <button
+                type="button"
+                className="focus-visible:ring-brand-500 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                aria-expanded={historyExpanded}
+                aria-controls={`history-content-${order.id}`}
+                onClick={toggleHistory}
               >
-                Itens ({order.items.length})
-              </h3>
-              <div className="bg-surface-secondary rounded-lg p-3">
-                <div className="space-y-3">
-                  {order.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="border-border border-b pb-3 last:border-0 last:pb-0"
+                <span
+                  id={`history-heading-${order.id}`}
+                  className="text-text-primary flex items-center gap-2 text-sm font-semibold"
+                >
+                  <History aria-hidden="true" /> Histórico do pedido
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'h-4 w-4 shrink-0 transition-transform duration-200',
+                    historyExpanded && 'rotate-180',
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+              {historyExpanded ? (
+                <div id={`history-content-${order.id}`} className="mt-2">
+                  {historyQuery.error ? (
+                    <p
+                      className="bg-error-light text-error mb-3 rounded-lg px-3 py-2 text-xs"
+                      role="status"
                     >
-                      <div className="flex justify-between gap-3 text-sm">
-                        <span className="text-text-primary min-w-0 font-medium break-words">
-                          {item.quantity}× {item.productName}
-                        </span>
-                        <span className="text-text-primary shrink-0 font-mono">
-                          {formatCurrency(item.itemTotal)}
-                        </span>
-                      </div>
-                      {item.options.length > 0 && (
-                        <p className="text-text-secondary mt-1 pl-4 text-sm break-words">
-                          {formatItemOptions(item.options)}
-                        </p>
-                      )}
-                      {item.notes && (
-                        <p className="text-text-secondary mt-1 pl-4 text-sm break-words whitespace-pre-wrap italic">
-                          “{item.notes}”
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="border-border mt-4 space-y-1.5 border-t pt-3 text-sm">
-                  <div className="text-text-secondary flex justify-between">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(order.totals.subtotal)}</span>
-                  </div>
-                  {order.totals.discount > 0 && (
-                    <div className="text-text-secondary flex justify-between">
-                      <span>Desconto</span>
-                      <span>-{formatCurrency(order.totals.discount)}</span>
-                    </div>
-                  )}
-                  {order.totals.deliveryFee > 0 && (
-                    <div className="text-text-secondary flex justify-between">
-                      <span>Taxa de entrega</span>
-                      <span>{formatCurrency(order.totals.deliveryFee)}</span>
-                    </div>
-                  )}
-                  <div className="text-text-primary flex justify-between pt-1.5 font-bold">
-                    <span>Total</span>
-                    <span className="text-brand-700 font-mono text-base">
-                      {formatCurrency(order.totals.total)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <InternalOrderNotes
-              order={order}
-              storeId={storeId}
-              authorizationScope={authorizationScope}
-              timeZone={timeZone}
-              onOrderChanged={onOrderChanged}
-            />
-
-            {displayedHistory.length > 0 && (
-              <section aria-labelledby={`history-heading-${order.id}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3
-                    id={`history-heading-${order.id}`}
-                    className="text-text-primary flex items-center gap-2 text-sm font-semibold"
-                  >
-                    <History aria-hidden="true" /> Histórico
-                  </h3>
+                      Não foi possível atualizar o histórico. Tente novamente.
+                    </p>
+                  ) : null}
+                  <HistoryList entries={displayedHistory} timeZone={timeZone} />
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={loadHistory}
+                    className="mt-2"
+                    onClick={loadMoreHistory}
                     disabled={historyQuery.isFetching}
                   >
                     {historyQuery.isFetching
                       ? 'Carregando…'
-                      : fullHistory && historyQuery.hasNextPage
+                      : historyQuery.hasNextPage
                         ? 'Carregar mais'
-                        : fullHistory
-                          ? 'Atualizado'
-                          : 'Ver completo'}
+                        : 'Atualizar histórico'}
                   </Button>
                 </div>
-                {historyQuery.error && (
-                  <p
-                    className="bg-error-light text-error mb-3 rounded-lg px-3 py-2 text-xs"
-                    role="status"
-                  >
-                    Não foi possível atualizar o histórico. Tente novamente.
-                  </p>
-                )}
-                <HistoryList entries={displayedHistory} timeZone={timeZone} />
-              </section>
-            )}
-          </div>
+              ) : null}
+            </section>
+          ) : null}
         </div>
       </div>
 
       <footer
-        className="border-border bg-surface sticky bottom-0 z-10 shrink-0 border-t p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-4 print:hidden"
+        className="order-detail-footer border-border bg-surface sticky bottom-0 z-10 shrink-0 border-t p-2.5 pb-[calc(env(safe-area-inset-bottom)+0.625rem)] sm:p-3 print:hidden"
         data-order-print-hide
       >
         <StatusActions

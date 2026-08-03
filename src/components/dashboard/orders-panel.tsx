@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { BellRing, ChevronRight, ExternalLink, PackageOpen, RefreshCw, Search } from 'lucide-react';
+import { BellRing, ChevronRight, ExternalLink, PackageOpen, RefreshCw } from 'lucide-react';
 import type { OrderStatus, PaymentStatus } from '@prisma/client';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -22,7 +22,11 @@ import { collectOrderSignals, type IncomingOrderSignal } from '@/lib/orders/orde
 import { getNextStoreMidnight, getStoreLocalDate } from '@/lib/time/store-time';
 import { cn } from '@/lib/utils';
 import { getOrderBoardLaneAction } from '@/features/orders/query-actions';
-import { ORDER_BOARD_LANE_PAGE_SIZE } from '@/features/orders/query-constants';
+import {
+  ORDER_ACTIVE_STATUSES,
+  ORDER_BOARD_LANE_PAGE_SIZE,
+  ORDER_FINISHED_STATUSES,
+} from '@/features/orders/query-constants';
 import type {
   OrderBoardFilters,
   OrderBoardLaneKey,
@@ -41,8 +45,17 @@ import {
   resetChangedLanePages,
   type LanePaginationState,
 } from './order-board-pagination';
-import { initialOrderBoardFilters, OrderFilters } from './order-filters';
-import { OrderBoardMetrics } from './order-board-metrics';
+import {
+  getAdvancedFilterCount,
+  initialOrderBoardFilters,
+  OrderBoardViewTabs,
+  OrderFilters,
+} from './order-filters';
+import {
+  OrderBoardMetrics,
+  OrderMobileStageSelector,
+  type ActiveOrderBoardLaneKey,
+} from './order-board-metrics';
 import { useDashboardOperations } from './dashboard-operations-context';
 
 const OrderDetailModal = dynamic(
@@ -68,7 +81,7 @@ const ALL_PAYMENT_STATUSES: PaymentStatus[] = [
   'REFUNDED',
 ];
 
-const LANE_DEFINITIONS: Array<{
+const ACTIVE_LANE_DEFINITIONS: Array<{
   key: OrderBoardLaneKey;
   title: string;
   description: string;
@@ -92,13 +105,42 @@ const LANE_DEFINITIONS: Array<{
     description: 'Saída e entrega',
     tone: 'orders-lane-ready',
   },
-  {
-    key: 'FINISHED',
-    title: 'Finalizados',
-    description: 'Concluídos e cancelados',
-    tone: 'orders-lane-finished',
-  },
 ];
+
+const FINISHED_LANE_DEFINITION = {
+  key: 'FINISHED' as const,
+  title: 'Histórico do dia',
+  description: 'Concluídos e cancelados',
+  tone: 'orders-lane-finished',
+};
+
+function sameStatuses(current: OrderStatus[] | undefined, expected: OrderStatus[]) {
+  return (
+    current?.length === expected.length && expected.every((status) => current.includes(status))
+  );
+}
+
+function isHistoryStatusFilter(statuses: OrderStatus[] | undefined) {
+  return Boolean(
+    statuses?.length && statuses.every((status) => ORDER_FINISHED_STATUSES.includes(status)),
+  );
+}
+
+function laneFromStatuses(statuses: OrderStatus[] | undefined): ActiveOrderBoardLaneKey | null {
+  if (statuses?.length === 1 && statuses[0] === 'PENDING') return 'NEW';
+  if (sameStatuses(statuses, ['CONFIRMED', 'PREPARING'])) return 'PREPARATION';
+  if (
+    statuses?.length &&
+    statuses.every((status) => status === 'READY' || status === 'OUT_FOR_DELIVERY')
+  ) {
+    return 'READY_AND_DELIVERY';
+  }
+  return null;
+}
+
+function orderCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'pedido' : 'pedidos'}`;
+}
 
 function validLocalDate(value: string | null) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -118,23 +160,29 @@ function filtersFromUrl(searchParams: URLSearchParams, localDate: string): Order
     .filter((status): status is OrderStatus => ALL_STATUSES.includes(status as OrderStatus));
   const rawPayment = searchParams.get('paymentStatus');
   const rawModality = searchParams.get('modality');
+  const resolvedStatuses = statuses?.length ? statuses : [...ORDER_ACTIVE_STATUSES];
 
   return {
     localDate: validLocalDate(searchParams.get('date')) ?? localDate,
-    statuses: statuses?.length ? statuses : undefined,
+    statuses: resolvedStatuses,
     paymentStatus:
       rawPayment && ALL_PAYMENT_STATUSES.includes(rawPayment as PaymentStatus)
         ? (rawPayment as PaymentStatus)
         : undefined,
     modality: rawModality === 'DELIVERY' || rawModality === 'PICKUP' ? rawModality : undefined,
-    delayedOnly: searchParams.get('delayed') === '1' || undefined,
+    delayedOnly:
+      !isHistoryStatusFilter(resolvedStatuses) && searchParams.get('delayed') === '1'
+        ? true
+        : undefined,
   };
 }
 
 function filtersToUrl(filters: OrderBoardFilters, orderId: string | null) {
   const params = new URLSearchParams();
   if (filters.localDate) params.set('date', filters.localDate);
-  if (filters.statuses?.length) params.set('statuses', filters.statuses.join(','));
+  if (filters.statuses?.length && !sameStatuses(filters.statuses, ORDER_ACTIVE_STATUSES)) {
+    params.set('statuses', filters.statuses.join(','));
+  }
   if (filters.paymentStatus) params.set('paymentStatus', filters.paymentStatus);
   if (filters.modality) params.set('modality', filters.modality);
   if (filters.delayedOnly) params.set('delayed', '1');
@@ -149,11 +197,12 @@ function isOrderId(value: string | null) {
   );
 }
 
-function OrdersBoardSkeleton() {
+function OrdersBoardSkeleton({ historyMode }: { historyMode: boolean }) {
+  const definitions = historyMode ? [FINISHED_LANE_DEFINITION] : ACTIVE_LANE_DEFINITIONS;
   return (
     <div className="orders-board-scroll" aria-label="Carregando quadro de pedidos" role="status">
-      <div className="orders-board-grid">
-        {LANE_DEFINITIONS.map((lane) => (
+      <div className={cn('orders-board-grid', historyMode && 'orders-board-grid-history')}>
+        {definitions.map((lane) => (
           <section key={lane.key} className={cn('orders-lane', lane.tone)}>
             <div className="bg-surface-tertiary h-12 animate-pulse rounded-lg" />
             <div className="mt-3 space-y-3">
@@ -212,6 +261,11 @@ export function OrdersPanel({
     revision: 0,
   }));
   const { filters, searchToken, revision: filterRevision } = filterState;
+  const historyMode = isHistoryStatusFilter(filters.statuses);
+  const [mobileLane, setMobileLane] = useState<ActiveOrderBoardLaneKey>(
+    () => laneFromStatuses(initialFilters.statuses) ?? 'NEW',
+  );
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(() => {
     const orderId = searchParams.get('order');
     return isOrderId(orderId) ? orderId : null;
@@ -280,10 +334,13 @@ export function OrdersPanel({
     }
   }, [authorizationScope, queryClient, storeId]);
 
-  const resetChangedPagination = useCallback((orderIds: string[]) => {
-    if (orderIds.length === 0) return;
-    setLanePagination((current) => resetChangedLanePages(current, orderIds));
-  }, []);
+  const resetChangedPagination = useCallback(
+    (orderIds: string[]) => {
+      if (orderIds.length === 0) return;
+      setLanePagination((current) => resetChangedLanePages(current, orderIds));
+    },
+    [setLanePagination],
+  );
   const handleOrderChanged = useCallback(
     (orderId: string) => resetChangedPagination([orderId]),
     [resetChangedPagination],
@@ -343,7 +400,7 @@ export function OrdersPanel({
         queryKey: orderQueryKeys.details(storeId, authorizationScope, selectedOrderRef.current),
       });
     }
-  }, [authorizationScope, boardQuery, filterRevision, queryClient, storeId]);
+  }, [authorizationScope, boardQuery, filterRevision, queryClient, setLanePagination, storeId]);
   const refreshRef = useRef(refresh);
 
   useEffect(() => {
@@ -358,23 +415,34 @@ export function OrdersPanel({
       if (latest) setSelectedOrderId(latest.orderId);
       return latest ? current.filter((item) => item.orderId !== latest.orderId) : current;
     });
-  }, []);
+  }, [setRecentNewOrders, setSelectedOrderId]);
+  const openFiltersFromShell = useCallback(
+    () => setMobileFiltersOpen(true),
+    [setMobileFiltersOpen],
+  );
+  const activeFilterCount = getAdvancedFilterCount(filters, localDate, historyMode);
 
   useEffect(() => {
     register({
       realtimeState: connectionState,
       recentOrderCount: recentNewOrders.length,
+      activeFilterCount,
+      filtersOpen: mobileFiltersOpen,
       isRefreshing: boardQuery.isFetching,
       soundEnabled: sound.enabled,
       soundActivating: sound.isActivating,
       onRefresh: refreshFromShell,
       onToggleSound: toggleSoundFromShell,
       onOpenLatestOrder: openLatestOrder,
+      onOpenFilters: openFiltersFromShell,
     });
   }, [
+    activeFilterCount,
     boardQuery.isFetching,
     connectionState,
+    mobileFiltersOpen,
     openLatestOrder,
+    openFiltersFromShell,
     recentNewOrders.length,
     refreshFromShell,
     register,
@@ -495,6 +563,14 @@ export function OrdersPanel({
     });
   }
 
+  function changeBoardView(showHistory: boolean) {
+    updateFilters((current) => ({
+      ...current,
+      statuses: showHistory ? [...ORDER_FINISHED_STATUSES] : [...ORDER_ACTIVE_STATUSES],
+      delayedOnly: false,
+    }));
+  }
+
   const activeOrderCount = boardQuery.data
     ? boardQuery.data.summary.newCount +
       boardQuery.data.summary.preparingCount +
@@ -502,7 +578,12 @@ export function OrdersPanel({
       boardQuery.data.summary.deliveryCount
     : 0;
   const boardOrderCount = boardQuery.data
-    ? Object.values(boardQuery.data.lanes).reduce((total, lane) => total + lane.total, 0)
+    ? historyMode
+      ? boardQuery.data.lanes.FINISHED.total
+      : ACTIVE_LANE_DEFINITIONS.reduce(
+          (total, definition) => total + boardQuery.data.lanes[definition.key].total,
+          0,
+        )
     : 0;
 
   return (
@@ -515,9 +596,15 @@ export function OrdersPanel({
               Acompanhe a operação de {storeName} em tempo real.
             </p>
           </div>
-          <Button variant="outline" asChild className="shrink-0 gap-2">
-            <Link href={`/${storeSlug}`} target="_blank" rel="noreferrer">
-              Ver cardápio <ExternalLink aria-hidden="true" />
+          <Button variant="ghost" size="sm" asChild className="orders-storefront-link shrink-0">
+            <Link
+              href={`/${storeSlug}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Abrir cardápio em nova aba"
+            >
+              <span className="orders-storefront-link-label">Ver cardápio</span>
+              <ExternalLink aria-hidden="true" />
             </Link>
           </Button>
         </header>
@@ -528,43 +615,41 @@ export function OrdersPanel({
           </p>
         )}
 
-        <div className="relative xl:hidden">
-          <Search
-            className="text-text-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-            aria-hidden="true"
-          />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => operations.setSearch(event.target.value)}
-            placeholder="Buscar pedido, cliente, telefone ou pagamento"
-            aria-label="Buscar na central de pedidos"
-            className="border-border bg-surface text-text-primary placeholder:text-text-muted focus-visible:ring-brand-500 h-11 w-full rounded-lg border px-10 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-          />
-        </div>
+        <OrderBoardViewTabs
+          historyMode={historyMode}
+          activeOrderCount={activeOrderCount}
+          onChange={changeBoardView}
+        />
 
-        {boardQuery.data ? (
-          <OrderBoardMetrics
-            summary={{
-              ...boardQuery.data.summary,
-              delayedCount:
-                temporalSummaryQuery.data &&
-                temporalSummaryQuery.dataUpdatedAt > boardQuery.dataUpdatedAt
-                  ? temporalSummaryQuery.data.delayedCount
-                  : boardQuery.data.summary.delayedCount,
-            }}
-            activeStatuses={filters.statuses}
-            delayedOnly={filters.delayedOnly}
-            onSelect={(selection) => updateFilters((current) => ({ ...current, ...selection }))}
-          />
-        ) : (
-          <div className="bg-surface-tertiary h-24 animate-pulse rounded-xl" />
-        )}
+        {boardQuery.data && !historyMode ? (
+          <>
+            <OrderBoardMetrics
+              summary={{
+                ...boardQuery.data.summary,
+                delayedCount:
+                  temporalSummaryQuery.data &&
+                  temporalSummaryQuery.dataUpdatedAt > boardQuery.dataUpdatedAt
+                    ? temporalSummaryQuery.data.delayedCount
+                    : boardQuery.data.summary.delayedCount,
+              }}
+            />
+            <OrderMobileStageSelector
+              summary={boardQuery.data.summary}
+              value={mobileLane}
+              onChange={setMobileLane}
+            />
+          </>
+        ) : !historyMode ? (
+          <div className="bg-surface-tertiary h-16 animate-pulse rounded-xl" />
+        ) : null}
 
         <OrderFilters
           filters={filters}
           localDate={localDate}
           timeZone={timeZone}
+          historyMode={historyMode}
+          mobileOpen={mobileFiltersOpen}
+          onMobileOpenChange={setMobileFiltersOpen}
           onChange={updateFilters}
         />
 
@@ -616,7 +701,7 @@ export function OrdersPanel({
 
         <div className="min-w-0">
           {boardQuery.isLoading ? (
-            <OrdersBoardSkeleton />
+            <OrdersBoardSkeleton historyMode={historyMode} />
           ) : boardQuery.error && !boardQuery.data ? (
             <div className="border-error/30 bg-error-light rounded-xl border px-4 py-10 text-center">
               <p className="text-error font-semibold">Não foi possível carregar os pedidos.</p>
@@ -633,95 +718,107 @@ export function OrdersPanel({
               aria-label="Quadro operacional de pedidos"
               tabIndex={0}
             >
-              <div className="orders-board-grid">
-                {LANE_DEFINITIONS.map((definition) => {
-                  const lane = boardQuery.data.lanes[definition.key];
-                  const paginationIsCurrent = lanePagination.revision === filterRevision;
-                  const items = uniqueOrders(
-                    lane.items,
-                    paginationIsCurrent ? (lanePagination.items[definition.key] ?? []) : [],
-                  );
-                  const nextCursor = laneCursorForPagination(
-                    lanePagination,
-                    filterRevision,
-                    definition.key,
-                    lane.nextCursor,
-                  );
-                  const laneIsLoading = Boolean(
-                    paginationIsCurrent && lanePagination.loadingLanes[definition.key],
-                  );
-                  const laneHasError = Boolean(
-                    paginationIsCurrent && lanePagination.errorLanes[definition.key],
-                  );
-                  return (
-                    <section
-                      key={definition.key}
-                      data-order-lane={definition.key}
-                      className={cn('orders-lane', definition.tone)}
-                      aria-labelledby={`orders-lane-${definition.key}`}
-                    >
-                      <header className="orders-lane-header">
-                        <div className="min-w-0">
-                          <h2
-                            id={`orders-lane-${definition.key}`}
-                            className="text-text-primary truncate text-sm font-bold"
-                          >
-                            {definition.title}
-                          </h2>
-                          <p className="text-text-secondary truncate text-sm">
-                            {definition.description}
-                          </p>
-                        </div>
-                        <span className="orders-lane-count" aria-label={`${lane.total} pedidos`}>
-                          {lane.total}
-                        </span>
-                      </header>
-
-                      <div className="orders-lane-list">
-                        {items.length ? (
-                          items.map((order) => (
-                            <OrderCard
-                              key={order.id}
-                              order={order}
-                              timeZone={timeZone}
-                              onClick={() => setSelectedOrderId(order.id)}
-                              selected={selectedOrderId === order.id}
-                              footer={
-                                <OrderCardPrimaryAction
-                                  order={order}
-                                  storeId={storeId}
-                                  authorizationScope={authorizationScope}
-                                  onOrderChanged={handleOrderChanged}
-                                />
-                              }
-                            />
-                          ))
-                        ) : (
-                          <div className="orders-lane-empty">
-                            <PackageOpen aria-hidden="true" />
-                            <span>Nenhum pedido nesta etapa.</span>
-                          </div>
+              <div className={cn('orders-board-grid', historyMode && 'orders-board-grid-history')}>
+                {(historyMode ? [FINISHED_LANE_DEFINITION] : ACTIVE_LANE_DEFINITIONS).map(
+                  (definition) => {
+                    const lane = boardQuery.data.lanes[definition.key];
+                    const paginationIsCurrent = lanePagination.revision === filterRevision;
+                    const items = uniqueOrders(
+                      lane.items,
+                      paginationIsCurrent ? (lanePagination.items[definition.key] ?? []) : [],
+                    );
+                    const nextCursor = laneCursorForPagination(
+                      lanePagination,
+                      filterRevision,
+                      definition.key,
+                      lane.nextCursor,
+                    );
+                    const laneIsLoading = Boolean(
+                      paginationIsCurrent && lanePagination.loadingLanes[definition.key],
+                    );
+                    const laneHasError = Boolean(
+                      paginationIsCurrent && lanePagination.errorLanes[definition.key],
+                    );
+                    return (
+                      <section
+                        key={definition.key}
+                        id={`orders-lane-section-${definition.key}`}
+                        data-order-lane={definition.key}
+                        className={cn(
+                          'orders-lane',
+                          definition.tone,
+                          !historyMode &&
+                            definition.key !== mobileLane &&
+                            'orders-lane-mobile-hidden',
                         )}
-                      </div>
+                        aria-labelledby={`orders-lane-${definition.key}`}
+                      >
+                        <header className="orders-lane-header">
+                          <div className="min-w-0">
+                            <h2
+                              id={`orders-lane-${definition.key}`}
+                              className="text-text-primary truncate text-sm font-bold"
+                            >
+                              {definition.title}
+                            </h2>
+                            <p className="text-text-secondary truncate text-sm">
+                              {definition.description}
+                            </p>
+                          </div>
+                          <span
+                            className="orders-lane-count"
+                            aria-label={orderCountLabel(lane.total)}
+                          >
+                            {lane.total}
+                          </span>
+                        </header>
 
-                      {laneHasError && (
-                        <p className="text-error mt-2 text-center text-sm" role="status">
-                          Não foi possível carregar mais pedidos.
-                        </p>
-                      )}
-                      {nextCursor && (
-                        <OrderLaneLoadMoreButton
-                          laneTitle={definition.title}
-                          loadedCount={items.length}
-                          totalCount={lane.total}
-                          isLoading={laneIsLoading}
-                          disabled={laneIsLoading}
-                          onLoadMore={() => void loadMore(definition.key)}
-                        />
-                      )}
-                    </section>
-                  );
-                })}
+                        <div className="orders-lane-list">
+                          {items.length ? (
+                            items.map((order) => (
+                              <OrderCard
+                                key={order.id}
+                                order={order}
+                                timeZone={timeZone}
+                                onClick={() => setSelectedOrderId(order.id)}
+                                selected={selectedOrderId === order.id}
+                                footer={
+                                  <OrderCardPrimaryAction
+                                    order={order}
+                                    storeId={storeId}
+                                    authorizationScope={authorizationScope}
+                                    onOrderChanged={handleOrderChanged}
+                                  />
+                                }
+                              />
+                            ))
+                          ) : (
+                            <div className="orders-lane-empty">
+                              <PackageOpen aria-hidden="true" />
+                              <span>Tudo em dia nesta etapa.</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {laneHasError && (
+                          <p className="text-error mt-2 text-center text-sm" role="status">
+                            Não foi possível carregar mais pedidos.
+                          </p>
+                        )}
+                        {nextCursor && (
+                          <OrderLaneLoadMoreButton
+                            laneTitle={definition.title}
+                            loadedCount={items.length}
+                            totalCount={lane.total}
+                            isLoading={laneIsLoading}
+                            disabled={laneIsLoading}
+                            onLoadMore={() => void loadMore(definition.key)}
+                          />
+                        )}
+                      </section>
+                    );
+                  },
+                )}
               </div>
             </div>
           ) : null}

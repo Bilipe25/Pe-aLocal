@@ -15,6 +15,11 @@ import {
 import { useSyncExternalStore, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  formatElapsedMinutes,
+  formatPromisedFulfillment,
+  formatSlaAlertLabel,
+} from '@/domain/orders/order-time';
 import { formatCurrency } from '@/lib/utils';
 import type {
   OrderBoardItemDTO,
@@ -68,14 +73,6 @@ export interface OrderCardProps {
   footer?: ReactNode;
 }
 
-function getElapsedMinutesLabel(elapsedMinutes: number) {
-  if (elapsedMinutes < 1) return 'agora';
-  if (elapsedMinutes < 60) return `há ${elapsedMinutes} min`;
-  const hours = Math.floor(elapsedMinutes / 60);
-  const minutes = elapsedMinutes % 60;
-  return minutes > 0 ? `há ${hours}h ${minutes}min` : `há ${hours}h`;
-}
-
 const ACCEPTANCE_ALERT_MINUTES = 3;
 const CONFIRMED_ALERT_MINUTES = 5;
 const READY_PICKUP_ALERT_MINUTES = 15;
@@ -127,7 +124,7 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
     alerts.push(
       liveAlert(
         'PAYMENT_OVERDUE',
-        `Pix pendente há ${orderElapsed} min`,
+        formatSlaAlertLabel('Pix', orderElapsed, PAYMENT_ALERT_MINUTES),
         orderElapsed,
         PAYMENT_ALERT_MINUTES,
       ),
@@ -142,7 +139,7 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
         const threshold = configuredStageThreshold ?? ACCEPTANCE_ALERT_MINUTES;
         operationalAlert = liveAlert(
           'ACCEPTANCE_OVERDUE',
-          `Sem aceite há ${stageElapsed} min`,
+          formatSlaAlertLabel('Aceite', stageElapsed, threshold),
           stageElapsed,
           threshold,
         );
@@ -153,7 +150,7 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
         const threshold = configuredStageThreshold ?? CONFIRMED_ALERT_MINUTES;
         operationalAlert = liveAlert(
           'PREPARATION_OVERDUE',
-          `Preparo ainda não iniciado há ${stageElapsed} min`,
+          formatSlaAlertLabel('Início do preparo', stageElapsed, threshold),
           stageElapsed,
           threshold,
         );
@@ -167,9 +164,7 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
       if (stageElapsed >= threshold) {
         operationalAlert = liveAlert(
           pickup ? 'READY_WAITING_PICKUP' : 'READY_WAITING_DISPATCH',
-          pickup
-            ? `Pronto aguardando retirada há ${stageElapsed} min`
-            : `Pronto aguardando despacho há ${stageElapsed} min`,
+          formatSlaAlertLabel(pickup ? 'Retirada' : 'Despacho', stageElapsed, threshold),
           stageElapsed,
           threshold,
         );
@@ -181,7 +176,7 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
       if (threshold !== null && threshold !== undefined && stageElapsed >= threshold) {
         operationalAlert = liveAlert(
           'PREPARATION_OVERDUE',
-          `Preparo acima de ${threshold} min`,
+          formatSlaAlertLabel('Preparo', stageElapsed, threshold),
           stageElapsed,
           threshold,
         );
@@ -196,15 +191,13 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
       if (threshold !== null && threshold !== undefined && stageElapsed >= threshold) {
         operationalAlert = liveAlert(
           'DELIVERY_OVERDUE',
-          `Entrega em rota há ${stageElapsed} min`,
+          formatSlaAlertLabel('Entrega', stageElapsed, threshold),
           stageElapsed,
           threshold,
         );
       } else if (threshold === undefined) {
-        const serverAlert = order.stageAlerts.find((alert) => alert.code === 'DELIVERY_OVERDUE');
-        operationalAlert = serverAlert
-          ? { ...serverAlert, label: `Entrega em rota há ${stageElapsed} min` }
-          : null;
+        operationalAlert =
+          order.stageAlerts.find((alert) => alert.code === 'DELIVERY_OVERDUE') ?? null;
       }
       break;
     }
@@ -261,7 +254,7 @@ function LiveElapsedStageTime({ order }: { order: OrderCardData }) {
         alerts.length ? 'text-warning text-sm font-semibold' : 'text-text-secondary text-sm'
       }
     >
-      {getElapsedMinutesLabel(elapsedMinutes)}
+      {formatElapsedMinutes(elapsedMinutes)}
     </span>
   );
 }
@@ -276,46 +269,54 @@ function LivePrimaryAlert({ order }: { order: OrderCardData }) {
   return (
     <div
       data-order-live-alert={alert.severity}
-      className={
+      className={`order-card-alert ${
         alert.severity === 'critical'
-          ? 'bg-error-light text-error mt-3 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold'
-          : 'bg-warning-light text-warning mt-3 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold'
-      }
+          ? 'bg-error-light text-error'
+          : 'bg-warning-light text-warning'
+      } mt-3 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold`}
     >
       <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>{alert.label}</span>
+      <span className="line-clamp-2 sm:line-clamp-none">{alert.label}</span>
     </div>
   );
 }
 
-function getPromisedWindow(
-  minAt: string | null | undefined,
-  maxAt: string | null | undefined,
-  timeZone?: string,
-) {
-  if (!minAt || !maxAt) return null;
-  const min = new Date(minAt);
-  const max = new Date(maxAt);
-  if (Number.isNaN(min.getTime()) || Number.isNaN(max.getTime())) return null;
-
-  const formatter = new Intl.DateTimeFormat('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
+function LivePromisedFulfillment({ order, timeZone }: { order: OrderCardData; timeZone?: string }) {
+  const now = useSyncExternalStore(subscribeToMinute, getMinuteSnapshot, () => 0);
+  const effectiveNow =
+    now || new Date(order.stageStartedAt).getTime() + (order.stageElapsedMinutes ?? 0) * 60_000;
+  const promised = formatPromisedFulfillment(
+    order.promisedFulfillmentMinAt,
+    order.promisedFulfillmentMaxAt,
     timeZone,
-  });
-  return `${formatter.format(min)}–${formatter.format(max)}`;
+    effectiveNow,
+    order.status !== 'DELIVERED' && order.status !== 'CANCELLED',
+  );
+  if (!promised) return null;
+
+  return (
+    <div className="col-span-2 min-w-0">
+      <dt className="sr-only">Previsão de conclusão</dt>
+      <dd
+        data-order-promised-overdue={promised.isOverdue ? 'true' : 'false'}
+        className={`flex items-center gap-1.5 ${
+          promised.isOverdue ? 'text-error font-semibold' : 'text-text-secondary'
+        } order-card-promised`}
+      >
+        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        {promised.label}
+      </dd>
+    </div>
+  );
 }
 
 export function OrderCard({ order, onClick, selected = false, timeZone, footer }: OrderCardProps) {
   const statusInfo = statusMap[order.status as OrderStatus];
   const paymentInfo = paymentStatusMap[order.paymentStatus as PaymentStatus];
   const StatusIcon = statusInfo.icon;
-  const promisedWindow = getPromisedWindow(
-    order.promisedFulfillmentMinAt,
-    order.promisedFulfillmentMaxAt,
-    timeZone,
-  );
   const preview = order.itemPreview?.slice(0, 3) ?? [];
+  const mobilePreviewCount = Math.min(preview.length, 2);
+  const mobileRemainingItems = Math.max(order.itemCount - mobilePreviewCount, 0);
   const importantNote = preview.find((item) => item.notes?.trim())?.notes?.trim() ?? null;
 
   return (
@@ -329,7 +330,7 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
             : 'border-border hover:border-brand-300 hover:shadow-md'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="order-card-header flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <h3
@@ -340,12 +341,17 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
             </h3>
             <LiveElapsedStageTime order={order} />
           </div>
-          <p className="text-text-primary mt-1 line-clamp-1 text-sm font-semibold">
-            {order.customerDisplayName}
-          </p>
+          <div className="order-card-customer-row mt-1 flex min-w-0 items-center gap-2">
+            <p className="text-text-primary line-clamp-2 min-w-0 text-sm leading-snug font-semibold break-words">
+              {order.customerDisplayName}
+            </p>
+            <span className="order-card-mobile-modality text-text-secondary shrink-0 text-xs">
+              {order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
+            </span>
+          </div>
         </div>
         <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm font-semibold ${statusInfo.color}`}
+          className={`order-card-status inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm font-semibold ${statusInfo.color}`}
         >
           <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
           {statusInfo.label}
@@ -353,9 +359,17 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
       </div>
 
       {preview.length > 0 ? (
-        <ul className="text-text-secondary mt-3 space-y-1 text-sm" aria-label="Prévia dos itens">
-          {preview.map((item) => (
-            <li key={item.id} className="flex min-w-0 items-baseline gap-1.5">
+        <ul
+          className="order-card-items text-text-secondary mt-3 space-y-1 text-sm"
+          aria-label="Prévia dos itens"
+        >
+          {preview.map((item, index) => (
+            <li
+              key={item.id}
+              className={`order-card-item flex min-w-0 items-baseline gap-1.5 ${
+                index >= 2 ? 'order-card-item-mobile-hidden' : ''
+              }`}
+            >
               <span className="text-text-primary shrink-0 font-mono font-semibold">
                 {item.quantity}×
               </span>
@@ -363,7 +377,14 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
             </li>
           ))}
           {order.itemCount > preview.length ? (
-            <li className="text-text-muted text-xs">+ mais itens no pedido</li>
+            <li className="order-card-more-desktop text-text-muted text-xs">
+              + mais itens no pedido
+            </li>
+          ) : null}
+          {mobileRemainingItems > 0 ? (
+            <li className="order-card-more-mobile text-text-muted text-xs">
+              + {mobileRemainingItems} {mobileRemainingItems === 1 ? 'item' : 'itens'}
+            </li>
           ) : null}
         </ul>
       ) : (
@@ -373,9 +394,10 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
       )}
 
       {importantNote || order.hasCustomerNotes ? (
-        <p className="bg-brand-50 text-brand-800 mt-3 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm">
+        <p className="order-card-note bg-brand-50 text-brand-800 mt-3 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm">
           <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="line-clamp-2">
+          <span className="line-clamp-1 sm:line-clamp-2">
+            <span className="font-semibold sm:hidden">Obs: </span>
             {importantNote ?? 'Este pedido possui observações do cliente.'}
           </span>
         </p>
@@ -383,23 +405,30 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
 
       <LivePrimaryAlert order={order} />
 
-      <dl className="border-border mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-sm">
-        <div className="min-w-0">
+      <dl className="order-card-meta border-border mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-sm">
+        <div className="order-card-meta-modality min-w-0">
           <dt className="sr-only">Modalidade</dt>
           <dd className="text-text-secondary flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
           </dd>
         </div>
-        <div className="min-w-0 text-right">
+        <div className="order-card-meta-total min-w-0 text-right">
           <dt className="sr-only">Total</dt>
-          <dd className="text-text-primary font-mono font-bold">{formatCurrency(order.total)}</dd>
+          <dd className="text-text-primary flex items-center justify-end gap-2 font-mono font-bold">
+            <span className="order-card-mobile-total-label text-text-secondary font-sans text-xs font-medium">
+              Total
+            </span>
+            {formatCurrency(order.total)}
+          </dd>
         </div>
-        <div className="col-span-2 min-w-0">
+        <div className="order-card-meta-payment col-span-2 min-w-0">
           <dt className="sr-only">Pagamento</dt>
           <dd className="text-text-secondary flex items-center gap-1.5">
             <Receipt className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className={`truncate rounded px-1.5 py-0.5 ${paymentInfo.color}`}>
+            <span
+              className={`inline-flex max-w-full flex-wrap rounded px-1.5 py-0.5 leading-tight ${paymentInfo.color}`}
+            >
               {order.paymentMethod === 'PIX'
                 ? 'Pix'
                 : order.paymentMethod === 'CASH'
@@ -409,19 +438,11 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
             </span>
           </dd>
         </div>
-        {promisedWindow ? (
-          <div className="col-span-2 min-w-0">
-            <dt className="sr-only">Previsão de conclusão</dt>
-            <dd className="text-text-secondary flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Previsão {promisedWindow}
-            </dd>
-          </div>
-        ) : null}
+        <LivePromisedFulfillment order={order} timeZone={timeZone} />
       </dl>
 
-      <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
-        {footer ? <div className="min-w-0 flex-1">{footer}</div> : <span className="flex-1" />}
+      <div className="order-card-actions border-border mt-3 flex items-center gap-2 border-t pt-3">
+        {footer ? <div className="order-card-primary-action min-w-0 flex-1">{footer}</div> : null}
         <Button
           id={`order-card-trigger-${order.id}`}
           type="button"
@@ -431,7 +452,7 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
           aria-expanded={selected}
           aria-controls="order-details-panel"
           aria-label={`Abrir pedido ${order.orderNumber}`}
-          className="shrink-0"
+          className="order-card-details-trigger ml-auto shrink-0"
         >
           <Eye aria-hidden="true" />
         </Button>

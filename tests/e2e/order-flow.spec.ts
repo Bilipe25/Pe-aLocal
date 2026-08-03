@@ -194,9 +194,10 @@ test.describe.serial('compra publica e acompanhamento', () => {
 
     async function advanceOrder(actionName: string, customerStatus: string, confirmation = false) {
       await operatorPage.goto('/dashboard/orders');
-      await operatorPage
-        .getByRole('searchbox', { name: 'Buscar na central de pedidos' })
-        .fill(`#${orderNumber}`);
+      await operatorPage.getByRole('button', { name: /Buscar pedidos|Abrir busca/ }).click();
+      const mobileSearch = operatorPage.getByRole('dialog', { name: 'Buscar pedidos' });
+      await mobileSearch.getByRole('searchbox', { name: 'Buscar pedidos' }).fill(`#${orderNumber}`);
+      await mobileSearch.getByRole('button', { name: 'Ver pedidos' }).click();
       const card = operatorPage.getByRole('button', {
         name: new RegExp(`Abrir pedido ${orderNumber},`),
       });

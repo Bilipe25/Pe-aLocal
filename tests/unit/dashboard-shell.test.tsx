@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect } from 'react';
 
@@ -48,24 +48,29 @@ function RegisteredShell({
   onRefresh,
   onToggleSound,
   onOpenLatestOrder,
+  onOpenFilters,
 }: {
   onRefresh: () => void;
   onToggleSound: () => void;
   onOpenLatestOrder: () => void;
+  onOpenFilters: () => void;
 }) {
-  const { register } = useDashboardOperations();
+  const { register, search } = useDashboardOperations();
   useEffect(() => {
     register({
       realtimeState: 'degraded',
       recentOrderCount: 2,
+      activeFilterCount: 2,
+      filtersOpen: false,
       isRefreshing: false,
       soundEnabled: false,
       soundActivating: false,
       onRefresh,
       onToggleSound,
       onOpenLatestOrder,
+      onOpenFilters,
     });
-  }, [onOpenLatestOrder, onRefresh, onToggleSound, register]);
+  }, [onOpenFilters, onOpenLatestOrder, onRefresh, onToggleSound, register]);
 
   return (
     <DashboardShell
@@ -78,6 +83,7 @@ function RegisteredShell({
       canViewCoupons
     >
       <p>Conteúdo operacional</p>
+      <output data-testid="dashboard-search-value">{search}</output>
     </DashboardShell>
   );
 }
@@ -150,16 +156,21 @@ describe('shell operacional do painel do tenant', () => {
     const onRefresh = vi.fn();
     const onToggleSound = vi.fn();
     const onOpenLatestOrder = vi.fn();
+    const onOpenFilters = vi.fn();
     render(
       <DashboardOperationsProvider>
         <RegisteredShell
           onRefresh={onRefresh}
           onToggleSound={onToggleSound}
           onOpenLatestOrder={onOpenLatestOrder}
+          onOpenFilters={onOpenFilters}
         />
       </DashboardOperationsProvider>,
     );
 
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Abrir filtros avançados, 2 filtros ativos' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Abrir menu do painel' }));
     expect(
       await screen.findByRole('region', { name: 'Controles operacionais dos pedidos' }),
@@ -174,6 +185,48 @@ describe('shell operacional do painel do tenant', () => {
     expect(onToggleSound).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(onOpenLatestOrder).toHaveBeenCalledOnce();
+    expect(onOpenFilters).toHaveBeenCalledOnce();
+  });
+
+  it('abre a busca pela topbar compacta e compartilha o estado sem manter o campo na página', async () => {
+    render(
+      <DashboardOperationsProvider>
+        <RegisteredShell
+          onRefresh={vi.fn()}
+          onToggleSound={vi.fn()}
+          onOpenLatestOrder={vi.fn()}
+          onOpenFilters={vi.fn()}
+        />
+      </DashboardOperationsProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Buscar pedidos' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(document.querySelectorAll('input[type="search"]')).toHaveLength(1);
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Buscar pedidos' });
+    const input = within(dialog).getByRole('searchbox', { name: 'Buscar pedidos' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(dialog).toHaveAttribute('id', trigger.getAttribute('aria-controls'));
+    expect(input).toHaveFocus();
+    expect(document.querySelectorAll('input[type="search"]')).toHaveLength(2);
+
+    fireEvent.change(input, { target: { value: 'Mariana' } });
+    expect(screen.getByTestId('dashboard-search-value')).toHaveTextContent('Mariana');
+    expect(document.getElementById('orders-desktop-search-input')).toHaveValue('Mariana');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Limpar busca' }));
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
+
+    fireEvent.change(input, { target: { value: 'Pedido 42' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Buscar pedidos' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Abrir busca, busca ativa' })).toHaveFocus();
+    expect(screen.getByTestId('dashboard-search-value')).toHaveTextContent('Pedido 42');
   });
 
   it('informa a data e a hora no fuso ativo da loja', () => {

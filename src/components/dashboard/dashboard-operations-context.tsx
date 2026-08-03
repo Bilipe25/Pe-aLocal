@@ -7,12 +7,15 @@ export type DashboardRealtimeState = 'unavailable' | 'connecting' | 'connected' 
 interface DashboardOperationsRegistration {
   realtimeState: DashboardRealtimeState;
   recentOrderCount: number;
+  activeFilterCount: number;
+  filtersOpen: boolean;
   isRefreshing: boolean;
   soundEnabled: boolean;
   soundActivating: boolean;
   onRefresh: (() => void) | null;
   onToggleSound: (() => void) | null;
   onOpenLatestOrder: (() => void) | null;
+  onOpenFilters: (() => void) | null;
 }
 
 interface DashboardOperationsContextValue extends DashboardOperationsRegistration {
@@ -25,12 +28,15 @@ interface DashboardOperationsContextValue extends DashboardOperationsRegistratio
 const EMPTY_REGISTRATION: DashboardOperationsRegistration = {
   realtimeState: 'connecting',
   recentOrderCount: 0,
+  activeFilterCount: 0,
+  filtersOpen: false,
   isRefreshing: false,
   soundEnabled: false,
   soundActivating: false,
   onRefresh: null,
   onToggleSound: null,
   onOpenLatestOrder: null,
+  onOpenFilters: null,
 };
 
 const DEFAULT_CONTEXT: DashboardOperationsContextValue = {

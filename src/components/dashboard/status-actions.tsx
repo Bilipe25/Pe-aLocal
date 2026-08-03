@@ -16,7 +16,15 @@ import {
   type OrderActionData,
 } from '@/features/orders/admin-actions';
 import { Button } from '@/components/ui/button';
-import { Check, CheckCircle2, Package, RotateCcw, Truck, UtensilsCrossed } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Package,
+  RotateCcw,
+  Truck,
+  UtensilsCrossed,
+} from 'lucide-react';
 import type { OrderDetailsDTO } from '@/types/order-query';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -186,6 +194,11 @@ export function StatusActions({
   }
 
   const pixNeedsPayment = order.payment.method === 'PIX' && order.payment.status !== 'PAID';
+  const paymentConfirmationTakesPriority = Boolean(
+    pixNeedsPayment &&
+    order.allowedActions.confirmPayment &&
+    (order.status === 'READY' || order.status === 'OUT_FOR_DELIVERY'),
+  );
 
   async function handleCancel(
     reasonCode: CancelOrderInput['reasonCode'],
@@ -222,9 +235,27 @@ export function StatusActions({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="order-detail-status-actions flex flex-col gap-2">
+      {paymentConfirmationTakesPriority ? (
+        <p
+          id="pix-payment-priority-hint"
+          className="bg-warning-light text-warning order-1 flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            {order.allowedActions.dispatch
+              ? 'O Pix ainda está pendente. Confirme o pagamento antes do despacho sempre que possível; o pedido não poderá ser concluído sem essa confirmação.'
+              : 'O Pix ainda está pendente. Confirme o pagamento para liberar a conclusão do pedido.'}
+          </span>
+        </p>
+      ) : null}
+
       {/* Payment Action */}
-      <div className="order-2 flex flex-wrap items-center gap-2 [&_button]:w-full sm:[&_button]:w-auto">
+      <div
+        className={`order-detail-action-group order-detail-payment-actions flex flex-wrap items-center gap-2 ${
+          paymentConfirmationTakesPriority ? 'order-2' : 'order-3'
+        }`}
+      >
         {order.allowedActions.confirmPayment && (
           <ConfirmDialog
             title="Confirmar o pagamento?"
@@ -235,6 +266,9 @@ export function StatusActions({
               <Button
                 type="button"
                 disabled={loading}
+                aria-describedby={
+                  paymentConfirmationTakesPriority ? 'pix-payment-priority-hint' : undefined
+                }
                 className={ORDER_ACTION_PRESENTATION.CONFIRM_PAYMENT.className}
               >
                 <CheckCircle2 aria-hidden="true" />
@@ -291,12 +325,21 @@ export function StatusActions({
       </div>
 
       {/* Status Actions */}
-      <div className="order-1 flex flex-wrap items-center gap-2 [&_button]:w-full sm:[&_button]:w-auto">
+      <div
+        className={`order-detail-action-group order-detail-primary-actions flex flex-wrap items-center gap-2 ${
+          paymentConfirmationTakesPriority ? 'order-3' : 'order-1'
+        }`}
+      >
         {order.allowedActions.accept && (
           <Button
             onClick={() => handleMutation(acceptOrderAction, 'Pedido aceito.')}
             disabled={loading}
-            className={ORDER_ACTION_PRESENTATION.CONFIRM_ORDER.className}
+            variant={paymentConfirmationTakesPriority ? 'outline' : 'default'}
+            className={
+              paymentConfirmationTakesPriority
+                ? undefined
+                : ORDER_ACTION_PRESENTATION.CONFIRM_ORDER.className
+            }
           >
             <Check className="mr-2 h-4 w-4" />
             {ORDER_ACTION_PRESENTATION.CONFIRM_ORDER.label}
@@ -307,7 +350,12 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(startOrderPreparationAction, 'Preparo iniciado.')}
             disabled={loading}
-            className={ORDER_ACTION_PRESENTATION.START_PREPARATION.className}
+            variant={paymentConfirmationTakesPriority ? 'outline' : 'default'}
+            className={
+              paymentConfirmationTakesPriority
+                ? undefined
+                : ORDER_ACTION_PRESENTATION.START_PREPARATION.className
+            }
           >
             <UtensilsCrossed className="mr-2 h-4 w-4" />
             {ORDER_ACTION_PRESENTATION.START_PREPARATION.label}
@@ -318,7 +366,12 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(markOrderReadyAction, 'Pedido marcado como pronto.')}
             disabled={loading}
-            className={ORDER_ACTION_PRESENTATION.MARK_ORDER_READY.className}
+            variant={paymentConfirmationTakesPriority ? 'outline' : 'default'}
+            className={
+              paymentConfirmationTakesPriority
+                ? undefined
+                : ORDER_ACTION_PRESENTATION.MARK_ORDER_READY.className
+            }
           >
             <Package className="mr-2 h-4 w-4" />
             {ORDER_ACTION_PRESENTATION.MARK_ORDER_READY.label}
@@ -329,7 +382,15 @@ export function StatusActions({
           <Button
             onClick={() => handleMutation(dispatchOrderAction, 'Pedido despachado.')}
             disabled={loading}
-            className={ORDER_ACTION_PRESENTATION.DISPATCH_FOR_DELIVERY.className}
+            variant={paymentConfirmationTakesPriority ? 'outline' : 'default'}
+            aria-describedby={
+              paymentConfirmationTakesPriority ? 'pix-payment-priority-hint' : undefined
+            }
+            className={
+              paymentConfirmationTakesPriority
+                ? undefined
+                : ORDER_ACTION_PRESENTATION.DISPATCH_FOR_DELIVERY.className
+            }
           >
             <Truck className="mr-2 h-4 w-4" />
             {ORDER_ACTION_PRESENTATION.DISPATCH_FOR_DELIVERY.label}
@@ -350,10 +411,13 @@ export function StatusActions({
               <Button
                 type="button"
                 disabled={loading || pixNeedsPayment}
+                variant={paymentConfirmationTakesPriority ? 'outline' : 'default'}
                 className={
-                  order.modality === 'PICKUP'
-                    ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.className
-                    : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.className
+                  paymentConfirmationTakesPriority
+                    ? undefined
+                    : order.modality === 'PICKUP'
+                      ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.className
+                      : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.className
                 }
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -364,8 +428,17 @@ export function StatusActions({
             }
           />
         )}
-
-        {order.allowedActions.cancel && (
+      </div>
+      {loading && (
+        <span
+          role="status"
+          className="text-text-secondary order-4 inline-flex items-center gap-2 text-sm"
+        >
+          <Loader2 className="animate-spin" aria-hidden="true" /> Atualizando pedido…
+        </span>
+      )}
+      {order.allowedActions.cancel ? (
+        <div className="order-detail-cancel-action border-border order-5 flex justify-end border-t pt-1.5">
           <CancelOrderDialog
             orderNumber={order.orderNumber}
             onConfirm={handleCancel}
@@ -373,6 +446,7 @@ export function StatusActions({
               <Button
                 type="button"
                 variant="ghost"
+                size="sm"
                 disabled={loading}
                 className="text-error hover:bg-error-light hover:text-error"
               >
@@ -380,16 +454,8 @@ export function StatusActions({
               </Button>
             }
           />
-        )}
-      </div>
-      {loading && (
-        <span
-          role="status"
-          className="text-text-secondary order-3 inline-flex items-center gap-2 text-sm"
-        >
-          <Loader2 className="animate-spin" aria-hidden="true" /> Atualizando pedido…
-        </span>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }
