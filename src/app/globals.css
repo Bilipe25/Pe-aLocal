@@ -3593,7 +3593,7 @@ body {
   position: absolute;
   z-index: 2;
   top: var(--storefront-hero-control-top);
-  left: var(--storefront-hero-control-start);
+  right: var(--storefront-hero-control-end);
   display: inline-flex;
   min-width: 2.75rem;
   max-width: calc(
@@ -3718,13 +3718,22 @@ body {
   color: #5c4f42;
 }
 
+.store-info-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.store-info-share-btn,
 .store-info-close {
+  position: static;
   display: inline-flex;
   width: 2.75rem;
   height: 2.75rem;
   flex: none;
   align-items: center;
   justify-content: center;
+  border: 0;
   border-radius: 50%;
   color: #5c4f42;
   background: transparent;
@@ -3734,15 +3743,18 @@ body {
     transform 160ms ease-out;
 }
 
+.store-info-share-btn:hover,
 .store-info-close:hover {
   color: #241c15;
   background: #f5f0e8;
 }
 
+.store-info-share-btn:active,
 .store-info-close:active {
   transform: scale(0.92);
 }
 
+.store-info-share-btn svg,
 .store-info-close svg {
   width: 1.15rem;
   height: 1.15rem;
@@ -4406,8 +4418,37 @@ body {
 }
 
 .storefront-status-open {
+  position: relative;
+  overflow: hidden;
   color: #fff;
   background: var(--store-success);
+}
+
+.storefront-status-open::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.38),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: storefront-status-shimmer 3.5s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes storefront-status-shimmer {
+  0%, 60% {
+    left: -100%;
+  }
+  100% {
+    left: 160%;
+  }
 }
 
 .storefront-status-closed {
@@ -4801,22 +4842,8 @@ body {
 }
 
 .storefront-recent-section {
-  padding-block: 0.85rem;
-}
-
-.storefront-recent-section::before {
-  content: '';
-  position: absolute;
-  inset: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
-  z-index: -1;
-  border: 1px solid color-mix(in srgb, var(--store-primary) 18%, var(--store-border));
-  border-radius: min(var(--store-radius), 1rem);
-  background: color-mix(in srgb, var(--store-primary) 4%, var(--store-surface));
-}
-
-.storefront-recent-section {
   position: relative;
-  isolation: isolate;
+  padding-block: 0.5rem 0.85rem;
 }
 
 .storefront-recent-heading {
@@ -4888,6 +4915,47 @@ body {
   border-radius: min(var(--store-radius), 0.9rem);
   background: var(--store-surface);
   scroll-snap-align: start;
+}
+
+.storefront-recent-card.is-disabled {
+  opacity: 0.6;
+}
+
+.storefront-recent-card.is-disabled .storefront-recent-media {
+  filter: grayscale(100%);
+}
+
+.storefront-recent-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+}
+
+.storefront-recent-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 9rem;
+  padding: 1rem;
+  color: var(--store-primary);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-radius: min(var(--store-radius), 0.9rem);
+  border: 1px dashed color-mix(in srgb, var(--store-primary) 30%, var(--store-border));
+  background: color-mix(in srgb, var(--store-primary) 4%, var(--store-surface));
+  transition: background 160ms ease-out, transform 160ms ease-out;
+}
+
+.storefront-recent-more-btn:hover {
+  background: color-mix(in srgb, var(--store-primary) 8%, var(--store-surface));
+}
+
+.storefront-recent-more-btn:active {
+  transform: scale(0.985);
 }
 
 .storefront-recent-product {
@@ -4982,6 +5050,27 @@ body {
     background 160ms ease-out,
     transform 160ms ease-out;
 }
+
+.storefront-recent-action-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: 0.3rem;
+  border-radius: 9999px;
+  background: var(--store-surface);
+  color: var(--store-primary);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-left: 0.2rem;
+}
+
+.storefront-recent-action.is-added .storefront-recent-action-badge {
+  color: var(--store-success);
+}
+
 
 .storefront-recent-action:hover:not(:disabled) {
   background: var(--store-primary-hover);

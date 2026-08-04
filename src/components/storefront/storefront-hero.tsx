@@ -212,8 +212,8 @@ export function StorefrontHero({
         acceptsCardOnDelivery={acceptsCardOnDelivery}
         phone={phone}
         whatsapp={whatsapp}
+        shareUrl={shareUrl}
       />
-      <StorefrontShareButton storeName={name} shareUrl={shareUrl} />
 
       <div className="storefront-hero-content">
         <div className="storefront-hero-identity">

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 interface StorefrontShareButtonProps {
   storeName: string;
   shareUrl?: string;
+  className?: string;
 }
 
 async function copyToClipboard(value: string) {
@@ -27,7 +28,11 @@ async function copyToClipboard(value: string) {
   if (!copied) throw new Error('Clipboard indisponível');
 }
 
-export function StorefrontShareButton({ storeName, shareUrl }: StorefrontShareButtonProps) {
+export function StorefrontShareButton({
+  storeName,
+  shareUrl,
+  className,
+}: StorefrontShareButtonProps) {
   async function handleShare() {
     const url = shareUrl || window.location.href;
 
@@ -58,7 +63,7 @@ export function StorefrontShareButton({ storeName, shareUrl }: StorefrontShareBu
     <button
       type="button"
       onClick={handleShare}
-      className="storefront-hero-share"
+      className={className ?? 'storefront-hero-share'}
       aria-label={`Compartilhar cardápio de ${storeName}`}
     >
       <Share2 aria-hidden="true" />
