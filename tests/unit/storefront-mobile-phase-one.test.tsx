@@ -206,7 +206,13 @@ describe('storefront mobile — fase 1', () => {
     mocks.clipboardWrite.mockResolvedValue(undefined);
     render(<StorefrontHero {...baseHeroProps} shareUrl="https://pedido.local/sabor" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compartilhar cardápio de Sabor da Vila' }));
+    // Agora o botão de compartilhar fica dentro do sheet "Sobre a loja"
+    fireEvent.click(screen.getByRole('button', { name: 'Sobre a loja' }));
+
+    const shareButton = await screen.findByRole('button', {
+      name: 'Compartilhar cardápio de Sabor da Vila',
+    });
+    fireEvent.click(shareButton);
 
     await waitFor(() =>
       expect(mocks.clipboardWrite).toHaveBeenCalledWith('https://pedido.local/sabor'),
