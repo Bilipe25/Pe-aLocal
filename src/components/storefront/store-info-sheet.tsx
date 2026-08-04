@@ -18,6 +18,7 @@ import {
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 
 import { storeAssetSrcSet } from '@/features/assets/urls';
+import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
 import { formatPhone, formatZipCode, normalizePhone } from '@/lib/brazil';
 import { formatCurrency } from '@/lib/utils';
@@ -58,6 +59,7 @@ export interface StoreInfoSheetProps {
   acceptsCardOnDelivery: boolean;
   phone: string | null;
   whatsapp: string | null;
+  shareUrl?: string;
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -224,7 +226,7 @@ export function StoreInfoSheet(props: StoreInfoSheetProps) {
     props.acceptsCardOnDelivery
       ? { label: 'Cartão no recebimento', icon: CreditCard, tone: 'card', color: '#c77a00' }
       : null,
-  ].filter((payment) => payment !== null);
+  ].filter((payment): payment is NonNullable<typeof payment> => payment !== null);
   const todayKey = useSyncExternalStore(subscribeToLocalDay, getTodayKey, () => '');
   const isOpen = props.availability.acceptingOrders;
 
@@ -249,11 +251,18 @@ export function StoreInfoSheet(props: StoreInfoSheetProps) {
             <Dialog.Description className="sr-only">
               Informações públicas, funcionamento e contatos de {props.name}.
             </Dialog.Description>
-            <Dialog.Close asChild>
-              <button type="button" className="store-info-close" aria-label="Fechar Sobre a loja">
-                <X aria-hidden="true" />
-              </button>
-            </Dialog.Close>
+            <div className="store-info-header-actions">
+              <StorefrontShareButton
+                storeName={props.name}
+                shareUrl={props.shareUrl}
+                className="store-info-share-btn"
+              />
+              <Dialog.Close asChild>
+                <button type="button" className="store-info-close" aria-label="Fechar Sobre a loja">
+                  <X aria-hidden="true" />
+                </button>
+              </Dialog.Close>
+            </div>
           </header>
 
           <div className="store-info-scroll">

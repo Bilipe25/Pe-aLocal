@@ -26,6 +26,7 @@ export function useCheckoutQuote({
   const [quote, setQuote] = useState<CheckoutQuoteDto | null>(null);
   const [error, setError] = useState<QuoteError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const requestSequence = useRef(0);
 
   const requestQuote = useCallback(
@@ -73,6 +74,7 @@ export function useCheckoutQuote({
 
         if (sequence === requestSequence.current) {
           setQuote(body as CheckoutQuoteDto);
+          setLastUpdatedAt(Date.now());
           setError(null);
         }
         return body as CheckoutQuoteDto;
@@ -123,6 +125,7 @@ export function useCheckoutQuote({
     quote: enabled && input ? quote : null,
     error: enabled && input ? error : null,
     isLoading: enabled && input ? isLoading : false,
+    lastUpdatedAt: enabled && input ? lastUpdatedAt : null,
     refetch: requestQuote,
   };
 }

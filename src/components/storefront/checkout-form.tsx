@@ -708,6 +708,7 @@ export function CheckoutForm({
     quote,
     error: quoteError,
     isLoading: quoteLoading,
+    lastUpdatedAt,
     refetch: refetchQuote,
   } = useCheckoutQuote({ storeSlug, input: quoteInput });
   const effectiveQuote = acceptedChangedQuote ?? quote;
@@ -1124,7 +1125,16 @@ export function CheckoutForm({
       return;
     }
     if (step === 'fulfillment' && modality === 'DELIVERY') {
-      const latestQuote = await refetchQuote();
+      let latestQuote = quote;
+      const isQuoteFresh = lastUpdatedAt && Date.now() - lastUpdatedAt < 5000;
+      const hasCoverageIssue = quote?.issues.some(
+        (issue) => issue.code === 'OUTSIDE_DELIVERY_AREA'
+      );
+
+      if (!isQuoteFresh || hasCoverageIssue || !quote?.deliveryZoneId) {
+        latestQuote = await refetchQuote();
+      }
+
       if (!latestQuote) {
         setError('deliveryZoneId', {
           message:

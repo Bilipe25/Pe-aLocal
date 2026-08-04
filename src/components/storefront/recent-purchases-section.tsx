@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, History, LoaderCircle, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Ban, Check, History, LoaderCircle, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -28,6 +28,7 @@ export function RecentPurchasesSection({
   showImages,
   onOpenProduct,
 }: RecentPurchasesSectionProps) {
+  const items = useCartStore((state) => state.items);
   const addItem = useCartStore((state) => state.addItem);
   const removeQuantity = useCartStore((state) => state.removeQuantity);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -36,6 +37,7 @@ export function RecentPurchasesSection({
   const additionFrameRef = useRef<number | null>(null);
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const [addedProduct, setAddedProduct] = useState<{ id: string; name: string } | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const viewedKey = products.map((product) => product.id).join(',');
@@ -71,7 +73,7 @@ export function RecentPurchasesSection({
 
   function openProduct(product: PublicRecentPurchaseProductDto, position: number) {
     reportStorefrontEvent(storeSlug, {
-      event: 'recent_purchase_product_clicked',
+      event: 'recent_purchase_card_viewed',
       productId: product.id,
       position,
     });
@@ -80,7 +82,7 @@ export function RecentPurchasesSection({
 
   function orderAgain(product: PublicRecentPurchaseProductDto, position: number) {
     reportStorefrontEvent(storeSlug, {
-      event: 'recent_purchase_product_clicked',
+      event: 'recent_purchase_reorder_clicked',
       productId: product.id,
       position,
     });
@@ -88,7 +90,7 @@ export function RecentPurchasesSection({
       onOpenProduct(product);
       return;
     }
-    if (!storeOpen || pendingProductId) return;
+    if (!storeOpen || !product.isAvailable || product.isSoldOut || pendingProductId) return;
 
     setPendingProductId(product.id);
     additionFrameRef.current = requestAnimationFrame(() => {
@@ -120,8 +122,10 @@ export function RecentPurchasesSection({
       setAddedProduct({ id: product.id, name: product.name });
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
       feedbackTimerRef.current = setTimeout(() => setAddedProduct(null), 2_000);
-      toast.success('Adicionado à sacola', {
-        description: `${product.name} foi incluído no pedido.`,
+      toast.success(result.merged ? 'Quantidade atualizada' : 'Adicionado à sacola', {
+        description: result.merged
+          ? `Mais uma unidade de ${product.name} incluída.`
+          : `${product.name} foi incluído no pedido.`,
         action: {
           label: 'Desfazer',
           onClick: () => removeQuantity(result.itemId, result.quantityAdded),
@@ -131,6 +135,9 @@ export function RecentPurchasesSection({
   }
 
   if (products.length === 0) return null;
+
+  const visibleProducts = expanded ? products : products.slice(0, 5);
+  const hasMore = !expanded && products.length > 5;
 
   return (
     <section
@@ -149,15 +156,29 @@ export function RecentPurchasesSection({
       </div>
 
       <ul className="storefront-recent-track" aria-label="Produtos comprados recentemente">
-        {products.map((product, position) => {
+        {visibleProducts.map((product, position) => {
           const pending = pendingProductId === product.id;
           const wasAdded = addedProduct?.id === product.id;
-          const actionLabel = product.requiresConfiguration
-            ? `Revisar opções de ${product.name} por ${formatCurrency(product.basePrice)}`
-            : `Pedir ${product.name} novamente por ${formatCurrency(product.basePrice)}`;
+          const isUnavailable = !product.isAvailable || product.isSoldOut;
+          
+          let quantityInCart = 0;
+          if (!product.requiresConfiguration) {
+             const cartItem = items.find(
+               (item) => item.productId === product.id && item.selectedOptions.length === 0 && item.notes === ''
+             );
+             if (cartItem) quantityInCart = cartItem.quantity;
+          } else {
+             quantityInCart = items.filter((item) => item.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
+          }
+
+          const actionLabel = isUnavailable
+            ? `Produto indisponível`
+            : product.requiresConfiguration
+              ? `Revisar opções de ${product.name} por ${formatCurrency(product.basePrice)}`
+              : `Pedir ${product.name} novamente por ${formatCurrency(product.basePrice)}`;
 
           return (
-            <li key={product.id} className="storefront-recent-card">
+            <li key={product.id} className={`storefront-recent-card ${isUnavailable ? 'is-disabled' : ''}`}>
               <button
                 type="button"
                 className={`storefront-recent-product ${showImages ? '' : 'has-no-image'}`}
@@ -177,8 +198,17 @@ export function RecentPurchasesSection({
                 ) : null}
                 <span className="storefront-recent-copy">
                   <span className="storefront-recent-badge">
-                    <RotateCcw aria-hidden="true" />
-                    Você já pediu
+                    {isUnavailable ? (
+                      <>
+                        <Ban aria-hidden="true" />
+                        Indisponível
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw aria-hidden="true" />
+                        Você já pediu
+                      </>
+                    )}
                   </span>
                   <span className="storefront-recent-name">{product.name}</span>
                   <span className="storefront-recent-price">
@@ -190,7 +220,7 @@ export function RecentPurchasesSection({
                 type="button"
                 className={`storefront-recent-action ${wasAdded ? 'is-added' : ''}`}
                 onClick={() => orderAgain(product, position)}
-                disabled={!storeOpen || pending}
+                disabled={!storeOpen || pending || isUnavailable}
                 aria-label={storeOpen ? actionLabel : `Loja fechada. ${product.name} indisponível`}
                 aria-busy={pending}
               >
@@ -204,10 +234,27 @@ export function RecentPurchasesSection({
                   <RotateCcw aria-hidden="true" />
                 )}
                 <span>{product.requiresConfiguration ? 'Revisar opções' : 'Pedir de novo'}</span>
+                
+                {quantityInCart > 0 && !isUnavailable && (
+                   <span className="storefront-recent-action-badge" aria-label={`${quantityInCart} na sacola`}>
+                     {quantityInCart}
+                   </span>
+                )}
               </button>
             </li>
           );
         })}
+        {hasMore && (
+          <li className="storefront-recent-card storefront-recent-more">
+            <button
+              type="button"
+              className="storefront-recent-more-btn"
+              onClick={() => setExpanded(true)}
+            >
+              Ver todos os {products.length} recentes
+            </button>
+          </li>
+        )}
       </ul>
 
       <span className="sr-only" role="status" aria-live="polite">
