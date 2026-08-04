@@ -193,10 +193,12 @@ describe('recomendações no carrinho', () => {
     fireEvent.click(add);
     act(() => queuedFrame?.(performance.now()));
 
+    // Verifica a mensagem imediatamente antes que qualquer timeout (como o de 2s) ou atraso do runner a limpe
+    expect(screen.getByRole('status')).toHaveTextContent('Coca-Cola Zero adicionado ao carrinho.');
+
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Finalizar pedido' })).toHaveFocus(),
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Coca-Cola Zero adicionado ao carrinho.');
   });
 
   it('não bloqueia o carrinho quando a recomendação falha e permite tentar novamente', async () => {
