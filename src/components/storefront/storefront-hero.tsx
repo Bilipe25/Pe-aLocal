@@ -4,7 +4,6 @@ import { Banknote, CalendarDays, ChevronDown, Clock, Package, Store } from 'luci
 import { useEffect, useRef, useState } from 'react';
 
 import { StoreInfoSheet, type StoreInfoAddress } from '@/components/storefront/store-info-sheet';
-import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
 import { formatCurrency } from '@/lib/utils';

@@ -73,7 +73,7 @@ export function RecentPurchasesSection({
 
   function openProduct(product: PublicRecentPurchaseProductDto, position: number) {
     reportStorefrontEvent(storeSlug, {
-      event: 'recent_purchase_card_viewed',
+      event: 'recent_purchase_product_clicked',
       productId: product.id,
       position,
     });
@@ -82,7 +82,7 @@ export function RecentPurchasesSection({
 
   function orderAgain(product: PublicRecentPurchaseProductDto, position: number) {
     reportStorefrontEvent(storeSlug, {
-      event: 'recent_purchase_reorder_clicked',
+      event: 'recent_purchase_product_clicked',
       productId: product.id,
       position,
     });

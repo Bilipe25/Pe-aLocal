@@ -181,9 +181,10 @@ export function CartView({
     }
 
     if (!announcement) return;
+    const message = announcement;
     let active = true;
     queueMicrotask(() => {
-      if (active) setCartAnnouncement(announcement);
+      if (active) setCartAnnouncement(message);
     });
     return () => {
       active = false;
