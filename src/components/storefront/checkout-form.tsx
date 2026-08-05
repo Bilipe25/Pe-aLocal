@@ -1390,7 +1390,7 @@ export function CheckoutForm({
     );
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && !orderConfirmed) {
     return (
       <div className="border-tinta/10 bg-papel rounded-2xl border p-8 text-center">
         <ReceiptText className="text-text-muted mx-auto h-10 w-10" aria-hidden="true" />
