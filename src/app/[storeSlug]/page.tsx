@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { CatalogView } from '@/components/storefront/catalog-view';
+import { NetworkStatus } from '@/components/storefront/network-status';
+import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
 import { couponCodeSchema } from '@/schemas/checkout';
@@ -70,6 +72,12 @@ export default async function StorePage({ params, searchParams }: StorePageProps
 
   return (
     <>
+      <NetworkStatus />
+
+      {!store.availability.acceptingOrders && (
+        <StoreClosedBanner availability={store.availability} />
+      )}
+
       <StorefrontHero
         name={store.name}
         description={store.description}
@@ -111,6 +119,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         initialCouponCode={initialCouponCode}
         recentProducts={recentProducts}
         showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
+        minOrderValue={store.settings?.minOrderValue}
       />
 
       {config.platformBranding.showPedidoLocalBranding && (

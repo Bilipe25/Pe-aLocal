@@ -657,7 +657,7 @@ export async function getPublicCartRecommendationCandidates(storeId: string, ten
   )();
 }
 
-export async function getPublicCatalog(
+async function getPublicCatalogForRequest(
   storeId: string,
   tenantId: string,
   categoryImages: {
@@ -681,6 +681,13 @@ export async function getPublicCatalog(
     image: imageByCategoryId.get(category.id) ?? null,
   }));
 }
+
+/**
+ * Deduplica catálogo dentro do request RSC atual. O cache persistente do Next.js
+ * continua aplicado, mas o wrapper `cache` evita execuções duplicadas quando o
+ * catálogo é consultado mais de uma vez no mesmo request (metadata, page, etc.).
+ */
+export const getPublicCatalog = cache(getPublicCatalogForRequest);
 
 async function getDeliveryZonesFromDb(storeId: string): Promise<PublicDeliveryZoneDto[]> {
   return getDb().deliveryZone.findMany({

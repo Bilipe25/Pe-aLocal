@@ -316,6 +316,14 @@ export function CartView({
         logoImageAssetId={logoImageAssetId}
       />
       <div className="storefront-cart-heading">
+        <Link
+          href={`/${storeSlug}`}
+          className="storefront-cart-continue"
+          aria-label="Continuar comprando no cardápio"
+        >
+          <ArrowLeft aria-hidden="true" />
+          <span>Continuar comprando</span>
+        </Link>
         <p>
           {itemCount} {itemCount === 1 ? 'item no pedido' : 'itens no pedido'}
         </p>
