@@ -123,16 +123,16 @@ Estes pontos alimentam as fases a seguir.
 > (`promoPrice`, `isNew`, `purchaseCount30d`) cobertas pelo padrão
 > expand → backfill → guard.
 
-| # | Refinamento | Por que | Como medir |
-|---|-------------|---------|------------|
-| B1 | **ETA dinâmico por loja** (não só "30-45 min") com base no `PromiseFulfillmentMinAt/MaxAt` vindo do `quote` | O cálculo já existe; basta renderizar. Reduz ansiedade do cliente. | E2E: hero e `/cart` mostram ETA. |
-| B2 | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento | O `useCustomerOrderTracking` já existe; mostrar um banner "Seu pedido #42 está em preparo" no topo do `/cart` quando o `lastOrder` é o mesmo slug. | E2E: cliente com pedido ativo vê banner. |
+| # | Status | Refinamento | Por que | Como medir |
+|---|--------|-------------|---------|------------|
+| B1 | ✅ | **ETA dinâmico por loja** (não só "30-45 min") com base no `PromiseFulfillmentMinAt/MaxAt` vindo do `quote` | O cálculo já existe; basta renderizar. Reduz ansiedade do cliente. | E2E: hero e `/cart` mostram ETA. |
+| B2 | ✅ | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento | O `useCustomerOrderTracking` já existe; mostrar um banner "Seu pedido #42 está em preparo" no topo do `/cart` quando o `lastOrder` é o mesmo slug. | E2E: cliente com pedido ativo vê banner. |
 | B3 | **Tags no produto**: "Novo", "Mais pedido", "Promoção" | Requer colunas aditivas em `Product` (`isNew`, `popularity30d`, `promoPriceCents`, `promoEndsAt`). Schema já prevê `version` para CAS. | Migração expand → backfill → guard. |
 | B4 | **Selos alimentares** (vegano, sem glúten, contém lactose) | Requer nova tabela `ProductDietaryTag` N:N. Default vazio, opt-in. | Migração aditiva. |
 | B5 | **Promoções por horário** (ex.: "Happy hour 17h-19h") | Reuso de `StoreScheduleException` mais um `ProductDiscountSchedule`. Já temos `version`. | Migração aditiva. |
 | B6 | **Cupom visível no hero** quando o cliente chega com `?coupon=` | O `initialCouponCode` já é propagado. Falta o hero mostrar "Cupom X aplicado" antes do `/cart`. | E2E: `?coupon=...` mostra badge. |
 | B7 | **Mini-cart (peek)** ao tocar no `CartFab` | Hoje o FAB navega direto. Adicionar um popover com últimas linhas + total antes de ir para `/cart` reduz idas e voltas. | Componente novo. |
-| B8 | **Confirmação visual ao favoritar** (heart pulse + haptic feedback) | `useFavoritesStore` já existe. Refinar animação. | Manual + axe. |
+| B8 | ✅ | **Confirmação visual ao favoritar** (heart pulse + haptic feedback) | `useFavoritesStore` já existe. Refinar animação. | Manual + axe. |
 
 ### Fase C — Descoberta, SEO e PWA (médio prazo)
 
@@ -272,20 +272,41 @@ abandono em conexões instáveis.
 **Métricas**: `pnpm test` e `pnpm tsc` passando; cache hit em edges/
 workers para leituras públicas.
 
-### B1/B2 — ETA dinâmico e pedido em andamento
+### B1 — ETA dinâmico
 
-**Hoje**: o hero mostra a faixa estática da loja; o `quote` já calcula
-`promisedFulfillmentMinAt/MaxAt`. O `useCustomerOrderTracking` existe mas não
-alimenta o `/cart`.
+**Implementação**:
 
-**Plano**:
+- O hero agora apresenta a faixa configurada por loja como "Pronto em 25–40
+  min", sem esconder o prazo dentro de um número solto.
+- O `/cart` renderiza a janela exata de `promisedFulfillmentMinAt` /
+  `promisedFulfillmentMaxAt` devolvida pelo quote, usando o fuso horário da
+  loja e diferenciando retirada de chegada.
+- Se a janela ISO não estiver disponível, o carrinho usa a faixa de minutos do
+  quote como fallback.
 
-- No hero, trocar `estimatedTime` estático por "Pronto em 25-40 min" usando
-  o cálculo do `getEffectiveEstimatedTime` quando a loja está aberta.
-- No `/cart`, se `lastOrder` pertence ao mesmo `storeSlug` e está ativo,
-  mostrar um `aside` com "Seu pedido #42 está em preparo — ver
-  acompanhamento". Reaproveita o componente `CustomerOrderTracking` (fase 9)
-  em modo compacto.
+### B2 — Pedido em andamento no carrinho
+
+**Implementação**:
+
+- Novo `src/components/storefront/active-order-banner.tsx` lê o último token
+  público salvo para a loja atual e valida o estado no endpoint de tracking.
+- Estados ativos exibem "Seu pedido #42", status atual, estimativa e link para
+  `/order/[token]`.
+- O componente reutiliza `useCustomerOrderTracking`, portanto mantém polling,
+  Pusher quando configurado, expiração de token e isolamento por loja.
+- Pedidos entregues/cancelados não ocupam o carrinho; tokens inválidos são
+  removidos do storage local.
+
+### B8 — Feedback ao favoritar
+
+**Implementação**:
+
+- Novo `useFavoriteFeedback` aciona pulso visual e vibração curta ao adicionar
+  um favorito, com fallback silencioso quando haptics não estão disponíveis.
+- O comportamento é aplicado tanto no `ProductCard` quanto no favorito do
+  `ProductModal`.
+- A animação respeita `prefers-reduced-motion: reduce` e o estado `aria-pressed`
+  continua sendo a confirmação acessível.
 
 ### C1 — JSON-LD
 

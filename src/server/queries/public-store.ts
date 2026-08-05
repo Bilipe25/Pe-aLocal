@@ -91,6 +91,7 @@ const publicPurchaseStoreSelect = {
   tenantId: true,
   name: true,
   slug: true,
+  timeZone: true,
   logoUrl: true,
   settings: {
     select: {
@@ -367,6 +368,7 @@ async function getPurchaseStoreFromDb(slug: string) {
     tenantId: store.tenantId,
     name: store.name,
     slug: store.slug,
+    timeZone: store.timeZone,
     logoUrl: store.logoUrl,
     settings: store.settings,
     address: store.address,

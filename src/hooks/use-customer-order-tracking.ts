@@ -67,7 +67,7 @@ export function useCustomerOrderTracking({
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const configured = Boolean(
-    process.env.NEXT_PUBLIC_PUSHER_KEY && process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+    process.env.NEXT_PUBLIC_PUSHER_KEY && process.env.NEXT_PUBLIC_PUSHER_CLUSTER && channelName,
   );
   const [connection, setConnection] = useState<CustomerTrackingConnection>(
     configured ? 'connecting' : 'unavailable',

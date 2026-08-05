@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useFavoriteFeedback } from '@/hooks/use-favorite-feedback';
 import { formatCurrency } from '@/lib/utils';
 import {
   MAX_CART_ITEM_QUANTITY,
@@ -86,6 +87,7 @@ export function ProductModal({
   const unitPrice = resolvedProduct.basePrice + optionsPrice;
   const totalPrice = unitPrice * quantity;
   const hasProductImage = Boolean(resolvedProduct.imageAssetId || resolvedProduct.imageUrl);
+  const favoriteFeedback = useFavoriteFeedback(isFavorite);
 
   const missingRequired = optionGroups
     .filter((group) => group.isRequired)
@@ -163,14 +165,17 @@ export function ProductModal({
       {onFavoriteToggle && (
         <button
           type="button"
-          onClick={onFavoriteToggle}
+          onClick={() => {
+            favoriteFeedback.trigger();
+            onFavoriteToggle();
+          }}
           aria-label={
             isFavorite
               ? `Remover ${resolvedProduct.name} dos favoritos`
               : `Favoritar ${resolvedProduct.name}`
           }
           aria-pressed={isFavorite}
-          className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''}`}
+          className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''} ${favoriteFeedback.isPulsing ? 'is-pulsing' : ''}`}
         >
           <Heart aria-hidden="true" />
         </button>

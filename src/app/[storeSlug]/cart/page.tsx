@@ -11,10 +11,11 @@ export default async function CartPage({ params }: { params: Promise<{ storeSlug
 
   return (
     <CartView
-      storeId={store.id}
-      storeSlug={store.slug}
-      storeName={store.name}
-      logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+        storeId={store.id}
+        storeSlug={store.slug}
+        storeName={store.name}
+        timeZone={store.timeZone}
+        logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
       logoImageAssetId={store.customization.assets.logo?.id ?? null}
       acceptingOrders={store.availability.acceptingOrders}
       unavailableReason={store.availability.reason}

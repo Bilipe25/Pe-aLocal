@@ -1,6 +1,7 @@
 import { Ban, Heart, Plus, Star } from 'lucide-react';
 
 import { ProductImage } from '@/components/storefront/product-image';
+import { useFavoriteFeedback } from '@/hooks/use-favorite-feedback';
 import { formatCurrency } from '@/lib/utils';
 
 export type ProductCardVariant = 'featured' | 'horizontal' | 'compact';
@@ -52,6 +53,7 @@ export function ProductCard({
         ? '(max-width: 639px) 48vw, 13.5rem'
         : '(max-width: 479px) calc(50vw - 1.5rem), 240px';
   const imageWidth = resolvedVariant === 'horizontal' ? 192 : 384;
+  const favoriteFeedback = useFavoriteFeedback(isFavorite);
 
   return (
     <article
@@ -100,8 +102,11 @@ export function ProductCard({
       {onFavoriteToggle && (
         <button
           type="button"
-          onClick={onFavoriteToggle}
-          className={`storefront-product-favorite ${isFavorite ? 'is-active' : ''}`}
+          onClick={() => {
+            favoriteFeedback.trigger();
+            onFavoriteToggle();
+          }}
+          className={`storefront-product-favorite ${isFavorite ? 'is-active' : ''} ${favoriteFeedback.isPulsing ? 'is-pulsing' : ''}`}
           aria-label={isFavorite ? `Remover ${name} dos favoritos` : `Favoritar ${name}`}
           aria-pressed={isFavorite}
         >
