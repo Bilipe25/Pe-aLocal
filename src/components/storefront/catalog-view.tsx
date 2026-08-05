@@ -5,6 +5,7 @@ import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
+import Link from 'next/link';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
 import { RecentPurchasesSection } from '@/components/storefront/recent-purchases-section';
@@ -19,8 +20,9 @@ import {
   type CatalogSort,
 } from '@/features/storefront/catalog-filter';
 import { reportStorefrontEvent } from '@/lib/checkout/telemetry';
+import { formatCurrency } from '@/lib/utils';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
-import { useCartStore } from '@/stores/cart-store';
+import { selectCartStoreId, selectCartTotal, useCartStore } from '@/stores/cart-store';
 import type {
   PublicStorefrontBannerDto,
   PublicStorefrontCategoryDto,
@@ -41,6 +43,7 @@ interface CatalogViewProps {
   initialCouponCode?: string | null;
   recentProducts?: PublicRecentPurchaseProductDto[];
   showFeaturedProductsSection?: boolean;
+  minOrderValue?: number | null;
 }
 
 const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
@@ -88,9 +91,12 @@ export function CatalogView({
   initialCouponCode,
   recentProducts = [],
   showFeaturedProductsSection = true,
+  minOrderValue,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
+  const cartStoreId = useCartStore(selectCartStoreId);
+  const cartTotal = useCartStore(selectCartTotal);
   const setFavoriteStore = useFavoritesStore((state) => state.setStore);
   const favoriteProductIds = useFavoritesStore((state) => state.productIds);
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
@@ -169,6 +175,15 @@ export function CatalogView({
     [visibleCategories],
   );
   const favoriteProductIdSet = useMemo(() => new Set(favoriteProductIds), [favoriteProductIds]);
+  const cartTotalForStore = useMemo(
+    () => (cartStoreId === storeId ? cartTotal : 0),
+    [cartStoreId, cartTotal, storeId],
+  );
+  const effectiveMinOrder = minOrderValue ?? 0;
+  const missingForMinimum = useMemo(() => {
+    if (effectiveMinOrder <= 0 || cartTotalForStore <= 0) return 0;
+    return Math.max(0, effectiveMinOrder - cartTotalForStore);
+  }, [effectiveMinOrder, cartTotalForStore]);
   const stickyCategoryNavigation = customization.layout.categoryNavigation === 'HORIZONTAL_STICKY';
   const featuredSectionEnabled =
     customization.layout.showFeaturedProducts && showFeaturedProductsSection;
@@ -430,14 +445,8 @@ export function CatalogView({
           className="storefront-catalog"
           aria-busy={search !== deferredSearch}
         >
-          {visibleCategories.length > 0 && (deferredSearch.trim() || activeFilterCount > 0) && (
-            <p className="sr-only" role="status" aria-live="polite">
-              {visibleProductCount}{' '}
-              {visibleProductCount === 1 ? 'produto encontrado' : 'produtos encontrados'}
-            </p>
-          )}
           {visibleCategories.length === 0 ? (
-            <section className="storefront-empty" role="status" aria-live="polite">
+            <section className="storefront-empty">
               <div className="storefront-empty-icon" aria-hidden="true">
                 <SearchX aria-hidden="true" />
               </div>
@@ -551,6 +560,10 @@ export function CatalogView({
       ? productDetailState.message
       : undefined;
 
+  const showSearchSummary =
+    customization.layout.showSearch &&
+    (deferredSearch.trim() || activeFilterCount > 0 || search !== deferredSearch);
+
   return (
     <>
       {customization.layout.showSearch && (
@@ -564,7 +577,49 @@ export function CatalogView({
         />
       )}
 
+      {showSearchSummary && (
+        <div
+          className={`storefront-search-summary ${search !== deferredSearch ? 'is-busy' : ''}`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {search !== deferredSearch ? (
+            <span className="storefront-search-summary-busy">Atualizando resultados…</span>
+          ) : visibleProductCount === 0 ? (
+            'Nenhum produto encontrado'
+          ) : (
+            <>
+              {visibleProductCount}{' '}
+              {visibleProductCount === 1 ? 'produto encontrado' : 'produtos encontrados'}
+              {activeFilterCount > 0 && (
+                <span className="storefront-search-summary-filters">
+                  {' '}
+                  · {activeFilterCount} {activeFilterCount === 1 ? 'filtro' : 'filtros'}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {stickyCategoryNavigation && categoryNavigation}
+
+      {missingForMinimum > 0 && (
+        <div className="storefront-minimum-banner" role="status" aria-live="polite">
+          <span>
+            Faltam {formatCurrency(missingForMinimum)} para o pedido mínimo de{' '}
+            {formatCurrency(effectiveMinOrder)}.
+          </span>
+          <Link
+            href={`/${storeSlug}/cart`}
+            className="storefront-minimum-banner-action"
+            aria-label="Ver sacola para continuar"
+          >
+            Ver sacola
+          </Link>
+        </div>
+      )}
 
       {customization.layout.sectionOrder.map((section) => (
         <Fragment key={section}>

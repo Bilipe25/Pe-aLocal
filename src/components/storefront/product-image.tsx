@@ -77,10 +77,19 @@ export function ProductImage({
         />
       )}
       {status !== 'loaded' && (
-        <span className="storefront-product-image-placeholder" aria-hidden="true">
-          {fallback ?? <ImageOff />}
-          {!fallback && (status === 'error' || status === 'missing') && (
-            <span>{status === 'error' ? 'Imagem indisponível' : 'Sem imagem'}</span>
+        <span
+          className={`storefront-product-image-placeholder ${status === 'loading' ? 'is-loading' : ''}`}
+          aria-hidden="true"
+        >
+          {status === 'loading' ? (
+            <span className="storefront-product-image-shimmer" />
+          ) : (
+            <>
+              {fallback ?? <ImageOff />}
+              {!fallback && (status === 'error' || status === 'missing') && (
+                <span>{status === 'error' ? 'Imagem indisponível' : 'Sem imagem'}</span>
+              )}
+            </>
           )}
         </span>
       )}

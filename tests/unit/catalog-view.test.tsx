@@ -8,18 +8,29 @@ const mocks = vi.hoisted(() => ({
   setStore: vi.fn(),
   setCouponCode: vi.fn(),
   fetch: vi.fn(),
+  cartState: {
+    storeId: null as string | null,
+    items: [] as Array<{ unitPrice: number; quantity: number }>,
+  },
 }));
 
 vi.mock('@/stores/cart-store', () => ({
+  selectCartStoreId: (state: { storeId: string | null }) => state.storeId,
+  selectCartTotal: (state: { items: Array<{ unitPrice: number; quantity: number }> }) =>
+    state.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
   useCartStore: (
     selector: (state: {
       setStore: typeof mocks.setStore;
       setCouponCode: typeof mocks.setCouponCode;
+      storeId: string | null;
+      items: Array<{ unitPrice: number; quantity: number }>;
     }) => unknown,
   ) =>
     selector({
       setStore: mocks.setStore,
       setCouponCode: mocks.setCouponCode,
+      storeId: mocks.cartState.storeId,
+      items: mocks.cartState.items,
     }),
 }));
 vi.mock('@/components/storefront/cart-fab', () => ({ CartFab: () => null }));
@@ -149,6 +160,8 @@ function response(body: unknown, status = 200) {
 describe('catálogo público', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.cartState.storeId = null;
+    mocks.cartState.items = [];
     mocks.fetch.mockResolvedValue(response({ product: productDetail }));
     vi.stubGlobal('fetch', mocks.fetch);
     vi.stubGlobal(
@@ -260,9 +273,7 @@ describe('catálogo público', () => {
     await waitFor(() =>
       expect(screen.getByText('Nenhum resultado para “pizza”')).toBeInTheDocument(),
     );
-    fireEvent.click(
-      within(screen.getByRole('status')).getByRole('button', { name: 'Limpar busca' }),
-    );
+    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Limpar busca' }));
 
     expect(search).toHaveValue('');
     await waitFor(() => expect(search).toHaveFocus());
@@ -286,6 +297,40 @@ describe('catálogo público', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('1 produto encontrado'),
+    );
+  });
+
+  it('mostra contador visual de resultados e contagem de filtros ativos', async () => {
+    render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar no cardápio' }), {
+      target: { value: 'burger' },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText('1 produto encontrado')).toBeVisible(),
+    );
+
+    // Filtro "somente disponíveis" adiciona contagem extra no resumo.
+    const filterButton = screen.getByRole('button', { name: 'Abrir filtros' });
+    fireEvent.click(filterButton);
+    const onlyAvailableLabel = screen.getByText('Somente disponíveis');
+    fireEvent.click(onlyAvailableLabel);
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /1 produto encontrado.*1 filtro/,
+      ),
     );
   });
 
@@ -347,5 +392,46 @@ describe('catálogo público', () => {
 
     expect(screen.getByRole('region', { name: 'Peça de novo' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Destaques' })).not.toBeInTheDocument();
+  });
+
+  it('mostra banner de pedido mínimo quando a sacola está abaixo do valor mínimo', () => {
+    mocks.cartState.storeId = 'store-1';
+    mocks.cartState.items = [{ unitPrice: 1200, quantity: 1 }];
+
+    render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+        minOrderValue={2500}
+      />,
+    );
+
+    const banner = screen.getByText(/Faltam.*para o pedido mínimo/);
+    expect(banner).toHaveTextContent('Faltam R$ 13,00 para o pedido mínimo de R$ 25,00.');
+    expect(banner.parentElement).toHaveTextContent('Ver sacola');
+    expect(banner.parentElement?.querySelector('a')).toHaveAttribute('href', '/loja-1/cart');
+  });
+
+  it('não mostra banner de pedido mínimo quando não há sacola ou o valor já foi atingido', () => {
+    mocks.cartState.storeId = 'store-1';
+    mocks.cartState.items = [{ unitPrice: 2500, quantity: 1 }];
+
+    render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+        minOrderValue={2500}
+      />,
+    );
+
+    expect(screen.queryByText(/Faltam.*para o pedido mínimo/)).not.toBeInTheDocument();
   });
 });

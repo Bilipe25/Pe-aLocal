@@ -720,4 +720,28 @@ describe('queries públicas da loja', () => {
     expect(mocks.unstableCache.mock.calls[1][2].tags).toEqual(['catalog:store-1']);
     expect(mocks.unstableCache.mock.calls[2][2].tags).toEqual(['delivery:store-1']);
   });
+
+  it('deduplica getPublicCatalog dentro do mesmo request', async () => {
+    mocks.categoryFindMany.mockResolvedValue([]);
+
+    const first = await getPublicCatalog('store-1', 'tenant-1');
+    const second = await getPublicCatalog('store-1', 'tenant-1');
+
+    expect(first).toBe(second);
+    expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('não depende de cookies, headers ou sessão para permitir edge caching', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/server/queries/public-store.ts'),
+      'utf-8',
+    );
+
+    expect(source).not.toMatch(/from\s+['"]next\/headers['"]/);
+    expect(source).not.toMatch(/require\s*\(\s*['"]next\/headers['"]\s*\)/);
+    expect(source).not.toMatch(/import\s*\{\s*cookies\s*\}/);
+    expect(source).not.toMatch(/import\s*\{\s*headers\s*\}/);
+  });
 });

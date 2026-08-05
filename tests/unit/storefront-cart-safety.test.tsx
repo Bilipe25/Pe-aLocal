@@ -327,4 +327,12 @@ describe('segurança e clareza do carrinho público', () => {
     expect(css).toContain('color: var(--store-danger)');
     expect(css).not.toContain('.storefront-cart-line-menu-trigger');
   });
+
+  it('oferece link para continuar comprando no cardápio', () => {
+    renderCart();
+
+    const continueLink = screen.getByRole('link', { name: 'Continuar comprando no cardápio' });
+    expect(continueLink).toHaveAttribute('href', '/burger-do-ze');
+    expect(continueLink).toHaveTextContent('Continuar comprando');
+  });
 });
