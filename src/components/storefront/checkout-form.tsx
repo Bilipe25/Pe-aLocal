@@ -561,6 +561,11 @@ export function CheckoutForm({
   const [step, setStepState] = useState<CheckoutStep>(initialStep);
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [orderConfirmed, setOrderConfirmed] = useState<{
+    orderNumber: number;
+    token: string;
+  } | null>(null);
+  const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [acceptedChangedQuote, setAcceptedChangedQuote] = useState<CheckoutQuoteDto | null>(null);
@@ -826,6 +831,16 @@ export function CheckoutForm({
       }
     };
   }, [recognitionEndpoint, storeSlug]);
+
+  useEffect(() => {
+    if (!orderConfirmed) return;
+    successNavTimerRef.current = setTimeout(() => {
+      router.push(`/${storeSlug}/order/${orderConfirmed.token}`);
+    }, 800);
+    return () => {
+      if (successNavTimerRef.current) clearTimeout(successNavTimerRef.current);
+    };
+  }, [orderConfirmed, router, storeSlug]);
 
   useEffect(() => {
     if (activeStoreId !== storeId || restoredRef.current) return;
@@ -1298,7 +1313,10 @@ export function CheckoutForm({
           createdAt: new Date().toISOString(),
         });
         clearCart();
-        router.push(`/${storeSlug}/order/${result.data.publicToken}`);
+        setOrderConfirmed({
+          orderNumber: result.data.orderNumber,
+          token: result.data.publicToken,
+        });
       } catch {
         setSubmitError('Não foi possível enviar seu pedido agora. Seus dados foram preservados.');
       }
@@ -2290,6 +2308,27 @@ export function CheckoutForm({
           onForget={() => void forgetRecognizedCustomer()}
         />
       ) : null}
+
+      {orderConfirmed && (
+        <div
+          className="checkout-success-overlay"
+          role="status"
+          aria-live="assertive"
+          aria-atomic="true"
+        >
+          <svg
+            className="checkout-success-check"
+            viewBox="0 0 36 36"
+            aria-hidden="true"
+          >
+            <circle className="check-circle" cx="18" cy="18" r="16" />
+            <polyline className="check-mark" points="11,18 16,23 25,13" />
+          </svg>
+          <p className="checkout-success-title">
+            Pedido #{orderConfirmed.orderNumber} confirmado!
+          </p>
+        </div>
+      )}
     </form>
   );
 }
