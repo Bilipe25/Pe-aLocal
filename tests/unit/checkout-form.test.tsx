@@ -782,7 +782,14 @@ describe('checkout público v2', () => {
     expect(readPaymentReportToken(PUBLIC_TOKEN)).toBe('report-token-a');
     expect(window.sessionStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
     expect(window.localStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
-    expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`);
+    
+    // Verifica a mensagem de sucesso (ponte)
+    expect(screen.getByText(/Pedido #1 confirmado/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
+    await waitFor(() => 
+      expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`)
+    );
   });
 
   it('assina a sincronização entre abas e remove o listener ao desmontar', () => {

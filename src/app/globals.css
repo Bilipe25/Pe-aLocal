@@ -2130,6 +2130,94 @@ body {
   box-shadow: var(--store-shadow-sm);
 }
 
+/* ── Checkout Success Bridge ─────────────────────────────── */
+
+@keyframes checkout-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes checkout-check-draw {
+  from { stroke-dashoffset: 36; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes checkout-check-circle {
+  from { stroke-dashoffset: 100; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes checkout-text-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.checkout-success-overlay {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: color-mix(in srgb, var(--store-surface) 97%, transparent);
+  animation: checkout-overlay-in 220ms ease-out both;
+}
+
+.checkout-success-check {
+  width: 72px;
+  height: 72px;
+}
+
+.checkout-success-check .check-circle {
+  fill: none;
+  stroke: var(--color-success);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: checkout-check-circle 400ms ease-out 100ms both;
+}
+
+.checkout-success-check .check-mark {
+  fill: none;
+  stroke: var(--color-success);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+  animation: checkout-check-draw 300ms ease-out 350ms both;
+}
+
+.checkout-success-title {
+  font-family: var(--font-display, var(--font-sans));
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--store-text, var(--color-tinta));
+  text-align: center;
+  animation: checkout-text-in 280ms ease-out 200ms both;
+}
+
+.checkout-success-subtitle {
+  font-size: 0.9375rem;
+  color: var(--store-text-muted, var(--color-text-muted));
+  text-align: center;
+  animation: checkout-text-in 280ms ease-out 320ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkout-success-overlay,
+  .checkout-success-check .check-circle,
+  .checkout-success-check .check-mark,
+  .checkout-success-title,
+  .checkout-success-subtitle {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
+
 .customer-recognition-overlay {
   position: fixed;
   z-index: 80;
