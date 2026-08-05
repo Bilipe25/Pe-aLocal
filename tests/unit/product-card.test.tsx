@@ -129,6 +129,10 @@ describe('imagem responsiva do produto', () => {
 
   it('permite favoritar e desfavoritar com estado acessível', () => {
     const onFavoriteToggle = vi.fn();
+    const originalVibrate = Object.getOwnPropertyDescriptor(navigator, 'vibrate');
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, 'vibrate', { configurable: true, value: vibrate });
+
     const { rerender } = render(
       <ProductCard {...baseProps} isFavorite={false} onFavoriteToggle={onFavoriteToggle} />,
     );
@@ -137,11 +141,19 @@ describe('imagem responsiva do produto', () => {
     expect(favorite).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(favorite);
     expect(onFavoriteToggle).toHaveBeenCalledOnce();
+    expect(vibrate).toHaveBeenCalledWith(12);
+    expect(favorite).toHaveClass('is-pulsing');
 
     rerender(<ProductCard {...baseProps} isFavorite onFavoriteToggle={onFavoriteToggle} />);
     expect(
       screen.getByRole('button', { name: 'Remover Burger da casa dos favoritos' }),
     ).toHaveAttribute('aria-pressed', 'true');
+
+    if (originalVibrate) {
+      Object.defineProperty(navigator, 'vibrate', originalVibrate);
+    } else {
+      Reflect.deleteProperty(navigator, 'vibrate');
+    }
   });
 
   it('mantém o favorito acionável quando o produto está esgotado', () => {

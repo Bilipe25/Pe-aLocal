@@ -65,6 +65,8 @@ vi.mock('@/hooks/use-cart-quote', () => ({
         coupon: couponIsValid ? { code: normalizedCoupon, discount } : null,
         minOrderValue: 0,
         missingForMinimum: 0,
+        promisedFulfillmentMinAt: '2026-07-22T18:30:00.000Z',
+        promisedFulfillmentMaxAt: '2026-07-22T18:50:00.000Z',
         issues: couponIsInvalid
           ? [
               {
@@ -334,5 +336,12 @@ describe('segurança e clareza do carrinho público', () => {
     const continueLink = screen.getByRole('link', { name: 'Continuar comprando no cardápio' });
     expect(continueLink).toHaveAttribute('href', '/burger-do-ze');
     expect(continueLink).toHaveTextContent('Continuar comprando');
+  });
+
+  it('mostra a janela de previsão calculada pelo quote no resumo', () => {
+    renderCart();
+
+    expect(screen.getByText('Previsão para retirada')).toBeVisible();
+    expect(screen.getByText('15:30–15:50')).toBeVisible();
   });
 });

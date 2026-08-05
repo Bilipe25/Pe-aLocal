@@ -56,7 +56,7 @@ const baseHeroProps = {
     reason: 'Aberta agora.',
     nextTransitionAt: null,
   },
-  estimatedTime: '30–45 min',
+  estimatedTime: 'Pronto em 30–45 min',
   minOrderValue: 2_500,
   deliveryEnabled: true,
   pickupEnabled: true,
@@ -87,7 +87,7 @@ describe('storefront mobile — fase 1', () => {
 
     expect(screen.getByRole('heading', { name: 'Sabor da Vila' })).toBeVisible();
     expect(screen.getByText('Aberta agora')).toBeVisible();
-    expect(screen.getByLabelText('Preparo estimado: 30–45 min')).toBeVisible();
+    expect(screen.getByLabelText('Preparo estimado: Pronto em 30–45 min')).toBeVisible();
     expect(screen.getByLabelText('Pedido mínimo: R$ 25,00')).toBeVisible();
     expect(screen.getByLabelText('Sabor da Vila')).toBeVisible();
     expect(screen.queryByText('Centro, Fortaleza')).not.toBeInTheDocument();
@@ -168,7 +168,9 @@ describe('storefront mobile — fase 1', () => {
       />,
     );
 
-    expect(screen.queryByLabelText('Preparo estimado: 30–45 min')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Preparo estimado: Pronto em 30–45 min'),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText('R$ 5,00 · Retirada')).toBeVisible();
     expect(screen.queryByLabelText('Pedido mínimo: R$ 25,00')).not.toBeInTheDocument();
     expect(screen.getByText('Horários')).toBeVisible();

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
+  Clock3,
   Loader2,
   Minus,
   Pencil,
@@ -19,6 +20,7 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'rea
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
+import { ActiveOrderBanner } from '@/components/storefront/active-order-banner';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,7 @@ interface CartViewProps {
   storeId: string;
   storeSlug: string;
   storeName?: string;
+  timeZone?: string;
   logoImageUrl?: string | null;
   logoImageAssetId?: string | null;
   acceptingOrders: boolean;
@@ -65,6 +68,7 @@ export function CartView({
   storeId,
   storeSlug,
   storeName = 'Loja',
+  timeZone = 'America/Fortaleza',
   logoImageUrl = null,
   logoImageAssetId = null,
   acceptingOrders,
@@ -146,6 +150,9 @@ export function CartView({
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
   const checkoutHref = buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
+  const quoteEstimate = quoteState.quote
+    ? formatQuoteEstimate(quoteState.quote, quoteModality, timeZone)
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -287,6 +294,7 @@ export function CartView({
         <span className="sr-only" role="status" aria-live="polite">
           {cartAnnouncement}
         </span>
+        <ActiveOrderBanner storeId={storeId} storeSlug={storeSlug} timeZone={timeZone} />
         <div className="storefront-cart-empty-icon">
           <ShoppingBag aria-hidden="true" />
         </div>
@@ -315,6 +323,7 @@ export function CartView({
         logoImageUrl={logoImageUrl}
         logoImageAssetId={logoImageAssetId}
       />
+      <ActiveOrderBanner storeId={storeId} storeSlug={storeSlug} timeZone={timeZone} />
       <div className="storefront-cart-heading">
         <Link
           href={`/${storeSlug}`}
@@ -542,6 +551,18 @@ export function CartView({
             </div>
           </dl>
 
+          {quoteEstimate && (
+            <div className="storefront-cart-eta" role="status" aria-live="polite">
+              <span className="storefront-cart-eta-icon" aria-hidden="true">
+                <Clock3 />
+              </span>
+              <div>
+                <strong>{quoteEstimate.label}</strong>
+                <span>{quoteEstimate.window}</span>
+              </div>
+            </div>
+          )}
+
           {!acceptingOrders && (
             <p className="storefront-cart-summary-message" role="status">
               {unavailableReason}
@@ -602,6 +623,47 @@ export function CartView({
       )}
     </main>
   );
+}
+
+function formatQuoteEstimate(
+  quote: NonNullable<ReturnType<typeof useCartQuote>['quote']>,
+  modality: CartFulfillmentModality,
+  timeZone: string,
+) {
+  const label = modality === 'PICKUP' ? 'Previsão para retirada' : 'Previsão de chegada';
+  if (quote.promisedFulfillmentMinAt && quote.promisedFulfillmentMaxAt) {
+    const minAt = new Date(quote.promisedFulfillmentMinAt);
+    const maxAt = new Date(quote.promisedFulfillmentMaxAt);
+    if (Number.isFinite(minAt.getTime()) && Number.isFinite(maxAt.getTime())) {
+      try {
+        const formatter = new Intl.DateTimeFormat('pt-BR', {
+          timeZone,
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        return { label, window: `${formatter.format(minAt)}–${formatter.format(maxAt)}` };
+      } catch {
+        const formatter = new Intl.DateTimeFormat('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        return { label, window: `${formatter.format(minAt)}–${formatter.format(maxAt)}` };
+      }
+    }
+  }
+
+  if (
+    typeof quote.estimatedMinMinutes === 'number' &&
+    typeof quote.estimatedMaxMinutes === 'number'
+  ) {
+    const window =
+      quote.estimatedMinMinutes === quote.estimatedMaxMinutes
+        ? `${quote.estimatedMinMinutes} min`
+        : `${quote.estimatedMinMinutes}–${quote.estimatedMaxMinutes} min`;
+    return { label, window: `Pronto em ${window}` };
+  }
+
+  return null;
 }
 
 function CartLineItem({

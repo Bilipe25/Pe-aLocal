@@ -13,6 +13,12 @@ import {
 } from '@/server/queries/public-store';
 import { getRecentPurchasedProductsForCurrentDevice } from '@/server/queries/recent-purchases';
 
+function formatStorefrontEstimate(minMinutes: number, maxMinutes: number) {
+  return minMinutes === maxMinutes
+    ? `Pronto em ${minMinutes} min`
+    : `Pronto em ${minMinutes}–${maxMinutes} min`;
+}
+
 interface StorePageProps {
   params: Promise<{ storeSlug: string }>;
   searchParams: Promise<{ coupon?: string | string[] }>;
@@ -84,7 +90,10 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         availability={store.availability}
         estimatedTime={
           store.settings
-            ? `${store.settings.estimatedTimeMinMinutes}-${store.settings.estimatedTimeMaxMinutes} min`
+            ? formatStorefrontEstimate(
+                store.settings.estimatedTimeMinMinutes,
+                store.settings.estimatedTimeMaxMinutes,
+              )
             : undefined
         }
         minOrderValue={store.settings?.minOrderValue}
