@@ -140,11 +140,11 @@ Estes pontos alimentam as fases a seguir.
 > profissional. Requer cuidado com manifest, sitemap e service worker em
 > Cloudflare Workers (sem `public/`, sem `next-pwa`).
 
-| # | Refinamento | Por que | Como medir |
-|---|-------------|---------|------------|
-| C1 | **`JSON-LD` por página** | Schema.org `Restaurant` + `Menu` + `MenuSection` + `MenuItem` + `Offer` para destacar preço, disponibilidade e tempo de preparo. | Google Rich Results Test. |
-| C2 | **Sitemap dinâmico** por loja | `app/sitemap.xml/route.ts` agregando `getAllPublicStoreSlugs` + `<lastmod>` baseado em `updatedAt` do catálogo. | `pnpm test:e2e` navegando o sitemap. |
-| C3 | **`robots.txt` por loja e `noindex` para fora de catálogo** | O `indexable` da `StoreCustomizationConfig` já controla a home; estender para `/cart`, `/checkout`, `/order/...`. | curl + asserts. |
+| # | Status | Refinamento | Por que | Como medir |
+|---|--------|-------------|---------|------------|
+| C1 | ✅ | **`JSON-LD` por página** | Schema.org `Restaurant` + `Menu` + `MenuSection` + `MenuItem` + `Offer` para destacar preço, disponibilidade e tempo de preparo. | Google Rich Results Test. |
+| C2 | ✅ | **Sitemap dinâmico** por loja | `src/app/sitemap.ts` lista lojas públicas indexáveis e `<lastmod>` baseado na atualização mais recente do catálogo. | Teste unitário + inspeção de `/sitemap.xml`. |
+| C3 | ✅ | **`robots.txt` por loja e `noindex` para fora de catálogo** | O `indexable` da `StoreCustomizationConfig` controla a home; carrinho, checkout e acompanhamento ficam fora dos resultados. | Testes de metadata, headers e `/robots.txt`. |
 | C4 | **PWA manifest** próprio (sem DPush) | `public/manifest.webmanifest` com ícones por preset + `theme_color` da paleta da loja. | Lighthouse PWA. |
 | C5 | **Service worker mínimo** (cache-first para `/api/store-assets`, stale-while-revalidate para HTML do cardápio) | O runtime é OpenNext/Workers — usar `workbox-window` ou um SW manual. Sem `next-pwa`. | Lighthouse. |
 | C6 | **Página offline** ilustrada ("Sem conexão. Seu pedido anterior está salvo.") | O `useCartStore` já persiste local; basta um fallback `app/offline/page.tsx`. | Manual. |
@@ -310,23 +310,40 @@ workers para leituras públicas.
 
 ### C1 — JSON-LD
 
-**Plano** (sem migrations):
+**Implementação** (sem migrations):
 
-- Novo arquivo `src/lib/storefront/jsonld.ts` com `buildMenuJsonLd(store,
-  categories, url)`.
-- Renderizado em `src/app/[storeSlug]/layout.tsx` via
-  `<script type="application/ld+json" dangerouslySetInnerHTML={{__html: ...}} />`
-  usando o `StorefrontSchemaOrg` type.
-- Validar com `schema-dts` em dev e em CI (`schema-validator`).
+- `src/lib/storefront/jsonld.ts` gera um grafo com `Restaurant`, `Menu`,
+  `MenuSection`, `MenuItem` e `Offer`.
+- O schema é renderizado somente em `src/app/[storeSlug]/page.tsx` quando a
+  loja está marcada como indexável, evitando JSON-LD em carrinho, checkout e
+  acompanhamento.
+- URLs de imagens relativas são convertidas para absolutas e o JSON é escapado
+  antes de entrar na tag `<script>`.
+- Ofertas informam preço em BRL e disponibilidade `InStock` ou `OutOfStock`.
 
 ### C2 — Sitemap
 
-**Plano**:
+**Implementação**:
 
-- `src/app/sitemap.ts` (Next 16 nativo) retornando as URLs canônicas das
-  lojas ativas com `lastmod = store.customization.publishedAt` (campo
-  derivado do `StoreCustomization.publishedVersion`).
-- Excluir `/cart`, `/checkout`, `/order/*` via `robots` por rota (C3).
+- `src/app/sitemap.ts` usa a Metadata Route nativa do Next.js.
+- `getPublicStorefrontSitemapEntries` filtra lojas ativas de tenants ativos e
+  remove configurações com `seo.indexable === false`.
+- `lastModified` considera a atualização da loja, publicação da personalização,
+  categoria mais recente e produto mais recente.
+- A consulta possui cache de 5 minutos para não transformar o sitemap em uma
+  consulta pesada a cada crawler.
+
+### C3 — Robots e noindex
+
+**Implementação**:
+
+- `src/app/robots.ts` aponta para `/sitemap.xml` e bloqueia APIs, painéis,
+  carrinho, checkout e acompanhamento de pedidos.
+- `/cart` ganhou metadata `noindex`, `nofollow`, `noarchive` e `nocache`.
+- `/checkout` mantém as mesmas diretivas, inclusive quando a loja não existe.
+- `next.config.ts` adiciona `X-Robots-Tag` para carrinho e checkout; a rota de
+  acompanhamento já possuía essa proteção e `Cache-Control: private, no-store`.
+- A home continua respeitando `config.seo.indexable` no metadata e no sitemap.
 
 ### C5 — Service worker
 

@@ -2,11 +2,10 @@
 
 import type { OrderStatus } from '@prisma/client';
 import {
+  ArrowUpRight,
   CheckCircle2,
-  CircleDot,
   Clock3,
   Package,
-  RefreshCw,
   Truck,
   type LucideIcon,
 } from 'lucide-react';
@@ -104,6 +103,15 @@ function formatEstimateWindow(minAt: string, maxAt: string, timeZone: string) {
     return `${formatter.format(minDate)}–${formatter.format(maxDate)}`;
   }
 }
+
+const statusTone: Record<ActiveOrderStatus, 'info' | 'success' | 'accent'> = {
+  PENDING: 'info',
+  AWAITING_PAYMENT: 'info',
+  CONFIRMED: 'success',
+  PREPARING: 'accent',
+  READY: 'success',
+  OUT_FOR_DELIVERY: 'success',
+};
 
 interface ActiveOrderBannerProps {
   storeId: string;
@@ -225,7 +233,7 @@ function ActiveOrderBannerLive({
 
   return (
     <aside
-      className="storefront-active-order-banner"
+      className={`storefront-active-order-banner is-${statusTone[activeStatus]}`}
       role="status"
       aria-live="polite"
       aria-atomic="true"
@@ -235,13 +243,12 @@ function ActiveOrderBannerLive({
         <StatusIcon />
       </span>
       <div className="storefront-active-order-copy">
-        <strong>Seu pedido #{state.orderNumber}</strong>
-        <span>{presentation.label}</span>
-        <p>{presentation.description}</p>
+        <span className="storefront-active-order-label">{presentation.label}</span>
+        <strong>Pedido #{state.orderNumber}</strong>
         {estimate && (
-          <small>
+          <p className="storefront-active-order-estimate">
             {state.estimate?.label}: {estimate}
-          </small>
+          </p>
         )}
       </div>
       <Link
@@ -250,11 +257,7 @@ function ActiveOrderBannerLive({
         aria-label={`Acompanhar pedido ${state.orderNumber}`}
       >
         <span>Acompanhar</span>
-        {tracking.connection === 'connected' ? (
-          <CircleDot aria-hidden="true" />
-        ) : (
-          <RefreshCw aria-hidden="true" />
-        )}
+        <ArrowUpRight aria-hidden="true" />
       </Link>
     </aside>
   );

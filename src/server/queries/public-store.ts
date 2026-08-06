@@ -314,6 +314,84 @@ async function getPublicStoreBySlugForRequest(slug: string) {
   return { ...store, availability };
 }
 
+interface PublicStorefrontSitemapEntry {
+  slug: string;
+  lastModified: Date;
+}
+
+async function getPublicStorefrontSitemapEntriesFromDb(): Promise<
+  PublicStorefrontSitemapEntry[]
+> {
+  const stores = await getDb().store.findMany({
+    where: {
+      isActive: true,
+      tenant: { status: 'ACTIVE' },
+    },
+    orderBy: { slug: 'asc' },
+    select: {
+      slug: true,
+      updatedAt: true,
+      settings: {
+        select: {
+          primaryColor: true,
+          secondaryColor: true,
+          fontFamily: true,
+        },
+      },
+      customization: {
+        select: {
+          publishedConfig: true,
+          publishedAt: true,
+        },
+      },
+      categories: {
+        orderBy: { updatedAt: 'desc' },
+        take: 1,
+        select: { updatedAt: true },
+      },
+      products: {
+        orderBy: { updatedAt: 'desc' },
+        take: 1,
+        select: { updatedAt: true },
+      },
+    },
+  });
+
+  return stores.flatMap((store) => {
+    const config = resolvePublicCustomization({
+      publishedConfig: store.customization?.publishedConfig,
+      publishedAt: store.customization?.publishedAt,
+      legacy: {
+        primaryColor: store.settings?.primaryColor,
+        secondaryColor: store.settings?.secondaryColor,
+        fontFamily: store.settings?.fontFamily,
+      },
+    });
+    if (!config.config.seo.indexable) return [];
+
+    const catalogUpdatedAt = [
+      store.updatedAt,
+      store.customization?.publishedAt,
+      store.categories[0]?.updatedAt,
+      store.products[0]?.updatedAt,
+    ].filter((value): value is Date => value instanceof Date);
+    const lastModified = catalogUpdatedAt.reduce(
+      (latest, current) => (current > latest ? current : latest),
+      new Date(0),
+    );
+
+    return [{ slug: store.slug, lastModified }];
+  });
+}
+
+export async function getPublicStorefrontSitemapEntries() {
+  return unstable_cache(
+    getPublicStorefrontSitemapEntriesFromDb,
+    ['public-storefront-sitemap'],
+    { revalidate: 300 },
+  )();
+}
+
 /**
  * Deduplica layout, metadata e page somente dentro do request RSC atual.
  * O snapshot visual continua com cache persistente, enquanto a disponibilidade

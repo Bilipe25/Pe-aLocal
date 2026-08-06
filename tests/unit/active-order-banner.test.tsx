@@ -75,13 +75,15 @@ describe('ActiveOrderBanner', () => {
   it('mostra o pedido em andamento da mesma loja e leva ao acompanhamento', async () => {
     render(<ActiveOrderBanner storeId="store-1" storeSlug="loja-1" />);
 
-    await waitFor(() => expect(screen.getByText('Seu pedido #42')).toBeVisible());
-
+    await waitFor(() => expect(screen.getByText('Pedido #42')).toBeVisible());
     expect(screen.getByText('Em preparo')).toBeVisible();
     expect(screen.getByText(/15:30–15:50/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'Acompanhar pedido 42' })).toHaveAttribute(
       'href',
       '/loja-1/order/4da03571-bffd-45ef-8c44-20686c487838',
+    );
+    expect(screen.getByRole('link', { name: 'Acompanhar pedido 42' })).toHaveClass(
+      'storefront-active-order-link',
     );
     expect(mocks.fetch).toHaveBeenCalledWith(
       '/api/orders/track/4da03571-bffd-45ef-8c44-20686c487838?storeSlug=loja-1',
@@ -103,6 +105,6 @@ describe('ActiveOrderBanner', () => {
     render(<ActiveOrderBanner storeId="store-1" storeSlug="loja-1" />);
 
     await waitFor(() => expect(mocks.clearOrder).toHaveBeenCalledOnce());
-    expect(screen.queryByText('Seu pedido #42')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pedido #42')).not.toBeInTheDocument();
   });
 });

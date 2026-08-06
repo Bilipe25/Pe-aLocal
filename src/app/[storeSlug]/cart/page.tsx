@@ -1,7 +1,27 @@
+import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
 import { CartView } from '@/components/storefront/cart-view';
 import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ storeSlug: string }>;
+}): Promise<Metadata> {
+  const { storeSlug } = await params;
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+
+  return {
+    title: store ? `Sua sacola | ${store.name}` : 'Sua sacola',
+    robots: {
+      index: false,
+      follow: false,
+      noarchive: true,
+      nocache: true,
+    },
+  };
+}
 
 export default async function CartPage({ params }: { params: Promise<{ storeSlug: string }> }) {
   const { storeSlug } = await params;

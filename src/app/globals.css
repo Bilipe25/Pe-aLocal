@@ -2447,13 +2447,14 @@ body {
 .storefront-active-order-banner {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid color-mix(in srgb, var(--store-secondary) 34%, var(--store-border));
+  border: 1px solid var(--store-border);
   border-radius: min(var(--store-radius), 0.75rem);
   padding: 0.75rem;
   color: var(--store-text);
-  background: color-mix(in srgb, var(--store-secondary) 9%, var(--store-surface));
+  background: var(--store-surface);
+  box-shadow: var(--store-shadow-sm);
   animation: storefront-active-order-in 200ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
@@ -2466,64 +2467,75 @@ body {
 
 .storefront-active-order-icon {
   display: inline-flex;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.5rem;
+  height: 2.5rem;
   flex: none;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: var(--store-secondary);
-  background: color-mix(in srgb, var(--store-secondary) 16%, var(--store-surface));
+  color: var(--store-primary);
+  background: color-mix(in srgb, var(--store-primary) 10%, var(--store-surface));
+}
+
+.storefront-active-order-banner.is-success .storefront-active-order-icon {
+  color: var(--store-success);
+  background: color-mix(in srgb, var(--store-success) 10%, var(--store-surface));
+}
+
+.storefront-active-order-banner.is-info .storefront-active-order-icon {
+  color: var(--store-info);
+  background: color-mix(in srgb, var(--store-info) 10%, var(--store-surface));
+}
+
+.storefront-active-order-banner.is-accent .storefront-active-order-icon {
+  color: var(--store-accent);
+  background: color-mix(in srgb, var(--store-accent) 14%, var(--store-surface));
 }
 
 .storefront-active-order-icon svg {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.2rem;
+  height: 1.2rem;
 }
 
 .storefront-active-order-copy {
   display: grid;
   flex: 1;
   min-width: 0;
-  gap: 0.1rem;
+  gap: 0.15rem;
 }
 
 .storefront-active-order-copy strong {
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.storefront-active-order-copy > span {
+  color: var(--store-text);
   font-size: 0.9375rem;
   font-weight: 700;
+  line-height: 1.25;
 }
 
-.storefront-active-order-copy p,
-.storefront-active-order-copy small {
-  margin: 0;
+.storefront-active-order-label {
   color: var(--store-text-muted);
   font-size: 0.75rem;
-  line-height: 1.35;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
-.storefront-active-order-copy small {
-  margin-top: 0.2rem;
-  color: var(--store-text);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.storefront-active-order-estimate {
+  margin: 0;
+  color: var(--store-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
 }
 
 .storefront-active-order-link {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   flex: none;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
   border-radius: min(var(--store-radius), 0.625rem);
-  padding: 0.5rem 0.7rem;
-  color: var(--store-primary-foreground);
-  background: var(--store-primary);
-  font-size: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  color: var(--store-primary);
+  background: transparent;
+  font-size: 0.8125rem;
   font-weight: 700;
   text-decoration: none;
   transition:
@@ -2532,7 +2544,7 @@ body {
 }
 
 .storefront-active-order-link:hover {
-  background: var(--store-primary-hover);
+  background: color-mix(in srgb, var(--store-primary) 8%, var(--store-surface));
 }
 
 .storefront-active-order-link:active {
@@ -2545,8 +2557,8 @@ body {
 }
 
 .storefront-active-order-link svg {
-  width: 0.9rem;
-  height: 0.9rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .storefront-cart-empty .storefront-active-order-banner {
@@ -5937,6 +5949,10 @@ body {
 }
 
 .storefront-product-favorite {
+  position: absolute;
+  z-index: 2;
+  top: 0.55rem;
+  right: 0.55rem;
   display: inline-flex;
   width: 2.75rem;
   height: 2.75rem;
@@ -5945,18 +5961,12 @@ body {
   border-radius: 50%;
   color: var(--store-text-muted);
   background: color-mix(in srgb, var(--store-surface) 94%, transparent);
+  box-shadow: var(--store-shadow-sm);
   transition:
     color 160ms ease-out,
     background 160ms ease-out,
-    transform 160ms ease-out;
-}
-
-.storefront-product-favorite {
-  position: absolute;
-  z-index: 2;
-  top: 0.55rem;
-  right: 0.55rem;
-  box-shadow: var(--store-shadow-sm);
+    transform 160ms ease-out,
+    box-shadow 160ms ease-out;
 }
 
 .storefront-product-favorite:hover {
@@ -5969,7 +5979,9 @@ body {
 }
 
 .storefront-product-favorite.is-active {
-  color: var(--store-primary);
+  color: #fff;
+  background: var(--store-primary);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--store-primary) 30%, transparent);
 }
 
 .storefront-product-favorite.is-active svg {
@@ -5979,6 +5991,30 @@ body {
 .storefront-product-favorite.is-pulsing svg,
 .storefront-product-modal-favorite.is-pulsing svg {
   animation: storefront-favorite-pop 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.storefront-product-favorite::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--store-primary) 40%, transparent);
+  opacity: 0;
+}
+
+.storefront-product-favorite.is-pulsing::after {
+  animation: storefront-favorite-ring 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes storefront-favorite-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--store-primary) 40%, transparent);
+    opacity: 0.6;
+  }
+  100% {
+    box-shadow: 0 0 0 0.6rem color-mix(in srgb, var(--store-primary) 0%, transparent);
+    opacity: 0;
+  }
 }
 
 @keyframes storefront-favorite-pop {
@@ -5996,6 +6032,20 @@ body {
 .storefront-product-favorite svg {
   width: 1.2rem;
   height: 1.2rem;
+}
+
+.storefront-product-favorite[data-favorite='true']:not(.is-active) {
+  color: var(--store-primary);
+}
+
+.storefront-product-favorite[data-favorite='true']:not(.is-active) svg {
+  fill: var(--store-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storefront-product-favorite.is-pulsing::after {
+    animation: none;
+  }
 }
 
 .storefront-product-modal-overlay {
@@ -6087,17 +6137,32 @@ body {
   background: var(--store-surface);
 }
 
+.storefront-product-modal-media .storefront-product-modal-favorite:hover,
+.storefront-product-modal-media .storefront-product-modal-close:hover {
+  background: rgb(0 0 0 / 0.65);
+}
+
 .storefront-product-modal-favorite:active,
 .storefront-product-modal-close:active {
   transform: scale(0.92);
 }
 
 .storefront-product-modal-favorite.is-active {
-  color: var(--store-primary);
+  color: #fff;
+  background: var(--store-primary);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--store-primary) 30%, transparent);
 }
 
 .storefront-product-modal-favorite.is-active svg {
   fill: currentColor;
+}
+
+.storefront-product-modal-favorite[data-favorite='true']:not(.is-active) {
+  color: var(--store-primary);
+}
+
+.storefront-product-modal-favorite[data-favorite='true']:not(.is-active) svg {
+  fill: var(--store-primary);
 }
 
 .storefront-product-modal-favorite svg,
@@ -6586,6 +6651,10 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.storefront-bottom-nav-inner[data-nav-items='4'] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .storefront-bottom-nav-item {
   position: relative;
   display: flex;
@@ -6623,6 +6692,10 @@ body {
   font-weight: 750;
 }
 
+.storefront-bottom-nav-item.is-active[data-key='favorites'] {
+  background: color-mix(in srgb, var(--store-primary) 9%, var(--store-surface));
+}
+
 .storefront-bottom-nav-item > svg,
 .storefront-bottom-nav-icon > svg {
   width: 1.35rem;
@@ -6633,6 +6706,15 @@ body {
 .storefront-bottom-nav-item.is-active > svg,
 .storefront-bottom-nav-item.is-active .storefront-bottom-nav-icon > svg {
   color: var(--store-primary);
+}
+
+.storefront-bottom-nav-item.is-active[data-key='favorites'] .storefront-bottom-nav-icon > svg,
+.storefront-bottom-nav-item[data-key='favorites']:has(.storefront-bottom-nav-favorite-dot) .storefront-bottom-nav-icon > svg {
+  color: var(--store-primary);
+}
+
+.storefront-bottom-nav-item[data-key='favorites'] .storefront-bottom-nav-favorite-dot {
+  background: var(--store-primary);
 }
 
 .storefront-bottom-nav-icon {
@@ -6658,6 +6740,22 @@ body {
   font-weight: 800;
   line-height: 1;
   animation: storefront-cart-count-in 180ms ease-out;
+}
+
+.storefront-bottom-nav-favorite-dot {
+  position: absolute;
+  top: -0.2rem;
+  left: calc(100% - 0.35rem);
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 2px solid var(--store-surface);
+  border-radius: 9999px;
+  background: var(--store-primary);
+  animation: storefront-cart-count-in 180ms ease-out;
+}
+
+.storefront-bottom-nav-item.is-active .storefront-bottom-nav-favorite-dot {
+  border-color: color-mix(in srgb, var(--store-primary) 9%, var(--store-surface));
 }
 
 .storefront-bottom-nav-spinner {

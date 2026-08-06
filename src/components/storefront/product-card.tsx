@@ -109,8 +109,10 @@ export function ProductCard({
           className={`storefront-product-favorite ${isFavorite ? 'is-active' : ''} ${favoriteFeedback.isPulsing ? 'is-pulsing' : ''}`}
           aria-label={isFavorite ? `Remover ${name} dos favoritos` : `Favoritar ${name}`}
           aria-pressed={isFavorite}
+          data-favorite={isFavorite ? 'true' : 'false'}
         >
           <Heart aria-hidden="true" />
+          <span className="sr-only">{isFavorite ? 'Favorito' : 'Favoritar'}</span>
         </button>
       )}
 

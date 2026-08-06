@@ -23,12 +23,17 @@ interface CheckoutPageProps {
 export async function generateMetadata({ params }: CheckoutPageProps): Promise<Metadata> {
   const { storeSlug } = await params;
   const store = await getPublicPurchaseStoreBySlug(storeSlug);
-  if (!store) return { title: 'Loja não encontrada', robots: { index: false } };
+  if (!store) {
+    return {
+      title: 'Loja não encontrada',
+      robots: { index: false, follow: false, noarchive: true, nocache: true },
+    };
+  }
 
   return {
     title: `Finalizar pedido | ${store.name}`,
     description: `Revise e confirme seu pedido na ${store.name}.`,
-    robots: { index: false, follow: false },
+    robots: { index: false, follow: false, noarchive: true, nocache: true },
   };
 }
 
