@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
+import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
 import { getPublicStoreBySlug } from '@/server/queries/public-store';
 
 interface StoreLayoutProps {
@@ -28,18 +29,11 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     store.coverUrl ??
     store.customization.assets.logo?.url ??
     store.logoUrl;
-  let canonical =
-    config.seo.canonicalUrl ??
-    (store.customization.primaryDomain
-      ? `https://${store.customization.primaryDomain.hostname}/`
-      : undefined);
-  if (!canonical && process.env.APP_URL) {
-    try {
-      canonical = new URL(`/${store.slug}`, process.env.APP_URL).toString();
-    } catch {
-      canonical = undefined;
-    }
-  }
+  const canonical = getStorefrontCanonicalUrl({
+    slug: store.slug,
+    canonicalUrl: config.seo.canonicalUrl,
+    primaryDomainHostname: store.customization.primaryDomain?.hostname,
+  });
 
   return {
     title: { default: title, template: `%s | ${store.name}` },

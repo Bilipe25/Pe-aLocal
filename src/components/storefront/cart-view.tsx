@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
-  Clock3,
   Loader2,
   Minus,
   Pencil,
@@ -150,9 +149,6 @@ export function CartView({
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
   const checkoutHref = buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
-  const quoteEstimate = quoteState.quote
-    ? formatQuoteEstimate(quoteState.quote, quoteModality, timeZone)
-    : null;
 
   useEffect(() => {
     let active = true;
@@ -551,18 +547,6 @@ export function CartView({
             </div>
           </dl>
 
-          {quoteEstimate && (
-            <div className="storefront-cart-eta" role="status" aria-live="polite">
-              <span className="storefront-cart-eta-icon" aria-hidden="true">
-                <Clock3 />
-              </span>
-              <div>
-                <strong>{quoteEstimate.label}</strong>
-                <span>{quoteEstimate.window}</span>
-              </div>
-            </div>
-          )}
-
           {!acceptingOrders && (
             <p className="storefront-cart-summary-message" role="status">
               {unavailableReason}
@@ -623,47 +607,6 @@ export function CartView({
       )}
     </main>
   );
-}
-
-function formatQuoteEstimate(
-  quote: NonNullable<ReturnType<typeof useCartQuote>['quote']>,
-  modality: CartFulfillmentModality,
-  timeZone: string,
-) {
-  const label = modality === 'PICKUP' ? 'Previsão para retirada' : 'Previsão de chegada';
-  if (quote.promisedFulfillmentMinAt && quote.promisedFulfillmentMaxAt) {
-    const minAt = new Date(quote.promisedFulfillmentMinAt);
-    const maxAt = new Date(quote.promisedFulfillmentMaxAt);
-    if (Number.isFinite(minAt.getTime()) && Number.isFinite(maxAt.getTime())) {
-      try {
-        const formatter = new Intl.DateTimeFormat('pt-BR', {
-          timeZone,
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        return { label, window: `${formatter.format(minAt)}–${formatter.format(maxAt)}` };
-      } catch {
-        const formatter = new Intl.DateTimeFormat('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        return { label, window: `${formatter.format(minAt)}–${formatter.format(maxAt)}` };
-      }
-    }
-  }
-
-  if (
-    typeof quote.estimatedMinMinutes === 'number' &&
-    typeof quote.estimatedMaxMinutes === 'number'
-  ) {
-    const window =
-      quote.estimatedMinMinutes === quote.estimatedMaxMinutes
-        ? `${quote.estimatedMinMinutes} min`
-        : `${quote.estimatedMinMinutes}–${quote.estimatedMaxMinutes} min`;
-    return { label, window: `Pronto em ${window}` };
-  }
-
-  return null;
 }
 
 function CartLineItem({

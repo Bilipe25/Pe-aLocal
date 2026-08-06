@@ -175,9 +175,11 @@ export function ProductModal({
               : `Favoritar ${resolvedProduct.name}`
           }
           aria-pressed={isFavorite}
+          data-favorite={isFavorite ? 'true' : 'false'}
           className={`storefront-product-modal-favorite ${isFavorite ? 'is-active' : ''} ${favoriteFeedback.isPulsing ? 'is-pulsing' : ''}`}
         >
           <Heart aria-hidden="true" />
+          <span className="sr-only">{isFavorite ? 'Favorito' : 'Favoritar'}</span>
         </button>
       )}
       <Dialog.Close

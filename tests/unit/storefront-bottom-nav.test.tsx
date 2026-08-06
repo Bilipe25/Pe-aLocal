@@ -71,7 +71,7 @@ describe('navegação inferior do storefront', () => {
     });
   });
 
-  it('mantém exatamente três destinos, estado ativo e badge da loja atual', () => {
+  it('mantém três destinos por padrão, estado ativo e badge da loja atual', () => {
     render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
     const navigation = screen.getByRole('navigation', { name: 'Navegação da loja' });
@@ -81,6 +81,7 @@ describe('navegação inferior do storefront', () => {
       'href',
       '/loja-a/cart',
     );
+    expect(screen.queryByRole('link', { name: 'Favoritos' })).not.toBeInTheDocument();
     expect(screen.getByText('2')).toBeVisible();
   });
 

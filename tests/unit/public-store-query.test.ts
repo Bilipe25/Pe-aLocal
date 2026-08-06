@@ -9,6 +9,7 @@ import {
   getPublicPurchaseStoreBySlug,
   getPublicProductDetail,
   getPublicStoreBySlug,
+  getPublicStorefrontSitemapEntries,
 } from '@/server/queries/public-store';
 
 const mocks = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   unstableCache: vi.fn(),
   storeFindUnique: vi.fn(),
+  storeFindMany: vi.fn(),
   storeSlugRedirectFindUnique: vi.fn(),
   categoryFindMany: vi.fn(),
   productFindFirst: vi.fn(),
@@ -108,6 +110,7 @@ describe('queries públicas da loja', () => {
     mocks.requestId += 1;
     mocks.unstableCache.mockImplementation((callback: () => Promise<unknown>) => callback);
     mocks.storeFindUnique.mockResolvedValue(publicStore());
+    mocks.storeFindMany.mockResolvedValue([]);
     mocks.storeSlugRedirectFindUnique.mockResolvedValue(null);
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.productFindFirst.mockResolvedValue(null);
@@ -122,7 +125,7 @@ describe('queries públicas da loja', () => {
       nextTransitionAt: null,
     });
     mocks.getDb.mockReturnValue({
-      store: { findUnique: mocks.storeFindUnique },
+      store: { findUnique: mocks.storeFindUnique, findMany: mocks.storeFindMany },
       storeSlugRedirect: { findUnique: mocks.storeSlugRedirectFindUnique },
       category: { findMany: mocks.categoryFindMany },
       product: { findFirst: mocks.productFindFirst },
@@ -729,6 +732,57 @@ describe('queries públicas da loja', () => {
 
     expect(first).toBe(second);
     expect(mocks.categoryFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('lista somente lojas públicas indexáveis e usa a atualização mais recente do catálogo', async () => {
+    const hiddenConfig = createDefaultCustomization();
+    hiddenConfig.seo.indexable = false;
+    mocks.storeFindMany.mockResolvedValue([
+      {
+        slug: 'loja-publica',
+        updatedAt: new Date('2026-07-20T10:00:00Z'),
+        settings: {
+          primaryColor: '#D9480F',
+          secondaryColor: '#241C15',
+          fontFamily: 'Inter',
+        },
+        customization: {
+          publishedConfig: createDefaultCustomization(),
+          publishedAt: new Date('2026-07-21T10:00:00Z'),
+        },
+        categories: [{ updatedAt: new Date('2026-07-22T10:00:00Z') }],
+        products: [{ updatedAt: new Date('2026-07-23T10:00:00Z') }],
+      },
+      {
+        slug: 'loja-privada',
+        updatedAt: new Date('2026-07-23T10:00:00Z'),
+        settings: {
+          primaryColor: '#D9480F',
+          secondaryColor: '#241C15',
+          fontFamily: 'Inter',
+        },
+        customization: {
+          publishedConfig: hiddenConfig,
+          publishedAt: new Date('2026-07-23T10:00:00Z'),
+        },
+        categories: [],
+        products: [],
+      },
+    ]);
+
+    await expect(getPublicStorefrontSitemapEntries()).resolves.toEqual([
+      { slug: 'loja-publica', lastModified: new Date('2026-07-23T10:00:00Z') },
+    ]);
+    expect(mocks.storeFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { isActive: true, tenant: { status: 'ACTIVE' } },
+      }),
+    );
+    expect(mocks.unstableCache).toHaveBeenCalledWith(
+      expect.any(Function),
+      ['public-storefront-sitemap'],
+      { revalidate: 300 },
+    );
   });
 
   it('não depende de cookies, headers ou sessão para permitir edge caching', async () => {

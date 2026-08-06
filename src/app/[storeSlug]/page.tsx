@@ -5,6 +5,8 @@ import { NetworkStatus } from '@/components/storefront/network-status';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
+import { buildMenuJsonLd, serializeJsonLd } from '@/lib/storefront/jsonld';
+import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
 import { couponCodeSchema } from '@/schemas/checkout';
 import {
   getPublicCatalog,
@@ -75,9 +77,23 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         }
       : null;
   const config = store.customization.config;
+  const canonicalUrl = getStorefrontCanonicalUrl({
+    slug: store.slug,
+    canonicalUrl: config.seo.canonicalUrl,
+    primaryDomainHostname: store.customization.primaryDomain?.hostname,
+  });
+  const menuJsonLd = config.seo.indexable
+    ? buildMenuJsonLd(store, categories, canonicalUrl)
+    : null;
 
   return (
     <>
+      {menuJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(menuJsonLd) }}
+        />
+      )}
       <NetworkStatus />
 
       {!store.availability.acceptingOrders && (
@@ -137,7 +153,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         </footer>
       )}
 
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
+      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} showFavorites={false} />
     </>
   );
 }
