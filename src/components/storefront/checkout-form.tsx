@@ -932,6 +932,7 @@ export function CheckoutForm({
 
   function setStep(nextStep: CheckoutStep) {
     setStepState(nextStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     const query = new URLSearchParams({ step: nextStep, modality });
     const normalizedCoupon = couponCode.trim().toUpperCase();
     if (normalizedCoupon) query.set('coupon', normalizedCoupon);

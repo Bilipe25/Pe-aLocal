@@ -289,8 +289,8 @@ export function CartView({
         <div className="storefront-cart-empty-icon">
           <ShoppingBag aria-hidden="true" />
         </div>
-        <h1>Sua sacola está vazia</h1>
-        <p>Escolha seus favoritos no cardápio e volte para finalizar.</p>
+        <h1>Nenhum item por aqui ainda</h1>
+        <p>Dê uma olhada no cardápio — tem coisa boa esperando você.</p>
         <Button asChild className="storefront-primary-action">
           <Link href={`/${storeSlug}`}>
             <ArrowLeft aria-hidden="true" />
