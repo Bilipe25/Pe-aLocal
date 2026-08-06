@@ -165,7 +165,7 @@ Estes pontos alimentam as fases a seguir.
 | D4 | **Sugestão automática de adicionais** com base no `cartItem.fingerprint` | A `cart-validator.ts` já tem `selectedOptions`; adicionar `recommendationSet` por opção. | A/B. |
 | D5 | **"Pediu junto"** no modal (carrossel horizontal de produtos que costumam acompanhar) | Mesmo motor de `cart-recommendations`, sinal "frequentemente comprados juntos". | A/B. |
 | D6 | **Modo "Pedido salvo"** (cliente volta 1 dia depois e a sacola ainda está lá com a data) | Já persiste; falta UI de "Sacola de ontem — retomar?". | E2E com `cart.requiresWrite`. |
-| D7 | ✅ **Histórico de pedidos públicos** com opt-in do cliente | Histórico local, por loja e por aparelho, usando tokens públicos validados por `/api/orders/track`; o `last-order-store` atual permanece compatível. | Testes de storage, expiração, isolamento, opt-in e tracking. |
+| D7 | ✅ **Histórico local de pedidos públicos** | Histórico salvo automaticamente por loja e aparelho, usando tokens públicos validados por `/api/orders/track`; o `last-order-store` atual permanece compatível. | Testes de storage, expiração, isolamento e tracking. |
 
 ### Fase E — Qualidade de produção, polimento, motion (paralelo, contínuo)
 
@@ -308,18 +308,18 @@ dedicado aos itens, valores e checkout.
 - `src/stores/public-order-history-store.ts` guarda até cinco tokens públicos por
   loja, com versão própria, retenção de 30 dias, limpeza de tokens inválidos e
   sincronização entre abas.
-- O checkout mantém o registro atual de `last-order-store` e oferece um opt-in
-  separado, desmarcado por padrão, para lembrar o pedido no aparelho. Esse
-  controle não entra no payload da API nem altera `saveCustomerData`.
+- O checkout mantém o registro atual de `last-order-store` e também salva
+  automaticamente o token no histórico local do aparelho. Esse comportamento
+  não entra no payload da API nem altera `saveCustomerData`.
 - `src/components/storefront/public-order-history.tsx` valida cada token pelo
   endpoint de tracking já existente, remove pedidos expirados e exibe somente
   número, status e data. Dados pessoais, `customerId`, endereço, itens e
   pagamento não entram no storage local nem no DTO.
-- A seção "Outros pedidos seus" aparece somente quando há pedidos lembrados e
+- A seção "Outros pedidos seus" aparece somente quando há pedidos salvos e
   fica no storefront, fora do carrinho. A entrada atual "Meu pedido" continua
   abrindo o último pedido salvo para preservar o comportamento existente.
 - Customer recognition não é usado como autorização do histórico; o D7 local
-  representa apenas pedidos explicitamente lembrados naquele aparelho.
+  representa apenas tokens de acompanhamento salvos neste aparelho.
 
 ### C1 — JSON-LD
 
