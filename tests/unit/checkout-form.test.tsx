@@ -234,7 +234,7 @@ describe('checkout público v2', () => {
         ?.method,
     ).toBe('GET');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     expect(
@@ -370,7 +370,7 @@ describe('checkout público v2', () => {
       target: { value: 'João Martins' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
     expect(await screen.findByRole('dialog')).toBeVisible();
     expect(screen.getByText('Rua das F***, nº *** — Centro')).toBeVisible();
@@ -392,9 +392,9 @@ describe('checkout público v2', () => {
       opaqueReference,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
     expect(await screen.findByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Revisar pedido' }));
+    fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
     expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
 
     const confirm = screen.getByRole('button', { name: /Confirmar/ });
@@ -448,7 +448,7 @@ describe('checkout público v2', () => {
       target: { value: 'Ana Silva' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -493,7 +493,7 @@ describe('checkout público v2', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
       target: { value: 'João Martins' },
     });
-    const continueButton = screen.getByRole('button', { name: 'Continuar' });
+    const continueButton = screen.getByRole('button', { name: /Continuar/ });
 
     fireEvent.click(continueButton);
     expect(await screen.findByRole('dialog')).toBeVisible();
@@ -557,7 +557,7 @@ describe('checkout público v2', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
       target: { value: '11999999999' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     expect(replaceState).toHaveBeenCalledWith(
@@ -586,7 +586,7 @@ describe('checkout público v2', () => {
       target: { value: quote.deliveryZoneId },
     });
     expect(await screen.findByRole('textbox', { name: 'Rua' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
 
     expect(await screen.findByText('Informe a rua.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
@@ -610,7 +610,7 @@ describe('checkout público v2', () => {
     });
     expect(await screen.findByText(technicalMessage)).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
 
     await waitFor(() => expect(screen.getAllByText(technicalMessage).length).toBeGreaterThan(0));
     expect(
@@ -653,7 +653,7 @@ describe('checkout público v2', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
         target: { value: '11999999999' },
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
       const street = await screen.findByRole('textbox', { name: 'Rua' }, { timeout: 5_000 });
       fireEvent.change(street, { target: { value: 'Rua das Flores' } });
@@ -755,13 +755,13 @@ describe('checkout público v2', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
       target: { value: '11999999999' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
 
     expect(await screen.findByRole('heading', { name: 'Como quer receber?' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar para pagamento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
 
     expect(await screen.findByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Revisar pedido' }));
+    fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
 
     expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
     const confirm = screen.getByRole('button', { name: /Confirmar/ });

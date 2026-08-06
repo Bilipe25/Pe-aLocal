@@ -1196,15 +1196,6 @@ export function CheckoutForm({
     setStep(STEPS[index + 1].id);
   }
 
-  function goBack() {
-    const index = STEPS.findIndex((candidate) => candidate.id === step);
-    if (index === 0) {
-      router.push(`/${storeSlug}/cart`);
-      return;
-    }
-    setStep(STEPS[index - 1].id);
-  }
-
   const handleValidSubmit: SubmitHandler<CheckoutFormValues> = (validValues) => {
     setSubmitError(null);
     setChangedQuote(null);
