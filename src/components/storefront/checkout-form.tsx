@@ -568,7 +568,6 @@ export function CheckoutForm({
     orderNumber: number;
     token: string;
   } | null>(null);
-  const [rememberOrderHistory, setRememberOrderHistory] = useState(false);
   const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
@@ -1318,10 +1317,8 @@ export function CheckoutForm({
           createdAt: orderCreatedAt,
         };
         useLastOrderStore.getState().registerOrder(publicOrderRecord);
-        if (rememberOrderHistory) {
-          setOrderHistoryStore(storeId, storeSlug);
-          rememberOrder(publicOrderRecord);
-        }
+        setOrderHistoryStore(storeId, storeSlug);
+        rememberOrder(publicOrderRecord);
         clearCart();
         setOrderConfirmed({
           orderNumber: result.data.orderNumber,
@@ -2187,27 +2184,6 @@ export function CheckoutForm({
                   id="saveCustomerData-error"
                   message={errors.saveCustomerData?.message ?? errors.setAddressAsDefault?.message}
                 />
-              </div>
-
-              <div className="border-tinta/15 bg-papel rounded-xl border p-4">
-                <label
-                  htmlFor="remember-order-history"
-                  className="text-tinta flex min-h-11 cursor-pointer items-start gap-3 text-sm font-semibold"
-                >
-                  <input
-                    id="remember-order-history"
-                    type="checkbox"
-                    checked={rememberOrderHistory}
-                    onChange={(event) => setRememberOrderHistory(event.target.checked)}
-                    aria-describedby="remember-order-history-help"
-                    className="accent-pimenta mt-0.5 h-5 w-5 shrink-0"
-                  />
-                  <span>Lembrar este pedido neste aparelho</span>
-                </label>
-                <p id="remember-order-history-help" className="text-text-muted mt-2 text-sm text-pretty">
-                  Guardaremos apenas o link de acompanhamento por até 30 dias. Seus dados pessoais não
-                  ficam salvos neste histórico.
-                </p>
               </div>
 
               <div>

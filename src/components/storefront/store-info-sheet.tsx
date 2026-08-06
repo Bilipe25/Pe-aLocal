@@ -15,9 +15,9 @@ import {
   WalletCards,
   X,
 } from 'lucide-react';
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import Image from 'next/image';
+import { useId, useState, useSyncExternalStore } from 'react';
 
-import { storeAssetSrcSet } from '@/features/assets/urls';
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
 import { formatPhone, formatZipCode, normalizePhone } from '@/lib/brazil';
@@ -96,35 +96,24 @@ function StoreInfoLogo({
   logoAssetId,
   isOpen,
 }: Pick<StoreInfoSheetProps, 'name' | 'logoUrl' | 'logoAssetId'> & { isOpen: boolean }) {
-  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const imageAvailable = Boolean(logoUrl && failedLogoUrl !== logoUrl);
-
-  useEffect(() => {
-    if (!logoUrl || !imageRef.current?.complete || imageRef.current.naturalWidth > 0) return;
-    const frame = requestAnimationFrame(() => setFailedLogoUrl(logoUrl));
-    return () => cancelAnimationFrame(frame);
-  }, [logoUrl]);
+  const src = logoAssetId ?? logoUrl;
+  const [failed, setFailed] = useState(false);
+  const imageAvailable = Boolean(src && !failed);
 
   return (
     <div className={`store-info-logo-wrapper ${isOpen ? 'is-open' : 'is-closed'}`}>
-      {!logoUrl || !imageAvailable ? (
+      {!imageAvailable || !src ? (
         <span className="store-info-logo store-info-logo-fallback" aria-label={name}>
           <Store aria-hidden="true" />
         </span>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          ref={imageRef}
+        <Image
           className="store-info-logo"
-          src={logoUrl}
-          srcSet={logoAssetId ? storeAssetSrcSet(logoAssetId, [160, 320]) : undefined}
+          src={src}
+          fill
           sizes="80px"
           alt={`Logo de ${name}`}
-          width={320}
-          height={320}
-          decoding="async"
-          onError={() => setFailedLogoUrl(logoUrl)}
+          onError={() => setFailed(true)}
         />
       )}
       <span className="store-info-status-badge" aria-hidden="true">

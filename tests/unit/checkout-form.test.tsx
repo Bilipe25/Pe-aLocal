@@ -688,9 +688,6 @@ describe('checkout público v2', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Salvar meus dados para a próxima compra' }),
     ).toBeChecked();
-    expect(
-      screen.getByRole('checkbox', { name: 'Lembrar este pedido neste aparelho' }),
-    ).not.toBeChecked();
     expect(screen.queryByRole('textbox', { name: 'Cupom' })).not.toBeInTheDocument();
     expect((await screen.findAllByText('Desconto BEMVINDO10')).length).toBeGreaterThan(0);
     await waitFor(() => expect(mocks.setCouponCode).toHaveBeenCalledWith('BEMVINDO10'), {
@@ -769,7 +766,6 @@ describe('checkout público v2', () => {
     expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
     const confirm = screen.getByRole('button', { name: /Confirmar/ });
     await waitFor(() => expect(confirm).toBeEnabled());
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Lembrar este pedido neste aparelho' }));
     expect(mocks.createOrderAction).not.toHaveBeenCalled();
 
     fireEvent.submit(container.querySelector('form')!);

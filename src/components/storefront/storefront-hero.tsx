@@ -1,10 +1,10 @@
 'use client';
 
 import { Banknote, CalendarDays, ChevronDown, Clock, Package, Store } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import { useState } from 'react';
 
 import { StoreInfoSheet, type StoreInfoAddress } from '@/components/storefront/store-info-sheet';
-import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
 import { formatCurrency } from '@/lib/utils';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
@@ -68,17 +68,10 @@ function StoreLogo({
   logoUrl,
   logoAssetId,
 }: Pick<StorefrontHeroProps, 'name' | 'logoUrl' | 'logoAssetId'>) {
-  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const imageAvailable = Boolean(logoUrl && failedLogoUrl !== logoUrl);
+  const src = logoAssetId ?? logoUrl;
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    if (!logoUrl || !imageRef.current?.complete || imageRef.current.naturalWidth > 0) return;
-    const frame = requestAnimationFrame(() => setFailedLogoUrl(logoUrl));
-    return () => cancelAnimationFrame(frame);
-  }, [logoUrl]);
-
-  if (!imageAvailable || !logoUrl) {
+  if (!src || failed) {
     return (
       <span className="storefront-hero-logo storefront-hero-logo-fallback" aria-label={name}>
         <Store aria-hidden="true" />
@@ -87,18 +80,14 @@ function StoreLogo({
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      ref={imageRef}
+    <Image
       className="storefront-hero-logo"
-      src={logoUrl}
-      srcSet={logoAssetId ? storeAssetSrcSet(logoAssetId, [96, 192, 384]) : undefined}
+      src={src}
+      fill
       sizes="64px"
       alt={`Logo de ${name}`}
-      width={192}
-      height={192}
-      decoding="async"
-      onError={() => setFailedLogoUrl(logoUrl)}
+      priority
+      onError={() => setFailed(true)}
     />
   );
 }
@@ -130,17 +119,9 @@ export function StorefrontHero({
   config,
   shareUrl,
 }: StorefrontHeroProps) {
-  const [failedCoverUrl, setFailedCoverUrl] = useState<string | null>(null);
-  const coverRef = useRef<HTMLImageElement>(null);
-  const coverAvailable = Boolean(
-    config.layout.showCover && coverUrl && failedCoverUrl !== coverUrl,
-  );
-
-  useEffect(() => {
-    if (!coverUrl || !coverRef.current?.complete || coverRef.current.naturalWidth > 0) return;
-    const frame = requestAnimationFrame(() => setFailedCoverUrl(coverUrl));
-    return () => cancelAnimationFrame(frame);
-  }, [coverUrl]);
+  const [failedCover, setFailedCover] = useState(false);
+  const coverSrc = config.layout.showCover ? (coverAssetId ?? coverUrl) : null;
+  const coverAvailable = Boolean(coverSrc && !failedCover);
 
   const statusInfo = STATUS_CONFIG[availability.state];
   const summary = config.identity.shortDescription || description;
@@ -170,20 +151,15 @@ export function StorefrontHero({
       className={`storefront-hero ${compactHero ? 'is-compact' : 'is-expanded'} ${coverAvailable ? 'has-cover' : 'has-cover-fallback'}`}
     >
       <div className="storefront-hero-media" aria-hidden="true">
-        {coverAvailable && coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            ref={coverRef}
+        {coverAvailable && coverSrc ? (
+          <Image
             className="storefront-hero-cover"
-            src={coverUrl}
-            srcSet={coverAssetId ? storeAssetSrcSet(coverAssetId, [384, 768, 1280]) : undefined}
+            src={coverSrc}
+            fill
             sizes="100vw"
             alt=""
-            width={1280}
-            height={640}
-            fetchPriority="high"
-            decoding="async"
-            onError={() => setFailedCoverUrl(coverUrl)}
+            priority
+            onError={() => setFailedCover(true)}
           />
         ) : (
           <div className="storefront-hero-cover-fallback" />
