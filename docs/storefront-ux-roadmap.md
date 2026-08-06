@@ -126,7 +126,7 @@ Estes pontos alimentam as fases a seguir.
 | # | Status | Refinamento | Por que | Como medir |
 |---|--------|-------------|---------|------------|
 | B1 | ✅ | **ETA dinâmico por loja** (não só "30-45 min") com base no `PromiseFulfillmentMinAt/MaxAt` vindo do `quote` | O cálculo já existe; basta renderizar. Reduz ansiedade do cliente. | E2E: hero e `/cart` mostram ETA. |
-| B2 | ✅ | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento | O `useCustomerOrderTracking` já existe; mostrar um banner "Seu pedido #42 está em preparo" no topo do `/cart` quando o `lastOrder` é o mesmo slug. | E2E: cliente com pedido ativo vê banner. |
+| B2 | ⬜ | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento | Removido da interface do carrinho por excesso de informação visual. O acompanhamento continua disponível pelo destino "Meu pedido" da navegação inferior. | Manter o carrinho focado na finalização. |
 | B3 | **Tags no produto**: "Novo", "Mais pedido", "Promoção" | Requer colunas aditivas em `Product` (`isNew`, `popularity30d`, `promoPriceCents`, `promoEndsAt`). Schema já prevê `version` para CAS. | Migração expand → backfill → guard. |
 | B4 | **Selos alimentares** (vegano, sem glúten, contém lactose) | Requer nova tabela `ProductDietaryTag` N:N. Default vazio, opt-in. | Migração aditiva. |
 | B5 | **Promoções por horário** (ex.: "Happy hour 17h-19h") | Reuso de `StoreScheduleException` mais um `ProductDiscountSchedule`. Já temos `version`. | Migração aditiva. |
@@ -165,7 +165,7 @@ Estes pontos alimentam as fases a seguir.
 | D4 | **Sugestão automática de adicionais** com base no `cartItem.fingerprint` | A `cart-validator.ts` já tem `selectedOptions`; adicionar `recommendationSet` por opção. | A/B. |
 | D5 | **"Pediu junto"** no modal (carrossel horizontal de produtos que costumam acompanhar) | Mesmo motor de `cart-recommendations`, sinal "frequentemente comprados juntos". | A/B. |
 | D6 | **Modo "Pedido salvo"** (cliente volta 1 dia depois e a sacola ainda está lá com a data) | Já persiste; falta UI de "Sacola de ontem — retomar?". | E2E com `cart.requiresWrite`. |
-| D7 | **Histórico de pedidos públicos** com opt-in do cliente | Reusa `last-order-store` + `/api/orders/track`. Banner "Outros pedidos seus". | Opt-in via `customer-recognition`. |
+| D7 | ✅ **Histórico de pedidos públicos** com opt-in do cliente | Histórico local, por loja e por aparelho, usando tokens públicos validados por `/api/orders/track`; o `last-order-store` atual permanece compatível. | Testes de storage, expiração, isolamento, opt-in e tracking. |
 
 ### Fase E — Qualidade de produção, polimento, motion (paralelo, contínuo)
 
@@ -286,16 +286,9 @@ workers para leituras públicas.
 
 ### B2 — Pedido em andamento no carrinho
 
-**Implementação**:
-
-- Novo `src/components/storefront/active-order-banner.tsx` lê o último token
-  público salvo para a loja atual e valida o estado no endpoint de tracking.
-- Estados ativos exibem "Seu pedido #42", status atual, estimativa e link para
-  `/order/[token]`.
-- O componente reutiliza `useCustomerOrderTracking`, portanto mantém polling,
-  Pusher quando configurado, expiração de token e isolamento por loja.
-- Pedidos entregues/cancelados não ocupam o carrinho; tokens inválidos são
-  removidos do storage local.
+**Status**: removido da interface do carrinho. O fluxo de acompanhamento permanece
+disponível pelo destino "Meu pedido" da navegação inferior, mantendo o carrinho
+dedicado aos itens, valores e checkout.
 
 ### B8 — Feedback ao favoritar
 
@@ -307,6 +300,26 @@ workers para leituras públicas.
   `ProductModal`.
 - A animação respeita `prefers-reduced-motion: reduce` e o estado `aria-pressed`
   continua sendo a confirmação acessível.
+
+### D7 — Histórico local de pedidos públicos
+
+**Implementação** (sem migration e sem novo endpoint público):
+
+- `src/stores/public-order-history-store.ts` guarda até cinco tokens públicos por
+  loja, com versão própria, retenção de 30 dias, limpeza de tokens inválidos e
+  sincronização entre abas.
+- O checkout mantém o registro atual de `last-order-store` e oferece um opt-in
+  separado, desmarcado por padrão, para lembrar o pedido no aparelho. Esse
+  controle não entra no payload da API nem altera `saveCustomerData`.
+- `src/components/storefront/public-order-history.tsx` valida cada token pelo
+  endpoint de tracking já existente, remove pedidos expirados e exibe somente
+  número, status e data. Dados pessoais, `customerId`, endereço, itens e
+  pagamento não entram no storage local nem no DTO.
+- A seção "Outros pedidos seus" aparece somente quando há pedidos lembrados e
+  fica no storefront, fora do carrinho. A entrada atual "Meu pedido" continua
+  abrindo o último pedido salvo para preservar o comportamento existente.
+- Customer recognition não é usado como autorização do histórico; o D7 local
+  representa apenas pedidos explicitamente lembrados naquele aparelho.
 
 ### C1 — JSON-LD
 
