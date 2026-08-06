@@ -932,6 +932,7 @@ export function CheckoutForm({
 
   function setStep(nextStep: CheckoutStep) {
     setStepState(nextStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     const query = new URLSearchParams({ step: nextStep, modality });
     const normalizedCoupon = couponCode.trim().toUpperCase();
     if (normalizedCoupon) query.set('coupon', normalizedCoupon);
@@ -1193,15 +1194,6 @@ export function CheckoutForm({
     }
     const index = STEPS.findIndex((candidate) => candidate.id === step);
     setStep(STEPS[index + 1].id);
-  }
-
-  function goBack() {
-    const index = STEPS.findIndex((candidate) => candidate.id === step);
-    if (index === 0) {
-      router.push(`/${storeSlug}/cart`);
-      return;
-    }
-    setStep(STEPS[index - 1].id);
   }
 
   const handleValidSubmit: SubmitHandler<CheckoutFormValues> = (validValues) => {
