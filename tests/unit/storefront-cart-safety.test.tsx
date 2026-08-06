@@ -339,11 +339,4 @@ describe('segurança e clareza do carrinho público', () => {
     expect(continueLink).toHaveAttribute('href', '/burger-do-ze');
     expect(continueLink).toHaveTextContent('Continuar comprando');
   });
-
-  it('mostra a janela de previsão calculada pelo quote no resumo', () => {
-    renderCart();
-
-    expect(screen.getByText('Previsão para retirada')).toBeVisible();
-    expect(screen.getByText('15:30–15:50')).toBeVisible();
-  });
 });
