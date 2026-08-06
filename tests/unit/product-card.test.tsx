@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ProductCard } from '@/components/storefront/product-card';
 
+const ASSET_ID = '4da03571-bffd-45ef-8c44-20686c487838';
 const baseProps = {
   name: 'Burger da casa',
   description: 'Pão, carne e queijo',
@@ -10,7 +11,7 @@ const baseProps = {
   isFeatured: false,
   isSoldOut: false,
   imageUrl: '/imagem-legada.jpg',
-  imageAssetId: '4da03571-bffd-45ef-8c44-20686c487838',
+  imageAssetId: ASSET_ID,
   onClick: vi.fn(),
   showImage: true,
   showBadges: true,
@@ -18,20 +19,22 @@ const baseProps = {
 };
 
 describe('imagem responsiva do produto', () => {
-  it('usa srcSet do pipeline Cloudflare com tamanho adequado ao card horizontal', () => {
+  it('usa o loader do Cloudflare/Images e srcSet com todas as larguras suportadas', () => {
     const { container } = render(<ProductCard {...baseProps} />);
 
     const image = container.querySelector('img');
     expect(image).not.toBeNull();
     expect(image).toHaveAttribute(
       'src',
-      '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838?width=192',
+      `/api/store-assets/${ASSET_ID}?width=384`,
     );
     expect(image).toHaveAttribute(
       'srcset',
-      expect.stringContaining(
-        '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838?width=96 96w',
-      ),
+      expect.stringContaining(`/api/store-assets/${ASSET_ID}?width=96 96w`),
+    );
+    expect(image).toHaveAttribute(
+      'srcset',
+      expect.stringContaining(`/api/store-assets/${ASSET_ID}?width=1280 1280w`),
     );
     expect(image).toHaveAttribute('sizes', '(max-width: 639px) 104px, 128px');
     expect(image).toHaveAttribute('loading', 'lazy');
@@ -59,50 +62,16 @@ describe('imagem responsiva do produto', () => {
     expect(screen.getByText('Imagem indisponível')).toBeVisible();
   });
 
-  it('exibe uma imagem restaurada do cache antes da hidratação', async () => {
-    const completeDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLImageElement.prototype,
-      'complete',
-    );
-    const naturalWidthDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLImageElement.prototype,
-      'naturalWidth',
-    );
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      queueMicrotask(() => callback(0));
-      return 1;
-    });
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    Object.defineProperty(HTMLImageElement.prototype, 'complete', {
-      configurable: true,
-      get: () => true,
-    });
-    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', {
-      configurable: true,
-      get: () => 384,
-    });
+  it('transita para is-loaded quando o next/image dispara onLoad', async () => {
+    const { container } = render(<ProductCard {...baseProps} />);
 
-    try {
-      const { container } = render(<ProductCard {...baseProps} />);
+    const image = container.querySelector('img')!;
+    fireEvent.load(image);
 
-      await waitFor(() => {
-        expect(container.querySelector('.storefront-product-image-frame')).toHaveClass('is-loaded');
-      });
-      expect(container.querySelector('img')).toBeVisible();
-      expect(container.querySelector('.storefront-product-image-placeholder')).toBeNull();
-    } finally {
-      vi.unstubAllGlobals();
-      if (completeDescriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'complete', completeDescriptor);
-      } else {
-        Reflect.deleteProperty(HTMLImageElement.prototype, 'complete');
-      }
-      if (naturalWidthDescriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', naturalWidthDescriptor);
-      } else {
-        Reflect.deleteProperty(HTMLImageElement.prototype, 'naturalWidth');
-      }
-    }
+    await waitFor(() => {
+      expect(container.querySelector('.storefront-product-image-frame')).toHaveClass('is-loaded');
+    });
+    expect(container.querySelector('.storefront-product-image-placeholder')).toBeNull();
   });
 
   it('explica o estado sem imagem sem remover o produto do catálogo', () => {
@@ -118,13 +87,14 @@ describe('imagem responsiva do produto', () => {
     expect(screen.getByRole('button', { name: 'Ver produto: Burger da casa' })).toBeEnabled();
   });
 
-  it('preserva URL legada sem gerar srcSet incompatível', () => {
+  it('preserva URL legada no src e não adiciona pipeline de transformação', () => {
     const { container } = render(<ProductCard {...baseProps} imageAssetId={null} />);
 
     const image = container.querySelector('img');
     expect(image).not.toBeNull();
     expect(image).toHaveAttribute('src', '/imagem-legada.jpg');
-    expect(image).not.toHaveAttribute('srcset');
+    expect(image).toHaveAttribute('srcset');
+    expect(image!.getAttribute('srcset')).not.toContain('/api/store-assets/');
   });
 
   it('permite favoritar e desfavoritar com estado acessível', () => {

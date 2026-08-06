@@ -2,6 +2,7 @@
 
 import { SearchX } from 'lucide-react';
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
@@ -13,7 +14,7 @@ import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
 import { StorefrontSearch } from '@/components/storefront/storefront-search';
-import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
+import { storeAssetUrl } from '@/features/assets/urls';
 import {
   createCatalogIndex,
   filterIndexedCatalog,
@@ -486,18 +487,15 @@ export function CatalogView({
                   {customization.layout.showCategoryImages &&
                     customization.layout.categoryNavigation === 'DROPDOWN' &&
                     category.image && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={storeAssetUrl(category.image.id, 192)}
-                        srcSet={storeAssetSrcSet(category.image.id, [96, 192, 384])}
-                        sizes="72px"
-                        alt={category.image.altText}
+                      <Image
+                        src={category.image.id}
                         width={96}
                         height={96}
+                        sizes="72px"
+                        alt={category.image.altText}
                         loading="lazy"
-                        decoding="async"
                         onError={(event) => {
-                          event.currentTarget.hidden = true;
+                          event.currentTarget.style.visibility = 'hidden';
                         }}
                         className="storefront-category-heading-image"
                       />

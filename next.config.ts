@@ -9,8 +9,20 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@prisma/client', '.prisma/client', 'pg-cloudflare'],
 
   // Otimizações de imagem
+  //
+  // O runtime é OpenNext/Cloudflare Workers, onde o otimizador de imagem nativo
+  // do Next.js não roda. Usamos um loader custom que aponta para a rota pública
+  // /api/store-assets/[assetId], a qual já invoca o binding IMAGES (Cloudflare
+  // Images) no edge — gerando AVIF/WebP e resize sob demanda. As larguras em
+  // `deviceSizes` existem em `STORE_ASSET_ALLOWED_WIDTHS` para garantir que
+  // cada variante do `srcset` seja servida pela rota, sem recorrer ao fallback
+  // do asset original.
   images: {
+    loader: 'custom',
+    loaderFile: 'src/lib/images/cloudflare-images.ts',
     formats: ['image/avif', 'image/webp'],
+    deviceSizes: [96, 192, 384, 768, 1280],
+    imageSizes: [],
     remotePatterns: [
       // Supabase Storage
       {

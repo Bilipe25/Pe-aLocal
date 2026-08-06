@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 
-import { storeAssetSrcSet } from '@/features/assets/urls';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 
 interface CategoryNavProps {
@@ -105,25 +105,18 @@ export function CategoryNav({
               aria-current={isActive ? 'page' : undefined}
               className={`storefront-category-button ${showImages && category.imageUrl ? 'has-image' : ''} ${isActive ? 'is-active' : ''}`}
             >
-              {showImages && category.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={category.imageUrl}
-                  srcSet={
-                    category.imageAssetId
-                      ? storeAssetSrcSet(category.imageAssetId, [96, 192])
-                      : undefined
-                  }
-                  sizes="52px"
-                  alt=""
+              {showImages && (category.imageUrl || category.imageAssetId) && (
+                <Image
+                  className="storefront-category-thumbnail"
+                  src={category.imageAssetId ?? category.imageUrl!}
                   width={52}
                   height={52}
+                  sizes="52px"
+                  alt=""
                   loading="lazy"
-                  decoding="async"
                   onError={(event) => {
-                    event.currentTarget.hidden = true;
+                    event.currentTarget.style.visibility = 'hidden';
                   }}
-                  className="storefront-category-thumbnail"
                 />
               )}
               {category.name}

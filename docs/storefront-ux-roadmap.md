@@ -58,10 +58,10 @@ consumidor:
    termo, sem sugestões de categoria, sem contagem em tempo real durante a
    digitação.
 5. Confiança no produto: sem tag de "novo"/"mais pedido"/"promoção" (campo
-   ainda não existe no schema), sem selos de alérgeno/vegano, sem
-   microinteração ao adicionar à sacola.
+    ainda não existe no schema), sem selos de alérgeno/vegano, sem
+    microinteração ao adicionar à sacola.
 6. Conversão: o modal de produto fecha imediatamente após adicionar — não há
-   "Adicionar e continuar pedindo" nem mini-confirmação inline.
+    "Adicionar e continuar pedindo" nem mini-confirmação inline.
 7. Carrinho: o `CartFab` recoloca a contagem via `key={count}` (re-monta o
    span a cada mudança) e não mostra nada além do total; a página `/cart` não
    exibe horário/status da loja nem o ETA prometido pelo `quote`.
@@ -70,8 +70,10 @@ consumidor:
 9. Acessibilidade pontual: `prefers-reduced-motion` está parcialmente
    respeitado; animações de "section-reveal" e shimmer merecem revisão.
 10. Performance: o catálogo inteiro é serializado no RSC e re-hidratado
-    sempre; imagens usam `<img>` e não o binding `IMAGES` do Cloudflare
-    (perde resize/format on the fly).
+     sempre; ~~imagens usam `<img>` e não o binding `IMAGES` do Cloudflare
+     (perde resize/format on the fly).~~ *(resolvido em E1 — `next/image` +
+     loader custom aponta para `/api/store-assets/[assetId]`, com AVIF/WebP
+     on the fly via binding `IMAGES`)*.
 
 Estes pontos alimentam as fases a seguir.
 
@@ -171,7 +173,7 @@ Estes pontos alimentam as fases a seguir.
 
 | # | Refinamento | Por que | Como medir |
 |---|-------------|---------|------------|
-| E1 | **Adotar `next/image` com o binding `IMAGES` do Cloudflare** para todas as imagens do cardápio (logo, cover, produto, banner, categoria) | Hoje é `<img>` com `srcSet`. Trocar para `next/image` com loader do `IMAGES` libera AVIF/WebP on the fly e LCP. | Lighthouse LCP. |
+| E1 | ✅ | **Adotar `next/image` com o binding `IMAGES` do Cloudflare** para todas as imagens do cardápio (logo, cover, produto, banner, categoria) | Hoje é `<img>` com `srcSet`. Trocar para `next/image` com loader do `IMAGES` libera AVIF/WebP on the fly e LCP. | Lighthouse LCP. |
 | E2 | **Code-split de `CatalogView`** com `dynamic` (mantendo o SSR do server component) | `docs/storefront-catalog-payload.md` já sinaliza 268 KiB. Extrair o modal e a busca em um `next/dynamic` reduz JS inicial. | `pnpm build` + comparação. |
 | E3 | **SWR / cache do `quote`** | Hoje o `useCartQuote` refaz a cada mudança. Implementar debounce de 300 ms e `stale-while-revalidate` para evitar pingue-pongue. | `pnpm perf:orders:load`. |
 | E4 | **Animações honrando `prefers-reduced-motion`** em `section-reveal` e `storefront-featured-track` | Boa prática de acessibilidade. | axe + manual. |
@@ -371,14 +373,43 @@ dedicado aos itens, valores e checkout.
 
 ### E1 — `next/image` com `IMAGES`
 
-**Plano**:
+**Implementação**:
 
-- Adicionar loader custom em `src/lib/images/cloudflare-images.ts` que monta
-  `https://imagedelivery.net/<account>/<assetId>/<variant>` lendo o
-  `assetId` da `StoreAsset`.
-- Migrar `product-image.tsx`, `storefront-hero.tsx`,
-  `storefront-banner-image.tsx`, `category-nav.tsx` (capa e thumb).
-- Manter `srcSet`/`sizes` para preservar responsividade.
+- `next.config.ts`定义 `images: { loader: 'custom', loaderFile:
+  'src/lib/images/cloudflare-images.ts', deviceSizes: [96, 192, 384, 768,
+  1280], imageSizes: [] }`. Os `deviceSizes` espelham
+  `STORE_ASSET_ALLOWED_WIDTHS` para que toda variante do `srcset` gerado pelo
+  `next/image` seja servida pela rota pública, sem cair no fallback do asset
+  original.
+- `src/lib/images/cloudflare-images.ts` exporta o loader: identificadores de
+  asset (UUIDs, sem `/` nem `:`) viram `/api/store-assets/<id>?width=<w>`;
+  URLs absolutas e paths relativos legados (`/imagem.jpg`, `https://...`)
+  passam ilesitos, sem query de transformação.
+- `src/server/storage/store-asset-response.ts` negocia o formato via
+  `Accept`: AVIF quando suportado, caso contrário WebP (qualidades 56/82).
+  O `ETag` composto inclui largura e formato (`"<etag>-w<width>-<format>"`),
+  acompanhado de `Vary: Accept`. Larguras fora do conjunto permitido agora
+  retornam 400, evitando variantes não cacheáveis. Cobertura em
+  `tests/unit/store-asset-response.test.ts`.
+- Migrados para `next/image` com `fill` (cover/logo/produto/banner/`StoreInfoLogo`
+  do sheet) ou `width/height` explícitos (thumb de categoria e capa de
+  categoria no layout `DROPDOWN`), preservando `sizes`, `loading="lazy"`,
+  fallback de erro e `priority` no cover do hero (LCP).
+- `tests/setup.ts` importa um mock de `next/image` que reproduz o loader
+  custom em jsdom (onde `next.config.ts` não é lido), garantindo contratos
+  de `src`/`srcset`/`sizes`/`onLoad`/`onError` nos testes de storefront.
+- `storeAssetSrcSet` removido: sua única consumidora era o storefront, agora
+  gerenciada pelo `next/image`. `storeAssetUrl` permanece para o servidor
+  (JSON-LD, OG, DTOs, quote).
+
+**Métricas**: LCP mobile no cardápio demo deve cair ~30-50% (AVIF + `priority`
+no cover); CLS de imagem zerado com `fill` + `aspect-ratio`; JS do entrypoint
+do storefront sem regressão (limite 350 KiB gzip).
+
+**Pendência follow-up (E6)**: a telemetria `product_image_failed` ainda não
+faz parte deste PR — requer estender o enum fechado do endpoint
+`/api/storefront/<slug>/checkout/events` (ou criar um endpoint de
+telemetria genérico), mantendo o schema estrito. Permanece como item da Fase E.
 
 ### E2 — Code-split de `CatalogView`
 

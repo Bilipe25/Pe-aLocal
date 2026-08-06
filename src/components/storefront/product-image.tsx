@@ -1,9 +1,10 @@
 'use client';
 
 import { ImageOff } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import Image from 'next/image';
+import { type ReactNode, useState } from 'react';
 
-import { storeAssetSrcSet, storeAssetUrl } from '@/features/assets/urls';
+type ProductImageStatus = 'missing' | 'error' | 'loading' | 'loaded';
 
 interface ProductImageProps {
   name: string;
@@ -22,15 +23,14 @@ export function ProductImage({
   width,
   fallback,
 }: ProductImageProps) {
-  const resolvedImageUrl = imageAssetId ? storeAssetUrl(imageAssetId, width) : imageUrl;
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const status = !resolvedImageUrl
+  const src = imageAssetId ?? imageUrl;
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const status: ProductImageStatus = !src
     ? 'missing'
-    : failedUrl === resolvedImageUrl
+    : failedSrc === src
       ? 'error'
-      : loadedUrl === resolvedImageUrl
+      : loadedSrc === src
         ? 'loaded'
         : 'loading';
   const unavailableLabel =
@@ -40,40 +40,19 @@ export function ProductImage({
         ? `${name} está sem imagem`
         : undefined;
 
-  useEffect(() => {
-    const image = imageRef.current;
-    if (!resolvedImageUrl || !image?.complete) return;
-
-    // O evento load pode acontecer antes de o React hidratar uma imagem já
-    // presente no cache do navegador. Sincronize o estado com o elemento para
-    // não manter a imagem carregada invisível atrás do skeleton após um reload.
-    const frame = requestAnimationFrame(() => {
-      if (image.naturalWidth > 0) {
-        setLoadedUrl(resolvedImageUrl);
-        return;
-      }
-      setFailedUrl(resolvedImageUrl);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [resolvedImageUrl]);
-
   return (
     <div className={`storefront-product-image-frame is-${status}`} aria-label={unavailableLabel}>
-      {resolvedImageUrl && status !== 'error' && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          ref={imageRef}
+      {src && status !== 'error' && (
+        <Image
           className="storefront-product-image"
-          src={resolvedImageUrl}
-          srcSet={imageAssetId ? storeAssetSrcSet(imageAssetId, [96, 192, 384, 768]) : undefined}
-          sizes={imageAssetId ? sizes : undefined}
+          src={src}
           alt=""
-          width={width}
-          height={width}
+          fill
+          sizes={sizes}
           loading="lazy"
-          decoding="async"
-          onLoad={() => setLoadedUrl(resolvedImageUrl)}
-          onError={() => setFailedUrl(resolvedImageUrl)}
+          onLoad={() => setLoadedSrc(src)}
+          onError={() => setFailedSrc(src)}
+          data-asset-target-width={width}
         />
       )}
       {status !== 'loaded' && (
