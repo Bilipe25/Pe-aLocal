@@ -10,6 +10,7 @@ import {
 } from '@/lib/orders/payment-report-token-memory';
 import type { CartItem } from '@/stores/cart-store';
 import { useLastOrderStore } from '@/stores/last-order-store';
+import { readPublicOrderHistory, usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 
 const PUBLIC_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -171,6 +172,7 @@ describe('checkout público v2', () => {
     window.scrollTo = vi.fn();
     clearPaymentReportToken(PUBLIC_TOKEN);
     useLastOrderStore.setState({ storeId: null, storeSlug: null, record: null });
+    usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: async () => quote,
@@ -686,6 +688,9 @@ describe('checkout público v2', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Salvar meus dados para a próxima compra' }),
     ).toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: 'Lembrar este pedido neste aparelho' }),
+    ).not.toBeChecked();
     expect(screen.queryByRole('textbox', { name: 'Cupom' })).not.toBeInTheDocument();
     expect((await screen.findAllByText('Desconto BEMVINDO10')).length).toBeGreaterThan(0);
     await waitFor(() => expect(mocks.setCouponCode).toHaveBeenCalledWith('BEMVINDO10'), {
@@ -764,6 +769,7 @@ describe('checkout público v2', () => {
     expect(await screen.findByRole('heading', { name: 'Revise antes de confirmar' })).toBeVisible();
     const confirm = screen.getByRole('button', { name: /Confirmar/ });
     await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Lembrar este pedido neste aparelho' }));
     expect(mocks.createOrderAction).not.toHaveBeenCalled();
 
     fireEvent.submit(container.querySelector('form')!);
@@ -780,6 +786,7 @@ describe('checkout público v2', () => {
       step: 'review',
     });
     expect(readPaymentReportToken(PUBLIC_TOKEN)).toBe('report-token-a');
+    expect(readPublicOrderHistory(window.localStorage, 'store-1', 'loja-1')).toHaveLength(1);
     expect(window.sessionStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
     expect(window.localStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
     

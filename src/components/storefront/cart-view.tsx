@@ -19,7 +19,6 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'rea
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
-import { ActiveOrderBanner } from '@/components/storefront/active-order-banner';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
 import { Button } from '@/components/ui/button';
@@ -50,7 +49,6 @@ interface CartViewProps {
   storeId: string;
   storeSlug: string;
   storeName?: string;
-  timeZone?: string;
   logoImageUrl?: string | null;
   logoImageAssetId?: string | null;
   acceptingOrders: boolean;
@@ -67,7 +65,6 @@ export function CartView({
   storeId,
   storeSlug,
   storeName = 'Loja',
-  timeZone = 'America/Fortaleza',
   logoImageUrl = null,
   logoImageAssetId = null,
   acceptingOrders,
@@ -290,7 +287,6 @@ export function CartView({
         <span className="sr-only" role="status" aria-live="polite">
           {cartAnnouncement}
         </span>
-        <ActiveOrderBanner storeId={storeId} storeSlug={storeSlug} timeZone={timeZone} />
         <div className="storefront-cart-empty-icon">
           <ShoppingBag aria-hidden="true" />
         </div>
@@ -319,7 +315,6 @@ export function CartView({
         logoImageUrl={logoImageUrl}
         logoImageAssetId={logoImageAssetId}
       />
-      <ActiveOrderBanner storeId={storeId} storeSlug={storeSlug} timeZone={timeZone} />
       <div className="storefront-cart-heading">
         <Link
           href={`/${storeSlug}`}

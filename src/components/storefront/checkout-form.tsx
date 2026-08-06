@@ -59,6 +59,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 import type { CheckoutQuoteInput } from '@/schemas/checkout';
 import { selectCartCouponCode, subscribeToCartStorage, useCartStore } from '@/stores/cart-store';
 import { useLastOrderStore } from '@/stores/last-order-store';
+import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type {
   CustomerRecognitionConfirmationResult,
   CustomerRecognitionResult,
@@ -558,6 +559,8 @@ export function CheckoutForm({
   const clearCart = useCartStore((state) => state.clearCart);
   const cartCouponCode = useCartStore(selectCartCouponCode);
   const setCartCouponCode = useCartStore((state) => state.setCouponCode);
+  const setOrderHistoryStore = usePublicOrderHistoryStore((state) => state.setStore);
+  const rememberOrder = usePublicOrderHistoryStore((state) => state.rememberOrder);
   const [step, setStepState] = useState<CheckoutStep>(initialStep);
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -565,6 +568,7 @@ export function CheckoutForm({
     orderNumber: number;
     token: string;
   } | null>(null);
+  const [rememberOrderHistory, setRememberOrderHistory] = useState(false);
   const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
@@ -1306,12 +1310,18 @@ export function CheckoutForm({
         if (result.data.paymentReportToken) {
           storePaymentReportToken(result.data.publicToken, result.data.paymentReportToken);
         }
-        useLastOrderStore.getState().registerOrder({
+        const orderCreatedAt = new Date().toISOString();
+        const publicOrderRecord = {
           trackingToken: result.data.publicToken,
           storeId,
           storeSlug,
-          createdAt: new Date().toISOString(),
-        });
+          createdAt: orderCreatedAt,
+        };
+        useLastOrderStore.getState().registerOrder(publicOrderRecord);
+        if (rememberOrderHistory) {
+          setOrderHistoryStore(storeId, storeSlug);
+          rememberOrder(publicOrderRecord);
+        }
         clearCart();
         setOrderConfirmed({
           orderNumber: result.data.orderNumber,
@@ -2177,6 +2187,27 @@ export function CheckoutForm({
                   id="saveCustomerData-error"
                   message={errors.saveCustomerData?.message ?? errors.setAddressAsDefault?.message}
                 />
+              </div>
+
+              <div className="border-tinta/15 bg-papel rounded-xl border p-4">
+                <label
+                  htmlFor="remember-order-history"
+                  className="text-tinta flex min-h-11 cursor-pointer items-start gap-3 text-sm font-semibold"
+                >
+                  <input
+                    id="remember-order-history"
+                    type="checkbox"
+                    checked={rememberOrderHistory}
+                    onChange={(event) => setRememberOrderHistory(event.target.checked)}
+                    aria-describedby="remember-order-history-help"
+                    className="accent-pimenta mt-0.5 h-5 w-5 shrink-0"
+                  />
+                  <span>Lembrar este pedido neste aparelho</span>
+                </label>
+                <p id="remember-order-history-help" className="text-text-muted mt-2 text-sm text-pretty">
+                  Guardaremos apenas o link de acompanhamento por até 30 dias. Seus dados pessoais não
+                  ficam salvos neste histórico.
+                </p>
               </div>
 
               <div>
