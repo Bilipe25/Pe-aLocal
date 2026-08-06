@@ -6,7 +6,6 @@ import {
   Banknote,
   Bike,
   Check,
-  ChevronLeft,
   CreditCard,
   Loader2,
   MapPin,
@@ -1413,12 +1412,13 @@ export function CheckoutForm({
   }
 
   const currentStepIndex = STEPS.findIndex((candidate) => candidate.id === step);
+  const totalSuffix = effectiveQuote ? ` \u00b7 ${formatCurrency(effectiveQuote.total)}` : '';
   const nextLabel =
     step === 'identification'
-      ? 'Continuar'
+      ? `Continuar${totalSuffix}`
       : step === 'fulfillment'
-        ? 'Continuar para pagamento'
-        : 'Revisar pedido';
+        ? `Continuar para pagamento${totalSuffix}`
+        : `Revisar pedido${totalSuffix}`;
 
   return (
     <form className="storefront-checkout-form" onSubmit={handleFormSubmit} noValidate>
@@ -1444,7 +1444,7 @@ export function CheckoutForm({
                   />
                   <span
                     className={cn(
-                      'mt-2 block truncate text-xs font-semibold sm:text-sm',
+                      'mt-2 flex items-center gap-1 truncate text-xs font-semibold sm:text-sm',
                       active
                         ? 'text-tinta'
                         : complete
@@ -1452,6 +1452,9 @@ export function CheckoutForm({
                           : 'text-text-muted',
                     )}
                   >
+                    {complete && (
+                      <Check className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
+                    )}
                     <span className="sm:hidden">{candidate.shortLabel}</span>
                     <span className="hidden sm:inline">{candidate.label}</span>
                   </span>
@@ -2023,6 +2026,11 @@ export function CheckoutForm({
                   )}
                 </div>
               )}
+              {effectiveQuote && (
+                <div className="lg:hidden">
+                  <QuoteSummary quote={effectiveQuote} />
+                </div>
+              )}
             </section>
           )}
 
@@ -2248,25 +2256,14 @@ export function CheckoutForm({
       </div>
 
       <div className="storefront-checkout-action-bar purchase-step-action fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:px-0 lg:pt-0">
-        <div className="mx-auto flex max-w-5xl items-center gap-2 sm:gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={goBack}
-            disabled={isPending}
-            aria-label="Voltar para a etapa anterior"
-            className="storefront-checkout-back h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Voltar</span>
-          </Button>
+        <div className="mx-auto max-w-5xl">
           {step !== 'review' ? (
             <Button
               ref={step === 'identification' ? recognitionTriggerRef : undefined}
               type="button"
               onClick={() => void goForward()}
               disabled={recognitionPending}
-              className="storefront-primary-action min-w-0 flex-1 overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
+              className="storefront-primary-action w-full overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
             >
               {step === 'identification' && recognitionPending ? (
                 <>
@@ -2284,7 +2281,7 @@ export function CheckoutForm({
               disabled={
                 isPending || quoteLoading || !effectiveQuote?.canCheckout || Boolean(changedQuote)
               }
-              className="storefront-primary-action min-w-0 flex-1 overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
+              className="storefront-primary-action w-full overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
             >
               {isPending ? (
                 <>

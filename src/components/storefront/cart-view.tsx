@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Loader2,
   Minus,
-  Pencil,
   Plus,
   RefreshCw,
   ShoppingBag,
@@ -316,14 +315,6 @@ export function CartView({
         logoImageAssetId={logoImageAssetId}
       />
       <div className="storefront-cart-heading">
-        <Link
-          href={`/${storeSlug}`}
-          className="storefront-cart-continue"
-          aria-label="Continuar comprando no cardápio"
-        >
-          <ArrowLeft aria-hidden="true" />
-          <span>Continuar comprando</span>
-        </Link>
         <p>
           {itemCount} {itemCount === 1 ? 'item no pedido' : 'itens no pedido'}
         </p>
@@ -642,13 +633,18 @@ function CartLineItem({
           name={displayName}
           imageUrl={imageUrl}
           imageAssetId={imageAssetId}
-          sizes="48px"
-          width={96}
+          sizes="56px"
+          width={112}
         />
       </div>
 
       <div className="storefront-cart-line-body">
-        <div className="storefront-cart-line-row">
+        <button
+          type="button"
+          className="storefront-cart-line-row"
+          aria-label={`Editar ${displayName}`}
+          onClick={(event) => onEdit(event.currentTarget)}
+        >
           <div className="storefront-cart-line-info">
             <h3>{displayName}</h3>
             {displayOptions.length > 0 && (
@@ -665,18 +661,25 @@ function CartLineItem({
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         <div className="storefront-cart-line-controls">
           <div className="storefront-cart-quantity">
             <button
               type="button"
-              className="is-decrease"
-              aria-label={`Diminuir quantidade de ${displayName}`}
-              onClick={() => onQuantityChange(quantity - 1)}
-              disabled={quantity <= 1}
+              className={`is-decrease${quantity <= 1 ? ' is-remove' : ''}`}
+              aria-label={
+                quantity <= 1
+                  ? `Remover ${displayName} da sacola`
+                  : `Diminuir quantidade de ${displayName}`
+              }
+              onClick={() => (quantity <= 1 ? onRemove() : onQuantityChange(quantity - 1))}
             >
-              <Minus aria-hidden="true" />
+              {quantity <= 1 ? (
+                <Trash2 aria-hidden="true" />
+              ) : (
+                <Minus aria-hidden="true" />
+              )}
             </button>
             <output aria-live="polite" aria-label={`Quantidade de ${displayName}`}>
               {quantity}
@@ -692,26 +695,6 @@ function CartLineItem({
               disabled={quantity >= MAX_CART_ITEM_QUANTITY}
             >
               <Plus aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="storefront-cart-line-actions">
-            <button
-              type="button"
-              className="storefront-cart-line-edit"
-              aria-label={`Editar ${displayName}`}
-              onClick={(event) => onEdit(event.currentTarget)}
-            >
-              <Pencil aria-hidden="true" />
-              <span>Editar</span>
-            </button>
-            <button
-              type="button"
-              className="storefront-cart-line-remove"
-              onClick={onRemove}
-              aria-label={`Remover ${displayName} da sacola`}
-            >
-              <Trash2 aria-hidden="true" />
             </button>
           </div>
         </div>
