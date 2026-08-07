@@ -7,6 +7,13 @@ import {
   writePublicOrderHistory,
 } from '@/stores/public-order-history-store';
 
+const pushMock = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: pushMock,
+  }),
+}));
+
 const TRACKING_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 function createMemoryStorage(): Storage {
@@ -129,5 +136,40 @@ describe('PublicOrderHistory', () => {
         'Pedidos lembrados removidos deste aparelho.',
       ),
     );
+  });
+
+  it('permite pedir novamente um pedido concluído e redireciona para a vitrine', async () => {
+    writePublicOrderHistory(window.localStorage, 'store-a', 'loja-a', [
+      {
+        trackingToken: TRACKING_TOKEN,
+        storeId: 'store-a',
+        storeSlug: 'loja-a',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...trackingState,
+          status: 'DELIVERED',
+          items: [
+            {
+              productId: 'prod-1',
+              productName: 'X-Salada',
+              unitPrice: 2500,
+              quantity: 2,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
+
+    const reorderButton = await screen.findByRole('button', { name: /Pedir novamente o pedido 42/i });
+    fireEvent.click(reorderButton);
+
+    expect(pushMock).toHaveBeenCalledWith('/loja-a');
   });
 });

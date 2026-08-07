@@ -641,6 +641,15 @@ export async function getOrderTrackingStateByPublicToken(publicToken: string, st
     },
     select: {
       orderNumber: true,
+      total: true,
+      items: {
+        select: {
+          productId: true,
+          productName: true,
+          unitPrice: true,
+          quantity: true,
+        },
+      },
       modality: true,
       status: true,
       paymentStatus: true,

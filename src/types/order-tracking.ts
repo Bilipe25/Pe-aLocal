@@ -14,6 +14,14 @@ export interface CustomerOrderTrackingStateDTO {
     maxAt: string;
   } | null;
   cancellationMessage: string | null;
+  itemsSummary?: string | null;
+  totalCents?: number | null;
+  items?: Array<{
+    productId?: string;
+    productName: string;
+    unitPrice: number;
+    quantity: number;
+  }> | null;
 }
 
 export interface CustomerOrderTrackingSignalDTO {
