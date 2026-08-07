@@ -7,11 +7,14 @@ import type {
   PaymentStatus,
 } from '@prisma/client';
 
+import { storeAssetUrl } from '@/features/assets/urls';
+import { getDb } from '@/server/database/client';
 import {
+  getFullPublicOrderDetailsByToken,
   getOrderTrackingStateByPublicToken,
   hasActiveOrderTrackingToken,
 } from '@/server/repositories/order.repository';
-import type { CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
+import type { CustomerOrderDetailsDTO, CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
 
 interface TrackingSnapshot {
   orderNumber: number;
@@ -129,4 +132,154 @@ export async function getCustomerOrderTrackingState(publicToken: string, storeSl
 
 export function canAuthorizeCustomerOrderTracking(publicToken: string, storeSlug: string) {
   return hasActiveOrderTrackingToken(publicToken, storeSlug);
+}
+
+const paymentMethodLabels: Record<string, string> = {
+  PIX: 'Pix',
+  CASH: 'Dinheiro',
+  CARD_ON_DELIVERY: 'Cartão no recebimento',
+};
+
+const statusLabels: Record<OrderStatus, string> = {
+  PENDING: 'Recebido',
+  AWAITING_PAYMENT: 'Aguardando pagamento',
+  CONFIRMED: 'Confirmado',
+  PREPARING: 'Em preparo',
+  READY: 'Pronto',
+  OUT_FOR_DELIVERY: 'Saiu para entrega',
+  DELIVERED: 'Concluído',
+  CANCELLED: 'Cancelado',
+};
+
+export async function getCustomerOrderDetails(
+  publicToken: string,
+  storeSlug: string,
+): Promise<CustomerOrderDetailsDTO | null> {
+  const order = await getFullPublicOrderDetailsByToken(publicToken, storeSlug);
+  if (!order) return null;
+
+  const productIds = order.items
+    .map((item) => item.productId)
+    .filter((id): id is string => Boolean(id));
+
+  const products =
+    productIds.length > 0
+      ? await getDb().product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, imageUrl: true, imageAssetId: true },
+        })
+      : [];
+
+  const productMap = new Map<
+    string,
+    { id: string; imageUrl: string | null; imageAssetId: string | null }
+  >(products.map((p) => [p.id, p]));
+
+  const formattedItems = order.items.map((item) => {
+    const p = item.productId ? productMap.get(item.productId) : null;
+    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 256) : p?.imageUrl ?? null;
+    return {
+      id: item.id,
+      productId: item.productId ?? undefined,
+      productName: item.productName,
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+      notes: item.notes,
+      itemTotal: item.itemTotal,
+      imageUrl,
+      imageAssetId: p?.imageAssetId ?? null,
+      options: item.options,
+    };
+  });
+
+  const timelineSteps: Array<{ status: OrderStatus; label: string; date: Date | null }> = [
+    { status: 'PENDING', label: 'Pedido recebido', date: order.createdAt },
+    { status: 'CONFIRMED', label: 'Pedido confirmado', date: order.acceptedAt },
+    { status: 'PREPARING', label: 'Em preparo', date: order.preparingAt },
+    { status: 'READY', label: 'Pronto', date: order.readyAt },
+  ];
+
+  if (order.modality === 'DELIVERY') {
+    timelineSteps.push({
+      status: 'OUT_FOR_DELIVERY',
+      label: 'Saiu para entrega',
+      date: order.dispatchedAt,
+    });
+  }
+
+  timelineSteps.push({
+    status: 'DELIVERED',
+    label: order.modality === 'DELIVERY' ? 'Entregue' : 'Retirado',
+    date: order.deliveredAt,
+  });
+
+  const statusOrder: OrderStatus[] = [
+    'PENDING',
+    'CONFIRMED',
+    'PREPARING',
+    'READY',
+    'OUT_FOR_DELIVERY',
+    'DELIVERED',
+  ];
+  const currentIndex = statusOrder.indexOf(order.status);
+
+  const events =
+    order.status === 'CANCELLED'
+      ? [
+          {
+            status: 'PENDING' as OrderStatus,
+            label: 'Pedido recebido',
+            timestamp: order.createdAt.toISOString(),
+            completed: true,
+            current: false,
+          },
+          {
+            status: 'CANCELLED' as OrderStatus,
+            label: 'Pedido cancelado',
+            timestamp: (order.cancelledAt ?? order.statusChangedAt).toISOString(),
+            completed: true,
+            current: true,
+          },
+        ]
+      : timelineSteps
+          .filter((_, idx) => currentIndex >= 0 && idx <= currentIndex)
+          .map((step) => {
+            const isCurrent = order.status === step.status;
+            return {
+              status: step.status,
+              label: step.label,
+              timestamp: step.date ? step.date.toISOString() : order.createdAt.toISOString(),
+              completed: true,
+              current: isCurrent,
+            };
+          });
+
+  const addressParts = [
+    order.deliveryStreet,
+    order.deliveryNumber,
+    order.deliveryNeighborhood,
+    order.deliveryCity,
+    order.deliveryComplement ? `(${order.deliveryComplement})` : null,
+  ].filter(Boolean);
+
+  const deliveryAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+  return {
+    orderNumber: order.orderNumber,
+    publicToken: order.publicToken,
+    status: order.status,
+    statusLabel: statusLabels[order.status] ?? order.status,
+    statusChangedAt: order.statusChangedAt.toISOString(),
+    createdAt: order.createdAt.toISOString(),
+    modality: order.modality,
+    paymentMethod: paymentMethodLabels[order.paymentMethod] ?? order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    subtotal: order.subtotal,
+    deliveryFee: order.deliveryFee,
+    discount: order.discount,
+    total: order.total,
+    deliveryAddress,
+    events,
+    items: formattedItems,
+  };
 }

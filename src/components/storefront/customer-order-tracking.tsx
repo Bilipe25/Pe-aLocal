@@ -155,40 +155,44 @@ export function CustomerOrderTracking({
       : presentation.description;
 
   return (
-    <section className="border-tinta/10 bg-papel rounded-xl border p-4 sm:p-5">
+    <section className="border-tinta/10 bg-papel rounded-2xl border p-4.5 shadow-sm sm:p-5">
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {presentation.label}. {statusDescription}
       </p>
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3.5">
         <div
           className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
+            'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-2xs',
             presentation.className,
           )}
         >
-          <StatusIcon aria-hidden="true" />
+          <StatusIcon className="h-6 w-6" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-text-secondary font-mono text-sm font-bold">
-            Pedido #{state.orderNumber}
+          <h2 className="font-display text-tinta text-xl font-extrabold tracking-tight">
+            {presentation.label}
+          </h2>
+          <p className="text-text-secondary mt-1 text-xs sm:text-sm leading-relaxed">
+            {statusDescription}
           </p>
-          <h2 className="font-display text-tinta mt-0.5 text-xl font-bold">{presentation.label}</h2>
-          <p className="text-text-secondary mt-1 text-sm">{statusDescription}</p>
           {state.estimate && (
-            <p className="text-tinta mt-2 text-sm font-medium">
-              {state.estimate.label}: {formatTime(state.estimate.minAt, timeZone)}–
-              {formatTime(state.estimate.maxAt, timeZone)}
-            </p>
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-50/80 px-3 py-1 text-xs font-semibold text-brand-700 border border-brand-200/50 shadow-2xs">
+              <Clock3 className="h-3.5 w-3.5 text-brand-600 shrink-0" aria-hidden="true" />
+              <span>
+                {state.estimate.label}: {formatTime(state.estimate.minAt, timeZone)}–
+                {formatTime(state.estimate.maxAt, timeZone)}
+              </span>
+            </div>
           )}
         </div>
       </div>
 
       {state.status === 'CANCELLED' ? (
-        <div className="bg-error-light text-error mt-4 rounded-lg px-3 py-3 text-sm" role="status">
+        <div className="bg-error-light text-error mt-4 rounded-xl px-3.5 py-3 text-sm font-medium" role="status">
           {state.cancellationMessage}
         </div>
       ) : (
-        <ol className="mt-5 flex items-start" aria-label="Etapas do pedido">
+        <ol className="mt-6 flex items-start" aria-label="Etapas do pedido">
           {timeline.map((step, index) => {
             const complete = currentIndex >= 0 && index < currentIndex;
             const current = index === currentIndex;
@@ -208,11 +212,11 @@ export function CustomerOrderTracking({
                 )}
                 <span className="bg-papel relative z-10 px-1">
                   {complete ? (
-                    <CheckCircle2 className="text-success" aria-hidden="true" />
+                    <CheckCircle2 className="h-5 w-5 text-success fill-success/15" aria-hidden="true" />
                   ) : current ? (
-                    <Circle className="fill-brand-600 text-brand-600" aria-hidden="true" />
+                    <Circle className="h-5 w-5 fill-brand-600 text-brand-600" aria-hidden="true" />
                   ) : (
-                    <Circle className="text-border" aria-hidden="true" />
+                    <Circle className="h-5 w-5 text-border" aria-hidden="true" />
                   )}
                 </span>
                 <span
@@ -230,14 +234,14 @@ export function CustomerOrderTracking({
         </ol>
       )}
 
-      <div className="border-tinta/10 mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+      <div className="border-tinta/10 mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-3.5">
         <div className="text-text-secondary text-xs">
           <span
-            className={cn('inline-flex items-center gap-1.5 font-medium', connection.className)}
+            className={cn('inline-flex items-center gap-1.5 font-semibold', connection.className)}
           >
-            <ConnectionIcon aria-hidden="true" /> {connection.label}
+            <ConnectionIcon className="h-3.5 w-3.5" aria-hidden="true" /> {connection.label}
           </span>
-          <span className="mt-1 block">
+          <span className="mt-0.5 block text-[11px] text-text-muted">
             Atualizado às {formatTime(tracking.lastSynchronizedAt, timeZone, true)}
           </span>
         </div>
@@ -247,9 +251,10 @@ export function CustomerOrderTracking({
           size="sm"
           onClick={() => void tracking.refresh()}
           disabled={tracking.isRefreshing}
+          className="h-8 gap-1.5 px-3 text-xs font-semibold"
         >
           <RefreshCw
-            className={tracking.isRefreshing ? 'animate-spin' : undefined}
+            className={cn('h-3.5 w-3.5', tracking.isRefreshing && 'animate-spin')}
             aria-hidden="true"
           />
           {tracking.isRefreshing ? 'Atualizando…' : 'Atualizar'}

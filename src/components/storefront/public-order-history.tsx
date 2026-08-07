@@ -22,6 +22,7 @@ import type { OrderStatus } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useCartStore } from '@/stores/cart-store';
+import { OrderDetailsSheet } from '@/components/storefront/order-details-sheet';
 import {
   subscribeToPublicOrderHistoryStorage,
   usePublicOrderHistoryStore,
@@ -132,6 +133,21 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [selectedToken, setSelectedToken] = useState<string | null>(null);
+  const [selectedSummary, setSelectedSummary] = useState<
+    { orderNumber: number; itemsSummary?: string | null; totalCents?: number | null } | undefined
+  >(undefined);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const handleOpenDetails = (item: Extract<HistoryItem, { status: 'success' }>) => {
+    setSelectedToken(item.record.trackingToken);
+    setSelectedSummary({
+      orderNumber: item.tracking.orderNumber,
+      itemsSummary: item.tracking.itemsSummary,
+      totalCents: item.tracking.totalCents,
+    });
+    setSheetOpen(true);
+  };
 
   const handleReorder = (orderItems?: CustomerOrderTrackingStateDTO['items']) => {
     if (!orderItems || orderItems.length === 0) {
@@ -336,61 +352,84 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
           return (
             <li
               key={orderKey}
+              onClick={() => handleOpenDetails(item)}
               className={cn(
-                'storefront-public-order-history-item',
+                'storefront-public-order-history-item cursor-pointer hover:border-brand-500/30 transition-all',
                 isActive && 'is-active',
               )}
             >
-              <span
-                className={`storefront-public-order-history-icon is-${isActive ? 'active' : presentation.tone}`}
-                aria-hidden="true"
-              >
-                <StatusIcon />
-              </span>
-              <span className="storefront-public-order-history-details">
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  <strong>Pedido #{item.tracking.orderNumber}</strong>
+              <div className="flex w-full items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <span
-                    className={`storefront-public-order-history-badge is-${isActive ? 'active' : presentation.tone}`}
+                    className={`storefront-public-order-history-icon is-${isActive ? 'active' : presentation.tone}`}
+                    aria-hidden="true"
                   >
-                    {presentation.label}
+                    <StatusIcon />
                   </span>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <strong className="font-mono text-sm font-bold text-text">
+                      Pedido #{item.tracking.orderNumber}
+                    </strong>
+                    <span
+                      className={`storefront-public-order-history-badge is-${isActive ? 'active' : presentation.tone}`}
+                    >
+                      {presentation.label}
+                    </span>
+                  </div>
                 </div>
-                {item.tracking.itemsSummary && (
-                  <span className="text-text-primary text-xs font-medium truncate max-w-[200px] sm:max-w-[260px]">
-                    {item.tracking.itemsSummary}
-                  </span>
+
+                {item.tracking.status === 'DELIVERED' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReorder(item.tracking.items);
+                    }}
+                    className="h-8 shrink-0 gap-1 border-brand-500/20 px-2.5 text-xs font-bold text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+                    aria-label={`Pedir novamente o pedido ${item.tracking.orderNumber}`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Pedir de novo
+                  </Button>
+                ) : (
+                  <Link
+                    href={`/${storeSlug}/order/${item.record.trackingToken}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      'storefront-public-order-history-link shrink-0',
+                      isActive && 'is-active',
+                    )}
+                    aria-label={`Acompanhar pedido ${item.tracking.orderNumber}`}
+                  >
+                    {isActive ? 'Acompanhar' : 'Ver pedido'}
+                  </Link>
                 )}
-                <span className="text-text-muted text-[11px]">
+              </div>
+
+              {item.tracking.itemsSummary && (
+                <p className="storefront-public-order-history-summary text-text-primary text-xs font-medium break-words">
+                  {item.tracking.itemsSummary}
+                </p>
+              )}
+
+              <div className="border-tinta/5 flex w-full items-center justify-between border-t pt-1.5 text-xs text-text-muted">
+                <span>
                   {formatOrderDate(item.record.createdAt)} ·{' '}
                   {item.tracking.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
-                  {item.tracking.totalCents ? ` · ${formatCurrency(item.tracking.totalCents)}` : ''}
                 </span>
-              </span>
-              {item.tracking.status === 'DELIVERED' ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleReorder(item.tracking.items)}
-                  className="h-9 gap-1 px-2.5 text-xs font-bold text-brand-600 border-brand-500/20 hover:bg-brand-50 hover:text-brand-700"
-                  aria-label={`Pedir novamente o pedido ${item.tracking.orderNumber}`}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                  Pedir de novo
-                </Button>
-              ) : (
-                <Link
-                  href={`/${storeSlug}/order/${item.record.trackingToken}`}
-                  className={cn(
-                    'storefront-public-order-history-link',
-                    isActive && 'is-active',
-                  )}
-                  aria-label={`Acompanhar pedido ${item.tracking.orderNumber}`}
-                >
-                  {isActive ? 'Acompanhar' : 'Ver pedido'}
-                </Link>
-              )}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-brand-600 underline underline-offset-2">
+                    Ver detalhes
+                  </span>
+                  {item.tracking.totalCents ? (
+                    <strong className="font-mono text-xs font-bold text-text">
+                      {formatCurrency(item.tracking.totalCents)}
+                    </strong>
+                  ) : null}
+                </div>
+              </div>
             </li>
           );
         })}
@@ -399,6 +438,17 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
       <p className="sr-only" role="status" aria-live="polite">
         {statusMessage}
       </p>
+
+      {selectedToken && (
+        <OrderDetailsSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          trackingToken={selectedToken}
+          storeId={storeId}
+          storeSlug={storeSlug}
+          initialSummary={selectedSummary}
+        />
+      )}
     </section>
   );
 }

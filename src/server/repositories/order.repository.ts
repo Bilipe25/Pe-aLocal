@@ -677,6 +677,59 @@ export async function getOrderTrackingStateByPublicToken(publicToken: string, st
   });
 }
 
+export async function getFullPublicOrderDetailsByToken(publicToken: string, storeSlug: string) {
+  return getDb().order.findFirst({
+    where: {
+      publicToken,
+      publicTokenExpiresAt: { gt: new Date() },
+      store: { slug: storeSlug },
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      publicToken: true,
+      status: true,
+      modality: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      subtotal: true,
+      deliveryFee: true,
+      discount: true,
+      total: true,
+      deliveryStreet: true,
+      deliveryNumber: true,
+      deliveryNeighborhood: true,
+      deliveryCity: true,
+      deliveryComplement: true,
+      createdAt: true,
+      statusChangedAt: true,
+      acceptedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      deliveredAt: true,
+      cancelledAt: true,
+      items: {
+        select: {
+          id: true,
+          productId: true,
+          productName: true,
+          unitPrice: true,
+          quantity: true,
+          notes: true,
+          itemTotal: true,
+          options: {
+            select: {
+              optionName: true,
+              optionPrice: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 export async function hasActiveOrderTrackingToken(publicToken: string, storeSlug: string) {
   const order = await getDb().order.findFirst({
     where: {
