@@ -30,6 +30,13 @@ interface TrackingSnapshot {
   cancellationReasonCode: OrderCancellationReasonCode | null;
   estimatedTimeMinMinutes: number;
   estimatedTimeMaxMinutes: number;
+  total?: number | null;
+  items?: Array<{
+    productId?: string;
+    productName: string;
+    unitPrice: number;
+    quantity: number;
+  }>;
 }
 
 const cancellationMessages: Record<OrderCancellationReasonCode, string> = {
@@ -84,6 +91,11 @@ function estimate(snapshot: TrackingSnapshot): CustomerOrderTrackingStateDTO['es
 export function toCustomerOrderTrackingState(
   snapshot: TrackingSnapshot,
 ): CustomerOrderTrackingStateDTO {
+  const itemsSummary =
+    snapshot.items && snapshot.items.length > 0
+      ? snapshot.items.map((item) => `${item.quantity}x ${item.productName}`).join(', ')
+      : null;
+
   return {
     orderNumber: snapshot.orderNumber,
     modality: snapshot.modality,
@@ -99,6 +111,9 @@ export function toCustomerOrderTrackingState(
           ? cancellationMessages[snapshot.cancellationReasonCode]
           : 'O pedido foi cancelado pela loja. Entre em contato para mais informações.'
         : null,
+    totalCents: snapshot.total ?? null,
+    itemsSummary,
+    items: snapshot.items ?? null,
   };
 }
 

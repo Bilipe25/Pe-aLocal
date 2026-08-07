@@ -6,6 +6,7 @@ import {
   Clock3,
   Package,
   RefreshCw,
+  RotateCcw,
   ShoppingBag,
   Trash2,
   Truck,
@@ -13,10 +14,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import type { OrderStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
+import { cn, formatCurrency } from '@/lib/utils';
+import { useCartStore } from '@/stores/cart-store';
 import {
   subscribeToPublicOrderHistoryStorage,
   usePublicOrderHistoryStore,
@@ -119,6 +124,7 @@ async function loadTracking(record: PublicOrderHistoryRecord, storeSlug: string)
 }
 
 export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryProps) {
+  const router = useRouter();
   const orders = usePublicOrderHistoryStore((state) => state.orders);
   const setStore = usePublicOrderHistoryStore((state) => state.setStore);
   const removeOrder = usePublicOrderHistoryStore((state) => state.removeOrder);
@@ -126,6 +132,34 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+
+  const handleReorder = (orderItems?: CustomerOrderTrackingStateDTO['items']) => {
+    if (!orderItems || orderItems.length === 0) {
+      router.push(`/${storeSlug}`);
+      return;
+    }
+
+    useCartStore.getState().setStore(storeId, storeSlug);
+
+    let addedCount = 0;
+    for (const item of orderItems) {
+      useCartStore.getState().addItem({
+        productId: item.productId ?? '',
+        productName: item.productName,
+        basePrice: item.unitPrice,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        notes: '',
+        selectedOptions: [],
+      });
+      addedCount += item.quantity;
+    }
+
+    toast.success(
+      `${addedCount} ${addedCount === 1 ? 'item adicionado' : 'itens adicionados'} à sua sacola!`,
+    );
+    router.push(`/${storeSlug}`);
+  };
 
   useEffect(() => {
     setStore(storeId, storeSlug);
@@ -217,8 +251,10 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
     >
       <div className="storefront-public-order-history-header">
         <div>
-          <h2 id="storefront-public-order-history-title">Seus pedidos</h2>
-          <p>Acompanhe o andamento dos seus pedidos recentes.</p>
+          <h2 id="storefront-public-order-history-title" className="hidden sm:block">
+            Seus pedidos
+          </h2>
+          <p className="hidden sm:block">Acompanhe o andamento dos seus pedidos recentes.</p>
         </div>
         <Button
           type="button"
@@ -294,27 +330,67 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
 
           const presentation = statusPresentation[item.tracking.status];
           const StatusIcon = presentation.icon;
+          const isActive =
+            item.tracking.status !== 'DELIVERED' && item.tracking.status !== 'CANCELLED';
+
           return (
-            <li key={orderKey} className="storefront-public-order-history-item">
+            <li
+              key={orderKey}
+              className={cn(
+                'storefront-public-order-history-item',
+                isActive && 'is-active',
+              )}
+            >
               <span
-                className={`storefront-public-order-history-icon is-${presentation.tone}`}
+                className={`storefront-public-order-history-icon is-${isActive ? 'active' : presentation.tone}`}
                 aria-hidden="true"
               >
                 <StatusIcon />
               </span>
               <span className="storefront-public-order-history-details">
-                <strong>Pedido #{item.tracking.orderNumber}</strong>
-                <span>
-                  {presentation.label} · {formatOrderDate(item.record.createdAt)}
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <strong>Pedido #{item.tracking.orderNumber}</strong>
+                  <span
+                    className={`storefront-public-order-history-badge is-${isActive ? 'active' : presentation.tone}`}
+                  >
+                    {presentation.label}
+                  </span>
+                </div>
+                {item.tracking.itemsSummary && (
+                  <span className="text-text-primary text-xs font-medium truncate max-w-[200px] sm:max-w-[260px]">
+                    {item.tracking.itemsSummary}
+                  </span>
+                )}
+                <span className="text-text-muted text-[11px]">
+                  {formatOrderDate(item.record.createdAt)} ·{' '}
+                  {item.tracking.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
+                  {item.tracking.totalCents ? ` · ${formatCurrency(item.tracking.totalCents)}` : ''}
                 </span>
               </span>
-              <Link
-                href={`/${storeSlug}/order/${item.record.trackingToken}`}
-                className="storefront-public-order-history-link"
-                aria-label={`Acompanhar pedido ${item.tracking.orderNumber}`}
-              >
-                Acompanhar
-              </Link>
+              {item.tracking.status === 'DELIVERED' ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleReorder(item.tracking.items)}
+                  className="h-9 gap-1 px-2.5 text-xs font-bold text-brand-600 border-brand-500/20 hover:bg-brand-50 hover:text-brand-700"
+                  aria-label={`Pedir novamente o pedido ${item.tracking.orderNumber}`}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Pedir de novo
+                </Button>
+              ) : (
+                <Link
+                  href={`/${storeSlug}/order/${item.record.trackingToken}`}
+                  className={cn(
+                    'storefront-public-order-history-link',
+                    isActive && 'is-active',
+                  )}
+                  aria-label={`Acompanhar pedido ${item.tracking.orderNumber}`}
+                >
+                  {isActive ? 'Acompanhar' : 'Ver pedido'}
+                </Link>
+              )}
             </li>
           );
         })}
