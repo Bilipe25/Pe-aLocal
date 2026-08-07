@@ -155,13 +155,10 @@ export function StorefrontDisplaySettingsForm({
               </span>
               <div className="min-w-0 flex-1">
                 <Label htmlFor="showRecentPurchasesSection">
-                  Mostrar produtos comprados recentemente
+                  Mostrar seção &quot;Peça de novo&quot;
                 </Label>
                 <p className="text-text-secondary mt-0.5 text-sm">
-                  Exibe uma seleção personalizada para consumidores reconhecidos neste dispositivo.
-                </p>
-                <p className="text-info mt-1 text-xs">
-                  Nenhum nome, endereço ou histórico completo será mostrado.
+                  Exibe os pedidos anteriores do consumidor para facilitar novas compras.
                 </p>
               </div>
               <input type="hidden" name="showRecentPurchasesSection" value="false" />

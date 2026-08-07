@@ -1,5 +1,4 @@
 import { notFound, redirect } from 'next/navigation';
-import Link from 'next/link';
 import { MapPin, Receipt } from 'lucide-react';
 import {
   getOrderByPublicToken,

@@ -179,3 +179,36 @@ export interface CheckoutQuoteDto {
   issues: CheckoutQuoteIssueDto[];
   canCheckout: boolean;
 }
+
+export interface PublicRecentOrderItemDto {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  notes: string;
+  imageUrl: string | null;
+  imageAssetId: string | null;
+  options: Array<{
+    id?: string;
+    name: string;
+    price: number;
+  }>;
+}
+
+export interface PublicRecentOrderDto {
+  id: string;
+  orderNumber: number;
+  lastPurchasedAt: string;
+  timeAgoLabel: string;
+  totalItemCount: number;
+  totalCents: number;
+  itemsSummary: string;
+  extraItemsCount: number;
+  thumbnails: Array<{
+    imageUrl: string | null;
+    imageAssetId: string | null;
+    productName: string;
+  }>;
+  extraThumbnailsCount: number;
+  items: PublicRecentOrderItemDto[];
+}
