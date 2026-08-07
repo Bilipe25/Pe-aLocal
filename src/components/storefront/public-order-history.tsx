@@ -7,8 +7,8 @@ import {
   Package,
   RefreshCw,
   ShoppingBag,
+  Trash2,
   Truck,
-  X,
   XCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -230,8 +230,8 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
           }}
           aria-label="Limpar pedidos lembrados"
         >
-          <X aria-hidden="true" />
-          <span className="hidden sm:inline">Limpar</span>
+          <Trash2 className="h-4 w-4 text-text-muted group-hover:text-error transition-colors" aria-hidden="true" />
+          <span className="text-xs font-medium">Limpar histórico</span>
         </Button>
       </div>
 

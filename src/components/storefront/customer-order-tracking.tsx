@@ -217,8 +217,8 @@ export function CustomerOrderTracking({
                 </span>
                 <span
                   className={cn(
-                    'text-text-secondary mt-1.5 text-sm leading-tight',
-                    current && 'text-tinta font-semibold',
+                    'text-text-secondary mt-1.5 w-full px-0.5 text-center text-[10px] sm:text-xs leading-tight break-words min-w-0',
+                    current && 'text-tinta font-bold',
                   )}
                   aria-current={current ? 'step' : undefined}
                 >
