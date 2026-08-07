@@ -2,7 +2,6 @@ import { notFound, redirect } from 'next/navigation';
 
 import { CatalogView } from '@/components/storefront/catalog-view';
 import { NetworkStatus } from '@/components/storefront/network-status';
-import { PublicOrderHistory } from '@/components/storefront/public-order-history';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
@@ -133,11 +132,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         coverUrl={store.customization.assets.cover?.url ?? store.coverUrl}
         coverAssetId={store.customization.assets.cover?.id}
         config={config}
-      />
-
-      <PublicOrderHistory
-        storeId={store.id}
-        storeSlug={store.slug}
       />
 
       <CatalogView

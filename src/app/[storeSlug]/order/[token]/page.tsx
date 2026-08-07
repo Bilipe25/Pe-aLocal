@@ -1,11 +1,11 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Receipt } from 'lucide-react';
+import { MapPin, Receipt } from 'lucide-react';
 import {
   getOrderByPublicToken,
   isPublicOrderTokenExpired,
 } from '@/server/repositories/order.repository';
-import { getCanonicalPublicStoreSlug } from '@/server/queries/public-store';
+import { getCanonicalPublicStoreSlug, getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
 import { formatCurrency } from '@/lib/utils';
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
 import { cache } from 'react';
@@ -14,6 +14,8 @@ import {
   CustomerOrderAccessBoundary,
   ExpiredOrderAccess,
 } from '@/components/storefront/customer-order-access-boundary';
+import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
+import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
 import { toCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
 
@@ -28,9 +30,10 @@ interface OrderPageProps {
 
 export async function generateMetadata({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
   const order = await getTrackedOrder(token);
 
-  if (!order || order.store.slug !== storeSlug) {
+  if (!order || !store || order.store.slug !== storeSlug) {
     return {
       title: 'Pedido não encontrado',
       robots: { index: false, follow: false, nocache: true },
@@ -39,7 +42,7 @@ export async function generateMetadata({ params }: OrderPageProps) {
   }
 
   return {
-    title: `Pedido #${order.orderNumber} - ${order.store.name}`,
+    title: `Pedido #${order.orderNumber} - ${store.name}`,
     robots: { index: false, follow: false, nocache: true },
     referrer: 'no-referrer',
   };
@@ -67,9 +70,10 @@ const paymentStatusMap = {
 
 export default async function OrderPage({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
+  const store = await getPublicPurchaseStoreBySlug(storeSlug);
   const order = await getTrackedOrder(token);
 
-  if (!order) {
+  if (!order || !store) {
     if (await isPublicOrderTokenExpired(token, storeSlug)) {
       return <ExpiredOrderAccess storeSlug={storeSlug} />;
     }
@@ -93,25 +97,17 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
   return (
     <CustomerOrderAccessBoundary storeSlug={order.store.slug}>
-      <div className="storefront-page-bottom-safe bg-papel min-h-screen">
-        {/* Header */}
-        <header className="border-tinta/10 bg-papel/80 sticky top-0 z-40 border-b px-4 py-3 backdrop-blur-md">
-          <div className="mx-auto flex max-w-md items-center gap-3">
-            <Link
-              href={`/${order.store.slug}`}
-              aria-label="Voltar para a loja"
-              className="text-tinta hover:bg-tinta/5 flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-            </Link>
-            <div className="flex-1">
-              <h1 className="font-display text-tinta text-lg font-bold">Acompanhar Pedido</h1>
-              <p className="text-text-muted text-sm break-words">{order.store.name}</p>
-            </div>
-          </div>
-        </header>
+      <div className="storefront-page-bottom-safe">
+        <StorePurchaseHeader
+          backHref={`/${order.store.slug}/orders`}
+          backLabel="Voltar para meus pedidos"
+          title={`Pedido #${order.orderNumber}`}
+          storeName={store.name}
+          logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+          logoImageAssetId={store.customization.assets.logo?.id ?? null}
+        />
 
-        <main className="mx-auto mt-2 max-w-md space-y-6 p-4">
+        <main className="storefront-tracking-main">
           <CustomerOrderTracking
             publicToken={order.publicToken}
             storeSlug={order.store.slug}
@@ -139,54 +135,54 @@ export default async function OrderPage({ params }: OrderPageProps) {
             )}
 
           {/* Resumo dos Itens */}
-          <section className="border-tinta/10 bg-papel rounded-xl border p-4 shadow-sm">
-            <h3 className="font-display text-tinta text-base font-bold">Itens do pedido</h3>
-            <div className="mt-3 space-y-3">
+          <section className="storefront-tracking-card">
+            <h3 className="storefront-tracking-card-title">Itens do pedido</h3>
+            <div className="storefront-tracking-items">
               {order.items.map((item) => (
                 <div
                   key={item.id}
-                  className="border-tinta/5 flex items-start justify-between border-b pb-3 text-sm last:border-0 last:pb-0"
+                  className="storefront-tracking-item"
                 >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <span className="text-tinta font-medium break-words">
+                  <div className="storefront-tracking-item-info">
+                    <span className="storefront-tracking-item-name">
                       {item.quantity}x {item.productName}
                     </span>
                     {item.options.length > 0 && (
-                      <p className="text-text-muted mt-0.5 text-sm break-words">
+                      <p className="storefront-tracking-item-options">
                         {item.options.map((o) => o.optionName).join(', ')}
                       </p>
                     )}
                     {item.notes && (
-                      <p className="text-text-muted mt-0.5 text-sm break-words italic">
+                      <p className="storefront-tracking-item-notes">
                         &quot;{item.notes}&quot;
                       </p>
                     )}
                   </div>
-                  <span className="text-tinta mt-0.5 shrink-0 font-mono text-sm font-bold">
+                  <span className="storefront-tracking-item-price">
                     {formatCurrency(item.itemTotal)}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="border-tinta/5 mt-4 space-y-1.5 border-t pt-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-text-muted">Subtotal</span>
-                <span className="text-text-muted font-mono text-sm">
+            <div className="storefront-tracking-totals">
+              <div className="storefront-tracking-total-row">
+                <span>Subtotal</span>
+                <span className="storefront-tracking-total-value">
                   {formatCurrency(order.subtotal)}
                 </span>
               </div>
               {order.deliveryFee > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-muted">Taxa de entrega</span>
-                  <span className="text-text-muted font-mono text-sm">
+                <div className="storefront-tracking-total-row">
+                  <span>Taxa de entrega</span>
+                  <span className="storefront-tracking-total-value">
                     {formatCurrency(order.deliveryFee)}
                   </span>
                 </div>
               )}
-              <div className="flex items-center justify-between pt-1.5 text-sm font-bold">
-                <span className="text-tinta">Total</span>
-                <span className="storefront-action-text font-mono text-base">
+              <div className="storefront-tracking-total-row is-grand-total">
+                <span>Total</span>
+                <span className="storefront-tracking-grand-total">
                   {formatCurrency(order.total)}
                 </span>
               </div>
@@ -194,40 +190,41 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </section>
 
           {/* Informações de Entrega/Retirada e Pagamento */}
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="border-tinta/10 bg-papel flex flex-col justify-between rounded-xl border p-3 shadow-sm">
-              <div>
-                <div className="text-text-muted mb-1 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span className="text-sm font-medium">{modalityMap[order.modality]}</span>
-                </div>
-                <p className="text-tinta text-sm leading-tight font-medium break-words">
-                  {order.modality === 'DELIVERY' ? order.deliveryAddress : 'Na loja'}
-                </p>
+          <div className="storefront-tracking-info-grid">
+            <div className="storefront-tracking-card">
+              <div className="storefront-tracking-info-label">
+                <MapPin aria-hidden="true" />
+                <span>{modalityMap[order.modality]}</span>
               </div>
+              <p className="storefront-tracking-info-value">
+                {order.modality === 'DELIVERY' ? order.deliveryAddress : 'Na loja'}
+              </p>
             </div>
 
-            <div className="border-tinta/10 bg-papel flex flex-col justify-between rounded-xl border p-3 shadow-sm">
-              <div>
-                <div className="text-text-muted mb-1 flex items-center gap-1.5">
-                  <Receipt className="h-3.5 w-3.5" />
-                  <span className="text-sm font-medium">Pagamento</span>
-                </div>
-                <p className="text-tinta text-sm leading-tight font-medium">
-                  {paymentMap[order.paymentMethod]}
-                </p>
-                <p className="text-text-muted mt-1 text-sm">
-                  {paymentStatusMap[order.paymentStatus]}
-                </p>
-                {order.paymentMethod === 'CASH' && order.changeFor && (
-                  <p className="text-text-muted mt-1 text-sm">
-                    Troco para {formatCurrency(order.changeFor)}
-                  </p>
-                )}
+            <div className="storefront-tracking-card">
+              <div className="storefront-tracking-info-label">
+                <Receipt aria-hidden="true" />
+                <span>Pagamento</span>
               </div>
+              <p className="storefront-tracking-info-value">
+                {paymentMap[order.paymentMethod]}
+              </p>
+              <p className="storefront-tracking-info-detail">
+                {paymentStatusMap[order.paymentStatus]}
+              </p>
+              {order.paymentMethod === 'CASH' && order.changeFor && (
+                <p className="storefront-tracking-info-detail">
+                  Troco para {formatCurrency(order.changeFor)}
+                </p>
+              )}
             </div>
-          </section>
+          </div>
         </main>
+
+        <StorefrontBottomNav
+          storeId={store.id}
+          storeSlug={store.slug}
+        />
       </div>
     </CustomerOrderAccessBoundary>
   );

@@ -80,15 +80,17 @@ function StoreLogo({
   }
 
   return (
-    <Image
-      className="storefront-hero-logo"
-      src={src}
-      fill
-      sizes="64px"
-      alt={`Logo de ${name}`}
-      priority
-      onError={() => setFailed(true)}
-    />
+    <div className="storefront-hero-logo" aria-label={name}>
+      <Image
+        src={src}
+        fill
+        sizes="64px"
+        alt={`Logo de ${name}`}
+        priority
+        onError={() => setFailed(true)}
+        style={{ objectFit: 'cover' }}
+      />
+    </div>
   );
 }
 

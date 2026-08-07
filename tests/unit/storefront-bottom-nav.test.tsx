@@ -1,38 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { useCartStore } from '@/stores/cart-store';
-import {
-  getLastOrderStorageKey,
-  useLastOrderStore,
-  writeLastOrder,
-} from '@/stores/last-order-store';
+import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 
-const TRACKING_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const CREATED_AT = new Date().toISOString();
 const navigationMocks = vi.hoisted(() => ({
   pathname: '/loja-a',
   push: vi.fn(),
 }));
-
-function createMemoryStorage(): Storage {
-  const data = new Map<string, string>();
-  return {
-    get length() {
-      return data.size;
-    },
-    clear: () => data.clear(),
-    getItem: (key) => data.get(key) ?? null,
-    key: (index) => [...data.keys()][index] ?? null,
-    removeItem: (key) => {
-      data.delete(key);
-    },
-    setItem: (key, value) => {
-      data.set(key, value);
-    },
-  };
-}
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigationMocks.pathname,
@@ -42,11 +18,6 @@ vi.mock('next/navigation', () => ({
 describe('navegação inferior do storefront', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: createMemoryStorage(),
-    });
-    window.localStorage.clear();
     navigationMocks.pathname = '/loja-a';
     useCartStore.setState({
       storeId: 'store-a',
@@ -64,10 +35,10 @@ describe('navegação inferior do storefront', () => {
         },
       ],
     });
-    useLastOrderStore.setState({
+    usePublicOrderHistoryStore.setState({
       storeId: null,
       storeSlug: null,
-      record: null,
+      orders: [],
     });
   });
 
@@ -75,11 +46,15 @@ describe('navegação inferior do storefront', () => {
     render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
     const navigation = screen.getByRole('navigation', { name: 'Navegação da loja' });
-    expect(navigation.querySelectorAll('a, button')).toHaveLength(3);
+    expect(navigation.querySelectorAll('a')).toHaveLength(3);
     expect(screen.getByRole('link', { name: 'Cardápio' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Carrinho, 2 itens' })).toHaveAttribute(
       'href',
       '/loja-a/cart',
+    );
+    expect(screen.getByRole('link', { name: 'Meu pedido' })).toHaveAttribute(
+      'href',
+      '/loja-a/orders',
     );
     expect(screen.queryByRole('link', { name: 'Favoritos' })).not.toBeInTheDocument();
     expect(screen.getByText('2')).toBeVisible();
@@ -95,56 +70,13 @@ describe('navegação inferior do storefront', () => {
     );
   });
 
-  it('exibe estado vazio sem fazer requisição quando não há pedido salvo', () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+  it.each(['/loja-a/orders', '/loja-a/order/123'])('mantém Meu pedido ativo na rota %s', (pathname) => {
+    navigationMocks.pathname = pathname;
     render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Meu pedido' }));
-
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Você ainda não tem um pedido recente nesta loja.',
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('valida o token público antes de abrir o último pedido', async () => {
-    writeLastOrder(window.localStorage, {
-      trackingToken: TRACKING_TOKEN,
-      storeId: 'store-a',
-      storeSlug: 'loja-a',
-      createdAt: CREATED_AT,
-    });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
-    render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
-
-    await waitFor(() => expect(useLastOrderStore.getState().record).not.toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'Meu pedido' }));
-
-    await waitFor(() =>
-      expect(navigationMocks.push).toHaveBeenCalledWith(`/loja-a/order/${TRACKING_TOKEN}`),
+    expect(screen.getByRole('link', { name: 'Meu pedido' })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
   });
-
-  it.each([404, 410])(
-    'remove token indisponível (HTTP %s) e apresenta o estado vazio',
-    async (status) => {
-      writeLastOrder(window.localStorage, {
-        trackingToken: TRACKING_TOKEN,
-        storeId: 'store-a',
-        storeSlug: 'loja-a',
-        createdAt: CREATED_AT,
-      });
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })));
-      render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
-
-      await waitFor(() => expect(useLastOrderStore.getState().record).not.toBeNull());
-      fireEvent.click(screen.getByRole('button', { name: 'Meu pedido' }));
-
-      expect(await screen.findByRole('status')).toHaveTextContent(
-        'O pedido salvo não está mais disponível.',
-      );
-      expect(window.localStorage.getItem(getLastOrderStorageKey('store-a'))).toBeNull();
-    },
-  );
 });

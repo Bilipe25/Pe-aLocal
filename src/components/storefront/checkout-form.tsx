@@ -57,7 +57,6 @@ import { storePaymentReportToken } from '@/lib/orders/payment-report-token-memor
 import { cn, formatCurrency } from '@/lib/utils';
 import type { CheckoutQuoteInput } from '@/schemas/checkout';
 import { selectCartCouponCode, subscribeToCartStorage, useCartStore } from '@/stores/cart-store';
-import { useLastOrderStore } from '@/stores/last-order-store';
 import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type {
   CustomerRecognitionConfirmationResult,
@@ -558,7 +557,6 @@ export function CheckoutForm({
   const clearCart = useCartStore((state) => state.clearCart);
   const cartCouponCode = useCartStore(selectCartCouponCode);
   const setCartCouponCode = useCartStore((state) => state.setCouponCode);
-  const setOrderHistoryStore = usePublicOrderHistoryStore((state) => state.setStore);
   const rememberOrder = usePublicOrderHistoryStore((state) => state.rememberOrder);
   const [step, setStepState] = useState<CheckoutStep>(initialStep);
   const [isPending, startTransition] = useTransition();
@@ -1307,8 +1305,6 @@ export function CheckoutForm({
           storeSlug,
           createdAt: orderCreatedAt,
         };
-        useLastOrderStore.getState().registerOrder(publicOrderRecord);
-        setOrderHistoryStore(storeId, storeSlug);
         rememberOrder(publicOrderRecord);
         clearCart();
         setOrderConfirmed({

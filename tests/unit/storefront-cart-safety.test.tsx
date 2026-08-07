@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CartView } from '@/components/storefront/cart-view';
 import { getCartStorageKey, useCartStore, type CartItem } from '@/stores/cart-store';
-import { useLastOrderStore } from '@/stores/last-order-store';
+import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 
 const mocks = vi.hoisted(() => {
   const toast = Object.assign(vi.fn(), {
@@ -165,7 +165,7 @@ describe('segurança e clareza do carrinho público', () => {
       revision: 1,
       updatedAt: 1,
     });
-    useLastOrderStore.setState({ storeId: null, storeSlug: null, record: null });
+    usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
   });
 
   it('exige confirmação e mantém os itens ao cancelar, usar Escape ou clicar no overlay', async () => {
