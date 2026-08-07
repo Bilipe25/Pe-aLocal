@@ -1272,7 +1272,8 @@ body {
 .storefront-featured-section,
 .storefront-catalog,
 .storefront-category-list,
-.storefront-category-dropdown {
+.storefront-category-dropdown,
+.storefront-recent-orders-section {
   width: min(100%, 42rem);
   margin-inline: auto;
 }

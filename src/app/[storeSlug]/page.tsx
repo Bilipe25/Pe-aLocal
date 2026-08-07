@@ -13,7 +13,7 @@ import {
   getPublicDeliveryZones,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
-import { getRecentPurchasedProductsForCurrentDevice } from '@/server/queries/recent-purchases';
+import { getRecentOrdersForCurrentDevice } from '@/server/queries/recent-orders';
 
 function formatStorefrontEstimate(minMinutes: number, maxMinutes: number) {
   return minMinutes === maxMinutes
@@ -45,17 +45,17 @@ export default async function StorePage({ params, searchParams }: StorePageProps
     );
   }
 
-  const [categories, deliveryZones, recentProducts] = await Promise.all([
+  const [categories, deliveryZones, recentOrders] = await Promise.all([
     getPublicCatalog(store.id, store.tenantId, store.customization.categoryImages),
     store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
-    getRecentPurchasedProductsForCurrentDevice({
+    getRecentOrdersForCurrentDevice({
       tenantId: store.tenantId,
       storeId: store.id,
       enabled: store.settings?.showRecentPurchasesSection ?? true,
     }).catch(() => {
       console.error(
         JSON.stringify({
-          event: 'recent_purchases_query_failed',
+          event: 'recent_orders_query_failed',
           storeId: store.id,
         }),
       );
@@ -142,7 +142,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         customization={config}
         banners={store.customization.banners}
         initialCouponCode={initialCouponCode}
-        recentProducts={recentProducts}
+        recentOrders={recentOrders}
         showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
         minOrderValue={store.settings?.minOrderValue}
       />

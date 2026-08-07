@@ -8,7 +8,7 @@ import {
   clearPaymentReportToken,
   readPaymentReportToken,
 } from '@/lib/orders/payment-report-token-memory';
-import { getCartStorageKey, useCartStore, type CartItem } from '@/stores/cart-store';
+import type { CartItem } from '@/stores/cart-store';
 import { readPublicOrderHistory, usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 

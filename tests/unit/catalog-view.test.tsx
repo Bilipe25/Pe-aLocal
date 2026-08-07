@@ -36,11 +36,11 @@ vi.mock('@/stores/cart-store', () => ({
 vi.mock('@/components/storefront/cart-fab', () => ({ CartFab: () => null }));
 vi.mock('@/components/storefront/category-nav', () => ({ CategoryNav: () => null }));
 vi.mock('@/components/storefront/store-banners', () => ({ StoreBanners: () => null }));
-vi.mock('@/components/storefront/recent-purchases-section', () => ({
-  RecentPurchasesSection: ({ products }: { products: Array<{ id: string; name: string }> }) => (
+vi.mock('@/components/storefront/recent-orders-section', () => ({
+  RecentOrdersSection: ({ orders }: { orders: Array<{ id: string; itemsSummary: string }> }) => (
     <section aria-label="Peça de novo">
-      {products.map((product) => (
-        <span key={product.id}>{product.name}</span>
+      {orders.map((order) => (
+        <span key={order.id}>{order.itemsSummary}</span>
       ))}
     </section>
   ),
@@ -140,12 +140,19 @@ const commercialCategories = [
   },
 ];
 
-const recentProducts = [
+const recentOrders = [
   {
-    ...commercialCategories[0].products[0],
-    category: { id: 'category-1', name: 'Lanches' },
-    isAvailable: true,
-    requiresConfiguration: false,
+    id: 'order-1',
+    orderNumber: 1,
+    lastPurchasedAt: new Date().toISOString(),
+    timeAgoLabel: 'Comprado há 1 dia',
+    totalItemCount: 2,
+    totalCents: 3500,
+    itemsSummary: 'X-Bacon recorrente, Batata destaque',
+    extraItemsCount: 0,
+    thumbnails: [],
+    extraThumbnailsCount: 0,
+    items: [],
   },
 ];
 
@@ -343,7 +350,7 @@ describe('catálogo público', () => {
         storeOpen
         customization={createDefaultCustomization()}
         banners={[]}
-        recentProducts={recentProducts}
+        recentOrders={recentOrders}
       />,
     );
 
@@ -353,7 +360,6 @@ describe('catálogo público', () => {
     expect(
       recent.compareDocumentPosition(featured) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(within(featured).queryByText('X-Bacon recorrente')).not.toBeInTheDocument();
     expect(within(featured).getByRole('button', { name: 'Batata destaque' })).toBeInTheDocument();
   });
 
@@ -375,7 +381,7 @@ describe('catálogo público', () => {
     expect(screen.getByRole('button', { name: 'Batata destaque' })).toBeInTheDocument();
   });
 
-  it('oculta Destaques quando todos os seus produtos já aparecem em recentes', () => {
+  it('exibe a seção Peça de novo quando há pedidos anteriores', () => {
     render(
       <CatalogView
         categories={[
@@ -386,12 +392,11 @@ describe('catálogo público', () => {
         storeOpen
         customization={createDefaultCustomization()}
         banners={[]}
-        recentProducts={recentProducts}
+        recentOrders={recentOrders}
       />,
     );
 
     expect(screen.getByRole('region', { name: 'Peça de novo' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Destaques' })).not.toBeInTheDocument();
   });
 
   it('mostra banner de pedido mínimo quando a sacola está abaixo do valor mínimo', () => {

@@ -4,15 +4,10 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   CheckCircle2,
   Circle,
-  Clock3,
   MapPin,
-  Package,
-  Receipt,
   RotateCcw,
   ShoppingBag,
-  Truck,
   X,
-  XCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -57,15 +52,13 @@ export function OrderDetailsSheet({
   initialSummary,
 }: OrderDetailsSheetProps) {
   const [details, setDetails] = useState<CustomerOrderDetailsDTO | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!open || !trackingToken) return;
 
     let isMounted = true;
-    setLoading(true);
-    setError(false);
 
     fetch(`/api/orders/details/${trackingToken}?storeSlug=${encodeURIComponent(storeSlug)}`, {
       cache: 'no-store',

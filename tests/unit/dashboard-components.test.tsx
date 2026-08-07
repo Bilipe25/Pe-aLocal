@@ -371,14 +371,14 @@ describe('componentes do painel do tenant', () => {
     const fulfillment = screen.getByRole('switch', { name: 'Entrega e retirada' });
     expect(fulfillment).not.toBeChecked();
     expect(
-      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+      screen.getByRole('switch', { name: 'Mostrar seção "Peça de novo"' }),
     ).toBeChecked();
     expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeChecked();
     fireEvent.click(
-      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+      screen.getByRole('switch', { name: 'Mostrar seção "Peça de novo"' }),
     );
     expect(
-      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+      screen.getByRole('switch', { name: 'Mostrar seção "Peça de novo"' }),
     ).not.toBeChecked();
     expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeChecked();
     fireEvent.click(fulfillment);
@@ -398,7 +398,7 @@ describe('componentes do painel do tenant', () => {
     );
     expect(screen.getByRole('switch', { name: 'Prazo estimado' })).toBeDisabled();
     expect(
-      screen.getByRole('switch', { name: 'Mostrar produtos comprados recentemente' }),
+      screen.getByRole('switch', { name: 'Mostrar seção "Peça de novo"' }),
     ).toBeDisabled();
     expect(screen.getByRole('switch', { name: 'Mostrar produtos em destaque' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Salvar exibição' })).not.toBeInTheDocument();
