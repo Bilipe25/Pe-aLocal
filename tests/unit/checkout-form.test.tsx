@@ -170,8 +170,7 @@ describe('checkout público v2', () => {
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     window.scrollTo = vi.fn();
     clearPaymentReportToken(PUBLIC_TOKEN);
-    usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
-    usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
+    usePublicOrderHistoryStore.setState({ storeId: 'store-1', storeSlug: 'loja-1', orders: [] });
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: async () => quote,
