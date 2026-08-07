@@ -6,6 +6,7 @@ import {
   Clock3,
   Package,
   RefreshCw,
+  ShoppingBag,
   Truck,
   X,
   XCircle,
@@ -182,11 +183,30 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
   );
 
   if (orders.length === 0) {
-    return statusMessage ? (
-      <p className="sr-only" role="status" aria-live="polite">
-        {statusMessage}
-      </p>
-    ) : null;
+    return (
+      <section className="storefront-public-order-history is-empty">
+        <div className="storefront-public-order-history-empty">
+          <span className="storefront-public-order-history-empty-icon" aria-hidden="true">
+            <ShoppingBag />
+          </span>
+          <h2>Nenhum pedido por aqui ainda</h2>
+          <p>
+            Quando você fizer um pedido, ele aparecerá aqui para você acompanhar.
+          </p>
+          <Link
+            href={`/${storeSlug}`}
+            className="storefront-primary-action storefront-public-order-history-cta"
+          >
+            Ir para o cardápio
+          </Link>
+        </div>
+        {statusMessage && (
+          <p className="sr-only" role="status" aria-live="polite">
+            {statusMessage}
+          </p>
+        )}
+      </section>
+    );
   }
 
   return (
@@ -197,9 +217,8 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
     >
       <div className="storefront-public-order-history-header">
         <div>
-          <p className="storefront-public-order-history-kicker">Neste aparelho</p>
-          <h2 id="storefront-public-order-history-title">Outros pedidos seus</h2>
-          <p>Retome o acompanhamento de pedidos que você escolheu lembrar.</p>
+          <h2 id="storefront-public-order-history-title">Seus pedidos</h2>
+          <p>Acompanhe o andamento dos seus pedidos recentes.</p>
         </div>
         <Button
           type="button"
@@ -222,7 +241,7 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
             <span className="storefront-public-order-history-icon" aria-hidden="true">
               <RefreshCw />
             </span>
-            <span>Atualizando pedidos lembrados…</span>
+            <span>Atualizando pedidos…</span>
           </li>
         )}
         {visibleItems.map((item) => {

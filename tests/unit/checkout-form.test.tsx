@@ -8,8 +8,7 @@ import {
   clearPaymentReportToken,
   readPaymentReportToken,
 } from '@/lib/orders/payment-report-token-memory';
-import type { CartItem } from '@/stores/cart-store';
-import { useLastOrderStore } from '@/stores/last-order-store';
+import { getCartStorageKey, useCartStore, type CartItem } from '@/stores/cart-store';
 import { readPublicOrderHistory, usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 
@@ -171,7 +170,7 @@ describe('checkout público v2', () => {
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     window.scrollTo = vi.fn();
     clearPaymentReportToken(PUBLIC_TOKEN);
-    useLastOrderStore.setState({ storeId: null, storeSlug: null, record: null });
+    usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
     usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
     mocks.fetch.mockResolvedValue({
       ok: true,

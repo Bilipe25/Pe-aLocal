@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-import { PUBLIC_ORDER_TRACKING_RETENTION_MS } from '@/stores/last-order-store';
+const PUBLIC_ORDER_TRACKING_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export const PUBLIC_ORDER_HISTORY_STORAGE_KEY_PREFIX = 'pedidolocal:order-history:';
 export const PUBLIC_ORDER_HISTORY_STORAGE_VERSION = 1;
