@@ -255,7 +255,9 @@ export function PixPaymentInfo({
       </div>
 
       {pixInstructions && (
-        <p className="text-text-muted mt-3 text-sm break-words italic">{pixInstructions}</p>
+        <div className="bg-kraft/40 text-tinta/90 mt-3 rounded-lg border border-tinta/10 p-2.5 text-xs break-words font-medium">
+          {pixInstructions}
+        </div>
       )}
 
       {whatsappUrl && (
