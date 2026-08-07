@@ -22,6 +22,12 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/server/queries/public-store', () => ({
   getCanonicalPublicStoreSlug: vi.fn(),
+  getPublicPurchaseStoreBySlug: vi.fn().mockResolvedValue({
+    id: 'store-a',
+    slug: 'burger-do-ze',
+    name: 'Burger do Zé',
+    customization: null,
+  }),
 }));
 vi.mock('@/lib/pusher/customer-channel', () => ({
   privateCustomerOrderChannel: vi.fn(),
