@@ -70,7 +70,7 @@ describe('PublicOrderHistory', () => {
 
     render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
 
-    expect(await screen.findByRole('heading', { name: 'Outros pedidos seus' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Seus pedidos' })).toBeVisible();
     expect(screen.getByText('Pedido #42')).toBeVisible();
     expect(screen.getByText(/Em preparo/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'Acompanhar pedido 42' })).toHaveAttribute(
@@ -100,10 +100,12 @@ describe('PublicOrderHistory', () => {
     expect(screen.queryByText('Pedido #42')).not.toBeInTheDocument();
   });
 
-  it('não renderiza nada quando não há histórico opt-in', () => {
-    const { container } = render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
+  it('mostra o estado vazio quando não há histórico opt-in', () => {
+    render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(
+      screen.getByRole('heading', { name: 'Nenhum pedido por aqui ainda' }),
+    ).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -119,7 +121,7 @@ describe('PublicOrderHistory', () => {
 
     render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
 
-    await screen.findByRole('heading', { name: 'Outros pedidos seus' });
+    await screen.findByRole('heading', { name: 'Seus pedidos' });
     fireEvent.click(screen.getByRole('button', { name: 'Limpar pedidos lembrados' }));
 
     await waitFor(() =>

@@ -774,6 +774,11 @@ describe('checkout público v2', () => {
     await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce(), {
       timeout: 5_000,
     });
+    
+    // Espera a UI reagir ao sucesso (isso garante que a microtask queue foi resolvida)
+    expect(await screen.findByText(/Pedido #1 confirmado/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
     expect(mocks.clearCart).toHaveBeenCalledOnce();
     expect(mocks.reportCheckoutEvent).toHaveBeenCalledWith('loja-1', {
       event: 'checkout_completed',
@@ -783,10 +788,6 @@ describe('checkout público v2', () => {
     expect(readPublicOrderHistory(window.localStorage, 'store-1', 'loja-1')).toHaveLength(1);
     expect(window.sessionStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
     expect(window.localStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
-    
-    // Verifica a mensagem de sucesso (ponte)
-    expect(screen.getByText(/Pedido #1 confirmado/i)).toBeInTheDocument();
-    expect(screen.getByRole('status')).toBeInTheDocument();
 
     await waitFor(() => 
       expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`)
