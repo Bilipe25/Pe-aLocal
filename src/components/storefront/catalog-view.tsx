@@ -1,7 +1,15 @@
 'use client';
 
 import { SearchX } from 'lucide-react';
-import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  type ReactNode,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Image from 'next/image';
 
 import { CartFab } from '@/components/storefront/cart-fab';
@@ -42,6 +50,7 @@ interface CatalogViewProps {
   initialCouponCode?: string | null;
   showFeaturedProductsSection?: boolean;
   minOrderValue?: number | null;
+  recentOrdersSlot?: ReactNode;
 }
 
 const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
@@ -89,6 +98,7 @@ export function CatalogView({
   initialCouponCode,
   showFeaturedProductsSection = true,
   minOrderValue,
+  recentOrdersSlot,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
@@ -552,6 +562,8 @@ export function CatalogView({
           isBusy={search !== deferredSearch}
         />
       )}
+
+      {recentOrdersSlot}
 
       {showSearchSummary && (
         <div

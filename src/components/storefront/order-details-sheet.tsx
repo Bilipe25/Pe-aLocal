@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
+import { storeAssetUrl } from '@/features/assets/urls';
 import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { CustomerOrderDetailsDTO } from '@/types/order-tracking';
@@ -35,6 +36,74 @@ function formatEventTime(isoString: string) {
   } catch {
     return '';
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isOptionalString(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+function isOrderEvent(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.status === 'string' &&
+    typeof value.label === 'string' &&
+    typeof value.timestamp === 'string' &&
+    typeof value.completed === 'boolean' &&
+    typeof value.current === 'boolean'
+  );
+}
+
+function isOrderItem(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    isOptionalString(value.productId) &&
+    typeof value.productName === 'string' &&
+    isFiniteNumber(value.unitPrice) &&
+    isFiniteNumber(value.quantity) &&
+    isOptionalString(value.notes) &&
+    isFiniteNumber(value.itemTotal) &&
+    isOptionalString(value.imageUrl) &&
+    isOptionalString(value.imageAssetId) &&
+    Array.isArray(value.options) &&
+    value.options.every(
+      (option) =>
+        isRecord(option) &&
+        typeof option.optionName === 'string' &&
+        isFiniteNumber(option.optionPrice),
+    )
+  );
+}
+
+function isCustomerOrderDetails(value: unknown): value is CustomerOrderDetailsDTO {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value.orderNumber) &&
+    typeof value.status === 'string' &&
+    typeof value.statusLabel === 'string' &&
+    typeof value.statusChangedAt === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.modality === 'string' &&
+    typeof value.paymentMethod === 'string' &&
+    typeof value.paymentStatus === 'string' &&
+    isFiniteNumber(value.subtotal) &&
+    isFiniteNumber(value.deliveryFee) &&
+    isFiniteNumber(value.discount) &&
+    isFiniteNumber(value.total) &&
+    isOptionalString(value.deliveryAddress) &&
+    Array.isArray(value.events) &&
+    value.events.every(isOrderEvent) &&
+    Array.isArray(value.items) &&
+    value.items.every(isOrderItem)
+  );
 }
 
 export function OrderDetailsSheet({
@@ -72,10 +141,11 @@ export function OrderDetailsSheet({
         return res.json();
       })
       .then((data: unknown) => {
-        if (!data || typeof data !== 'object' || !('orderNumber' in data) || !('items' in data)) {
-          throw new Error('Resposta inválida');
+        if (!isCustomerOrderDetails(data)) {
+          throw new Error('Invalid response payload');
         }
-        setDetails(data as CustomerOrderDetailsDTO);
+        if (controller.signal.aborted) return;
+        setDetails(data);
         setLoading(false);
       })
       .catch(() => {
@@ -218,8 +288,15 @@ export function OrderDetailsSheet({
                         <div className="bg-surface-muted border-tinta/5 relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border">
                           <ProductImage
                             name={item.productName}
-                            imageUrl={item.imageUrl ?? null}
-                            imageAssetId={item.imageAssetId ?? null}
+                            // O detalhe recebe imageAssetId como identificador, mas esta
+                            // superfície deve consumir uma URL pública determinística.
+                            // Evitamos depender do loader customizado do next/image no
+                            // sheet e também evitamos que um UUID seja tratado como rota.
+                            imageUrl={
+                              item.imageUrl ??
+                              (item.imageAssetId ? storeAssetUrl(item.imageAssetId, 256) : null)
+                            }
+                            imageAssetId={null}
                             sizes="56px"
                             width={112}
                             fallback={<ShoppingBag className="text-text-muted h-6 w-6" />}

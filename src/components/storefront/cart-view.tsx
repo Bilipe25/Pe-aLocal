@@ -347,7 +347,7 @@ export function CartView({
               )}
             </div>
             <div className="storefront-cart-lines">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const quotedLine = quoteLines.get(item.id);
                 const issues = lineIssues.get(item.id) ?? [];
                 const displayName = quotedLine?.productName ?? item.productName;
@@ -366,8 +366,9 @@ export function CartView({
                     displayTotal={displayTotal}
                     quantity={item.quantity}
                     notes={item.notes}
-                    imageUrl={quotedLine?.imageUrl ?? item.imageUrl ?? null}
-                    imageAssetId={quotedLine?.imageAssetId ?? item.imageAssetId ?? null}
+                    imageUrl={item.imageUrl ?? quotedLine?.imageUrl ?? null}
+                    imageAssetId={item.imageAssetId ?? quotedLine?.imageAssetId ?? null}
+                    loading={index < 2 ? 'eager' : 'lazy'}
                     priceChanged={priceChanged}
                     issues={issues}
                     onRemove={() => handleRemoveItem(item.id, displayName)}
@@ -605,6 +606,7 @@ function CartLineItem({
   notes,
   imageUrl,
   imageAssetId,
+  loading,
   priceChanged,
   issues,
   onRemove,
@@ -620,6 +622,7 @@ function CartLineItem({
   notes: string | null | undefined;
   imageUrl: string | null;
   imageAssetId: string | null;
+  loading: 'eager' | 'lazy';
   priceChanged: boolean;
   issues: string[];
   onRemove: () => void;
@@ -635,6 +638,7 @@ function CartLineItem({
           imageAssetId={imageAssetId}
           sizes="56px"
           width={112}
+          loading={loading}
         />
       </div>
 
@@ -667,7 +671,7 @@ function CartLineItem({
           <div className="storefront-cart-quantity">
             <button
               type="button"
-              className={`is-decrease${quantity <= 1 ? ' is-remove' : ''}`}
+              className={`is-decrease${quantity <= 1 ? 'is-remove' : ''}`}
               aria-label={
                 quantity <= 1
                   ? `Remover ${displayName} da sacola`
@@ -675,11 +679,7 @@ function CartLineItem({
               }
               onClick={() => (quantity <= 1 ? onRemove() : onQuantityChange(quantity - 1))}
             >
-              {quantity <= 1 ? (
-                <Trash2 aria-hidden="true" />
-              ) : (
-                <Minus aria-hidden="true" />
-              )}
+              {quantity <= 1 ? <Trash2 aria-hidden="true" /> : <Minus aria-hidden="true" />}
             </button>
             <output aria-live="polite" aria-label={`Quantidade de ${displayName}`}>
               {quantity}

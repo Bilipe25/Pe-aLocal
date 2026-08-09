@@ -120,15 +120,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         config={config}
       />
 
-      <Suspense fallback={null}>
-        <RecentOrdersLoader
-          tenantId={store.tenantId}
-          storeId={store.id}
-          storeSlug={store.slug}
-          enabled={store.settings?.showRecentPurchasesSection ?? true}
-        />
-      </Suspense>
-
       <CatalogView
         categories={categories}
         storeId={store.id}
@@ -139,6 +130,16 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         initialCouponCode={initialCouponCode}
         showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
         minOrderValue={store.settings?.minOrderValue}
+        recentOrdersSlot={
+          <Suspense fallback={null}>
+            <RecentOrdersLoader
+              tenantId={store.tenantId}
+              storeId={store.id}
+              storeSlug={store.slug}
+              enabled={store.settings?.showRecentPurchasesSection ?? true}
+            />
+          </Suspense>
+        }
       />
 
       {config.platformBranding.showPedidoLocalBranding && (
