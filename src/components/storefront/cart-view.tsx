@@ -107,8 +107,15 @@ export function CartView({
 
   useLayoutEffect(() => {
     setStore(storeId, storeSlug);
-    setCartHydrated(true);
-    return subscribeToCartStorage(storeId, storeSlug);
+    const unsubscribe = subscribeToCartStorage(storeId, storeSlug);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setCartHydrated(true);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [setStore, storeId, storeSlug]);
 
   const quoteModality: CartFulfillmentModality = pickupEnabled
