@@ -14,7 +14,10 @@ import {
   getOrderTrackingStateByPublicToken,
   hasActiveOrderTrackingToken,
 } from '@/server/repositories/order.repository';
-import type { CustomerOrderDetailsDTO, CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
+import type {
+  CustomerOrderDetailsDTO,
+  CustomerOrderTrackingStateDTO,
+} from '@/types/order-tracking';
 
 interface TrackingSnapshot {
   orderNumber: number;
@@ -130,6 +133,59 @@ export async function getCustomerOrderTrackingState(publicToken: string, storeSl
   });
 }
 
+export async function getCustomerOrderTrackingStates(
+  publicTokens: string[],
+  storeSlug: string,
+): Promise<Array<CustomerOrderTrackingStateDTO | null>> {
+  if (publicTokens.length === 0) return [];
+  const orders = await getDb().order.findMany({
+    where: {
+      publicToken: { in: publicTokens },
+      publicTokenExpiresAt: { gt: new Date() },
+      store: { slug: storeSlug },
+    },
+    select: {
+      publicToken: true,
+      orderNumber: true,
+      total: true,
+      items: {
+        select: { productId: true, productName: true, unitPrice: true, quantity: true },
+      },
+      modality: true,
+      status: true,
+      paymentStatus: true,
+      version: true,
+      createdAt: true,
+      statusChangedAt: true,
+      preparingAt: true,
+      readyAt: true,
+      dispatchedAt: true,
+      promisedFulfillmentMinAt: true,
+      promisedFulfillmentMaxAt: true,
+      updatedAt: true,
+      cancellationReasonCode: true,
+      store: {
+        select: {
+          settings: {
+            select: { estimatedTimeMinMinutes: true, estimatedTimeMaxMinutes: true },
+          },
+        },
+      },
+    },
+  });
+  const states = new Map(
+    orders.map((order) => [
+      order.publicToken,
+      toCustomerOrderTrackingState({
+        ...order,
+        estimatedTimeMinMinutes: order.store.settings?.estimatedTimeMinMinutes ?? 30,
+        estimatedTimeMaxMinutes: order.store.settings?.estimatedTimeMaxMinutes ?? 50,
+      }),
+    ]),
+  );
+  return publicTokens.map((token) => states.get(token) ?? null);
+}
+
 export function canAuthorizeCustomerOrderTracking(publicToken: string, storeSlug: string) {
   return hasActiveOrderTrackingToken(publicToken, storeSlug);
 }
@@ -165,7 +221,11 @@ export async function getCustomerOrderDetails(
   const products =
     productIds.length > 0
       ? await getDb().product.findMany({
-          where: { id: { in: productIds } },
+          where: {
+            tenantId: order.tenantId,
+            storeId: order.storeId,
+            id: { in: productIds },
+          },
           select: { id: true, imageUrl: true, imageAssetId: true },
         })
       : [];
@@ -177,7 +237,7 @@ export async function getCustomerOrderDetails(
 
   const formattedItems = order.items.map((item) => {
     const p = item.productId ? productMap.get(item.productId) : null;
-    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 256) : p?.imageUrl ?? null;
+    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 256) : (p?.imageUrl ?? null);
     return {
       id: item.id,
       productId: item.productId ?? undefined,
@@ -266,7 +326,6 @@ export async function getCustomerOrderDetails(
 
   return {
     orderNumber: order.orderNumber,
-    publicToken: order.publicToken,
     status: order.status,
     statusLabel: statusLabels[order.status] ?? order.status,
     statusChangedAt: order.statusChangedAt.toISOString(),

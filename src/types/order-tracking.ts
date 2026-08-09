@@ -57,7 +57,6 @@ export interface CustomerOrderItemDetailDTO {
 
 export interface CustomerOrderDetailsDTO {
   orderNumber: number;
-  publicToken: string;
   status: OrderStatus;
   statusLabel: string;
   statusChangedAt: string;

@@ -193,7 +193,13 @@ export function CartRecommendations({ storeSlug, storeOpen }: CartRecommendation
         );
         const nextAction = actions[Math.min(pending.index, actions.length - 1)];
         if (nextAction) nextAction.focus({ preventScroll: true });
-        else track.focus({ preventScroll: true });
+        else {
+          const summaryAction = document.querySelector<HTMLElement>(
+            '[data-cart-summary-action]:not(:disabled)',
+          );
+          const summary = document.querySelector<HTMLElement>('[data-cart-summary]');
+          (summaryAction ?? summary ?? track).focus({ preventScroll: true });
+        }
       }
     } else if (pending.shouldRestoreFocus) {
       const summaryAction = document.querySelector<HTMLElement>(

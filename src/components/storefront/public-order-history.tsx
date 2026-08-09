@@ -20,8 +20,8 @@ import { toast } from 'sonner';
 import type { OrderStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
+import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
 import { cn, formatCurrency } from '@/lib/utils';
-import { useCartStore } from '@/stores/cart-store';
 import { OrderDetailsSheet } from '@/components/storefront/order-details-sheet';
 import {
   subscribeToPublicOrderHistoryStorage,
@@ -101,27 +101,27 @@ function formatOrderDate(value: string) {
   }
 }
 
-async function loadTracking(record: PublicOrderHistoryRecord, storeSlug: string) {
-  const response = await fetch(
-    `/api/orders/track/${encodeURIComponent(record.trackingToken)}?storeSlug=${encodeURIComponent(storeSlug)}`,
-    {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    },
-  );
-
-  if ([400, 404, 410].includes(response.status)) {
-    return { status: 'expired' as const };
-  }
-  if (!response.ok) {
-    return { status: 'error' as const, message: 'Não foi possível atualizar este pedido.' };
-  }
-
+async function loadTrackingBatch(records: PublicOrderHistoryRecord[], storeSlug: string) {
+  const response = await fetch('/api/orders/history', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeSlug,
+      trackingTokens: records.map((record) => record.trackingToken),
+    }),
+  });
+  if (!response.ok) throw new Error('Falha ao atualizar pedidos');
   const payload: unknown = await response.json();
-  if (!isTrackingState(payload)) {
-    return { status: 'error' as const, message: 'Resposta inválida do acompanhamento.' };
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !('orders' in payload) ||
+    !Array.isArray(payload.orders)
+  ) {
+    throw new Error('Resposta inválida do histórico');
   }
-  return { status: 'success' as const, tracking: payload };
+  return payload.orders.map((order) => (isTrackingState(order) ? order : null));
 }
 
 export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryProps) {
@@ -138,6 +138,7 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
     { orderNumber: number; itemsSummary?: string | null; totalCents?: number | null } | undefined
   >(undefined);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [repeatingToken, setRepeatingToken] = useState<string | null>(null);
 
   const handleOpenDetails = (item: Extract<HistoryItem, { status: 'success' }>) => {
     setSelectedToken(item.record.trackingToken);
@@ -149,32 +150,26 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
     setSheetOpen(true);
   };
 
-  const handleReorder = (orderItems?: CustomerOrderTrackingStateDTO['items']) => {
-    if (!orderItems || orderItems.length === 0) {
-      router.push(`/${storeSlug}`);
-      return;
-    }
-
-    useCartStore.getState().setStore(storeId, storeSlug);
-
-    let addedCount = 0;
-    for (const item of orderItems) {
-      useCartStore.getState().addItem({
-        productId: item.productId ?? '',
-        productName: item.productName,
-        basePrice: item.unitPrice,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        notes: '',
-        selectedOptions: [],
+  const handleReorder = async (trackingToken: string) => {
+    setRepeatingToken(trackingToken);
+    try {
+      const result = await repeatOrderIntoCart({
+        storeId,
+        storeSlug,
+        reference: { trackingToken },
       });
-      addedCount += item.quantity;
+      if (result.addedQuantity > 0) {
+        toast.success('Itens disponíveis adicionados com os valores atuais.');
+      }
+      if (result.issueCount > 0) {
+        toast.warning('Alguns itens mudaram e precisam ser escolhidos novamente no cardápio.');
+      }
+      if (result.addedQuantity > 0) router.push(`/${storeSlug}/cart`);
+    } catch {
+      toast.error('Não foi possível revisar este pedido agora.');
+    } finally {
+      setRepeatingToken(null);
     }
-
-    toast.success(
-      `${addedCount} ${addedCount === 1 ? 'item adicionado' : 'itens adicionados'} à sua sacola!`,
-    );
-    router.push(`/${storeSlug}`);
   };
 
   useEffect(() => {
@@ -193,27 +188,24 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
     });
 
     const load = async () => {
-      const results = await Promise.all(
-        orders.map(async (record): Promise<HistoryItem | null> => {
-          try {
-            const result = await loadTracking(record, storeSlug);
-            if (result.status === 'expired') {
-              if (active) removeOrder(record.trackingToken);
-              return null;
-            }
-            if (result.status === 'error') {
-              return { record, status: 'error', message: result.message };
-            }
-            return { record, status: 'success', tracking: result.tracking };
-          } catch {
-            return {
-              record,
-              status: 'error',
-              message: 'Verifique sua conexão e tente atualizar novamente.',
-            };
+      let results: Array<HistoryItem | null>;
+      try {
+        const trackingStates = await loadTrackingBatch(orders, storeSlug);
+        results = orders.map((record, index) => {
+          const tracking = trackingStates[index];
+          if (!tracking) {
+            if (active) removeOrder(record.trackingToken);
+            return null;
           }
-        }),
-      );
+          return { record, status: 'success', tracking };
+        });
+      } catch {
+        results = orders.map((record) => ({
+          record,
+          status: 'error',
+          message: 'Verifique sua conexão e tente atualizar novamente.',
+        }));
+      }
 
       if (active) setItems(results.filter((item): item is HistoryItem => item !== null));
     };
@@ -240,9 +232,7 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
             <ShoppingBag />
           </span>
           <h2>Nenhum pedido por aqui ainda</h2>
-          <p>
-            Quando você fizer um pedido, ele aparecerá aqui para você acompanhar.
-          </p>
+          <p>Quando você fizer um pedido, ele aparecerá aqui para você acompanhar.</p>
           <Link
             href={`/${storeSlug}`}
             className="storefront-primary-action storefront-public-order-history-cta"
@@ -282,7 +272,10 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
           }}
           aria-label="Limpar pedidos lembrados"
         >
-          <Trash2 className="h-4 w-4 text-text-muted group-hover:text-error transition-colors" aria-hidden="true" />
+          <Trash2
+            className="text-text-muted group-hover:text-error h-4 w-4 transition-colors"
+            aria-hidden="true"
+          />
           <span className="text-xs font-medium">Limpar histórico</span>
         </Button>
       </div>
@@ -352,9 +345,8 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
           return (
             <li
               key={orderKey}
-              onClick={() => handleOpenDetails(item)}
               className={cn(
-                'storefront-public-order-history-item cursor-pointer hover:border-brand-500/30 transition-all',
+                'storefront-public-order-history-item transition-all',
                 isActive && 'is-active',
               )}
             >
@@ -367,7 +359,7 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
                     <StatusIcon />
                   </span>
                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                    <strong className="font-mono text-sm font-bold text-text">
+                    <strong className="text-text font-mono text-sm font-bold">
                       Pedido #{item.tracking.orderNumber}
                     </strong>
                     <span
@@ -385,13 +377,14 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleReorder(item.tracking.items);
+                      void handleReorder(item.record.trackingToken);
                     }}
-                    className="h-8 shrink-0 gap-1 border-brand-500/20 px-2.5 text-xs font-bold text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+                    disabled={repeatingToken !== null}
+                    className="storefront-history-repeat min-h-11 shrink-0 gap-1 px-3 text-sm font-bold"
                     aria-label={`Pedir novamente o pedido ${item.tracking.orderNumber}`}
                   >
                     <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                    Pedir de novo
+                    {repeatingToken === item.record.trackingToken ? 'Revisando…' : 'Pedir de novo'}
                   </Button>
                 ) : (
                   <Link
@@ -414,17 +407,22 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
                 </p>
               )}
 
-              <div className="border-tinta/5 flex w-full items-center justify-between border-t pt-1.5 text-xs text-text-muted">
+              <div className="border-tinta/5 text-text-muted flex w-full items-center justify-between border-t pt-1.5 text-xs">
                 <span>
                   {formatOrderDate(item.record.createdAt)} ·{' '}
                   {item.tracking.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-brand-600 underline underline-offset-2">
+                  <button
+                    type="button"
+                    className="storefront-history-details min-h-11 px-2 text-sm font-semibold underline underline-offset-2"
+                    onClick={() => handleOpenDetails(item)}
+                    aria-label={`Ver detalhes do pedido ${item.tracking.orderNumber}`}
+                  >
                     Ver detalhes
-                  </span>
+                  </button>
                   {item.tracking.totalCents ? (
-                    <strong className="font-mono text-xs font-bold text-text">
+                    <strong className="text-text font-mono text-xs font-bold">
                       {formatCurrency(item.tracking.totalCents)}
                     </strong>
                   ) : null}

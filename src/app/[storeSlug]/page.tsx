@@ -1,7 +1,9 @@
 import { notFound, redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { CatalogView } from '@/components/storefront/catalog-view';
 import { NetworkStatus } from '@/components/storefront/network-status';
+import { RecentOrdersLoader } from '@/components/storefront/recent-orders-loader';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
@@ -13,7 +15,6 @@ import {
   getPublicDeliveryZones,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
-import { getRecentOrdersForCurrentDevice } from '@/server/queries/recent-orders';
 
 function formatStorefrontEstimate(minMinutes: number, maxMinutes: number) {
   return minMinutes === maxMinutes
@@ -45,22 +46,9 @@ export default async function StorePage({ params, searchParams }: StorePageProps
     );
   }
 
-  const [categories, deliveryZones, recentOrders] = await Promise.all([
+  const [categories, deliveryZones] = await Promise.all([
     getPublicCatalog(store.id, store.tenantId, store.customization.categoryImages),
     store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
-    getRecentOrdersForCurrentDevice({
-      tenantId: store.tenantId,
-      storeId: store.id,
-      enabled: store.settings?.showRecentPurchasesSection ?? true,
-    }).catch(() => {
-      console.error(
-        JSON.stringify({
-          event: 'recent_orders_query_failed',
-          storeId: store.id,
-        }),
-      );
-      return [];
-    }),
   ]);
   const minDeliveryFee =
     deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
@@ -82,9 +70,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
     canonicalUrl: config.seo.canonicalUrl,
     primaryDomainHostname: store.customization.primaryDomain?.hostname,
   });
-  const menuJsonLd = config.seo.indexable
-    ? buildMenuJsonLd(store, categories, canonicalUrl)
-    : null;
+  const menuJsonLd = config.seo.indexable ? buildMenuJsonLd(store, categories, canonicalUrl) : null;
 
   return (
     <>
@@ -134,6 +120,15 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         config={config}
       />
 
+      <Suspense fallback={null}>
+        <RecentOrdersLoader
+          tenantId={store.tenantId}
+          storeId={store.id}
+          storeSlug={store.slug}
+          enabled={store.settings?.showRecentPurchasesSection ?? true}
+        />
+      </Suspense>
+
       <CatalogView
         categories={categories}
         storeId={store.id}
@@ -142,7 +137,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         customization={config}
         banners={store.customization.banners}
         initialCouponCode={initialCouponCode}
-        recentOrders={recentOrders}
         showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
         minOrderValue={store.settings?.minOrderValue}
       />

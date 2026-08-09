@@ -1,22 +1,16 @@
 'use client';
 
 import * as Dialog from '@radix-ui/react-dialog';
-import {
-  CheckCircle2,
-  Circle,
-  MapPin,
-  RotateCcw,
-  ShoppingBag,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, Circle, MapPin, RotateCcw, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
+import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
 import { cn, formatCurrency } from '@/lib/utils';
-import { useCartStore } from '@/stores/cart-store';
 import type { CustomerOrderDetailsDTO } from '@/types/order-tracking';
 
 interface OrderDetailsSheetProps {
@@ -51,67 +45,70 @@ export function OrderDetailsSheet({
   storeSlug,
   initialSummary,
 }: OrderDetailsSheetProps) {
+  const router = useRouter();
   const [details, setDetails] = useState<CustomerOrderDetailsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [repeating, setRepeating] = useState(false);
 
   useEffect(() => {
     if (!open || !trackingToken) return;
 
-    let isMounted = true;
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setDetails(null);
+      setError(false);
+      setLoading(true);
+    });
 
     fetch(`/api/orders/details/${trackingToken}?storeSlug=${encodeURIComponent(storeSlug)}`, {
       cache: 'no-store',
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
     })
       .then((res) => {
         if (!res.ok) throw new Error('Falha ao carregar');
         return res.json();
       })
       .then((data: unknown) => {
-        if (isMounted) {
-          setDetails(data as CustomerOrderDetailsDTO);
-          setLoading(false);
+        if (!data || typeof data !== 'object' || !('orderNumber' in data) || !('items' in data)) {
+          throw new Error('Resposta inválida');
         }
+        setDetails(data as CustomerOrderDetailsDTO);
+        setLoading(false);
       })
       .catch(() => {
-        if (isMounted) {
-          setError(true);
-          setLoading(false);
-        }
+        if (controller.signal.aborted) return;
+        setError(true);
+        setLoading(false);
       });
 
-    return () => {
-      isMounted = false;
-    };
+    return () => controller.abort();
   }, [open, trackingToken, storeSlug]);
 
-  const handleReorder = () => {
+  const handleReorder = async () => {
     if (!details || details.items.length === 0) return;
-
-    useCartStore.getState().setStore(storeId, storeSlug);
-
-    let addedCount = 0;
-    for (const item of details.items) {
-      useCartStore.getState().addItem({
-        productId: item.productId ?? '',
-        productName: item.productName,
-        basePrice: item.unitPrice,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        notes: item.notes ?? '',
-        selectedOptions: item.options.map((opt, idx) => ({
-          id: `opt-${idx}`,
-          name: opt.optionName,
-          price: opt.optionPrice,
-        })),
+    setRepeating(true);
+    try {
+      const result = await repeatOrderIntoCart({
+        storeId,
+        storeSlug,
+        reference: { trackingToken },
       });
-      addedCount += item.quantity;
+      if (result.addedQuantity > 0) {
+        toast.success('Itens disponíveis adicionados com os valores atuais.');
+        onOpenChange(false);
+        router.push(`/${storeSlug}/cart`);
+      }
+      if (result.issueCount > 0) {
+        toast.warning('Alguns itens mudaram e precisam ser revisados no cardápio.');
+      }
+    } catch {
+      toast.error('Não foi possível revisar este pedido agora.');
+    } finally {
+      setRepeating(false);
     }
-
-    toast.success(
-      `${addedCount} ${addedCount === 1 ? 'item adicionado' : 'itens adicionados'} à sua sacola!`,
-    );
-    onOpenChange(false);
   };
 
   const isActive =
@@ -123,11 +120,11 @@ export function OrderDetailsSheet({
         <Dialog.Overlay className="storefront-order-details-overlay" />
         <Dialog.Content className="storefront-order-details-content">
           {/* Top Fixed Header */}
-          <div className="shrink-0 bg-surface px-4 pt-2 pb-3 border-b border-tinta/10">
+          <div className="bg-surface border-tinta/10 shrink-0 border-b px-4 pt-2 pb-3">
             <div className="storefront-order-details-drag-handle" aria-hidden="true" />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Dialog.Title className="font-mono text-base font-extrabold text-tinta">
+                <Dialog.Title className="text-tinta font-mono text-base font-extrabold">
                   Pedido #{details?.orderNumber ?? initialSummary?.orderNumber ?? ''}
                 </Dialog.Title>
                 {details && (
@@ -136,7 +133,7 @@ export function OrderDetailsSheet({
                       'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
                       details.status === 'DELIVERED' && 'bg-success-light text-success',
                       details.status === 'CANCELLED' && 'bg-error-light text-error',
-                      isActive && 'bg-brand-50 text-brand-700 border border-brand-200/50',
+                      isActive && 'storefront-order-details-status-active',
                     )}
                   >
                     {details.statusLabel}
@@ -146,7 +143,7 @@ export function OrderDetailsSheet({
               <Dialog.Close asChild>
                 <button
                   type="button"
-                  className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-tinta/5 hover:text-text-primary"
+                  className="text-text-muted hover:bg-tinta/5 hover:text-text-primary inline-flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors"
                   aria-label="Fechar detalhes do pedido"
                 >
                   <X className="h-5 w-5" />
@@ -156,16 +153,16 @@ export function OrderDetailsSheet({
           </div>
 
           {/* Scrollable Content Body */}
-          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 bg-papel">
+          <div className="bg-papel flex-1 space-y-6 overflow-y-auto px-4 py-5">
             {loading && (
               <div className="space-y-4 py-12 text-center">
-                <div className="mx-auto h-7 w-7 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
-                <p className="text-xs font-medium text-text-muted">Carregando detalhes...</p>
+                <div className="border-brand-600 mx-auto h-7 w-7 animate-spin rounded-full border-2 border-t-transparent" />
+                <p className="text-text-muted text-xs font-medium">Carregando detalhes...</p>
               </div>
             )}
 
             {error && (
-              <div className="rounded-xl bg-error-light/50 p-4 text-center text-xs text-error">
+              <div className="bg-error-light/50 text-error rounded-xl p-4 text-center text-xs">
                 Não foi possível carregar todos os detalhes deste pedido.
               </div>
             )}
@@ -174,34 +171,34 @@ export function OrderDetailsSheet({
               <>
                 {/* 1. Status History Timeline */}
                 <section className="space-y-3">
-                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+                  <h3 className="text-text-muted text-sm font-bold tracking-wide uppercase">
                     Histórico do pedido
                   </h3>
-                  <div className="relative pl-3 space-y-4">
+                  <div className="relative space-y-4 pl-3">
                     {/* Vertical connecting line */}
-                    <div className="absolute left-[17px] top-2 bottom-2 w-0.5 bg-border/60" />
+                    <div className="bg-border/60 absolute top-2 bottom-2 left-[17px] w-0.5" />
 
                     {details.events.map((event, idx) => (
                       <div key={event.status + idx} className="relative flex items-center gap-3">
-                        <span className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-papel">
+                        <span className="bg-papel relative z-10 flex h-6 w-6 items-center justify-center rounded-full">
                           {event.completed ? (
-                            <CheckCircle2 className="h-5 w-5 text-success fill-success/15" />
+                            <CheckCircle2 className="text-success fill-success/15 h-5 w-5" />
                           ) : event.current ? (
-                            <Circle className="h-5 w-5 fill-brand-600 text-brand-600" />
+                            <Circle className="storefront-order-details-current-step h-5 w-5" />
                           ) : (
-                            <Circle className="h-4 w-4 text-border" />
+                            <Circle className="text-border h-4 w-4" />
                           )}
                         </span>
-                        <div className="flex flex-1 items-center justify-between min-w-0">
+                        <div className="flex min-w-0 flex-1 items-center justify-between">
                           <span
                             className={cn(
-                              'text-xs font-medium text-text-secondary',
-                              event.current && 'font-bold text-tinta text-sm',
+                              'text-text-secondary text-xs font-medium',
+                              event.current && 'text-tinta text-sm font-bold',
                             )}
                           >
                             {event.label}
                           </span>
-                          <span className="text-[11px] text-text-muted font-mono">
+                          <span className="text-text-muted font-mono text-sm">
                             {formatEventTime(event.timestamp)}
                           </span>
                         </div>
@@ -212,38 +209,38 @@ export function OrderDetailsSheet({
 
                 {/* 2. Order Products List */}
                 <section className="space-y-3 pt-2">
-                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+                  <h3 className="text-text-muted text-sm font-bold tracking-wide uppercase">
                     Itens do pedido
                   </h3>
-                  <div className="divide-y divide-tinta/5 rounded-xl border border-tinta/10 bg-surface p-2.5 sm:p-3 shadow-2xs">
+                  <div className="divide-tinta/5 border-tinta/10 bg-surface divide-y rounded-xl border p-2.5 shadow-2xs sm:p-3">
                     {details.items.map((item) => (
                       <div key={item.id} className="flex gap-3 py-2.5 first:pt-1 last:pb-1">
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-surface-muted border border-tinta/5">
+                        <div className="bg-surface-muted border-tinta/5 relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border">
                           <ProductImage
                             name={item.productName}
                             imageUrl={item.imageUrl ?? null}
                             imageAssetId={item.imageAssetId ?? null}
                             sizes="56px"
                             width={112}
-                            fallback={<ShoppingBag className="h-6 w-6 text-text-muted" />}
+                            fallback={<ShoppingBag className="text-text-muted h-6 w-6" />}
                           />
                         </div>
-                        <div className="flex flex-1 flex-col justify-center min-w-0">
+                        <div className="flex min-w-0 flex-1 flex-col justify-center">
                           <div className="flex items-start justify-between gap-2">
-                            <span className="text-xs font-semibold text-tinta leading-tight">
+                            <span className="text-tinta text-xs leading-tight font-semibold">
                               {item.quantity}x {item.productName}
                             </span>
-                            <span className="font-mono text-xs font-bold text-tinta shrink-0">
+                            <span className="text-tinta shrink-0 font-mono text-xs font-bold">
                               {formatCurrency(item.itemTotal)}
                             </span>
                           </div>
                           {item.options.length > 0 && (
-                            <p className="mt-0.5 text-[11px] text-text-muted leading-tight">
+                            <p className="text-text-muted mt-0.5 text-sm leading-tight">
                               {item.options.map((opt) => opt.optionName).join(', ')}
                             </p>
                           )}
                           {item.notes && (
-                            <p className="mt-0.5 text-[11px] italic text-text-muted">
+                            <p className="text-text-muted mt-0.5 text-sm italic">
                               Obs: {item.notes}
                             </p>
                           )}
@@ -255,41 +252,41 @@ export function OrderDetailsSheet({
 
                 {/* 3. Payment & Address Summary */}
                 <section className="space-y-3 pt-2">
-                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+                  <h3 className="text-text-muted text-sm font-bold tracking-wide uppercase">
                     Resumo do pagamento
                   </h3>
-                  <div className="rounded-xl border border-tinta/10 bg-surface p-3.5 space-y-2 text-xs shadow-2xs">
-                    <div className="flex justify-between text-text-muted">
+                  <div className="border-tinta/10 bg-surface space-y-2 rounded-xl border p-3.5 text-xs shadow-2xs">
+                    <div className="text-text-muted flex justify-between">
                       <span>Subtotal</span>
                       <span className="font-mono">{formatCurrency(details.subtotal)}</span>
                     </div>
                     {details.deliveryFee > 0 && (
-                      <div className="flex justify-between text-text-muted">
+                      <div className="text-text-muted flex justify-between">
                         <span>Taxa de entrega</span>
                         <span className="font-mono">{formatCurrency(details.deliveryFee)}</span>
                       </div>
                     )}
                     {details.discount > 0 && (
-                      <div className="flex justify-between text-success font-medium">
+                      <div className="text-success flex justify-between font-medium">
                         <span>Desconto</span>
                         <span className="font-mono">-{formatCurrency(details.discount)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between border-t border-tinta/5 pt-2 text-sm font-bold text-tinta">
+                    <div className="border-tinta/5 text-tinta flex justify-between border-t pt-2 text-sm font-bold">
                       <span>Total pago</span>
                       <span className="font-mono">{formatCurrency(details.total)}</span>
                     </div>
-                    <div className="pt-2 flex items-center justify-between text-[11px] text-text-muted">
+                    <div className="text-text-muted flex items-center justify-between pt-2 text-sm">
                       <span>Forma de pagamento</span>
-                      <span className="font-semibold text-text-primary">
+                      <span className="text-text-primary font-semibold">
                         {details.paymentMethod}
                       </span>
                     </div>
                   </div>
 
                   {details.deliveryAddress && (
-                    <div className="rounded-xl border border-tinta/10 bg-surface p-3 text-xs flex items-start gap-2 text-text-muted shadow-2xs">
-                      <MapPin className="h-4 w-4 shrink-0 text-brand-600 mt-0.5" />
+                    <div className="border-tinta/10 bg-surface text-text-muted flex items-start gap-2 rounded-xl border p-3 text-xs shadow-2xs">
+                      <MapPin className="storefront-order-details-accent mt-0.5 h-4 w-4 shrink-0" />
                       <span>{details.deliveryAddress}</span>
                     </div>
                   )}
@@ -299,11 +296,11 @@ export function OrderDetailsSheet({
           </div>
 
           {/* Fixed Bottom Footer Actions */}
-          <div className="shrink-0 bg-surface p-4 border-t border-tinta/10 flex items-center gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="bg-surface border-tinta/10 flex shrink-0 items-center gap-2 border-t p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {isActive ? (
               <Link
                 href={`/${storeSlug}/order/${trackingToken}`}
-                className="flex-1 inline-flex h-11 items-center justify-center rounded-xl bg-brand-600 px-4 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-brand-700 transition-colors"
+                className="storefront-order-details-primary inline-flex min-h-11 flex-1 items-center justify-center rounded-xl px-4 text-sm font-bold shadow-sm transition-colors"
                 onClick={() => onOpenChange(false)}
               >
                 Acompanhar em tempo real
@@ -311,12 +308,12 @@ export function OrderDetailsSheet({
             ) : (
               <Button
                 type="button"
-                onClick={handleReorder}
-                disabled={loading || !details}
-                className="flex-1 h-11 gap-2 rounded-xl bg-brand-600 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-brand-700"
+                onClick={() => void handleReorder()}
+                disabled={loading || !details || repeating}
+                className="storefront-order-details-primary min-h-11 flex-1 gap-2 rounded-xl text-sm font-bold shadow-sm"
               >
                 <RotateCcw className="h-4 w-4" />
-                Pedir novamente
+                {repeating ? 'Revisando…' : 'Pedir novamente'}
               </Button>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NetworkStatus } from '@/components/storefront/network-status';
@@ -9,6 +10,7 @@ describe('NetworkStatus', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -17,11 +19,16 @@ describe('NetworkStatus', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('exibe aviso de offline quando navigator.onLine é falso', () => {
+  it('mantém o primeiro HTML determinístico mesmo quando o navegador está offline', () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    expect(renderToString(<NetworkStatus />)).toBe('');
+  });
+
+  it('exibe aviso de offline após sincronizar navigator.onLine', async () => {
     vi.stubGlobal('navigator', { onLine: false });
     render(<NetworkStatus />);
 
-    const status = screen.getByRole('status');
+    const status = await screen.findByRole('status');
     expect(status).toHaveClass('is-offline');
     expect(screen.getByText('Sem internet')).toBeInTheDocument();
     expect(
@@ -50,10 +57,15 @@ describe('NetworkStatus', () => {
     expect(screen.getByText('Conexão restabelecida')).toBeInTheDocument();
   });
 
-  it('esconde o banner de reconexão após um curto delay', () => {
+  it('esconde o banner de reconexão após um curto delay', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { onLine: false });
     render(<NetworkStatus />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Sem internet')).toBeInTheDocument();
 
     act(() => {
       window.dispatchEvent(new Event('online'));
@@ -66,6 +78,5 @@ describe('NetworkStatus', () => {
     });
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    vi.useRealTimers();
   });
 });

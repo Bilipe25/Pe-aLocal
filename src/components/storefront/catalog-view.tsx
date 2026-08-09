@@ -9,7 +9,6 @@ import { CategoryNav } from '@/components/storefront/category-nav';
 import Link from 'next/link';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
-import { RecentOrdersSection } from '@/components/storefront/recent-orders-section';
 import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
@@ -30,7 +29,6 @@ import type {
   PublicStorefrontProductDetailDto,
   PublicStorefrontProductDetailResponseDto,
   PublicStorefrontProductSummaryDto,
-  PublicRecentOrderDto,
 } from '@/types/storefront';
 import { useFavoritesStore } from '@/stores/favorites-store';
 
@@ -42,7 +40,6 @@ interface CatalogViewProps {
   customization: StoreCustomizationConfig;
   banners: PublicStorefrontBannerDto[];
   initialCouponCode?: string | null;
-  recentOrders?: PublicRecentOrderDto[];
   showFeaturedProductsSection?: boolean;
   minOrderValue?: number | null;
 }
@@ -90,7 +87,6 @@ export function CatalogView({
   customization,
   banners,
   initialCouponCode,
-  recentOrders = [],
   showFeaturedProductsSection = true,
   minOrderValue,
 }: CatalogViewProps) {
@@ -601,18 +597,8 @@ export function CatalogView({
         </div>
       )}
 
-      {recentOrders.length > 0 && (
-        <RecentOrdersSection
-          storeId={storeId}
-          storeSlug={storeSlug}
-          orders={recentOrders}
-        />
-      )}
-
       {customization.layout.sectionOrder.map((section) => (
-        <Fragment key={section}>
-          {renderSection(section)}
-        </Fragment>
+        <Fragment key={section}>{renderSection(section)}</Fragment>
       ))}
 
       {selectedProduct && (

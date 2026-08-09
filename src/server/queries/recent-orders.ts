@@ -5,6 +5,7 @@ import { storeAssetUrl } from '@/features/assets/urls';
 import {
   RECENT_PURCHASE_ELIGIBLE_ORDER_STATUSES,
   RECENT_PURCHASE_EXCLUDED_PAYMENT_STATUSES,
+  RECENT_PURCHASE_ORDER_LIMIT,
   RECENT_PURCHASE_WINDOW_DAYS,
 } from '@/features/storefront/recent-purchases';
 import { getDb } from '@/server/database/client';
@@ -33,16 +34,6 @@ function formatTimeAgo(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `Última compra em ${day}/${month}`;
-}
-
-function computeOrderFingerprint(items: Array<{ productId: string; quantity: number; options: Array<{ optionName: string }> }>): string {
-  return items
-    .map((item) => {
-      const opts = item.options.map((o) => o.optionName).sort().join(',');
-      return `${item.productId}:${item.quantity}:${opts}`;
-    })
-    .sort()
-    .join('|');
 }
 
 export async function getRecentOrdersForCurrentDevice({
@@ -100,7 +91,7 @@ export async function getRecentOrdersForCurrentDevice({
       ],
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: 20,
+    take: RECENT_PURCHASE_ORDER_LIMIT,
     select: {
       id: true,
       orderNumber: true,
@@ -128,33 +119,20 @@ export async function getRecentOrdersForCurrentDevice({
 
   if (rawOrders.length === 0) return [];
 
-  // Group duplicate orders (same combination of products & options)
-  const seenFingerprints = new Set<string>();
-  const uniqueOrders = [];
-
-  for (const order of rawOrders) {
-    if (order.items.length === 0) continue;
-    const fingerprint = computeOrderFingerprint(order.items);
-    if (!seenFingerprints.has(fingerprint)) {
-      seenFingerprints.add(fingerprint);
-      uniqueOrders.push(order);
-    }
-    if (uniqueOrders.length >= 5) break;
-  }
-
-  if (uniqueOrders.length === 0) return [];
+  // Cada pedido é uma unidade histórica. Pedidos iguais em datas diferentes
+  // continuam distintos e podem ter observações ou contexto operacional próprio.
+  const recentOrders = rawOrders.filter((order) => order.items.length > 0).slice(0, 5);
+  if (recentOrders.length === 0) return [];
 
   // Collect product IDs for thumbnail image lookup
   const productIds = [
-    ...new Set(
-      uniqueOrders.flatMap((order) => order.items.map((item) => item.productId)),
-    ),
+    ...new Set(recentOrders.flatMap((order) => order.items.map((item) => item.productId))),
   ];
 
   const products =
     productIds.length > 0
       ? await getDb().product.findMany({
-          where: { id: { in: productIds } },
+          where: { tenantId, storeId, id: { in: productIds } },
           select: { id: true, imageUrl: true, imageAssetId: true },
         })
       : [];
@@ -165,7 +143,7 @@ export async function getRecentOrdersForCurrentDevice({
   >(products.map((p) => [p.id, p]));
 
   // Build result DTOs
-  return uniqueOrders.map((order) => {
+  return recentOrders.map((order) => {
     const totalItemCount = order.items.reduce((acc, item) => acc + item.quantity, 0);
 
     const itemsSummaryNames = order.items.map((item) => item.productName);
@@ -177,7 +155,7 @@ export async function getRecentOrdersForCurrentDevice({
     const thumbnails: PublicRecentOrderDto['thumbnails'] = [];
     for (const item of order.items) {
       const p = productMap.get(item.productId);
-      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : p?.imageUrl ?? null;
+      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : (p?.imageUrl ?? null);
       thumbnails.push({
         imageUrl,
         imageAssetId: p?.imageAssetId ?? null,
@@ -190,7 +168,7 @@ export async function getRecentOrdersForCurrentDevice({
 
     const formattedItems: PublicRecentOrderItemDto[] = order.items.map((item) => {
       const p = productMap.get(item.productId);
-      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : p?.imageUrl ?? null;
+      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : (p?.imageUrl ?? null);
       return {
         productId: item.productId,
         productName: item.productName,
