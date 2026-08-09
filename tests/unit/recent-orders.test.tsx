@@ -117,10 +117,36 @@ describe('RecentOrdersSection', () => {
     render(<RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={mockOrders} />);
 
     expect(screen.getByText('Peça de novo')).toBeInTheDocument();
-    expect(screen.getByText('X-Salada, Batata Grande, Coca-Cola 350ml')).toBeInTheDocument();
-    expect(screen.getByText('3 itens · Comprado há 2 dias')).toBeInTheDocument();
-    expect(screen.getByText('R$ 45,00')).toBeInTheDocument();
+    expect(screen.getByText(/X-Salada/)).toBeInTheDocument();
+    expect(screen.getByText(/Batata Grande/)).toBeInTheDocument();
+    expect(screen.getByText('+1 item')).toBeInTheDocument();
+    expect(screen.queryByText('R$ 45,00')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Pedir/i })).toBeInTheDocument();
+  });
+
+  it('renderiza as imagens dos produtos dentro do mosaico do pedido', () => {
+    const ordersWithImages: PublicRecentOrderDto[] = [
+      {
+        ...mockOrders[0],
+        thumbnails: mockOrders[0].thumbnails.map((thumbnail, index) => ({
+          ...thumbnail,
+          imageAssetId: `asset-${index + 1}`,
+        })),
+      },
+    ];
+
+    const { container } = render(
+      <RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={ordersWithImages} />,
+    );
+
+    const media = container.querySelector('.storefront-recent-order-media');
+    expect(media).toBeInTheDocument();
+    expect(media?.querySelectorAll('.storefront-product-image-frame')).toHaveLength(3);
+    expect(media?.querySelectorAll('img')).toHaveLength(3);
+    expect(media?.querySelector('img')).toHaveAttribute(
+      'src',
+      '/api/store-assets/asset-1?width=384',
+    );
   });
 
   it('adiciona os itens validados com dados atuais ao clicar em Pedir novamente', async () => {

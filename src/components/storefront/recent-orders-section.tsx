@@ -1,12 +1,11 @@
 'use client';
 
-import { RotateCcw, ShoppingBag } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
 import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
-import { formatCurrency } from '@/lib/utils';
 import type { PublicRecentOrderDto } from '@/types/storefront';
 
 interface RecentOrdersSectionProps {
@@ -52,40 +51,40 @@ export function RecentOrdersSection({ storeId, storeSlug, orders }: RecentOrders
 
   return (
     <section
-      className="storefront-recent-orders-section my-4 space-y-2.5 px-4 sm:px-6"
+      className="storefront-recent-orders-section my-3 space-y-2 px-4 sm:my-4 sm:space-y-2.5 sm:px-6"
       aria-labelledby="recent-orders-title"
     >
-      <div className="flex items-center justify-between">
+      <div>
         <h2
           id="recent-orders-title"
-          className="storefront-recent-order-title font-display text-base font-bold sm:text-lg"
+          className="storefront-recent-order-title font-display text-[15px] font-bold sm:text-lg"
         >
           Peça de novo
         </h2>
-        <span className="storefront-recent-order-meta text-sm font-medium">Pedidos anteriores</span>
       </div>
 
-      <div className="-mx-4 flex scrollbar-none gap-3 overflow-x-auto px-4 pt-0.5 pb-2 sm:-mx-6 sm:px-6">
+      <div className="flex snap-x snap-mandatory scrollbar-none gap-2.5 overflow-x-auto pt-0.5 pr-4 pb-1.5 sm:-mx-6 sm:gap-3 sm:px-6 sm:pb-2">
         {orders.map((order) => {
           const firstThumb = order.thumbnails[0];
           const secondThumb = order.thumbnails[1];
           const thirdThumb = order.thumbnails[2];
+          const visibleItems = order.items.slice(0, 2);
+          const hiddenItemsCount = Math.max(0, order.items.length - visibleItems.length);
 
           return (
             <article
               key={order.id}
-              className="storefront-recent-order-card flex w-[272px] shrink-0 items-center gap-3 rounded-2xl border p-2.5 transition-all sm:w-[300px]"
+              className="storefront-recent-order-card flex h-[5.5rem] w-[min(13.875rem,calc(100vw-2rem))] shrink-0 snap-start items-center gap-2 rounded-xl border p-2 sm:h-24 sm:w-[300px] sm:gap-3 sm:p-2.5"
             >
-              {/* Left Compact Square Mosaic (80x80px) */}
-              <div className="bg-surface-muted border-tinta/5 relative flex h-20 w-20 shrink-0 gap-0.5 overflow-hidden rounded-xl border p-0.5">
+              <div className="storefront-recent-order-media bg-surface-muted border-tinta/5 relative flex h-14 w-14 shrink-0 gap-0.5 overflow-hidden rounded-lg border p-0.5 sm:h-20 sm:w-20 sm:rounded-xl">
                 <div className="bg-surface relative flex-1 overflow-hidden rounded-lg">
                   {firstThumb ? (
                     <ProductImage
                       name={firstThumb.productName}
                       imageUrl={firstThumb.imageUrl}
                       imageAssetId={firstThumb.imageAssetId}
-                      sizes="80px"
-                      width={80}
+                      sizes="(max-width: 639px) 56px, 80px"
+                      width={56}
                       fallback={<ShoppingBag className="text-text-muted h-5 w-5" />}
                     />
                   ) : (
@@ -102,8 +101,8 @@ export function RecentOrdersSection({ storeId, storeSlug, orders }: RecentOrders
                         name={secondThumb.productName}
                         imageUrl={secondThumb.imageUrl}
                         imageAssetId={secondThumb.imageAssetId}
-                        sizes="40px"
-                        width={40}
+                        sizes="36px"
+                        width={36}
                         fallback={<ShoppingBag className="text-text-muted h-3 w-3" />}
                       />
                     </div>
@@ -118,8 +117,8 @@ export function RecentOrdersSection({ storeId, storeSlug, orders }: RecentOrders
                             name={thirdThumb.productName}
                             imageUrl={thirdThumb.imageUrl}
                             imageAssetId={thirdThumb.imageAssetId}
-                            sizes="40px"
-                            width={40}
+                            sizes="36px"
+                            width={36}
                             fallback={<ShoppingBag className="text-text-muted h-3 w-3" />}
                           />
                         )}
@@ -129,38 +128,30 @@ export function RecentOrdersSection({ storeId, storeSlug, orders }: RecentOrders
                 )}
               </div>
 
-              {/* Right Column Content */}
-              <div className="flex h-20 min-w-0 flex-1 flex-col justify-between py-0.5">
-                <div className="space-y-0.5">
-                  <p className="storefront-recent-order-summary line-clamp-2 text-sm leading-tight font-semibold">
-                    {order.itemsSummary}
-                    {order.extraItemsCount > 0 && (
-                      <span className="text-text-muted ml-1 font-normal">
-                        +{order.extraItemsCount}
-                      </span>
-                    )}
-                  </p>
-                  <p className="storefront-recent-order-meta truncate text-sm font-medium">
-                    {order.totalItemCount} {order.totalItemCount === 1 ? 'item' : 'itens'} ·{' '}
-                    {order.timeAgoLabel}
-                  </p>
-                </div>
+              <div className="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5">
+                <ul className="min-w-0 space-y-0.5 text-[13px] leading-tight font-semibold sm:text-sm">
+                  {visibleItems.map((item, index) => (
+                    <li key={`${item.productId}-${index}`} className="truncate">
+                      <span className="text-text-muted mr-1 font-medium">{item.quantity}×</span>
+                      {item.productName}
+                    </li>
+                  ))}
+                  {hiddenItemsCount > 0 && (
+                    <li className="storefront-recent-order-meta truncate font-medium">
+                      +{hiddenItemsCount} {hiddenItemsCount === 1 ? 'item' : 'itens'}
+                    </li>
+                  )}
+                </ul>
 
-                <div className="border-tinta/5 flex items-center justify-between gap-1 border-t pt-1">
-                  <span className="storefront-recent-order-price shrink-0 font-mono text-sm font-extrabold">
-                    {formatCurrency(order.totalCents)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleReorder(order)}
-                    disabled={repeatingOrderId !== null}
-                    aria-label={`Pedir novamente o pedido ${order.orderNumber}`}
-                    className="storefront-recent-order-action inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-bold transition-colors disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                    {repeatingOrderId === order.id ? 'Revisando…' : 'Pedir de novo'}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleReorder(order)}
+                  disabled={repeatingOrderId !== null}
+                  aria-label={`Pedir novamente o pedido ${order.orderNumber}`}
+                  className="inline-flex self-start text-xs font-semibold whitespace-nowrap text-[var(--store-button-background)] transition-colors hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--store-button-background)] disabled:cursor-wait disabled:opacity-60 sm:text-sm"
+                >
+                  {repeatingOrderId === order.id ? 'Revisando…' : 'Pedir de novo'}
+                </button>
               </div>
             </article>
           );
