@@ -192,9 +192,14 @@ export async function uploadProductImageAsTenantMember(input: {
   if (!product) throw new NotFoundError('Produto');
 
   const replacedAssetId = product.imageAssetId;
-  const releasesReplacedAsset = replacedAssetId
-    ? (await getDb().product.count({ where: { imageAssetId: replacedAssetId } })) === 1
-    : false;
+  let releasesReplacedAsset = false;
+  if (replacedAssetId) {
+    const [productReferences, historicalReferences] = await Promise.all([
+      getDb().product.count({ where: { imageAssetId: replacedAssetId } }),
+      getDb().orderItem.count({ where: { imageAssetId: replacedAssetId } }),
+    ]);
+    releasesReplacedAsset = productReferences === 1 && historicalReferences === 0;
+  }
   const asset = await _runUpload(
     input.tenantId,
     input.storeId,
@@ -246,10 +251,11 @@ export async function uploadProductImageAsTenantMember(input: {
         });
 
         if (replacedAssetId) {
-          const remainingReferences = await tx.product.count({
-            where: { imageAssetId: replacedAssetId },
-          });
-          if (remainingReferences === 0) {
+          const [remainingProductReferences, historicalReferences] = await Promise.all([
+            tx.product.count({ where: { imageAssetId: replacedAssetId } }),
+            tx.orderItem.count({ where: { imageAssetId: replacedAssetId } }),
+          ]);
+          if (remainingProductReferences === 0 && historicalReferences === 0) {
             const deletedAt = new Date();
             await tx.storeAsset.updateMany({
               where: {

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { getStoreAssetRuntime } from '@/server/storage/store-assets';
+import { getStoreAssetReadRuntime } from '@/server/storage/store-assets';
 
 export const STORE_ASSET_ALLOWED_WIDTHS = new Set([96, 192, 384, 768, 1280]);
 
@@ -59,11 +59,11 @@ export async function serveStoreAsset(request: Request, asset: StoredAsset, cach
     return new Response('Largura de imagem não suportada.', { status: 400 });
   }
   const width = requestedWidth !== 0 ? requestedWidth : undefined;
-  const runtime = await getStoreAssetRuntime();
+  const runtime = await getStoreAssetReadRuntime();
   const object = await runtime.bucket.get(asset.objectKey);
   if (!object || !('body' in object)) return new Response('Asset não encontrado.', { status: 404 });
 
-  if (width) {
+  if (width && runtime.images) {
     const format = resolveOutputFormat(request);
     const quality = FORMAT_QUALITY[format];
     const baseEtag = normalizeR2Etag(object.httpEtag ?? object.etag);
@@ -72,20 +72,40 @@ export async function serveStoreAsset(request: Request, asset: StoredAsset, cach
       return new Response(null, { status: 304, headers: { ETag: etag, Vary: 'Accept' } });
     }
 
-    const transformed = await runtime.images
-      .input(object.body)
-      .transform({ width, fit: 'scale-down' })
-      .output({ format, quality });
-    const transformedResponse = transformed.response();
-    return new Response(transformedResponse.body, {
-      headers: responseHeaders({
-        contentType: format,
+    try {
+      const transformed = await runtime.images
+        .input(object.body)
+        .transform({ width, fit: 'scale-down' })
+        .output({ format, quality });
+      const transformedResponse = transformed.response();
+      return new Response(transformedResponse.body, {
+        headers: responseHeaders({
+          contentType: format,
+          cacheControl,
+          etag,
+          width,
+          vary: true,
+        }),
+      });
+    } catch {
+      // A transformação é uma otimização, não uma condição para a imagem
+      // existir. Como o stream pode ter sido consumido, buscamos o objeto de
+      // novo e entregamos o original com cache seguro.
+      const fallbackObject = await runtime.bucket.get(asset.objectKey);
+      if (!fallbackObject || !('body' in fallbackObject)) {
+        return new Response('Asset não encontrado.', { status: 404 });
+      }
+      const headers = responseHeaders({
+        contentType: asset.mimeType,
         cacheControl,
-        etag,
-        width,
-        vary: true,
-      }),
-    });
+        etag: fallbackObject.httpEtag,
+        width: asset.width,
+        height: asset.height,
+      });
+      headers.set('Content-Length', String(fallbackObject.size));
+      headers.set('X-Image-Fallback', 'original');
+      return new Response(fallbackObject.body, { headers });
+    }
   }
 
   const headers = responseHeaders({
@@ -96,5 +116,6 @@ export async function serveStoreAsset(request: Request, asset: StoredAsset, cach
     height: asset.height,
   });
   headers.set('Content-Length', String(object.size));
+  if (width && !runtime.images) headers.set('X-Image-Fallback', 'original');
   return new Response(object.body, { headers });
 }

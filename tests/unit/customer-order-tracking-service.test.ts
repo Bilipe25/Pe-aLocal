@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   canAuthorizeCustomerOrderTracking,
+  getCustomerOrderDetails,
   getCustomerOrderTrackingState,
   getCustomerOrderTrackingStates,
   toCustomerOrderTrackingState,
@@ -9,16 +10,22 @@ import {
 
 const mocks = vi.hoisted(() => ({
   getOrderTrackingStateByPublicToken: vi.fn(),
+  getFullPublicOrderDetailsByToken: vi.fn(),
   hasActiveOrderTrackingToken: vi.fn(),
   orderFindMany: vi.fn(),
+  productFindMany: vi.fn(),
 }));
 
 vi.mock('@/server/database/client', () => ({
-  getDb: () => ({ order: { findMany: mocks.orderFindMany } }),
+  getDb: () => ({
+    order: { findMany: mocks.orderFindMany },
+    product: { findMany: mocks.productFindMany },
+  }),
 }));
 
 vi.mock('@/server/repositories/order.repository', () => ({
   getOrderTrackingStateByPublicToken: mocks.getOrderTrackingStateByPublicToken,
+  getFullPublicOrderDetailsByToken: mocks.getFullPublicOrderDetailsByToken,
   hasActiveOrderTrackingToken: mocks.hasActiveOrderTrackingToken,
 }));
 
@@ -154,5 +161,57 @@ describe('acompanhamento público do pedido', () => {
         itemsSummary: '1x X-Burguer',
       }),
     );
+  });
+
+  it('usa o snapshot da imagem do pedido sem depender do produto atual', async () => {
+    mocks.getFullPublicOrderDetailsByToken.mockResolvedValue({
+      id: 'order-a',
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      orderNumber: 42,
+      status: 'DELIVERED',
+      modality: 'PICKUP',
+      paymentMethod: 'PIX',
+      paymentStatus: 'PAID',
+      subtotal: 4_290,
+      deliveryFee: 0,
+      discount: 0,
+      total: 4_290,
+      deliveryStreet: null,
+      deliveryNumber: null,
+      deliveryNeighborhood: null,
+      deliveryCity: null,
+      deliveryComplement: null,
+      createdAt: new Date('2026-08-01T12:00:00.000Z'),
+      statusChangedAt: new Date('2026-08-01T13:00:00.000Z'),
+      acceptedAt: new Date('2026-08-01T12:05:00.000Z'),
+      preparingAt: new Date('2026-08-01T12:10:00.000Z'),
+      readyAt: new Date('2026-08-01T12:45:00.000Z'),
+      dispatchedAt: null,
+      deliveredAt: new Date('2026-08-01T13:00:00.000Z'),
+      cancelledAt: null,
+      items: [
+        {
+          id: 'item-a',
+          productId: 'product-a',
+          productName: 'X-Burguer',
+          unitPrice: 4_290,
+          quantity: 1,
+          notes: null,
+          itemTotal: 4_290,
+          imageUrl: '/api/store-assets/asset-snapshot?width=768',
+          imageAssetId: 'asset-snapshot',
+          options: [],
+        },
+      ],
+    });
+
+    const result = await getCustomerOrderDetails('token-a', 'burger-do-ze');
+
+    expect(mocks.productFindMany).not.toHaveBeenCalled();
+    expect(result?.items[0]).toMatchObject({
+      imageUrl: '/api/store-assets/asset-snapshot?width=192',
+      imageAssetId: 'asset-snapshot',
+    });
   });
 });

@@ -215,6 +215,7 @@ export async function getCustomerOrderDetails(
   if (!order) return null;
 
   const productIds = order.items
+    .filter((item) => !item.imageAssetId && !item.imageUrl)
     .map((item) => item.productId)
     .filter((id): id is string => Boolean(id));
 
@@ -237,7 +238,9 @@ export async function getCustomerOrderDetails(
 
   const formattedItems = order.items.map((item) => {
     const p = item.productId ? productMap.get(item.productId) : null;
-    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 192) : (p?.imageUrl ?? null);
+    const imageAssetId = item.imageAssetId ?? p?.imageAssetId ?? null;
+    const legacyImageUrl = item.imageUrl ?? p?.imageUrl ?? null;
+    const imageUrl = imageAssetId ? storeAssetUrl(imageAssetId, 192) : legacyImageUrl;
     return {
       id: item.id,
       productId: item.productId ?? undefined,
@@ -247,7 +250,7 @@ export async function getCustomerOrderDetails(
       notes: item.notes,
       itemTotal: item.itemTotal,
       imageUrl,
-      imageAssetId: p?.imageAssetId ?? null,
+      imageAssetId,
       options: item.options,
     };
   });

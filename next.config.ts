@@ -5,6 +5,13 @@ import { config as loadEnvironmentFile } from 'dotenv';
 
 const HYPERDRIVE_LOCAL_CONNECTION_ENV = 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE';
 
+if (process.env.NODE_ENV === 'development') {
+  loadEnvironmentFile({ path: '.env.local', override: false, quiet: true });
+  if (process.env.DATABASE_URL && !process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV]) {
+    process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV] = process.env.DATABASE_URL;
+  }
+}
+
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@prisma/client', '.prisma/client', 'pg-cloudflare'],
 
@@ -87,10 +94,6 @@ const nextConfig: NextConfig = {
 
 export default function configureNext(phase: string): NextConfig {
   if (phase === PHASE_DEVELOPMENT_SERVER) {
-    loadEnvironmentFile({ path: '.env.local', override: false, quiet: true });
-    if (process.env.DATABASE_URL && !process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV]) {
-      process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV] = process.env.DATABASE_URL;
-    }
     void initOpenNextCloudflareForDev();
   }
 

@@ -5,11 +5,11 @@ const mocks = vi.hoisted(() => ({
   images: {
     input: vi.fn(),
   },
-  getStoreAssetRuntime: vi.fn(),
+  getStoreAssetReadRuntime: vi.fn(),
 }));
 
 vi.mock('@/server/storage/store-assets', () => ({
-  getStoreAssetRuntime: mocks.getStoreAssetRuntime,
+  getStoreAssetReadRuntime: mocks.getStoreAssetReadRuntime,
 }));
 
 import { serveStoreAsset } from '@/server/storage/store-asset-response';
@@ -29,15 +29,21 @@ function buildRuntime() {
     transform: vi.fn().mockReturnThis(),
     output: vi.fn().mockResolvedValue(transformed),
   });
-  mocks.getStoreAssetRuntime.mockResolvedValue({
+  mocks.getStoreAssetReadRuntime.mockResolvedValue({
     bucket: mocks.bucket,
     images: mocks.images,
   });
 }
 
 function r2Object(etag: string, size = 4096) {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1, 2, 3]));
+      controller.close();
+    },
+  });
   return {
-    body: 'binary-stream',
+    body,
     httpEtag: etag,
     etag,
     size,
@@ -70,7 +76,7 @@ describe('serveStoreAsset', () => {
     expect(response.headers.get('content-type')).toBe('image/avif');
     expect(response.headers.get('vary')).toBe('Accept');
     expect(response.headers.get('etag')).toBe('"etag-abc-w384-image/avif"');
-    expect(mocks.images.input).toHaveBeenCalledWith('binary-stream');
+    expect(mocks.images.input).toHaveBeenCalledWith(expect.any(ReadableStream));
   });
 
   it('gera WebP por padrão quando só WebP é aceito', async () => {
@@ -112,6 +118,46 @@ describe('serveStoreAsset', () => {
     expect(response.headers.get('vary')).toBeNull();
     expect(response.headers.get('content-length')).toBe('12345');
     expect(mocks.images.input).not.toHaveBeenCalled();
+  });
+
+  it('entrega o original quando IMAGES está indisponível', async () => {
+    mocks.getStoreAssetReadRuntime.mockResolvedValue({
+      bucket: mocks.bucket,
+      images: null,
+    });
+    mocks.bucket.get.mockReturnValue(r2Object('"etag-orig"', 12_345));
+
+    const response = await serveStoreAsset(
+      new Request('http://localhost/api/store-assets/abc?width=192'),
+      asset,
+      'public, max-age=86400, immutable',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/webp');
+    expect(response.headers.get('x-image-fallback')).toBe('original');
+    expect(mocks.images.input).not.toHaveBeenCalled();
+  });
+
+  it('busca o objeto novamente e entrega o original quando a transformação falha', async () => {
+    mocks.bucket.get
+      .mockReturnValueOnce(r2Object('"etag-first"'))
+      .mockReturnValueOnce(r2Object('"etag-fallback"', 8_192));
+    mocks.images.input.mockReturnValue({
+      transform: vi.fn().mockReturnThis(),
+      output: vi.fn().mockRejectedValue(new Error('images unavailable')),
+    });
+
+    const response = await serveStoreAsset(
+      new Request('http://localhost/api/store-assets/abc?width=192'),
+      asset,
+      'public, max-age=86400, immutable',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe('"etag-fallback"');
+    expect(response.headers.get('x-image-fallback')).toBe('original');
+    expect(mocks.bucket.get).toHaveBeenCalledTimes(2);
   });
 
   it('retorna 404 quando o objeto não existe no R2', async () => {

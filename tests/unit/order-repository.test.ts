@@ -99,8 +99,8 @@ const quote = {
       lineId: input.items[0].lineId,
       productId: input.items[0].productId,
       productName: 'Produto',
-      imageUrl: null,
-      imageAssetId: null,
+      imageUrl: '/api/store-assets/asset-order?width=192',
+      imageAssetId: 'asset-order',
       quantity: 1,
       notes: '',
       options: [],
@@ -233,7 +233,11 @@ describe('OrderRepository checkout v2', () => {
       },
     });
     expect(createData.publicTokenExpiresAt).toEqual(new Date('2026-08-26T12:00:00.000Z'));
-    expect(createData.items.create[0]).toMatchObject({ position: 0 });
+    expect(createData.items.create[0]).toMatchObject({
+      position: 0,
+      imageUrl: '/api/store-assets/asset-order?width=192',
+      imageAssetId: 'asset-order',
+    });
     expect(createData).not.toHaveProperty('orderNumber');
     expect(mocks.tx.$executeRaw.mock.calls[0][1]).toBe(`store-a:${params.input.idempotencyKey}`);
     expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(

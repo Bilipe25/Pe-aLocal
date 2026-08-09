@@ -47,6 +47,8 @@ function order(id: string, orderNumber: number, createdAt: string) {
         quantity: 1,
         notes: null,
         itemTotal: 2_500,
+        imageUrl: null,
+        imageAssetId: null,
         options: [],
       },
     ],
@@ -117,5 +119,31 @@ describe('pedidos recentes do aparelho reconhecido', () => {
       getRecentOrdersForCurrentDevice({ tenantId: 'tenant-a', storeId: 'store-a' }),
     ).resolves.toEqual([]);
     expect(mocks.orderFindMany).not.toHaveBeenCalled();
+  });
+
+  it('prioriza a imagem persistida no pedido sem consultar o catálogo atual', async () => {
+    mocks.orderFindMany.mockResolvedValue([
+      {
+        ...order('order-a', 101, '2026-08-06T12:00:00.000Z'),
+        items: [
+          {
+            ...order('order-a', 101, '2026-08-06T12:00:00.000Z').items[0],
+            imageUrl: '/snapshot.webp',
+            imageAssetId: 'asset-snapshot',
+          },
+        ],
+      },
+    ]);
+
+    const result = await getRecentOrdersForCurrentDevice({
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+    });
+
+    expect(mocks.productFindMany).not.toHaveBeenCalled();
+    expect(result[0]?.items[0]).toMatchObject({
+      imageUrl: '/api/assets/asset-snapshot?width=384',
+      imageAssetId: 'asset-snapshot',
+    });
   });
 });
