@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
+import { storeAssetUrl } from '@/features/assets/urls';
 import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { CustomerOrderDetailsDTO } from '@/types/order-tracking';
@@ -287,8 +288,15 @@ export function OrderDetailsSheet({
                         <div className="bg-surface-muted border-tinta/5 relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border">
                           <ProductImage
                             name={item.productName}
-                            imageUrl={item.imageUrl ?? null}
-                            imageAssetId={item.imageAssetId ?? null}
+                            // O detalhe recebe imageAssetId como identificador, mas esta
+                            // superfície deve consumir uma URL pública determinística.
+                            // Evitamos depender do loader customizado do next/image no
+                            // sheet e também evitamos que um UUID seja tratado como rota.
+                            imageUrl={
+                              item.imageUrl ??
+                              (item.imageAssetId ? storeAssetUrl(item.imageAssetId, 256) : null)
+                            }
+                            imageAssetId={null}
                             sizes="56px"
                             width={112}
                             fallback={<ShoppingBag className="text-text-muted h-6 w-6" />}

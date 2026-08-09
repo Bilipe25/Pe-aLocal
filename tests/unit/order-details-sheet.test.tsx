@@ -94,6 +94,47 @@ describe('OrderDetailsSheet', () => {
     expect(screen.getByText('Rua das Flores, 123 - Fortaleza')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Pedir novamente/i })).toBeInTheDocument();
   });
+
+  it('normaliza o asset do item para a rota pÃºblica de imagem', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...mockDetails,
+          items: [
+            {
+              ...mockDetails.items[0],
+              imageUrl: null,
+              imageAssetId: 'asset-history-1',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    render(
+      <OrderDetailsSheet
+        open={true}
+        onOpenChange={() => {}}
+        trackingToken="token-23"
+        storeId="store-1"
+        storeSlug="loja-test"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pedido #23' })).toBeInTheDocument();
+    });
+
+    expect(document.querySelector('.storefront-order-details-content img')).toHaveAttribute(
+      'src',
+      '/api/store-assets/asset-history-1?width=256',
+    );
+  });
+
   it('rejeita uma resposta de API incompleta sem tentar renderizar seus dados', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ orderNumber: 23, items: 'invalid' }), {
