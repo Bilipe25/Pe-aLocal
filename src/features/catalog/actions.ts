@@ -1273,10 +1273,11 @@ export async function removeProductImageAction(productId: string): Promise<Actio
       );
 
       if (product.imageAssetId) {
-        const remainingReferences = await tx.product.count({
-          where: { imageAssetId: product.imageAssetId },
-        });
-        if (remainingReferences === 0) {
+        const [remainingProductReferences, historicalReferences] = await Promise.all([
+          tx.product.count({ where: { imageAssetId: product.imageAssetId } }),
+          tx.orderItem.count({ where: { imageAssetId: product.imageAssetId } }),
+        ]);
+        if (remainingProductReferences === 0 && historicalReferences === 0) {
           await tx.storeAsset.updateMany({
             where: {
               id: product.imageAssetId,

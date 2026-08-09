@@ -24,6 +24,11 @@ export interface StoreAssetRuntime {
   images: ImagesBinding;
 }
 
+export interface StoreAssetReadRuntime {
+  bucket: R2Bucket;
+  images: ImagesBinding | null;
+}
+
 const MIME_EXTENSIONS: Record<StoreAssetMimeType, StoreAssetInspection['extension']> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -85,6 +90,19 @@ export async function getStoreAssetRuntime(): Promise<StoreAssetRuntime> {
   if (!env.STORE_ASSETS_R2) throw new Error('Binding STORE_ASSETS_R2 indisponível.');
   if (!env.IMAGES) throw new Error('Binding IMAGES indisponível.');
   return { bucket: env.STORE_ASSETS_R2, images: env.IMAGES };
+}
+
+/**
+ * Leitura pública tolerante à indisponibilidade do binding IMAGES.
+ *
+ * O objeto original continua podendo ser servido diretamente pelo R2 quando
+ * a transformação de imagens não está disponível. Uploads continuam usando
+ * `getStoreAssetRuntime`, pois precisam obrigatoriamente dos dois bindings.
+ */
+export async function getStoreAssetReadRuntime(): Promise<StoreAssetReadRuntime> {
+  const { env } = await getCloudflareContext({ async: true });
+  if (!env.STORE_ASSETS_R2) throw new Error('Binding STORE_ASSETS_R2 indisponível.');
+  return { bucket: env.STORE_ASSETS_R2, images: env.IMAGES ?? null };
 }
 
 export async function inspectStoreAssetFile(

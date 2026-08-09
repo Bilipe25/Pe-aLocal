@@ -389,6 +389,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               quantity: item.quantity,
               notes: item.notes || null,
               itemTotal: item.itemTotal,
+              imageUrl: item.imageUrl,
+              imageAssetId: item.imageAssetId,
               options: {
                 create: item.options.map((option) => ({
                   position: option.position,
@@ -588,6 +590,8 @@ export async function getOrderByPublicToken(publicToken: string) {
           quantity: true,
           notes: true,
           itemTotal: true,
+          imageUrl: true,
+          imageAssetId: true,
           options: {
             orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
             select: {
@@ -719,6 +723,8 @@ export async function getFullPublicOrderDetailsByToken(publicToken: string, stor
           quantity: true,
           notes: true,
           itemTotal: true,
+          imageUrl: true,
+          imageAssetId: true,
           options: {
             select: {
               optionName: true,

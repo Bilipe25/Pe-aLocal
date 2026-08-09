@@ -109,6 +109,14 @@ export async function isStoreAssetReferenced(
       WHERE product."tenantId" = ${tenantId}
         AND product."storeId" = ${storeId}
         AND product."imageAssetId" = ${assetId}
+      UNION ALL
+      SELECT 1
+      FROM "order_items" item
+      INNER JOIN "orders" purchase_order
+        ON purchase_order."id" = item."orderId"
+      WHERE purchase_order."tenantId" = ${tenantId}
+        AND purchase_order."storeId" = ${storeId}
+        AND item."imageAssetId" = ${assetId}
     ) AS "referenced"
   `);
   return rows[0]?.referenced ?? false;

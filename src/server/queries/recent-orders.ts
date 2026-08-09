@@ -106,6 +106,8 @@ export async function getRecentOrdersForCurrentDevice({
           quantity: true,
           notes: true,
           itemTotal: true,
+          imageUrl: true,
+          imageAssetId: true,
           options: {
             select: {
               optionName: true,
@@ -124,9 +126,16 @@ export async function getRecentOrdersForCurrentDevice({
   const recentOrders = rawOrders.filter((order) => order.items.length > 0).slice(0, 5);
   if (recentOrders.length === 0) return [];
 
-  // Collect product IDs for thumbnail image lookup
+  // Pedidos antigos podem não possuir snapshot. Somente esses itens consultam
+  // o catálogo atual como fallback de compatibilidade.
   const productIds = [
-    ...new Set(recentOrders.flatMap((order) => order.items.map((item) => item.productId))),
+    ...new Set(
+      recentOrders.flatMap((order) =>
+        order.items
+          .filter((item) => !item.imageAssetId && !item.imageUrl)
+          .map((item) => item.productId),
+      ),
+    ),
   ];
 
   const products =
@@ -155,10 +164,13 @@ export async function getRecentOrdersForCurrentDevice({
     const thumbnails: PublicRecentOrderDto['thumbnails'] = [];
     for (const item of order.items) {
       const p = productMap.get(item.productId);
-      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : (p?.imageUrl ?? null);
+      const imageAssetId = item.imageAssetId ?? p?.imageAssetId ?? null;
+      const imageUrl = imageAssetId
+        ? storeAssetUrl(imageAssetId, 384)
+        : (item.imageUrl ?? p?.imageUrl ?? null);
       thumbnails.push({
         imageUrl,
-        imageAssetId: p?.imageAssetId ?? null,
+        imageAssetId,
         productName: item.productName,
       });
       if (thumbnails.length >= 4) break;
@@ -168,7 +180,10 @@ export async function getRecentOrdersForCurrentDevice({
 
     const formattedItems: PublicRecentOrderItemDto[] = order.items.map((item) => {
       const p = productMap.get(item.productId);
-      const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 384) : (p?.imageUrl ?? null);
+      const imageAssetId = item.imageAssetId ?? p?.imageAssetId ?? null;
+      const imageUrl = imageAssetId
+        ? storeAssetUrl(imageAssetId, 384)
+        : (item.imageUrl ?? p?.imageUrl ?? null);
       return {
         productId: item.productId,
         productName: item.productName,
@@ -176,7 +191,7 @@ export async function getRecentOrdersForCurrentDevice({
         unitPrice: item.unitPrice,
         notes: item.notes ?? '',
         imageUrl,
-        imageAssetId: p?.imageAssetId ?? null,
+        imageAssetId,
         options: item.options.map((opt) => ({
           name: opt.optionName,
           price: opt.optionPrice,

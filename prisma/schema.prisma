@@ -1224,12 +1224,15 @@ model OrderItem {
   quantity    Int
   notes       String?
   itemTotal   Int // Em centavos (unitPrice * quantity + opções)
+  imageUrl     String? // Snapshot da URL legada no momento da compra
+  imageAssetId String? // Snapshot do StoreAsset no momento da compra
 
   order   Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   options OrderItemOption[]
 
   @@index([orderId, position, id])
   @@index([productId])
+  @@index([imageAssetId])
   @@map("order_items")
 }
 

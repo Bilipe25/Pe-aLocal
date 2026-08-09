@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   productFindFirst: vi.fn(),
   productUpdateMany: vi.fn(),
   productCount: vi.fn(),
+  orderItemCount: vi.fn(),
   assetAggregate: vi.fn(),
   assetCreate: vi.fn(),
   assetUpdateMany: vi.fn(),
@@ -92,6 +93,7 @@ describe('upload atômico de imagem de produto', () => {
     mocks.assetCreate.mockResolvedValue(newAsset);
     mocks.productUpdateMany.mockResolvedValue({ count: 1 });
     mocks.productCount.mockResolvedValueOnce(1).mockResolvedValue(0);
+    mocks.orderItemCount.mockResolvedValue(0);
     mocks.assetUpdateMany.mockResolvedValue({ count: 1 });
 
     const tx = {
@@ -99,6 +101,7 @@ describe('upload atômico de imagem de produto', () => {
         updateMany: mocks.productUpdateMany,
         count: mocks.productCount,
       },
+      orderItem: { count: mocks.orderItemCount },
       storeAsset: {
         aggregate: mocks.assetAggregate,
         create: mocks.assetCreate,
@@ -108,6 +111,7 @@ describe('upload atômico de imagem de produto', () => {
     };
     mocks.getDb.mockReturnValue({
       product: { findFirst: mocks.productFindFirst, count: mocks.productCount },
+      orderItem: { count: mocks.orderItemCount },
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
     });
   });
@@ -159,5 +163,29 @@ describe('upload atômico de imagem de produto', () => {
     ).rejects.toBeInstanceOf(ConflictError);
 
     expect(mocks.bucketDelete).toHaveBeenCalledWith(newAsset.objectKey);
+  });
+
+  it('preserva o asset anterior quando um pedido mantém seu snapshot', async () => {
+    mocks.orderItemCount.mockResolvedValue(1);
+    mocks.lockStoreEntitlement.mockResolvedValue({
+      maxAssetCount: 2,
+      maxAssetStorageBytes: 6,
+    });
+
+    await uploadProductImageAsTenantMember({
+      tenantId: 'tenant-1',
+      storeId: 'store-1',
+      productId: 'product-1',
+      userId: 'user-1',
+      file: new File(['webp'], 'produto.webp', { type: 'image/webp' }),
+      altText: 'Imagem de X-Burger',
+    });
+
+    expect(mocks.assetUpdateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: oldAsset.id }),
+        data: expect.objectContaining({ status: 'DELETED' }),
+      }),
+    );
   });
 });
