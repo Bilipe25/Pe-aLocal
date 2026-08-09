@@ -13,6 +13,7 @@ interface ProductImageProps {
   sizes: string;
   width: number;
   loading?: 'eager' | 'lazy';
+  priority?: boolean;
   fallback?: ReactNode;
 }
 
@@ -23,6 +24,7 @@ export function ProductImage({
   sizes,
   width,
   loading = 'lazy',
+  priority = false,
   fallback,
 }: ProductImageProps) {
   const src = imageAssetId ?? imageUrl;
@@ -52,6 +54,7 @@ export function ProductImage({
           fill
           sizes={sizes}
           loading={loading}
+          priority={priority}
           onLoad={() => setLoadedSrc(src)}
           onError={() => setFailedSrc(src)}
           data-asset-target-width={width}

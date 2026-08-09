@@ -294,7 +294,7 @@ export function OrderDetailsSheet({
                             // sheet e também evitamos que um UUID seja tratado como rota.
                             imageUrl={
                               item.imageUrl ??
-                              (item.imageAssetId ? storeAssetUrl(item.imageAssetId, 256) : null)
+                              (item.imageAssetId ? storeAssetUrl(item.imageAssetId, 192) : null)
                             }
                             imageAssetId={null}
                             sizes="56px"

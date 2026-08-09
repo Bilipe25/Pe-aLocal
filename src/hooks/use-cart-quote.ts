@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CartItem } from '@/stores/cart-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
@@ -14,6 +14,7 @@ interface UseCartQuoteInput {
   revision: number;
   modality: CartFulfillmentModality;
   couponCode?: string | null;
+  enabled?: boolean;
 }
 
 function responseErrorMessage(payload: unknown) {
@@ -34,12 +35,14 @@ export function useCartQuote({
   revision,
   modality,
   couponCode,
+  enabled = true,
 }: UseCartQuoteInput) {
   const [quote, setQuote] = useState<CheckoutQuoteDto | null>(null);
   const [status, setStatus] = useState<CartQuoteStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [resolvedRequestKey, setResolvedRequestKey] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const hasRequestedRef = useRef(false);
   const requestBody = useMemo(() => {
     const normalizedCouponCode = couponCode?.trim().toUpperCase();
     return {
@@ -55,13 +58,20 @@ export function useCartQuote({
     };
   }, [couponCode, items, modality]);
   const requestKey = useMemo(() => JSON.stringify(requestBody), [requestBody]);
-  const canRequest = items.length > 0;
+  const canRequest = enabled && items.length > 0;
 
   useEffect(() => {
-    if (!canRequest) return;
+    if (!canRequest) {
+      hasRequestedRef.current = false;
+      return;
+    }
 
     const controller = new AbortController();
+    // A primeira cotação também completa imagens ausentes de carrinhos antigos: ela
+    // precisa começar imediatamente. As alterações seguintes continuam agrupadas.
+    const delay = hasRequestedRef.current && retryKey === 0 ? 250 : 0;
     const timer = window.setTimeout(async () => {
+      hasRequestedRef.current = true;
       setResolvedRequestKey(requestKey);
       setStatus('loading');
       setError(null);
@@ -74,7 +84,7 @@ export function useCartQuote({
               Accept: 'application/json',
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(requestBody),
+            body: requestKey,
             cache: 'no-store',
             signal: controller.signal,
           },
@@ -91,19 +101,19 @@ export function useCartQuote({
           caught instanceof Error ? caught.message : 'Não foi possível atualizar os valores agora.',
         );
       }
-    }, 250);
+    }, delay);
 
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [canRequest, requestBody, requestKey, retryKey, revision, storeSlug]);
+  }, [canRequest, requestKey, retryKey, revision, storeSlug]);
 
   const visibleState =
-    !canRequest || resolvedRequestKey !== requestKey
+    !enabled || !canRequest || resolvedRequestKey !== requestKey
       ? {
           quote: null,
-          status: items.length === 0 ? ('idle' as const) : ('waiting' as const),
+          status: !enabled || items.length === 0 ? ('idle' as const) : ('waiting' as const),
           error: null,
         }
       : { quote, status, error };

@@ -32,6 +32,14 @@ export interface CartItem {
   imageAlt?: string;
 }
 
+/** Dados de apresenta\u00e7\u00e3o obtidos da cota\u00e7\u00e3o autoritativa para carrinhos legados. */
+export interface CartItemMedia {
+  id: string;
+  imageUrl?: string | null;
+  imageAssetId?: string | null;
+  imageAlt?: string | null;
+}
+
 export interface CartAddResult {
   itemId: string;
   quantityAdded: number;
@@ -64,6 +72,7 @@ interface CartState {
   updateQuantity: (id: string, quantity: number) => number;
   clearCart: () => number;
   setCouponCode: (couponCode: string | null) => number;
+  enrichItemMedia: (media: CartItemMedia[]) => void;
   restoreItems: (items: CartItem[]) => number;
   getSnapshot: () => CartSnapshot;
   restoreSnapshot: (snapshot: CartSnapshot, expectedRevision: number) => boolean;
@@ -551,6 +560,40 @@ export const useCartStore = create<CartState>()((set, get) => {
       return commit((state) =>
         state.couponCode === normalized ? null : { couponCode: normalized },
       );
+    },
+
+    enrichItemMedia: (media) => {
+      if (media.length === 0) return;
+
+      const mediaByLineId = new Map(media.map((candidate) => [candidate.id, candidate]));
+      const current = get();
+      let changed = false;
+      const items = current.items.map((item) => {
+        const candidate = mediaByLineId.get(item.id);
+        if (!candidate) return item;
+
+        // A imagem que j\u00e1 acompanhava a linha \u00e9 o snapshot preferencial. A cota\u00e7\u00e3o
+        // s\u00f3 preenche carrinhos legados que ainda n\u00e3o tinham metadados de m\u00eddia.
+        const imageUrl = item.imageUrl ?? candidate.imageUrl ?? null;
+        const imageAssetId = item.imageAssetId ?? candidate.imageAssetId ?? null;
+        const imageAlt = item.imageAlt ?? candidate.imageAlt ?? item.productName;
+        if (
+          imageUrl === item.imageUrl &&
+          imageAssetId === item.imageAssetId &&
+          imageAlt === item.imageAlt
+        ) {
+          return item;
+        }
+
+        changed = true;
+        return { ...item, imageUrl, imageAssetId, imageAlt };
+      });
+
+      if (!changed) return;
+      set({ items, updatedAt: nextTimestamp(current.updatedAt) });
+      // M\u00eddia n\u00e3o muda pre\u00e7o, quantidade ou op\u00e7\u00f5es: n\u00e3o incrementamos a revis\u00e3o e
+      // evitamos uma nova cota\u00e7\u00e3o desnecess\u00e1ria.
+      writePersistedCart(getBrowserStorage(), get());
     },
 
     restoreItems: (items) => {

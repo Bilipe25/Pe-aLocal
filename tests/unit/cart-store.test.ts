@@ -396,4 +396,60 @@ describe('carrinho por loja', () => {
     expect(useCartStore.getState().items).toEqual([]);
     expect(useCartStore.getState().updatedAt).toBeGreaterThan(200);
   });
+
+  it('preenche mídia ausente de uma linha legada sem alterar a revisão comercial', () => {
+    useCartStore.setState({
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem({ imageUrl: null, imageAssetId: null })],
+      couponCode: null,
+      revision: 4,
+      updatedAt: 200,
+    });
+
+    useCartStore.getState().enrichItemMedia([
+      {
+        id: 'item-1',
+        imageUrl: '/imagem-do-produto.webp',
+        imageAssetId: 'asset-produto',
+        imageAlt: 'Foto do Produto',
+      },
+    ]);
+
+    expect(useCartStore.getState().revision).toBe(4);
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      imageUrl: '/imagem-do-produto.webp',
+      imageAssetId: 'asset-produto',
+      imageAlt: 'Foto do Produto',
+    });
+    expect(JSON.parse(storage.getItem(getCartStorageKey('store-a')) ?? '{}')).toMatchObject({
+      items: [
+        expect.objectContaining({
+          imageUrl: '/imagem-do-produto.webp',
+          imageAssetId: 'asset-produto',
+        }),
+      ],
+    });
+  });
+
+  it('não substitui o snapshot de mídia que já pertence à linha', () => {
+    useCartStore.setState({
+      storeId: 'store-a',
+      storeSlug: 'loja-a',
+      items: [cartItem({ imageUrl: '/snapshot.webp', imageAssetId: 'asset-snapshot' })],
+      couponCode: null,
+      revision: 4,
+      updatedAt: 200,
+    });
+
+    useCartStore
+      .getState()
+      .enrichItemMedia([{ id: 'item-1', imageUrl: '/atual.webp', imageAssetId: 'asset-atual' }]);
+
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      imageUrl: '/snapshot.webp',
+      imageAssetId: 'asset-snapshot',
+      imageAlt: 'Produto',
+    });
+  });
 });
