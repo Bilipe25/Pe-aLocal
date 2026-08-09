@@ -170,7 +170,7 @@ describe('segurança e clareza do carrinho público', () => {
 
   it('exige confirmação e mantém os itens ao cancelar, usar Escape ou clicar no overlay', async () => {
     renderCart();
-    const trigger = screen.getByRole('button', { name: 'Esvaziar sacola' });
+    const trigger = await screen.findByRole('button', { name: 'Esvaziar sacola' });
 
     fireEvent.click(trigger);
     expect(screen.getByRole('heading', { name: 'Esvaziar a sacola?' })).toBeVisible();
@@ -207,7 +207,8 @@ describe('segurança e clareza do carrinho público', () => {
     localStorage.setItem(otherStoreKey, '{"preserved":true}');
     renderCart();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Esvaziar sacola' }));
+    const trigger = await screen.findByRole('button', { name: 'Esvaziar sacola' });
+    fireEvent.click(trigger);
     fireEvent.click(screen.getByRole('button', { name: 'Esvaziar sacola' }));
 
     const pendingButton = screen.getByRole('button', { name: 'Esvaziando…' });
@@ -227,7 +228,9 @@ describe('segurança e clareza do carrinho público', () => {
     renderCart();
 
     expect(screen.queryByRole('button', { name: /Opções de/ })).not.toBeInTheDocument();
-    const editButtons = screen.getAllByRole('button', { name: 'Editar X-Burguer Clássico' });
+    const editButtons = await screen.findAllByRole('button', {
+      name: 'Editar X-Burguer Clássico',
+    });
     fireEvent.click(editButtons[1]);
 
     expect(
@@ -240,7 +243,7 @@ describe('segurança e clareza do carrinho público', () => {
   it('remove somente a linha escolhida, recalcula o subtotal e anuncia a remoção', async () => {
     renderCart();
 
-    const removeButtons = screen.getAllByRole('button', {
+    const removeButtons = await screen.findAllByRole('button', {
       name: 'Remover X-Burguer Clássico da sacola',
     });
     fireEvent.click(removeButtons[0]);
@@ -269,8 +272,8 @@ describe('segurança e clareza do carrinho público', () => {
   it('aplica e remove um cupom pela faixa expansível, atualizando desconto, total e CTA', async () => {
     renderCart();
 
+    const couponTrigger = await screen.findByRole('button', { name: /Tem um cupom\?/ });
     expect(screen.getByLabelText('Código do cupom')).not.toBeVisible();
-    const couponTrigger = screen.getByRole('button', { name: /Tem um cupom\?/ });
     expect(couponTrigger).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(couponTrigger);
@@ -297,7 +300,7 @@ describe('segurança e clareza do carrinho público', () => {
 
   it('mantém o cupom inválido aberto, associa o erro ao campo e permite corrigi-lo', async () => {
     renderCart();
-    fireEvent.click(screen.getByRole('button', { name: /Tem um cupom\?/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tem um cupom\?/ }));
     const couponInput = screen.getByLabelText('Código do cupom');
     fireEvent.change(couponInput, { target: { value: 'invalido' } });
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
@@ -314,10 +317,10 @@ describe('segurança e clareza do carrinho público', () => {
     expect(await screen.findByText('Cupom BEMVINDO10 aplicado')).toBeVisible();
   });
 
-  it('mantém cabeçalho leve, fallback de logo e nome longo sem seletor frágil', () => {
+  it('mantém cabeçalho leve, fallback de logo e nome longo sem seletor frágil', async () => {
     renderCart('Restaurante e Hamburgueria Artesanal do Bairro com Nome Muito Longo');
 
-    expect(screen.getByRole('heading', { name: 'Sua sacola', level: 1 })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Sua sacola', level: 1 })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Voltar ao cardápio' })).toHaveAttribute(
       'href',
       '/burger-do-ze',

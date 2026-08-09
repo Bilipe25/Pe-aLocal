@@ -232,13 +232,13 @@ describe('limite de quantidade no storefront', () => {
     );
   });
 
-  it('desabilita o incremento e anuncia o limite na sacola', () => {
+  it('desabilita o incremento e anuncia o limite na sacola', async () => {
     const { unmount } = render(
       <CartView storeId="store-1" storeSlug="loja-1" acceptingOrders unavailableReason="" />,
     );
 
     expect(
-      screen.getByRole('button', { name: 'Aumentar quantidade de Burger da casa' }),
+      await screen.findByRole('button', { name: 'Aumentar quantidade de Burger da casa' }),
     ).toBeDisabled();
     expect(screen.getByText('Limite de 99 unidades.')).toBeVisible();
     expect(screen.queryByText('Como você quer receber?')).not.toBeInTheDocument();

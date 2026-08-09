@@ -18,12 +18,17 @@ import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 
 describe('rotas SEO públicas', () => {
-  it('publica sitemap absoluto somente para as lojas retornadas pelo índice público', async () => {
+  it('publica a home e somente as lojas retornadas pelo índice público', async () => {
     mocks.getPublicStorefrontSitemapEntries.mockResolvedValue([
       { slug: 'loja-1', lastModified: new Date('2026-07-23T10:00:00Z') },
     ]);
 
     await expect(sitemap()).resolves.toEqual([
+      {
+        url: 'http://localhost:3000/',
+        changeFrequency: 'monthly',
+        priority: 1,
+      },
       {
         url: 'http://localhost:3000/loja-1',
         lastModified: new Date('2026-07-23T10:00:00Z'),
