@@ -54,7 +54,7 @@ describe('PublicOrderHistory', () => {
     vi.stubGlobal('fetch', fetchMock);
     usePublicOrderHistoryStore.setState({ storeId: null, storeSlug: null, orders: [] });
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify(trackingState), {
+      new Response(JSON.stringify({ orders: [trackingState] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -85,8 +85,8 @@ describe('PublicOrderHistory', () => {
       `/loja-a/order/${TRACKING_TOKEN}`,
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/orders/track/${TRACKING_TOKEN}?storeSlug=loja-a`,
-      expect.objectContaining({ cache: 'no-store' }),
+      '/api/orders/history',
+      expect.objectContaining({ method: 'POST', cache: 'no-store' }),
     );
   });
 
@@ -99,7 +99,12 @@ describe('PublicOrderHistory', () => {
         createdAt: new Date().toISOString(),
       },
     ]);
-    fetchMock.mockResolvedValue(new Response('{}', { status: 410 }));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ orders: [null] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
     render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
 
@@ -147,29 +152,43 @@ describe('PublicOrderHistory', () => {
         createdAt: new Date().toISOString(),
       },
     ]);
-    fetchMock.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          ...trackingState,
-          status: 'DELIVERED',
-          items: [
-            {
-              productId: 'prod-1',
-              productName: 'X-Salada',
-              unitPrice: 2500,
-              quantity: 2,
-            },
-          ],
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ orders: [{ ...trackingState, status: 'DELIVERED' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            readyItems: [
+              {
+                productId: 'prod-1',
+                productName: 'X-Salada',
+                basePrice: 2500,
+                unitPrice: 2500,
+                quantity: 2,
+                notes: '',
+                imageUrl: null,
+                imageAssetId: null,
+                selectedOptions: [],
+                priceChanged: false,
+              },
+            ],
+            issues: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
 
     render(<PublicOrderHistory storeId="store-a" storeSlug="loja-a" />);
 
-    const reorderButton = await screen.findByRole('button', { name: /Pedir novamente o pedido 42/i });
+    const reorderButton = await screen.findByRole('button', {
+      name: /Pedir novamente o pedido 42/i,
+    });
     fireEvent.click(reorderButton);
 
-    expect(pushMock).toHaveBeenCalledWith('/loja-a');
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/loja-a/cart'));
   });
 });

@@ -3,12 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   canAuthorizeCustomerOrderTracking,
   getCustomerOrderTrackingState,
+  getCustomerOrderTrackingStates,
   toCustomerOrderTrackingState,
 } from '@/server/services/customer-order-tracking.service';
 
 const mocks = vi.hoisted(() => ({
   getOrderTrackingStateByPublicToken: vi.fn(),
   hasActiveOrderTrackingToken: vi.fn(),
+  orderFindMany: vi.fn(),
+}));
+
+vi.mock('@/server/database/client', () => ({
+  getDb: () => ({ order: { findMany: mocks.orderFindMany } }),
 }));
 
 vi.mock('@/server/repositories/order.repository', () => ({
@@ -109,5 +115,44 @@ describe('acompanhamento público do pedido', () => {
     await expect(canAuthorizeCustomerOrderTracking('token-a', 'burger-do-ze')).resolves.toBe(true);
     expect(mocks.hasActiveOrderTrackingToken).toHaveBeenCalledWith('token-a', 'burger-do-ze');
     expect(mocks.getOrderTrackingStateByPublicToken).not.toHaveBeenCalled();
+  });
+
+  it('carrega o histórico em lote e preserva a ordem dos tokens', async () => {
+    mocks.orderFindMany.mockResolvedValue([
+      {
+        ...base,
+        publicToken: 'token-b',
+        total: 4_290,
+        items: [
+          {
+            productId: 'product-a',
+            productName: 'X-Burguer',
+            unitPrice: 4_290,
+            quantity: 1,
+          },
+        ],
+        store: { settings: null },
+      },
+    ]);
+
+    const result = await getCustomerOrderTrackingStates(['token-a', 'token-b'], 'burger-do-ze');
+
+    expect(mocks.orderFindMany).toHaveBeenCalledTimes(1);
+    expect(mocks.orderFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          publicToken: { in: ['token-a', 'token-b'] },
+          store: { slug: 'burger-do-ze' },
+        }),
+      }),
+    );
+    expect(result[0]).toBeNull();
+    expect(result[1]).toEqual(
+      expect.objectContaining({
+        orderNumber: 42,
+        totalCents: 4_290,
+        itemsSummary: '1x X-Burguer',
+      }),
+    );
   });
 });

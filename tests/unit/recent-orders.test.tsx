@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RecentOrdersSection } from '@/components/storefront/recent-orders-section';
@@ -16,6 +16,8 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     warning: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
@@ -73,6 +75,30 @@ const mockOrders: PublicRecentOrderDto[] = [
 describe('RecentOrdersSection', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            readyItems: mockOrders[0].items.map((item, index) => ({
+              productId: item.productId,
+              productName: item.productName,
+              basePrice: item.unitPrice,
+              unitPrice: item.unitPrice,
+              quantity: item.quantity,
+              notes: item.notes,
+              imageUrl: null,
+              imageAssetId: null,
+              selectedOptions:
+                index === 0 ? [{ id: 'bacon-current', name: 'Bacon extra', price: 500 }] : [],
+              priceChanged: false,
+            })),
+            issues: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
     useCartStore.setState({
       storeId: null,
       storeSlug: null,
@@ -88,9 +114,7 @@ describe('RecentOrdersSection', () => {
   });
 
   it('renderiza os cards de pedidos anteriores completos', () => {
-    render(
-      <RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={mockOrders} />,
-    );
+    render(<RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={mockOrders} />);
 
     expect(screen.getByText('Peça de novo')).toBeInTheDocument();
     expect(screen.getByText('X-Salada, Batata Grande, Coca-Cola 350ml')).toBeInTheDocument();
@@ -99,16 +123,14 @@ describe('RecentOrdersSection', () => {
     expect(screen.getByRole('button', { name: /Pedir/i })).toBeInTheDocument();
   });
 
-  it('adiciona todos os itens do pedido anterior à sacola ao clicar em Pedir novamente', () => {
-    render(
-      <RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={mockOrders} />,
-    );
+  it('adiciona os itens validados com dados atuais ao clicar em Pedir novamente', async () => {
+    render(<RecentOrdersSection storeId="store-1" storeSlug="loja-test" orders={mockOrders} />);
 
     const button = screen.getByRole('button', { name: /Pedir/i });
     fireEvent.click(button);
 
+    await waitFor(() => expect(useCartStore.getState().items).toHaveLength(3));
     const items = useCartStore.getState().items;
-    expect(items).toHaveLength(3);
     expect(items[0].productName).toBe('X-Salada');
     expect(items[1].productName).toBe('Batata Grande');
     expect(items[2].productName).toBe('Coca-Cola 350ml');

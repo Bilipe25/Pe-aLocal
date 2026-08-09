@@ -52,17 +52,29 @@ export interface PublicStorefrontProductDetailResponseDto {
   product: PublicStorefrontProductDetailDto;
 }
 
-/**
- * Produto atual elegível para a vitrine privada "Peça de novo".
- * Não adicionar IDs de Customer, reconhecimento, pedidos ou sinais de ranking.
- */
-export interface PublicRecentPurchaseProductDto extends PublicStorefrontProductSummaryDto {
-  category: {
-    id: string;
-    name: string;
-  };
-  isAvailable: boolean;
-  requiresConfiguration: boolean;
+export interface PublicRepeatOrderReadyItemDto {
+  productId: string;
+  productName: string;
+  basePrice: number;
+  unitPrice: number;
+  quantity: number;
+  notes: string;
+  imageUrl: string | null;
+  imageAssetId: string | null;
+  selectedOptions: PublicStorefrontOptionDto[];
+  priceChanged: boolean;
+}
+
+export interface PublicRepeatOrderIssueDto {
+  productId: string;
+  productName: string;
+  reason: 'UNAVAILABLE' | 'REVIEW_REQUIRED';
+  message: string;
+}
+
+export interface PublicRepeatOrderResponseDto {
+  readyItems: PublicRepeatOrderReadyItemDto[];
+  issues: PublicRepeatOrderIssueDto[];
 }
 
 /**

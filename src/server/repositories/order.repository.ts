@@ -686,8 +686,9 @@ export async function getFullPublicOrderDetailsByToken(publicToken: string, stor
     },
     select: {
       id: true,
+      tenantId: true,
+      storeId: true,
       orderNumber: true,
-      publicToken: true,
       status: true,
       modality: true,
       paymentMethod: true,

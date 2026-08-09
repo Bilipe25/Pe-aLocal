@@ -140,22 +140,6 @@ const commercialCategories = [
   },
 ];
 
-const recentOrders = [
-  {
-    id: 'order-1',
-    orderNumber: 1,
-    lastPurchasedAt: new Date().toISOString(),
-    timeAgoLabel: 'Comprado há 1 dia',
-    totalItemCount: 2,
-    totalCents: 3500,
-    itemsSummary: 'X-Bacon recorrente, Batata destaque',
-    extraItemsCount: 0,
-    thumbnails: [],
-    extraThumbnailsCount: 0,
-    items: [],
-  },
-];
-
 function response(body: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -323,9 +307,7 @@ describe('catálogo público', () => {
       target: { value: 'burger' },
     });
 
-    await waitFor(() =>
-      expect(screen.getByText('1 produto encontrado')).toBeVisible(),
-    );
+    await waitFor(() => expect(screen.getByText('1 produto encontrado')).toBeVisible());
 
     // Filtro "somente disponíveis" adiciona contagem extra no resumo.
     const filterButton = screen.getByRole('button', { name: 'Abrir filtros' });
@@ -335,32 +317,8 @@ describe('catálogo público', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
 
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(
-        /1 produto encontrado.*1 filtro/,
-      ),
+      expect(screen.getByRole('status')).toHaveTextContent(/1 produto encontrado.*1 filtro/),
     );
-  });
-
-  it('posiciona recentes antes de Destaques e evita repetição entre as vitrines', () => {
-    render(
-      <CatalogView
-        categories={commercialCategories}
-        storeId="store-1"
-        storeSlug="loja-1"
-        storeOpen
-        customization={createDefaultCustomization()}
-        banners={[]}
-        recentOrders={recentOrders}
-      />,
-    );
-
-    const recent = screen.getByRole('region', { name: 'Peça de novo' });
-    const featuredHeading = screen.getByRole('heading', { name: 'Destaques' });
-    const featured = featuredHeading.closest('section')!;
-    expect(
-      recent.compareDocumentPosition(featured) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(within(featured).getByRole('button', { name: 'Batata destaque' })).toBeInTheDocument();
   });
 
   it('oculta apenas a vitrine Destaques e mantém seus produtos nas categorias', () => {
@@ -379,24 +337,6 @@ describe('catálogo público', () => {
     expect(screen.queryByRole('heading', { name: 'Destaques' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'X-Bacon recorrente' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Batata destaque' })).toBeInTheDocument();
-  });
-
-  it('exibe a seção Peça de novo quando há pedidos anteriores', () => {
-    render(
-      <CatalogView
-        categories={[
-          { ...commercialCategories[0], products: [commercialCategories[0].products[0]] },
-        ]}
-        storeId="store-1"
-        storeSlug="loja-1"
-        storeOpen
-        customization={createDefaultCustomization()}
-        banners={[]}
-        recentOrders={recentOrders}
-      />,
-    );
-
-    expect(screen.getByRole('region', { name: 'Peça de novo' })).toBeInTheDocument();
   });
 
   it('mostra banner de pedido mínimo quando a sacola está abaixo do valor mínimo', () => {

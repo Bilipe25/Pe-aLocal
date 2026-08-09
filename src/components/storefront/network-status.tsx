@@ -6,10 +6,9 @@ import { useEffect, useState } from 'react';
 const ONLINE_HIDE_DELAY_MS = 2_000;
 
 export function NetworkStatus() {
-  const [status, setStatus] = useState<'online' | 'offline' | 'reconnecting'>(() => {
-    if (typeof navigator === 'undefined') return 'online';
-    return navigator.onLine ? 'online' : 'offline';
-  });
+  // O primeiro render precisa ser idêntico no servidor e no navegador. O
+  // estado real da rede é sincronizado logo após a hidratação.
+  const [status, setStatus] = useState<'online' | 'offline' | 'reconnecting'>('online');
 
   useEffect(() => {
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -31,6 +30,7 @@ export function NetworkStatus() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    if (!navigator.onLine) queueMicrotask(handleOffline);
 
     return () => {
       window.removeEventListener('online', handleOnline);
