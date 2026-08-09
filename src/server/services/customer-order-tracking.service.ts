@@ -237,7 +237,7 @@ export async function getCustomerOrderDetails(
 
   const formattedItems = order.items.map((item) => {
     const p = item.productId ? productMap.get(item.productId) : null;
-    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 256) : (p?.imageUrl ?? null);
+    const imageUrl = p?.imageAssetId ? storeAssetUrl(p.imageAssetId, 192) : (p?.imageUrl ?? null);
     return {
       id: item.id,
       productId: item.productId ?? undefined,

@@ -14,7 +14,15 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
@@ -81,6 +89,7 @@ export function CartView({
   const restoreSnapshot = useCartStore((state) => state.restoreSnapshot);
   const couponCode = useCartStore((state) => state.couponCode);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
+  const enrichItemMedia = useCartStore((state) => state.enrichItemMedia);
   const revision = useCartStore(selectCartRevision);
   const getTotal = useCartStore((state) => state.getTotal);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -88,6 +97,7 @@ export function CartView({
   const [couponExpanded, setCouponExpanded] = useState(false);
   const [couponDraft, setCouponDraft] = useState(couponCode ?? '');
   const [couponInputError, setCouponInputError] = useState<string | null>(null);
+  const [cartHydrated, setCartHydrated] = useState(false);
   const editingTriggerRef = useRef<HTMLButtonElement | null>(null);
   const couponResolutionRef = useRef<string | null>(null);
   const couponPanelId = useId();
@@ -95,8 +105,9 @@ export function CartView({
   const localTotal = getTotal();
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setStore(storeId, storeSlug);
+    setCartHydrated(true);
     return subscribeToCartStorage(storeId, storeSlug);
   }, [setStore, storeId, storeSlug]);
 
@@ -111,7 +122,19 @@ export function CartView({
     revision,
     modality: quoteModality,
     couponCode,
+    enabled: cartHydrated,
   });
+  useEffect(() => {
+    if (quoteState.status !== 'success' || !quoteState.quote) return;
+    enrichItemMedia(
+      quoteState.quote.lines.map((line) => ({
+        id: line.lineId,
+        imageUrl: line.imageUrl,
+        imageAssetId: line.imageAssetId,
+        imageAlt: line.productName,
+      })),
+    );
+  }, [enrichItemMedia, quoteState.quote, quoteState.status]);
   const quoteLines = useMemo(
     () => new Map(quoteState.quote?.lines.map((line) => [line.lineId, line]) ?? []),
     [quoteState.quote],
@@ -271,9 +294,9 @@ export function CartView({
     setCartAnnouncement(removedCoupon ? `Cupom ${removedCoupon} removido.` : 'Cupom removido.');
   }
 
-  if (activeStoreId !== storeId) {
+  if (!cartHydrated || activeStoreId !== storeId) {
     return (
-      <main className="storefront-cart-state" role="status" aria-live="polite">
+      <main className="storefront-cart-hydration" role="status" aria-live="polite" aria-busy="true">
         <Loader2 className="animate-spin" aria-hidden="true" />
         Carregando sua sacola…
       </main>
@@ -368,6 +391,7 @@ export function CartView({
                     notes={item.notes}
                     imageUrl={item.imageUrl ?? quotedLine?.imageUrl ?? null}
                     imageAssetId={item.imageAssetId ?? quotedLine?.imageAssetId ?? null}
+                    priority={index < 2}
                     loading={index < 2 ? 'eager' : 'lazy'}
                     priceChanged={priceChanged}
                     issues={issues}
@@ -606,6 +630,7 @@ function CartLineItem({
   notes,
   imageUrl,
   imageAssetId,
+  priority,
   loading,
   priceChanged,
   issues,
@@ -622,6 +647,7 @@ function CartLineItem({
   notes: string | null | undefined;
   imageUrl: string | null;
   imageAssetId: string | null;
+  priority: boolean;
   loading: 'eager' | 'lazy';
   priceChanged: boolean;
   issues: string[];
@@ -638,6 +664,7 @@ function CartLineItem({
           imageAssetId={imageAssetId}
           sizes="56px"
           width={112}
+          priority={priority}
           loading={loading}
         />
       </div>

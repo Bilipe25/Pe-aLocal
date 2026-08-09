@@ -2081,6 +2081,23 @@ body {
   color: var(--store-text);
 }
 
+.storefront-cart-hydration {
+  display: grid;
+  min-height: 12rem;
+  place-content: center;
+  gap: 0.625rem;
+  padding: 2rem 1rem;
+  color: var(--store-text-muted);
+  text-align: center;
+}
+
+.storefront-cart-hydration svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-inline: auto;
+  color: var(--store-primary);
+}
+
 .storefront-purchase-header {
   position: sticky;
   z-index: 40;

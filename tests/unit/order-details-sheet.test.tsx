@@ -131,7 +131,7 @@ describe('OrderDetailsSheet', () => {
 
     expect(document.querySelector('.storefront-order-details-content img')).toHaveAttribute(
       'src',
-      '/api/store-assets/asset-history-1?width=256',
+      '/api/store-assets/asset-history-1?width=192',
     );
   });
 
