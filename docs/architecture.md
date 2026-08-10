@@ -75,6 +75,8 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 | Zustand           | Leve, simples, persistência local               |
 | TanStack Query    | Cache e invalidação para o painel               |
 | Pusher            | Eventos em tempo real para pedidos e pagamentos |
+| Cloudflare Queues | Entrega at-least-once do outbox de pedidos      |
+| Web Push          | Avisos transacionais independentes do Pusher    |
 | Zod               | Validação compartilhada client/server           |
 
 ## O que NÃO usamos
@@ -83,5 +85,5 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 - API separada (NestJS, Express)
 - Redis (MVP)
 - Infraestrutura própria de WebSockets (o realtime usa Pusher)
-- Filas de processamento (MVP)
+- Filas adicionais além do pipeline de eventos de pedidos
 - App mobile nativo

@@ -25,6 +25,7 @@ import {
 } from '@/hooks/use-customer-order-tracking';
 import { cn } from '@/lib/utils';
 import type { CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
+import { OrderPushSubscription } from '@/components/pwa/order-push-subscription';
 
 const statusPresentation: Record<
   OrderStatus,
@@ -117,12 +118,14 @@ export function CustomerOrderTracking({
   channelName,
   timeZone,
   initialState,
+  publicVapidKey,
 }: {
   publicToken: string;
   storeSlug: string;
   channelName: string;
   timeZone: string;
   initialState: CustomerOrderTrackingStateDTO;
+  publicVapidKey?: string | null;
 }) {
   const expireCustomerOrderAccess = useExpireCustomerOrderAccess();
   const tracking = useCustomerOrderTracking({
@@ -172,12 +175,12 @@ export function CustomerOrderTracking({
           <h2 className="font-display text-tinta text-xl font-extrabold tracking-tight">
             {presentation.label}
           </h2>
-          <p className="text-text-secondary mt-1 text-xs sm:text-sm leading-relaxed">
+          <p className="text-text-secondary mt-1 text-xs leading-relaxed sm:text-sm">
             {statusDescription}
           </p>
           {state.estimate && (
-            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-50/80 px-3 py-1 text-xs font-semibold text-brand-700 border border-brand-200/50 shadow-2xs">
-              <Clock3 className="h-3.5 w-3.5 text-brand-600 shrink-0" aria-hidden="true" />
+            <div className="bg-brand-50/80 text-brand-700 border-brand-200/50 mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shadow-2xs">
+              <Clock3 className="text-brand-600 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
                 {state.estimate.label}: {formatTime(state.estimate.minAt, timeZone)}–
                 {formatTime(state.estimate.maxAt, timeZone)}
@@ -188,7 +191,10 @@ export function CustomerOrderTracking({
       </div>
 
       {state.status === 'CANCELLED' ? (
-        <div className="bg-error-light text-error mt-4 rounded-xl px-3.5 py-3 text-sm font-medium" role="status">
+        <div
+          className="bg-error-light text-error mt-4 rounded-xl px-3.5 py-3 text-sm font-medium"
+          role="status"
+        >
           {state.cancellationMessage}
         </div>
       ) : (
@@ -212,16 +218,19 @@ export function CustomerOrderTracking({
                 )}
                 <span className="bg-papel relative z-10 px-1">
                   {complete ? (
-                    <CheckCircle2 className="h-5 w-5 text-success fill-success/15" aria-hidden="true" />
+                    <CheckCircle2
+                      className="text-success fill-success/15 h-5 w-5"
+                      aria-hidden="true"
+                    />
                   ) : current ? (
-                    <Circle className="h-5 w-5 fill-brand-600 text-brand-600" aria-hidden="true" />
+                    <Circle className="fill-brand-600 text-brand-600 h-5 w-5" aria-hidden="true" />
                   ) : (
-                    <Circle className="h-5 w-5 text-border" aria-hidden="true" />
+                    <Circle className="text-border h-5 w-5" aria-hidden="true" />
                   )}
                 </span>
                 <span
                   className={cn(
-                    'text-text-secondary mt-1.5 w-full px-0.5 text-center text-[10px] sm:text-xs leading-tight break-words min-w-0',
+                    'text-text-secondary mt-1.5 w-full min-w-0 px-0.5 text-center text-[10px] leading-tight break-words sm:text-xs',
                     current && 'text-tinta font-bold',
                   )}
                   aria-current={current ? 'step' : undefined}
@@ -234,6 +243,13 @@ export function CustomerOrderTracking({
         </ol>
       )}
 
+      <OrderPushSubscription
+        publicToken={publicToken}
+        storeSlug={storeSlug}
+        publicVapidKey={publicVapidKey}
+        status={state.status}
+      />
+
       <div className="border-tinta/10 mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-3.5">
         <div className="text-text-secondary text-xs">
           <span
@@ -241,7 +257,7 @@ export function CustomerOrderTracking({
           >
             <ConnectionIcon className="h-3.5 w-3.5" aria-hidden="true" /> {connection.label}
           </span>
-          <span className="mt-0.5 block text-[11px] text-text-muted">
+          <span className="text-text-muted mt-0.5 block text-[11px]">
             Atualizado às {formatTime(tracking.lastSynchronizedAt, timeZone, true)}
           </span>
         </div>

@@ -1,5 +1,10 @@
 # Testes e qualidade
 
+O Web Push possui testes unitários de validação, payload, migration e Service Worker, além de E2E
+condicionado por `E2E_WEB_PUSH_ENABLED`, `E2E_STORE_SLUG` e `E2E_ORDER_TRACKING_TOKEN`. Entrega
+real deve ser validada manualmente no staging, pois serviços Push externos não são simulados pelo
+workerd.
+
 ## Objetivo
 
 A Fase 8 consolida a pirâmide de qualidade do PedidoLocal: regras de negócio rápidas no Vitest,

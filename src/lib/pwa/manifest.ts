@@ -34,6 +34,24 @@ export interface StorePwaIcon {
   purpose?: 'any' | 'maskable' | 'monochrome';
 }
 
+const SUPPORTED_INSTALLABLE_ICON_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/avif',
+]);
+
+export function isInstallablePwaIconAsset(asset: {
+  mimeType: string;
+  width: number;
+  height: number;
+}): boolean {
+  if (!SUPPORTED_INSTALLABLE_ICON_TYPES.has(asset.mimeType.toLowerCase())) return false;
+  if (Math.min(asset.width, asset.height) < 192) return false;
+  const ratio = asset.width / asset.height;
+  return ratio >= 0.9 && ratio <= 1.1;
+}
+
 export interface StorePwaManifestInput {
   id: string;
   name: string;

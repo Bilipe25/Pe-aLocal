@@ -4,7 +4,10 @@ import {
   getOrderByPublicToken,
   isPublicOrderTokenExpired,
 } from '@/server/repositories/order.repository';
-import { getCanonicalPublicStoreSlug, getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+import {
+  getCanonicalPublicStoreSlug,
+  getPublicPurchaseStoreBySlug,
+} from '@/server/queries/public-store';
 import { formatCurrency } from '@/lib/utils';
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
 import { cache } from 'react';
@@ -17,6 +20,7 @@ import { StorePurchaseHeader } from '@/components/storefront/store-purchase-head
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
 import { toCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
+import { getPublicVapidKey } from '@/lib/web-push/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -113,6 +117,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
             channelName={trackingChannel}
             timeZone={order.store.timeZone}
             initialState={initialTrackingState}
+            publicVapidKey={getPublicVapidKey()}
           />
 
           {/* Pix Instructions */}
@@ -138,10 +143,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
             <h3 className="storefront-tracking-card-title">Itens do pedido</h3>
             <div className="storefront-tracking-items">
               {order.items.map((item) => (
-                <div
-                  key={item.id}
-                  className="storefront-tracking-item"
-                >
+                <div key={item.id} className="storefront-tracking-item">
                   <div className="storefront-tracking-item-info">
                     <span className="storefront-tracking-item-name">
                       {item.quantity}x {item.productName}
@@ -152,9 +154,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
                       </p>
                     )}
                     {item.notes && (
-                      <p className="storefront-tracking-item-notes">
-                        &quot;{item.notes}&quot;
-                      </p>
+                      <p className="storefront-tracking-item-notes">&quot;{item.notes}&quot;</p>
                     )}
                   </div>
                   <span className="storefront-tracking-item-price">
@@ -205,9 +205,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
                 <Receipt aria-hidden="true" />
                 <span>Pagamento</span>
               </div>
-              <p className="storefront-tracking-info-value">
-                {paymentMap[order.paymentMethod]}
-              </p>
+              <p className="storefront-tracking-info-value">{paymentMap[order.paymentMethod]}</p>
               <p className="storefront-tracking-info-detail">
                 {paymentStatusMap[order.paymentStatus]}
               </p>
@@ -220,10 +218,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </div>
         </main>
 
-        <StorefrontBottomNav
-          storeId={store.id}
-          storeSlug={store.slug}
-        />
+        <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
       </div>
     </CustomerOrderAccessBoundary>
   );

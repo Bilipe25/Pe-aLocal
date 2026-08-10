@@ -26,9 +26,22 @@ function loadServiceWorker() {
     .mockResolvedValue(
       new Response('ok', { status: 200, headers: { 'Cache-Control': 'public, max-age=60' } }),
     );
+  const registration = {
+    showNotification: vi.fn().mockResolvedValue(undefined),
+  };
+  const workerNavigator = {
+    setAppBadge: vi.fn().mockResolvedValue(undefined),
+    clearAppBadge: vi.fn().mockResolvedValue(undefined),
+  };
   const self = {
     location: { origin: 'https://pedidolocal.test' },
-    clients: { claim: vi.fn().mockResolvedValue(undefined) },
+    registration,
+    navigator: workerNavigator,
+    clients: {
+      claim: vi.fn().mockResolvedValue(undefined),
+      matchAll: vi.fn().mockResolvedValue([]),
+      openWindow: vi.fn().mockResolvedValue(undefined),
+    },
     skipWaiting: vi.fn().mockResolvedValue(undefined),
     addEventListener: vi.fn((type: string, handler: Handler) => handlers.set(type, handler)),
   };
@@ -46,7 +59,7 @@ function loadServiceWorker() {
     Error,
   });
 
-  return { handlers, caches, cache, fetchMock, self };
+  return { handlers, caches, cache, fetchMock, self, registration, workerNavigator };
 }
 
 describe('Service Worker PedidoLocal', () => {
@@ -114,7 +127,47 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('activate')?.({ waitUntil });
     await waitUntil.mock.calls[0][0];
 
-    expect(caches.delete).toHaveBeenCalledOnce();
+    expect(caches.delete).toHaveBeenCalledTimes(2);
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v0');
+    expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v1');
+  });
+
+  it('exibe Push válido sem incluir o token no título ou corpo', async () => {
+    const { handlers, registration, workerNavigator } = loadServiceWorker();
+    const waitUntil = vi.fn();
+    handlers.get('push')?.({
+      data: {
+        json: () => ({
+          notification: {
+            title: 'Burger do Zé',
+            body: 'Seu pedido foi confirmado.',
+            tag: 'pedido-hash',
+          },
+          pedidolocal: {
+            schemaVersion: 1,
+            relativeUrl: '/burger-do-ze/order/00000000-0000-4000-8000-000000000001',
+          },
+        }),
+      },
+      waitUntil,
+    });
+    await waitUntil.mock.calls[0][0];
+
+    expect(registration.showNotification).toHaveBeenCalledWith(
+      'Burger do Zé',
+      expect.objectContaining({ body: 'Seu pedido foi confirmado.', tag: 'pedido-hash' }),
+    );
+    expect(workerNavigator.setAppBadge).toHaveBeenCalledWith(1);
+  });
+
+  it('usa uma notificação genérica para payload inválido', async () => {
+    const { handlers, registration } = loadServiceWorker();
+    const waitUntil = vi.fn();
+    handlers.get('push')?.({ data: { json: () => ({ token: 'segredo' }) }, waitUntil });
+    await waitUntil.mock.calls[0][0];
+    expect(registration.showNotification).toHaveBeenCalledWith(
+      'PedidoLocal',
+      expect.objectContaining({ body: 'Há uma nova atualização do seu pedido.' }),
+    );
   });
 });

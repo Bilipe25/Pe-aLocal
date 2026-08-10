@@ -1,5 +1,7 @@
 # Rollout do realtime de pedidos
 
+O Web Push do consumidor é uma projeção independente deste pipeline. O ACK/retry do Pusher nunca depende do Push; consulte [`web-push.md`](web-push.md).
+
 O dashboard novo usa canais Pusher privados e polling de reconciliação. Faça a
 transição sem interromper abas antigas:
 

@@ -9,6 +9,12 @@ import {
   relayPendingOrderOutboxEvents,
 } from '../../src/server/services/order-outbox-processor';
 import { purgeProcessedOrderOutboxEvents } from '../../src/server/services/order-outbox-retention';
+import {
+  projectWebPushDispatch,
+  reconcileWebPushDispatches,
+} from '../../src/server/services/web-push-dispatch.service';
+import { processPendingWebPushDeliveries } from '../../src/server/services/web-push-delivery.service';
+import { readWebPushSenderConfig } from '../../src/server/services/web-push-sender';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
 const RETENTION_UTC_MINUTE = 17;
@@ -25,6 +31,10 @@ interface OrderEventsEnv {
   ORDER_OUTBOX_RELAY_ENABLED?: string;
   ORDER_OUTBOX_RETENTION_ENABLED?: string;
   ORDER_OUTBOX_RETENTION_DAYS?: string;
+  WEB_PUSH_ENABLED?: string;
+  WEB_PUSH_VAPID_PUBLIC_KEY?: string;
+  WEB_PUSH_VAPID_PRIVATE_KEY?: string;
+  WEB_PUSH_VAPID_SUBJECT?: string;
 }
 
 function database(env: OrderEventsEnv) {
@@ -169,6 +179,16 @@ export default {
               message.id,
             );
             if (result.action === 'ack') {
+              if (env.WEB_PUSH_ENABLED === 'true' && result.eventId) {
+                try {
+                  await projectWebPushDispatch(db, result.eventId);
+                } catch (error) {
+                  console.error('[WEB_PUSH_FAST_PROJECTION_FAILED]', {
+                    eventId: result.eventId,
+                    error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+                  });
+                }
+              }
               message.ack();
               outcomes.acknowledged += 1;
             } else if (result.action === 'dead-letter') {
@@ -213,7 +233,8 @@ export default {
     const retentionEnabled =
       env.ORDER_OUTBOX_RETENTION_ENABLED === 'true' &&
       shouldRunOrderOutboxRetention(controller.scheduledTime);
-    if (!relayEnabled && !retentionEnabled) return;
+    const webPushEnabled = env.WEB_PUSH_ENABLED === 'true';
+    if (!relayEnabled && !retentionEnabled && !webPushEnabled) return;
     const db = database(env);
     try {
       if (relayEnabled) {
@@ -229,6 +250,22 @@ export default {
           retentionDays: result.retentionDays,
           durationMs: Date.now() - retentionStartedAt,
         });
+      }
+      if (webPushEnabled) {
+        const config = readWebPushSenderConfig(env);
+        if (!config) {
+          console.error('[WEB_PUSH_CONFIGURATION_MISSING]');
+        } else {
+          try {
+            const projection = await reconcileWebPushDispatches(db);
+            const delivery = await processPendingWebPushDeliveries(db, config);
+            console.info('[WEB_PUSH_CYCLE_COMPLETED]', { ...projection, ...delivery });
+          } catch (error) {
+            console.error('[WEB_PUSH_CYCLE_FAILED]', {
+              error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+            });
+          }
+        }
       }
     } finally {
       await disconnect(db);

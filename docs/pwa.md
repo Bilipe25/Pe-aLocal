@@ -19,7 +19,7 @@ As associações de logo, favicon e imagens de categoria pertencem ao fluxo rasc
 
 ## Política do Service Worker
 
-O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v1`. Alterações no conteúdo do shell exigem incremento explícito da versão.
+O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v2`. Alterações no conteúdo do shell exigem incremento explícito da versão.
 
 | Requisição                                              | Estratégia                            | CacheStorage    |
 | ------------------------------------------------------- | ------------------------------------- | --------------- |
@@ -42,7 +42,7 @@ O precache usa `credentials: omit`, exige resposta `ok` e recusa respostas com `
 - Em carrinho, checkout, pedidos, dashboard, admin e autenticação, o aviso fica adiado.
 - Ao confirmar, a página envia `SKIP_WAITING` e recarrega uma única vez após `controllerchange`.
 
-Não há prompt de instalação, push, Background Sync, checkout offline nem catálogo em IndexedDB.
+Não há prompt de instalação, Background Sync, checkout offline nem catálogo em IndexedDB. O mesmo SW recebe Web Push transacional e abre somente rotas same-origin de acompanhamento; ele não altera a política de CacheStorage. Detalhes em [`web-push.md`](web-push.md).
 
 ## Rollout, rollback e diagnóstico
 
