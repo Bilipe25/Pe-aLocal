@@ -31,6 +31,9 @@ test.describe('acessibilidade WCAG', () => {
 
     await page.goto('/access-help');
     await expectNoHighImpactViolations(page);
+
+    await page.goto('/offline');
+    await expectNoHighImpactViolations(page);
   });
 
   test('cardápio público mantém semântica e contraste verificáveis', async ({ page }) => {

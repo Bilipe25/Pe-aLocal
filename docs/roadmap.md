@@ -92,6 +92,7 @@
 - [ ] Documentação completa
   - [x] README e guia de testes alinhados ao estado atual
 - [x] Build de produção local
+- [x] PWA instalável com manifest global/white-label e fallback offline seguro
 - [ ] Deploy na Vercel
 
 ---
@@ -105,6 +106,6 @@
 - Cupons automáticos
 - Relatórios avançados
 - Programa de fidelidade
-- App PWA (Progressive Web App)
+- Evolução da PWA (push e recursos offline avançados, após avaliação de produto)
 - Notificações push
 - Múltiplas lojas por tenant
