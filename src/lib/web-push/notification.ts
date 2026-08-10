@@ -40,15 +40,8 @@ export function shouldNotifyOrderStatus(
   return status !== 'READY' || modality === 'PICKUP';
 }
 
-export function shouldRenotifyOrderStatus(
-  status: NotifiableOrderStatus,
-  modality: OrderModality,
-): boolean {
-  return (
-    status === 'CANCELLED' ||
-    status === 'OUT_FOR_DELIVERY' ||
-    (status === 'READY' && modality === 'PICKUP')
-  );
+export function shouldRenotifyOrderStatus(): boolean {
+  return true;
 }
 
 export interface WebPushNotificationInput {
@@ -87,7 +80,7 @@ export async function buildWebPushNotification(input: WebPushNotificationInput) 
         tag,
         lang: 'pt-BR',
         dir: 'ltr',
-        renotify: shouldRenotifyOrderStatus(input.status, input.modality),
+        renotify: shouldRenotifyOrderStatus(),
         app_badge: '1',
       },
       pedidolocal: {

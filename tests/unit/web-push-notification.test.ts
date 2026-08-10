@@ -46,7 +46,7 @@ describe('payload Web Push', () => {
     expect(result.payload.notification.tag).not.toContain(token);
   });
 
-  it('não força novo alerta em atualizações informativas', async () => {
+  it('renotifica também a confirmação do pedido', async () => {
     const result = await buildWebPushNotification({
       eventId: 'event-1',
       orderId: 'order-1',
@@ -60,6 +60,6 @@ describe('payload Web Push', () => {
       iconAssetId: null,
     });
 
-    expect(result.payload.notification.renotify).toBe(false);
+    expect(result.payload.notification.renotify).toBe(true);
   });
 });

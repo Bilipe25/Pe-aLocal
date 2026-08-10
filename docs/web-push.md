@@ -21,7 +21,7 @@ Uma inscrição do navegador pode acompanhar vários pedidos. Desativar notifica
 
 No caminho Queue, o Worker projeta e tenta entregar o Push antes e independentemente da publicação Pusher. As duas ramificações possuem ledger, locks e tentativas próprios: falhar em uma não repete nem bloqueia a outra. O cron reconcilia eventos ausentes e cobre também `ORDER_EVENT_PUBLISH_MODE=direct`.
 
-Cada pedido reutiliza uma única `tag`, substituindo a notificação anterior. Somente `READY` de retirada, `OUT_FOR_DELIVERY` e `CANCELLED` usam `renotify`, evitando som/vibração repetidos em atualizações informativas.
+Cada pedido reutiliza uma única `tag`, substituindo a notificação anterior. Todas as notificações da matriz de alto valor usam `renotify`, incluindo confirmação, `READY` de retirada, `OUT_FOR_DELIVERY`, conclusão e cancelamento. Estados intermediários continuam fora do Push para limitar o volume total.
 
 ## Configuração
 
