@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   changeTenantStatus,
+  getAdminAuditExportData,
+  getAdminDashboardData,
   getAdminStoreContext,
   getAdminTenantsData,
 } from '@/server/services/admin.service';
@@ -13,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getPlatformOverview: vi.fn(),
   getTenantSupportDetails: vi.fn(),
   listTenantsForAdmin: vi.fn(),
+  listAuditLogsForAdmin: vi.fn(),
   tenantFindUnique: vi.fn(),
   tenantUpdate: vi.fn(),
   auditCreate: vi.fn(),
@@ -26,6 +29,7 @@ vi.mock('@/server/repositories/admin.repository', () => ({
   getPlatformOverview: mocks.getPlatformOverview,
   getTenantSupportDetails: mocks.getTenantSupportDetails,
   listTenantsForAdmin: mocks.listTenantsForAdmin,
+  listAuditLogsForAdmin: mocks.listAuditLogsForAdmin,
 }));
 vi.mock('@/server/database/client', () => ({ getDb: mocks.getDb }));
 
@@ -90,6 +94,37 @@ describe('AdminService', () => {
       sort: 'newest',
       page: 1,
       pageSize: 20,
+    });
+  });
+
+  it('normaliza filtros e paginação dos logs administrativos', async () => {
+    mocks.getPlatformOverview.mockResolvedValue({ audit: { logs: [] } });
+
+    await getAdminDashboardData({
+      query: '  StoreCustomization  ',
+      action: 'CUSTOMIZATION_PUBLISHED',
+      page: '4',
+    });
+
+    expect(mocks.getPlatformOverview).toHaveBeenCalledWith({
+      query: 'StoreCustomization',
+      action: 'CUSTOMIZATION_PUBLISHED',
+      page: 4,
+      pageSize: 25,
+    });
+  });
+
+  it('limita a exportação a mil eventos e exige superadmin', async () => {
+    mocks.listAuditLogsForAdmin.mockResolvedValue({ logs: [], total: 0 });
+
+    await getAdminAuditExportData({ action: 'INVALID_ACTION', page: '9' });
+
+    expect(mocks.requireSuperAdmin).toHaveBeenCalledOnce();
+    expect(mocks.listAuditLogsForAdmin).toHaveBeenCalledWith({
+      query: undefined,
+      action: undefined,
+      page: 1,
+      pageSize: 1000,
     });
   });
 

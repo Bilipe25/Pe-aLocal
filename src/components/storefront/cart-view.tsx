@@ -349,6 +349,7 @@ export function CartView({
           {itemCount} {itemCount === 1 ? 'item no pedido' : 'itens no pedido'}
         </p>
         <ConfirmDialog
+          portalToStorefrontTheme
           trigger={
             <button type="button" className="storefront-cart-clear">
               <Trash2 aria-hidden="true" />

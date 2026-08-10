@@ -7,6 +7,8 @@ import { uploadAdminStoreAsset } from '@/components/admin/store-asset-upload';
 import { deleteStoreAssetAction } from '@/features/assets/actions';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 import type { StoreAssetTypeValue } from '@/schemas/store-asset';
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type IdentityAssetField =
   'logoAssetId' | 'logoDarkAssetId' | 'coverAssetId' | 'faviconAssetId' | 'socialImageAssetId';
@@ -44,7 +46,7 @@ const ASSET_OPTIONS: {
     type: 'FAVICON',
     field: 'faviconAssetId',
     label: 'Favicon',
-    hint: 'Imagem quadrada · até 512 KB',
+    hint: 'Mínimo 192×192 · recomendado 512×512 · aproximadamente quadrado · até 512 KB',
   },
   {
     type: 'SOCIAL_IMAGE',
@@ -88,7 +90,9 @@ export function StoreAssetsManager({
   const [selectedType, setSelectedType] = useState<StoreAssetTypeValue>('LOGO');
   const [file, setFile] = useState<File | null>(null);
   const [altText, setAltText] = useState('');
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const option = ASSET_OPTIONS.find((item) => item.type === selectedType)!;
   const currentAssetId = option.field ? identity[option.field] : null;
@@ -103,7 +107,7 @@ export function StoreAssetsManager({
 
   async function uploadAsset() {
     if (!file) {
-      setFeedback('Selecione uma imagem.');
+      setFeedback({ tone: 'error', message: 'Selecione uma imagem.' });
       return;
     }
     setFeedback(null);
@@ -120,33 +124,34 @@ export function StoreAssetsManager({
       if (option.field) onAssign(option.field, uploaded.id);
       setFile(null);
       setAltText('');
-      setFeedback(
-        option.field
+      setFeedback({
+        tone: 'success',
+        message: option.field
           ? 'Upload concluído. Salve o rascunho para associar a imagem.'
           : `Upload concluído. ${option.usageLabel ?? 'O asset está disponível.'}`,
-      );
+      });
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível enviar a imagem.');
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível enviar a imagem.',
+      });
     }
   }
 
-  function removeAsset(asset: AdminStoreAssetItem) {
-    if (
-      !window.confirm(
-        'Excluir este asset? Referências publicadas ou históricas impedirão a exclusão.',
-      )
-    ) {
-      return;
-    }
-    startTransition(async () => {
-      const result = await deleteStoreAssetAction(tenantId, storeId, asset.id);
-      if (!result.success) {
-        setFeedback(result.error.message);
-        return;
-      }
-      onAssetDeleted(asset.id);
-      setFeedback('Asset marcado para exclusão segura.');
-    });
+  async function removeAsset(asset: AdminStoreAssetItem) {
+    return new Promise<boolean>((resolve) =>
+      startTransition(async () => {
+        const result = await deleteStoreAssetAction(tenantId, storeId, asset.id);
+        if (!result.success) {
+          setFeedback({ tone: 'error', message: result.error.message });
+          resolve(false);
+          return;
+        }
+        onAssetDeleted(asset.id);
+        setFeedback({ tone: 'success', message: 'Asset marcado para exclusão segura.' });
+        resolve(true);
+      }),
+    );
   }
 
   return (
@@ -154,6 +159,9 @@ export function StoreAssetsManager({
       <div className="flex items-center gap-2">
         <ImageIcon className="text-brand-600 h-5 w-5" aria-hidden="true" />
         <h3 className="text-text-primary text-lg font-semibold">Imagens da marca</h3>
+      </div>
+      <div className="mt-3">
+        <ChangeScopeBadge scope="draft" />
       </div>
       <p className="text-text-secondary mt-1 text-sm">
         O upload não publica sozinho: associe a imagem, salve o rascunho e publique explicitamente.
@@ -204,8 +212,11 @@ export function StoreAssetsManager({
       </div>
 
       {feedback && (
-        <p role="status" className="bg-info-light text-info mt-4 rounded-lg p-3 text-sm">
-          {feedback}
+        <p
+          role={feedback.tone === 'error' ? 'alert' : 'status'}
+          className={`${feedback.tone === 'error' ? 'bg-error-light text-error' : 'bg-info-light text-info'} mt-4 rounded-lg p-3 text-sm`}
+        >
+          {feedback.message}
         </p>
       )}
 
@@ -241,15 +252,23 @@ export function StoreAssetsManager({
                         >
                           {group.field ? (selected ? 'Em uso' : 'Usar') : group.usageLabel}
                         </button>
-                        <button
-                          type="button"
-                          disabled={isPending}
-                          onClick={() => removeAsset(asset)}
-                          aria-label={`Excluir ${group.label}`}
-                          className="text-error border-border rounded-md border p-1.5 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <ConfirmDialog
+                          title={`Excluir ${group.label.toLowerCase()}?`}
+                          description="Referências publicadas ou históricas impedirão a exclusão. A tentativa será auditada."
+                          confirmLabel="Excluir asset"
+                          destructive
+                          onConfirm={() => removeAsset(asset)}
+                          trigger={
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              aria-label={`Excluir ${group.label}`}
+                              className="text-error border-border inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border p-2 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          }
+                        />
                       </div>
                     </div>
                   </article>

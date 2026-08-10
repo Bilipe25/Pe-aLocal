@@ -4,6 +4,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 import { updateStoreEntitlementAction } from '@/features/entitlements/actions';
 import {
   LAYOUT_TEMPLATES,
@@ -35,7 +36,9 @@ export function StoreEntitlementsForm({
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initialEntitlement);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
 
   function toggleLayout(value: LayoutTemplate) {
@@ -62,10 +65,10 @@ export function StoreEntitlementsForm({
     startTransition(async () => {
       const result = await updateStoreEntitlementAction(tenantId, storeId, form);
       if (!result.success) {
-        setFeedback(result.error.message);
+        setFeedback({ tone: 'error', message: result.error.message });
         return;
       }
-      setFeedback('Recursos e limites atualizados com auditoria.');
+      setFeedback({ tone: 'success', message: 'Recursos e limites atualizados com auditoria.' });
       router.refresh();
     });
   }
@@ -75,6 +78,9 @@ export function StoreEntitlementsForm({
       <div className="flex items-center gap-2">
         <SlidersHorizontal className="text-brand-600 h-5 w-5" aria-hidden="true" />
         <h3 className="text-text-primary text-lg font-semibold">Recursos e limites</h3>
+      </div>
+      <div className="mt-3">
+        <ChangeScopeBadge scope="immediate" />
       </div>
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="text-text-secondary grid gap-1 text-sm">
@@ -180,7 +186,12 @@ export function StoreEntitlementsForm({
         Salvar recursos
       </button>
       {feedback && (
-        <p className="bg-info-light text-info mt-3 rounded-md p-3 text-sm">{feedback}</p>
+        <p
+          role={feedback.tone === 'error' ? 'alert' : 'status'}
+          className={`${feedback.tone === 'error' ? 'bg-error-light text-error' : 'bg-info-light text-info'} mt-3 rounded-md p-3 text-sm`}
+        >
+          {feedback.message}
+        </p>
       )}
     </section>
   );

@@ -43,6 +43,10 @@ export default async function AdminStoreCustomizationPage({
             <p className="text-text-secondary mt-1 text-sm">
               /{store.slug} · {store.status} · {store.isActive ? 'ativa' : 'inativa'}
             </p>
+            <p className="text-text-muted mt-2 max-w-2xl text-xs">
+              O nome e o endereço do aplicativo instalável vêm dos dados gerais da loja. A equipe da
+              loja pode alterá-los em Configurações › Geral.
+            </p>
           </div>
           <Link
             href={`/${store.slug}`}

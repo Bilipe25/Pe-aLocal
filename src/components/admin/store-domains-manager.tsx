@@ -10,6 +10,7 @@ import {
   requestStoreDomainAction,
 } from '@/features/domains/actions';
 import { STORE_DOMAIN_STATUSES, type STORE_DOMAIN_TYPES } from '@/schemas/store-domain';
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 
 type DomainType = (typeof STORE_DOMAIN_TYPES)[number];
 type DomainStatus = (typeof STORE_DOMAIN_STATUSES)[number];
@@ -40,19 +41,22 @@ export function StoreDomainsManager({
   const router = useRouter();
   const [hostname, setHostname] = useState(`${storeSlug}.pedidolocal.com.br`);
   const [domainType, setDomainType] = useState<DomainType>('SUBDOMAIN');
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
 
   function requestDomain() {
     startTransition(async () => {
       const result = await requestStoreDomainAction(tenantId, storeId, { hostname, domainType });
       if (!result.success) {
-        setFeedback(result.error.message);
+        setFeedback({ tone: 'error', message: result.error.message });
         return;
       }
-      setFeedback(
-        'Solicitação registrada. Nenhum DNS ou certificado foi alterado automaticamente.',
-      );
+      setFeedback({
+        tone: 'success',
+        message: 'Solicitação registrada. Nenhum DNS ou certificado foi alterado automaticamente.',
+      });
       router.refresh();
     });
   }
@@ -65,10 +69,10 @@ export function StoreDomainsManager({
         isPrimary,
       });
       if (!result.success) {
-        setFeedback(result.error.message);
+        setFeedback({ tone: 'error', message: result.error.message });
         return;
       }
-      setFeedback('Status atualizado manualmente e auditado.');
+      setFeedback({ tone: 'success', message: 'Status atualizado manualmente e auditado.' });
       router.refresh();
     });
   }
@@ -83,6 +87,9 @@ export function StoreDomainsManager({
         Registro e verificação manuais. Cloudflare for SaaS, DNS e certificados não são
         automatizados.
       </p>
+      <div className="mt-3">
+        <ChangeScopeBadge scope="immediate" />
+      </div>
       <div className="border-border mt-4 grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-[12rem_1fr_auto]">
         <label className="text-text-secondary grid gap-1 text-sm">
           Tipo de domínio
@@ -121,7 +128,12 @@ export function StoreDomainsManager({
         </Button>
       </div>
       {feedback && (
-        <p className="bg-info-light text-info mt-3 rounded-md p-3 text-sm">{feedback}</p>
+        <p
+          role={feedback.tone === 'error' ? 'alert' : 'status'}
+          className={`${feedback.tone === 'error' ? 'bg-error-light text-error' : 'bg-info-light text-info'} mt-3 rounded-md p-3 text-sm`}
+        >
+          {feedback.message}
+        </p>
       )}
       <div className="mt-4 space-y-3">
         {initialDomains.map((domain) => (
