@@ -117,6 +117,22 @@ enum OrderOutboxEventType {
   PAYMENT_UPDATED
 }
 
+enum WebPushDispatchStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum WebPushDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  REVOKED
+  SKIPPED
+}
+
 enum OrderCancellationReasonCode {
   CUSTOMER_REQUEST
   PRODUCT_UNAVAILABLE
@@ -333,22 +349,25 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members              TenantMember[]
-  stores               Store[]
-  categories           Category[]
-  products             Product[]
-  deliveryZones        DeliveryZone[]
-  deliveryPostalRanges DeliveryZonePostalRange[]
-  customers            Customer[]
-  deviceRecognitions   CustomerDeviceRecognition[]
-  recognitionThrottles CustomerRecognitionThrottle[]
-  orders               Order[]
-  coupons              Coupon[]
-  auditLogs            AuditLog[]
-  orderOutboxEvents    OrderOutboxEvent[]
-  paymentStatusHistory PaymentStatusHistory[]
-  slugRedirects        StoreSlugRedirect[]
-  scheduleExceptions   StoreScheduleException[]
+  members                TenantMember[]
+  stores                 Store[]
+  categories             Category[]
+  products               Product[]
+  deliveryZones          DeliveryZone[]
+  deliveryPostalRanges   DeliveryZonePostalRange[]
+  customers              Customer[]
+  deviceRecognitions     CustomerDeviceRecognition[]
+  recognitionThrottles   CustomerRecognitionThrottle[]
+  orders                 Order[]
+  coupons                Coupon[]
+  auditLogs              AuditLog[]
+  orderOutboxEvents      OrderOutboxEvent[]
+  paymentStatusHistory   PaymentStatusHistory[]
+  slugRedirects          StoreSlugRedirect[]
+  scheduleExceptions     StoreScheduleException[]
+  orderPushSubscriptions OrderPushSubscription[]
+  webPushDispatches      WebPushDispatch[]
+  webPushDeliveries      WebPushDelivery[]
 
   @@map("tenants")
 }
@@ -420,6 +439,9 @@ model Store {
   domains                      StoreDomain[]
   entitlement                  StoreEntitlement?
   slugRedirects                StoreSlugRedirect[]
+  orderPushSubscriptions       OrderPushSubscription[]
+  webPushDispatches            WebPushDispatch[]
+  webPushDeliveries            WebPushDelivery[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1165,13 +1187,16 @@ model Order {
   customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
-  items          OrderItem[]
-  statusHistory  OrderStatusHistory[]
-  internalNotes  OrderInternalNote[]
-  payment        Payment?
-  outboxEvents   OrderOutboxEvent[]
-  paymentHistory PaymentStatusHistory[]
-  couponUsages   CouponUsage[]
+  items             OrderItem[]
+  statusHistory     OrderStatusHistory[]
+  internalNotes     OrderInternalNote[]
+  payment           Payment?
+  outboxEvents      OrderOutboxEvent[]
+  paymentHistory    PaymentStatusHistory[]
+  couponUsages      CouponUsage[]
+  pushSubscriptions OrderPushSubscription[]
+  webPushDispatches WebPushDispatch[]
+  webPushDeliveries WebPushDelivery[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -1218,12 +1243,12 @@ model OrderItem {
   position Int    @default(0)
 
   // Snapshot do produto no momento do pedido
-  productId   String
-  productName String
-  unitPrice   Int // Em centavos
-  quantity    Int
-  notes       String?
-  itemTotal   Int // Em centavos (unitPrice * quantity + opções)
+  productId    String
+  productName  String
+  unitPrice    Int // Em centavos
+  quantity     Int
+  notes        String?
+  itemTotal    Int // Em centavos (unitPrice * quantity + opções)
   imageUrl     String? // Snapshot da URL legada no momento da compra
   imageAssetId String? // Snapshot do StoreAsset no momento da compra
 
@@ -1350,6 +1375,8 @@ model PaymentStatusHistory {
 model OrderOutboxEvent {
   /// Partial SQL-managed retention index:
   /// order_outbox_events_processed_retention_idx ON processedAt WHERE status = 'PROCESSED'.
+  /// Partial SQL-managed Web Push projection index:
+  /// order_outbox_events_web_push_projection_idx ON occurredAt, id for eligible event types.
   id               String               @id @default(uuid())
   tenantId         String
   storeId          String
@@ -1372,17 +1399,135 @@ model OrderOutboxEvent {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store    Store     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  order    Order     @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
-  auditLog AuditLog? @relation(fields: [auditLogId], references: [id], onDelete: SetNull)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order             Order             @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  auditLog          AuditLog?         @relation(fields: [auditLogId], references: [id], onDelete: SetNull)
+  webPushDispatch   WebPushDispatch?
+  webPushDeliveries WebPushDelivery[]
 
   @@unique([orderId, eventType, aggregateVersion])
+  @@unique([id, tenantId, storeId])
   @@index([status, availableAt, createdAt])
   @@index([storeId, createdAt, id])
   @@index([orderId, createdAt, id])
   @@index([queuedAt, processedAt])
   @@map("order_outbox_events")
+}
+
+model WebPushSubscription {
+  id             String    @id @default(uuid())
+  endpoint       String    @db.VarChar(4096)
+  endpointHash   String    @unique @db.VarChar(64)
+  p256dh         String    @db.VarChar(256)
+  auth           String    @db.VarChar(128)
+  origin         String    @db.VarChar(255)
+  expirationTime DateTime?
+  lastSeenAt     DateTime  @default(now())
+  revokedAt      DateTime?
+  revokedReason  String?   @db.VarChar(120)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  orders     OrderPushSubscription[]
+  deliveries WebPushDelivery[]
+
+  @@index([revokedAt, lastSeenAt])
+  @@map("web_push_subscriptions")
+}
+
+model OrderPushSubscription {
+  id                    String    @id @default(uuid())
+  tenantId              String
+  storeId               String
+  orderId               String
+  webPushSubscriptionId String
+  enabledAt             DateTime  @default(now())
+  disabledAt            DateTime?
+  terminalNotifiedAt    DateTime?
+  lockedAt              DateTime?
+  lockToken             String?   @db.Uuid
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store               @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order        Order               @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  subscription WebPushSubscription @relation(fields: [webPushSubscriptionId], references: [id], onDelete: Cascade)
+  deliveries   WebPushDelivery[]
+
+  @@unique([orderId, webPushSubscriptionId])
+  @@unique([id, tenantId, storeId, orderId])
+  @@index([tenantId, storeId, disabledAt])
+  @@index([webPushSubscriptionId, disabledAt])
+  @@map("order_push_subscriptions")
+}
+
+model WebPushDispatch {
+  id                 String                @id @default(uuid())
+  tenantId           String
+  storeId            String
+  orderId            String
+  orderOutboxEventId String                @unique
+  status             WebPushDispatchStatus @default(PENDING)
+  attempts           Int                   @default(0)
+  availableAt        DateTime              @default(now())
+  lockedAt           DateTime?
+  lockToken          String?               @db.Uuid
+  processedAt        DateTime?
+  failedAt           DateTime?
+  lastError          String?               @db.VarChar(1000)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order       Order             @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  outboxEvent OrderOutboxEvent  @relation(fields: [orderOutboxEventId], references: [id], onDelete: Cascade)
+  deliveries  WebPushDelivery[]
+
+  @@unique([id, tenantId, storeId, orderId])
+  @@index([status, availableAt, createdAt])
+  @@index([orderId, createdAt])
+  @@map("web_push_dispatches")
+}
+
+model WebPushDelivery {
+  id                      String                @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  orderId                 String
+  orderOutboxEventId      String
+  webPushDispatchId       String
+  orderPushSubscriptionId String
+  webPushSubscriptionId   String
+  orderStatus             OrderStatus
+  aggregateVersion        Int
+  status                  WebPushDeliveryStatus @default(PENDING)
+  attempts                Int                   @default(0)
+  availableAt             DateTime              @default(now())
+  lockedAt                DateTime?
+  lockToken               String?               @db.Uuid
+  sentAt                  DateTime?
+  failedAt                DateTime?
+  lastStatusCode          Int?
+  lastError               String?               @db.VarChar(1000)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order             Order                 @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  outboxEvent       OrderOutboxEvent      @relation(fields: [orderOutboxEventId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  dispatch          WebPushDispatch       @relation(fields: [webPushDispatchId, tenantId, storeId, orderId], references: [id, tenantId, storeId, orderId], onDelete: Cascade)
+  orderSubscription OrderPushSubscription @relation(fields: [orderPushSubscriptionId, tenantId, storeId, orderId], references: [id, tenantId, storeId, orderId], onDelete: Cascade)
+  subscription      WebPushSubscription   @relation(fields: [webPushSubscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([orderOutboxEventId, webPushSubscriptionId])
+  @@index([status, availableAt, createdAt])
+  @@index([orderPushSubscriptionId, aggregateVersion])
+  @@index([webPushSubscriptionId, status])
+  @@map("web_push_deliveries")
 }
 
 // =============================================================================

@@ -27,7 +27,8 @@ function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
     identifier.startsWith('recommendation:') ||
     identifier.startsWith('recognition-store:') ||
     identifier.startsWith('tracking-lookup-ip:') ||
-    identifier.startsWith('tracking-auth-ip:')
+    identifier.startsWith('tracking-auth-ip:') ||
+    identifier.startsWith('tracking-push-ip:')
   ) {
     return env.CHECKOUT_QUOTE_RATE_LIMITER;
   }
@@ -89,6 +90,8 @@ export const RATE_LIMITS = {
   publicOrderLookupByToken: { maxAttempts: 10, windowInSeconds: 60 },
   publicOrderRealtimeAuthByIp: { maxAttempts: 60, windowInSeconds: 60 },
   publicOrderRealtimeAuthByToken: { maxAttempts: 10, windowInSeconds: 60 },
+  publicOrderPushByIp: { maxAttempts: 30, windowInSeconds: 60 },
+  publicOrderPushByToken: { maxAttempts: 10, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
 } as const;

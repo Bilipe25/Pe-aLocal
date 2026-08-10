@@ -6,9 +6,9 @@ import { cache } from 'react';
 import { resolvePublicCustomization } from '@/features/customization/public';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
+import { isInstallablePwaIconAsset } from '@/lib/pwa/manifest';
 
 const PUBLIC_CACHE_SECONDS = 60;
-const SUPPORTED_ICON_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif']);
 
 const publicStorePwaSelect = {
   id: true,
@@ -35,19 +35,13 @@ const publicStorePwaSelect = {
   },
 } as const;
 
-function toInstallableIconAssetId(asset: {
+export function toInstallableIconAssetId(asset: {
   id: string;
   mimeType: string;
   width: number;
   height: number;
 }): string | null {
-  if (!SUPPORTED_ICON_TYPES.has(asset.mimeType.toLowerCase())) return null;
-  if (Math.min(asset.width, asset.height) < 192) return null;
-
-  const ratio = asset.width / asset.height;
-  if (ratio < 0.9 || ratio > 1.1) return null;
-
-  return asset.id;
+  return isInstallablePwaIconAsset(asset) ? asset.id : null;
 }
 
 async function getStorePwaFromDb(requestedSlug: string) {

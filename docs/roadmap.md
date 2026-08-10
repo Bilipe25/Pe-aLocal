@@ -93,6 +93,7 @@
   - [x] README e guia de testes alinhados ao estado atual
 - [x] Build de produção local
 - [x] PWA instalável com manifest global/white-label e fallback offline seguro
+- [x] Web Push transacional opt-in para acompanhamento do consumidor
 - [ ] Deploy na Vercel
 
 ---
@@ -106,6 +107,6 @@
 - Cupons automáticos
 - Relatórios avançados
 - Programa de fidelidade
-- Evolução da PWA (push e recursos offline avançados, após avaliação de produto)
-- Notificações push
+- Evolução offline avançada da PWA, após avaliação de produto
+- Push administrativo e campanhas, separados do Push transacional do consumidor
 - Múltiplas lojas por tenant
