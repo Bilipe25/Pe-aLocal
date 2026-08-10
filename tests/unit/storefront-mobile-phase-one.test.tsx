@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 const cartState = {
   storeId: 'store-1',
   storeSlug: 'loja-teste',
+  revision: 1,
   items: [
     {
       id: 'line-1',
@@ -42,6 +43,7 @@ vi.mock('@/stores/cart-store', () => ({
   selectCartStoreSlug: (state: typeof cartState) => state.storeSlug,
   selectCartItemCount: (state: typeof cartState) =>
     state.items.reduce((sum, item) => sum + item.quantity, 0),
+  selectCartRevision: (state: typeof cartState) => state.revision,
   selectCartTotal: (state: typeof cartState) =>
     state.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
   useCartStore: (selector: (state: typeof cartState) => unknown) => selector(cartState),
@@ -298,5 +300,105 @@ describe('storefront mobile — fase 1', () => {
     expect(link).toHaveAttribute('href', '/loja-teste/cart');
     expect(screen.getByText('2 itens')).toBeVisible();
     expect(screen.getByText('R$ 63,80')).toBeVisible();
+  });
+
+  it('oculta o FAB ao arrastar horizontalmente no mobile e o restaura após alterar o carrinho', () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: true }),
+    });
+
+    const { container, rerender } = render(<CartFab storeId="store-1" />);
+    const fab = container.querySelector<HTMLElement>('.storefront-cart-fab');
+    expect(fab).not.toBeNull();
+    Object.defineProperty(fab!, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: 320 }),
+    });
+
+    fireEvent.pointerDown(fab!, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 120,
+      clientY: 20,
+      timeStamp: 0,
+    });
+    fireEvent.pointerMove(fab!, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 280,
+      clientY: 20,
+      timeStamp: 80,
+    });
+    expect(fab).toHaveClass('is-dragging');
+
+    fireEvent.pointerUp(fab!, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 280,
+      clientY: 20,
+      timeStamp: 100,
+    });
+    expect(fab).toHaveClass('is-dismissing-right');
+
+    cartState.revision += 1;
+    rerender(<CartFab storeId="store-1" />);
+    expect(container.querySelector('.storefront-cart-fab')).toBeVisible();
+
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+  });
+
+  it('mantém o FAB no lugar quando o gesto é vertical', () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: true }),
+    });
+
+    const { container } = render(<CartFab storeId="store-1" />);
+    const fab = container.querySelector<HTMLElement>('.storefront-cart-fab');
+    expect(fab).not.toBeNull();
+    Object.defineProperty(fab!, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: 320 }),
+    });
+
+    fireEvent.pointerDown(fab!, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 120,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(fab!, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 124,
+      clientY: 64,
+    });
+    fireEvent.pointerUp(fab!, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 124,
+      clientY: 64,
+    });
+
+    expect(fab).not.toHaveClass('is-dragging');
+    expect(fab).not.toHaveClass('is-dismissing-left');
+    expect(fab).not.toHaveClass('is-dismissing-right');
+
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: originalMatchMedia,
+    });
   });
 });

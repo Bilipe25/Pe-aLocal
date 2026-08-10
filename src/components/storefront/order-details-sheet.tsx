@@ -285,7 +285,7 @@ export function OrderDetailsSheet({
                   <div className="divide-tinta/5 border-tinta/10 bg-surface divide-y rounded-xl border p-2.5 shadow-2xs sm:p-3">
                     {details.items.map((item) => (
                       <div key={item.id} className="flex gap-3 py-2.5 first:pt-1 last:pb-1">
-                        <div className="bg-surface-muted border-tinta/5 relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border">
+                        <div className="storefront-order-details-item-media bg-surface-muted border-tinta/5 relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border">
                           <ProductImage
                             name={item.productName}
                             // O detalhe recebe imageAssetId como identificador, mas esta
