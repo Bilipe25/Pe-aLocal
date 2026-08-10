@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { createDefaultCustomization } from '@/features/customization/domain';
 import { buildGlobalManifest, buildStoreManifest, PEDIDOLOCAL_PWA_ICONS } from '@/lib/pwa/manifest';
 
 describe('manifests PWA', () => {
+  it('declara as dimensões físicas reais dos PNGs estáticos', () => {
+    const icons = [
+      ...PEDIDOLOCAL_PWA_ICONS,
+      { src: '/pwa/apple-touch-icon-v1-180.png', sizes: '180x180' },
+    ];
+    for (const icon of icons) {
+      const path = resolve(process.cwd(), 'public', icon.src.replace(/^\//, ''));
+      const png = readFileSync(path);
+      expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
+      expect(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`).toBe(icon.sizes);
+    }
+  });
+
   it('cria o manifest global instalável com identidade PedidoLocal', () => {
     const manifest = buildGlobalManifest();
 
@@ -32,7 +47,7 @@ describe('manifests PWA', () => {
       slug: 'padaria-nova',
       description: 'Descrição antiga',
       config,
-      icon: null,
+      iconAssetId: null,
     });
 
     expect(manifest).toMatchObject({
@@ -52,14 +67,22 @@ describe('manifests PWA', () => {
       slug: 'loja',
       description: null,
       config: createDefaultCustomization(),
-      icon: {
-        src: '/api/store-assets/icon-1',
-        sizes: '512x512',
-        type: 'image/png',
-      },
+      iconAssetId: 'icon-1',
     });
 
-    expect(manifest.icons?.[0]).toMatchObject({ src: '/api/store-assets/icon-1' });
-    expect(manifest.icons).toHaveLength(PEDIDOLOCAL_PWA_ICONS.length + 1);
+    expect(manifest.icons).toEqual([
+      expect.objectContaining({
+        src: '/api/store-assets/icon-1?variant=pwa-any-192',
+        sizes: '192x192',
+      }),
+      expect.objectContaining({
+        src: '/api/store-assets/icon-1?variant=pwa-any-512',
+        sizes: '512x512',
+      }),
+      expect.objectContaining({
+        src: '/api/store-assets/icon-1?variant=pwa-maskable-512&background=%23FFFDF9',
+        purpose: 'maskable',
+      }),
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 
 import type { StoreCustomizationConfig } from '@/schemas/customization';
+import { storePwaIconUrl } from '@/features/assets/urls';
 
 export const PEDIDOLOCAL_PWA_COLORS = {
   background: '#FFFDF9',
@@ -20,7 +21,7 @@ export const PEDIDOLOCAL_PWA_ICONS: NonNullable<MetadataRoute.Manifest['icons']>
   },
   {
     src: '/pwa/pedidolocal-maskable-v1-512.png',
-    sizes: '512x512',
+    sizes: '192x192',
     type: 'image/png',
     purpose: 'maskable',
   },
@@ -30,6 +31,7 @@ export interface StorePwaIcon {
   src: string;
   sizes: string;
   type: string;
+  purpose?: 'any' | 'maskable' | 'monochrome';
 }
 
 export interface StorePwaManifestInput {
@@ -38,7 +40,20 @@ export interface StorePwaManifestInput {
   slug: string;
   description: string | null;
   config: StoreCustomizationConfig;
-  icon: StorePwaIcon | null;
+  iconAssetId: string | null;
+}
+
+export function buildStorePwaIcons(assetId: string, backgroundColor: string): StorePwaIcon[] {
+  return [
+    { src: storePwaIconUrl(assetId, 'any-192'), sizes: '192x192', type: 'image/png' },
+    { src: storePwaIconUrl(assetId, 'any-512'), sizes: '512x512', type: 'image/png' },
+    {
+      src: storePwaIconUrl(assetId, 'maskable-512', backgroundColor),
+      sizes: '512x512',
+      type: 'image/png',
+      purpose: 'maskable',
+    },
+  ];
 }
 
 function shortName(name: string): string {
@@ -70,7 +85,9 @@ export function buildStoreManifest(input: StorePwaManifestInput): MetadataRoute.
     input.config.identity.shortDescription.trim() ||
     input.description?.trim() ||
     `Peça online em ${input.name}.`;
-  const icons = input.icon ? [input.icon, ...PEDIDOLOCAL_PWA_ICONS] : PEDIDOLOCAL_PWA_ICONS;
+  const icons = input.iconAssetId
+    ? buildStorePwaIcons(input.iconAssetId, input.config.palette.background)
+    : PEDIDOLOCAL_PWA_ICONS;
 
   return {
     name: input.name,

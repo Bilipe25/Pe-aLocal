@@ -18,18 +18,21 @@ test.describe('PWA', () => {
     expect(swResponse.headers()['cache-control']).toMatch(/no-cache|no-store/);
 
     for (const icon of [
-      '/pwa/pedidolocal-icon-v1-192.png',
-      '/pwa/pedidolocal-icon-v1-512.png',
-      '/pwa/pedidolocal-maskable-v1-512.png',
-      '/pwa/apple-touch-icon-v1-180.png',
+      { url: '/pwa/pedidolocal-icon-v1-192.png', size: 192 },
+      { url: '/pwa/pedidolocal-icon-v1-512.png', size: 512 },
+      { url: '/pwa/pedidolocal-maskable-v1-512.png', size: 192 },
+      { url: '/pwa/apple-touch-icon-v1-180.png', size: 180 },
     ]) {
-      const response = await request.get(icon);
+      const response = await request.get(icon.url);
       expect(response.ok()).toBe(true);
       expect(response.headers()['content-type']).toContain('image/png');
+      const png = await response.body();
+      expect(png.readUInt32BE(16)).toBe(icon.size);
+      expect(png.readUInt32BE(20)).toBe(icon.size);
     }
   });
 
-  test('publica manifest relativo e white-label quando há loja E2E', async ({ request }) => {
+  test('publica manifest e metadados white-label quando há loja E2E', async ({ request, page }) => {
     const storeSlug = process.env.E2E_STORE_SLUG;
     test.skip(!storeSlug, 'E2E_STORE_SLUG não foi configurado.');
 
@@ -42,6 +45,44 @@ test.describe('PWA', () => {
     expect(manifest.start_url).toBe(`/${storeSlug}`);
     expect(manifest.scope).toBe(`/${storeSlug}`);
     expect(manifest.id).toMatch(/^\/pwa\/store\//);
+    expect(manifest.icons).toEqual([
+      expect.objectContaining({
+        src: expect.stringContaining('variant=pwa-any-192'),
+        sizes: '192x192',
+      }),
+      expect.objectContaining({
+        src: expect.stringContaining('variant=pwa-any-512'),
+        sizes: '512x512',
+      }),
+      expect.objectContaining({
+        src: expect.stringContaining('variant=pwa-maskable-512'),
+        purpose: 'maskable',
+      }),
+    ]);
+
+    for (const icon of manifest.icons) {
+      const iconResponse = await request.get(icon.src);
+      expect(iconResponse.ok()).toBe(true);
+      expect(iconResponse.headers()['content-type']).toContain('image/png');
+      const png = await iconResponse.body();
+      const expectedSize = Number(icon.sizes.split('x')[0]);
+      expect(png.readUInt32BE(16)).toBe(expectedSize);
+      expect(png.readUInt32BE(20)).toBe(expectedSize);
+    }
+
+    await page.goto(`/${storeSlug}`);
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+      'href',
+      `/${storeSlug}/manifest.webmanifest`,
+    );
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      'content',
+      manifest.theme_color,
+    );
+    await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
+      'href',
+      /variant=pwa-apple-180/,
+    );
   });
 
   test('fallback offline não expõe HTML stale e cache contém só shell explícito', async ({

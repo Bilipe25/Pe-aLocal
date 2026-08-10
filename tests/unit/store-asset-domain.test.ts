@@ -59,6 +59,21 @@ describe('domínio de assets da loja', () => {
     });
   });
 
+  it('exige favicon aproximadamente quadrado com ao menos 192 px para a PWA', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const file = new File([png], 'favicon.png', { type: 'image/png' });
+
+    await expect(
+      inspectStoreAssetFile(file, 'FAVICON', runtimeWithInfo(180, 180)),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      inspectStoreAssetFile(file, 'FAVICON', runtimeWithInfo(512, 300)),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      inspectStoreAssetFile(file, 'FAVICON', runtimeWithInfo(512, 512)),
+    ).resolves.toMatchObject({ width: 512, height: 512 });
+  });
+
   it('exige texto alternativo fora do favicon e bloqueia HTML', () => {
     expect(
       storeAssetUploadMetadataSchema.safeParse({ assetType: 'LOGO', altText: '' }).success,

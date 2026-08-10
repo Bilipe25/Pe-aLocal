@@ -68,11 +68,7 @@ describe('consulta pública PWA da loja', () => {
   it('seleciona publishedConfig sem expor draftConfig', async () => {
     const result = await getPublicStorePwaBySlug('loja-um');
 
-    expect(result?.icon).toEqual({
-      src: '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838',
-      sizes: '512x512',
-      type: 'image/png',
-    });
+    expect(result?.iconAssetId).toBe('4da03571-bffd-45ef-8c44-20686c487838');
     const select = mocks.storeFindUnique.mock.calls[0][0].select;
     expect(select.customization.select).toEqual({
       publishedConfig: true,
@@ -97,7 +93,7 @@ describe('consulta pública PWA da loja', () => {
       },
     ]);
 
-    expect((await getPublicStorePwaBySlug('loja-um'))?.icon).toBeNull();
+    expect((await getPublicStorePwaBySlug('loja-um'))?.iconAssetId).toBeNull();
   });
 
   it('rejeita loja ou tenant inativo', async () => {
@@ -117,7 +113,7 @@ describe('consulta pública PWA da loja', () => {
       },
     ]);
 
-    expect((await getPublicStorePwaBySlug('loja-um'))?.icon).toBeNull();
+    expect((await getPublicStorePwaBySlug('loja-um'))?.iconAssetId).toBeNull();
   });
 
   it('resolve slug antigo preservando o slug canônico', async () => {
