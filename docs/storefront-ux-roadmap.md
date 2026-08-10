@@ -49,8 +49,9 @@ consumidor:
 
 1. SEO local e descoberta: sem `JSON-LD` (Restaurant/Menu/MenuItem), sem
    sitemap por loja, sem Open Graph por item.
-2. PWA e offline: sem `manifest`, sem service worker, sem página de "estamos
-   sem conexão".
+2. PWA e offline: concluídos com manifests global/white-label, service worker
+   conservador e página estática de contingência; evoluções offline avançadas
+   permanecem fora do escopo atual.
 3. Estados operacionais visíveis: o `StoreClosedBanner` existe, mas **não é
    usado** em `page.tsx`; a loja fechada mostra só o motivo no hero, sem um
    destaque de página cheia.
@@ -58,10 +59,10 @@ consumidor:
    termo, sem sugestões de categoria, sem contagem em tempo real durante a
    digitação.
 5. Confiança no produto: sem tag de "novo"/"mais pedido"/"promoção" (campo
-    ainda não existe no schema), sem selos de alérgeno/vegano, sem
-    microinteração ao adicionar à sacola.
+   ainda não existe no schema), sem selos de alérgeno/vegano, sem
+   microinteração ao adicionar à sacola.
 6. Conversão: o modal de produto fecha imediatamente após adicionar — não há
-    "Adicionar e continuar pedindo" nem mini-confirmação inline.
+   "Adicionar e continuar pedindo" nem mini-confirmação inline.
 7. Carrinho: o `CartFab` recoloca a contagem via `key={count}` (re-monta o
    span a cada mudança) e não mostra nada além do total; a página `/cart` não
    exibe horário/status da loja nem o ETA prometido pelo `quote`.
@@ -70,10 +71,10 @@ consumidor:
 9. Acessibilidade pontual: `prefers-reduced-motion` está parcialmente
    respeitado; animações de "section-reveal" e shimmer merecem revisão.
 10. Performance: o catálogo inteiro é serializado no RSC e re-hidratado
-     sempre; ~~imagens usam `<img>` e não o binding `IMAGES` do Cloudflare
-     (perde resize/format on the fly).~~ *(resolvido em E1 — `next/image` +
-     loader custom aponta para `/api/store-assets/[assetId]`, com AVIF/WebP
-     on the fly via binding `IMAGES`)*.
+    sempre; ~~imagens usam `<img>` e não o binding `IMAGES` do Cloudflare
+    (perde resize/format on the fly).~~ _(resolvido em E1 — `next/image` +
+    loader custom aponta para `/api/store-assets/[assetId]`, com AVIF/WebP
+    on the fly via binding `IMAGES`)_.
 
 Estes pontos alimentam as fases a seguir.
 
@@ -106,18 +107,18 @@ Estes pontos alimentam as fases a seguir.
 > Sem migrations, sem novas colunas. Apenas melhorias de UX, copy,
 > performance e estados. Pode entrar como uma série de PRs pequenos.
 
-| # | Status | Refinamento | Arquivos-alvo | Por que | Como medir |
-|---|--------|-------------|---------------|---------|------------|
-| A1 | ✅ | Banner superior contextual quando a loja está fechada, pausada ou fora do horário | `src/app/[storeSlug]/page.tsx`, `src/components/storefront/store-closed-banner.tsx` | O `StoreClosedBanner` já existe mas não era renderizado. Mostrar um banner fixo no topo melhora a clareza e reduz pedidos "fantasma" no carrinho. | Playwright: hero renderiza + banner visível com `availability.state` fechado. axe: 0 violações. |
-| A2 | ⬜ | Atalho "/" foca a busca; "Esc" limpa | `src/components/storefront/storefront-search.tsx`, `src/components/storefront/catalog-view.tsx` | Atalho de teclado é convenção forte em catálogos (iFood, Rappi, Shopify). | Playwright: `/` move foco para `input#storefront-search`. |
-| A3 | ✅ | Contador ao vivo "X produtos" enquanto digita | `src/components/storefront/catalog-view.tsx` | O `aria-live` já existe; falta o contador visual discreto no topo do catálogo. | E2E: digitar "x" mostra contador. |
-| A4 | ⬜ | "Adicionar e continuar" + confirmação inline no modal | `src/components/storefront/product-modal.tsx` | Hoje o modal fecha após o `addItem`. Para catálogos com média de 2-3 itens por pedido, manter o modal aberto e mostrar um "Adicionado ✓" reduz cliques. | E2E: adicionar 2 itens diferentes no mesmo modal. |
-| A5 | ✅ | "Continuar comprando" no `/cart` e indicador de "X itens faltam para o mínimo" no catálogo | `src/components/storefront/cart-view.tsx`, `src/app/[storeSlug]/page.tsx` | A `missingForMinimum` já vem no quote. Mostrar no hero/cart unifica a expectativa. | E2E: carrinho com `missingForMinimum > 0` mostra progresso. |
-| A6 | ✅ | Skeleton com shimmer para o cardápio e para `ProductImage` | `src/app/[storeSlug]/loading.tsx`, `src/components/storefront/product-image.tsx` | O placeholder genérico com `ImageOff` é frio. Skeleton com `prefers-reduced-motion: reduce` desativa a animação. | Lighthouse: LCP percebido. |
-| A7 | ✅ | Mensagem de "Sem internet / reconectando" + revalidação automática | `src/components/storefront/network-status.tsx` (novo) | Em filas/locais fracos, o `fetch` de `loadProductDetail` falha silenciosamente em modo "error". Um banner informa quando a conexão cai e some automaticamente ao voltar. | E2E simulado: `navigator.onLine = false`. |
-| A8 | ⬜ | Página de erro do segmento mais humana (com link direto para o cardápio raiz) | `src/app/[storeSlug]/error.tsx` | Já existe; refinar copy e incluir `StorefrontBottomNav` se for erro de hydration. | axe + visual review. |
-| A9 | ⬜ | "Compartilhar" expandido: copiar código curto do item, linkar WhatsApp com texto pré-formatado | `src/components/storefront/storefront-share-button.tsx` | Conversão por WhatsApp é o canal de aquisição predominante. | Manual + E2E com `navigator.share = undefined`. |
-| A10 | ✅ | Cache público e deduplicação de `getPublicStoreBySlug` / `getPublicCatalog` | `src/server/queries/public-store.ts` | Garantir que as queries públicas não dependam de `cookies`/`headers` e que sejam deduplicadas dentro do mesmo request. Permite edge caching e reduz latência. | `pnpm test` + `pnpm tsc`. |
+| #   | Status | Refinamento                                                                                    | Arquivos-alvo                                                                                   | Por que                                                                                                                                                                  | Como medir                                                                                      |
+| --- | ------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| A1  | ✅     | Banner superior contextual quando a loja está fechada, pausada ou fora do horário              | `src/app/[storeSlug]/page.tsx`, `src/components/storefront/store-closed-banner.tsx`             | O `StoreClosedBanner` já existe mas não era renderizado. Mostrar um banner fixo no topo melhora a clareza e reduz pedidos "fantasma" no carrinho.                        | Playwright: hero renderiza + banner visível com `availability.state` fechado. axe: 0 violações. |
+| A2  | ⬜     | Atalho "/" foca a busca; "Esc" limpa                                                           | `src/components/storefront/storefront-search.tsx`, `src/components/storefront/catalog-view.tsx` | Atalho de teclado é convenção forte em catálogos (iFood, Rappi, Shopify).                                                                                                | Playwright: `/` move foco para `input#storefront-search`.                                       |
+| A3  | ✅     | Contador ao vivo "X produtos" enquanto digita                                                  | `src/components/storefront/catalog-view.tsx`                                                    | O `aria-live` já existe; falta o contador visual discreto no topo do catálogo.                                                                                           | E2E: digitar "x" mostra contador.                                                               |
+| A4  | ⬜     | "Adicionar e continuar" + confirmação inline no modal                                          | `src/components/storefront/product-modal.tsx`                                                   | Hoje o modal fecha após o `addItem`. Para catálogos com média de 2-3 itens por pedido, manter o modal aberto e mostrar um "Adicionado ✓" reduz cliques.                  | E2E: adicionar 2 itens diferentes no mesmo modal.                                               |
+| A5  | ✅     | "Continuar comprando" no `/cart` e indicador de "X itens faltam para o mínimo" no catálogo     | `src/components/storefront/cart-view.tsx`, `src/app/[storeSlug]/page.tsx`                       | A `missingForMinimum` já vem no quote. Mostrar no hero/cart unifica a expectativa.                                                                                       | E2E: carrinho com `missingForMinimum > 0` mostra progresso.                                     |
+| A6  | ✅     | Skeleton com shimmer para o cardápio e para `ProductImage`                                     | `src/app/[storeSlug]/loading.tsx`, `src/components/storefront/product-image.tsx`                | O placeholder genérico com `ImageOff` é frio. Skeleton com `prefers-reduced-motion: reduce` desativa a animação.                                                         | Lighthouse: LCP percebido.                                                                      |
+| A7  | ✅     | Mensagem de "Sem internet / reconectando" + revalidação automática                             | `src/components/storefront/network-status.tsx` (novo)                                           | Em filas/locais fracos, o `fetch` de `loadProductDetail` falha silenciosamente em modo "error". Um banner informa quando a conexão cai e some automaticamente ao voltar. | E2E simulado: `navigator.onLine = false`.                                                       |
+| A8  | ⬜     | Página de erro do segmento mais humana (com link direto para o cardápio raiz)                  | `src/app/[storeSlug]/error.tsx`                                                                 | Já existe; refinar copy e incluir `StorefrontBottomNav` se for erro de hydration.                                                                                        | axe + visual review.                                                                            |
+| A9  | ⬜     | "Compartilhar" expandido: copiar código curto do item, linkar WhatsApp com texto pré-formatado | `src/components/storefront/storefront-share-button.tsx`                                         | Conversão por WhatsApp é o canal de aquisição predominante.                                                                                                              | Manual + E2E com `navigator.share = undefined`.                                                 |
+| A10 | ✅     | Cache público e deduplicação de `getPublicStoreBySlug` / `getPublicCatalog`                    | `src/server/queries/public-store.ts`                                                            | Garantir que as queries públicas não dependam de `cookies`/`headers` e que sejam deduplicadas dentro do mesmo request. Permite edge caching e reduz latência.            | `pnpm test` + `pnpm tsc`.                                                                       |
 
 ### Fase B — Sinais operacionais e confiança (curto-médio prazo)
 
@@ -125,16 +126,16 @@ Estes pontos alimentam as fases a seguir.
 > (`promoPrice`, `isNew`, `purchaseCount30d`) cobertas pelo padrão
 > expand → backfill → guard.
 
-| # | Status | Refinamento | Por que | Como medir |
-|---|--------|-------------|---------|------------|
-| B1 | ✅ | **ETA dinâmico por loja** (não só "30-45 min") com base no `PromiseFulfillmentMinAt/MaxAt` vindo do `quote` | O cálculo já existe; basta renderizar. Reduz ansiedade do cliente. | E2E: hero e `/cart` mostram ETA. |
-| B2 | ⬜ | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento | Removido da interface do carrinho por excesso de informação visual. O acompanhamento continua disponível pelo destino "Meu pedido" da navegação inferior. | Manter o carrinho focado na finalização. |
-| B3 | **Tags no produto**: "Novo", "Mais pedido", "Promoção" | Requer colunas aditivas em `Product` (`isNew`, `popularity30d`, `promoPriceCents`, `promoEndsAt`). Schema já prevê `version` para CAS. | Migração expand → backfill → guard. |
-| B4 | **Selos alimentares** (vegano, sem glúten, contém lactose) | Requer nova tabela `ProductDietaryTag` N:N. Default vazio, opt-in. | Migração aditiva. |
-| B5 | **Promoções por horário** (ex.: "Happy hour 17h-19h") | Reuso de `StoreScheduleException` mais um `ProductDiscountSchedule`. Já temos `version`. | Migração aditiva. |
-| B6 | **Cupom visível no hero** quando o cliente chega com `?coupon=` | O `initialCouponCode` já é propagado. Falta o hero mostrar "Cupom X aplicado" antes do `/cart`. | E2E: `?coupon=...` mostra badge. |
-| B7 | **Mini-cart (peek)** ao tocar no `CartFab` | Hoje o FAB navega direto. Adicionar um popover com últimas linhas + total antes de ir para `/cart` reduz idas e voltas. | Componente novo. |
-| B8 | ✅ | **Confirmação visual ao favoritar** (heart pulse + haptic feedback) | `useFavoritesStore` já existe. Refinar animação. | Manual + axe. |
+| #   | Status                                                          | Refinamento                                                                                                                            | Por que                                                                                                                                                   | Como medir                               |
+| --- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| B1  | ✅                                                              | **ETA dinâmico por loja** (não só "30-45 min") com base no `PromiseFulfillmentMinAt/MaxAt` vindo do `quote`                            | O cálculo já existe; basta renderizar. Reduz ansiedade do cliente.                                                                                        | E2E: hero e `/cart` mostram ETA.         |
+| B2  | ⬜                                                              | **Tempo real do pedido no `/cart`** quando o cliente já tem pedido em andamento                                                        | Removido da interface do carrinho por excesso de informação visual. O acompanhamento continua disponível pelo destino "Meu pedido" da navegação inferior. | Manter o carrinho focado na finalização. |
+| B3  | **Tags no produto**: "Novo", "Mais pedido", "Promoção"          | Requer colunas aditivas em `Product` (`isNew`, `popularity30d`, `promoPriceCents`, `promoEndsAt`). Schema já prevê `version` para CAS. | Migração expand → backfill → guard.                                                                                                                       |
+| B4  | **Selos alimentares** (vegano, sem glúten, contém lactose)      | Requer nova tabela `ProductDietaryTag` N:N. Default vazio, opt-in.                                                                     | Migração aditiva.                                                                                                                                         |
+| B5  | **Promoções por horário** (ex.: "Happy hour 17h-19h")           | Reuso de `StoreScheduleException` mais um `ProductDiscountSchedule`. Já temos `version`.                                               | Migração aditiva.                                                                                                                                         |
+| B6  | **Cupom visível no hero** quando o cliente chega com `?coupon=` | O `initialCouponCode` já é propagado. Falta o hero mostrar "Cupom X aplicado" antes do `/cart`.                                        | E2E: `?coupon=...` mostra badge.                                                                                                                          |
+| B7  | **Mini-cart (peek)** ao tocar no `CartFab`                      | Hoje o FAB navega direto. Adicionar um popover com últimas linhas + total antes de ir para `/cart` reduz idas e voltas.                | Componente novo.                                                                                                                                          |
+| B8  | ✅                                                              | **Confirmação visual ao favoritar** (heart pulse + haptic feedback)                                                                    | `useFavoritesStore` já existe. Refinar animação.                                                                                                          | Manual + axe.                            |
 
 ### Fase C — Descoberta, SEO e PWA (médio prazo)
 
@@ -142,16 +143,16 @@ Estes pontos alimentam as fases a seguir.
 > profissional. Requer cuidado com manifest, sitemap e service worker em
 > Cloudflare Workers (sem `public/`, sem `next-pwa`).
 
-| # | Status | Refinamento | Por que | Como medir |
-|---|--------|-------------|---------|------------|
-| C1 | ✅ | **`JSON-LD` por página** | Schema.org `Restaurant` + `Menu` + `MenuSection` + `MenuItem` + `Offer` para destacar preço, disponibilidade e tempo de preparo. | Google Rich Results Test. |
-| C2 | ✅ | **Sitemap dinâmico** por loja | `src/app/sitemap.ts` lista lojas públicas indexáveis e `<lastmod>` baseado na atualização mais recente do catálogo. | Teste unitário + inspeção de `/sitemap.xml`. |
-| C3 | ✅ | **`robots.txt` por loja e `noindex` para fora de catálogo** | O `indexable` da `StoreCustomizationConfig` controla a home; carrinho, checkout e acompanhamento ficam fora dos resultados. | Testes de metadata, headers e `/robots.txt`. |
-| C4 | **PWA manifest** próprio (sem DPush) | `public/manifest.webmanifest` com ícones por preset + `theme_color` da paleta da loja. | Lighthouse PWA. |
-| C5 | **Service worker mínimo** (cache-first para `/api/store-assets`, stale-while-revalidate para HTML do cardápio) | O runtime é OpenNext/Workers — usar `workbox-window` ou um SW manual. Sem `next-pwa`. | Lighthouse. |
-| C6 | **Página offline** ilustrada ("Sem conexão. Seu pedido anterior está salvo.") | O `useCartStore` já persiste local; basta um fallback `app/offline/page.tsx`. | Manual. |
-| C7 | **Open Graph dinâmico por item** | `app/[storeSlug]/p/[productId]/page.tsx` (route nova, sem checkout) com `generateMetadata` rico e link `Ver no cardápio`. | OG Debugger. |
-| C8 | **Compartilhar com imagem renderizada** (Share Image via Cloudflare Images) | Reuso do binding `IMAGES`. | Manual. |
+| #   | Status                                                                      | Refinamento                                                                                                               | Por que                                                                                                                          | Como medir                                   |
+| --- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| C1  | ✅                                                                          | **`JSON-LD` por página**                                                                                                  | Schema.org `Restaurant` + `Menu` + `MenuSection` + `MenuItem` + `Offer` para destacar preço, disponibilidade e tempo de preparo. | Google Rich Results Test.                    |
+| C2  | ✅                                                                          | **Sitemap dinâmico** por loja                                                                                             | `src/app/sitemap.ts` lista lojas públicas indexáveis e `<lastmod>` baseado na atualização mais recente do catálogo.              | Teste unitário + inspeção de `/sitemap.xml`. |
+| C3  | ✅                                                                          | **`robots.txt` por loja e `noindex` para fora de catálogo**                                                               | O `indexable` da `StoreCustomizationConfig` controla a home; carrinho, checkout e acompanhamento ficam fora dos resultados.      | Testes de metadata, headers e `/robots.txt`. |
+| C4  | ✅ **PWA manifests global e white-label**                                   | Metadata Route global e Route Handler por loja, com `theme_color` publicado e fallback de ícones PedidoLocal.             | Vitest + Playwright.                                                                                                             |
+| C5  | ✅ **Service worker mínimo e conservador**                                  | SW manual: precache apenas da página offline e ícones; HTML, `/api/**` e rotas sensíveis permanecem Network Only.         | Vitest + Playwright/workerd.                                                                                                     |
+| C6  | ✅ **Página offline estática**                                              | Fallback sem banco, hidratação, PII ou afirmação absoluta sobre persistência do carrinho.                                 | Axe + Playwright.                                                                                                                |
+| C7  | **Open Graph dinâmico por item**                                            | `app/[storeSlug]/p/[productId]/page.tsx` (route nova, sem checkout) com `generateMetadata` rico e link `Ver no cardápio`. | OG Debugger.                                                                                                                     |
+| C8  | **Compartilhar com imagem renderizada** (Share Image via Cloudflare Images) | Reuso do binding `IMAGES`.                                                                                                | Manual.                                                                                                                          |
 
 ### Fase D — Inteligência de catálogo e personalização (médio-longo prazo)
 
@@ -159,28 +160,28 @@ Estes pontos alimentam as fases a seguir.
 > `PublicStorefrontProductSummaryDto` enxuto, mas adiciona fontes de ranking
 > server-side.
 
-| # | Refinamento | Por que | Como medir |
-|---|-------------|---------|------------|
-| D1 | **Recomendação também no cardápio** (não só no carrinho) | Reaproveita `/api/storefront/.../recommendations` para "Combina com" abaixo do hero. | E2E. |
-| D2 | **Ordenação por popularidade local** | Ranking 30d calculado no servidor (`getPopularProductsByStore`), nunca exposto no DTO. | A/B com feature flag via `StoreCustomizationConfig.experimental`. |
-| D3 | **Filtro por faixa de preço** | Slider de range que envia `minPrice/maxPrice` no `?` da URL para deep-linking. | E2E. |
-| D4 | **Sugestão automática de adicionais** com base no `cartItem.fingerprint` | A `cart-validator.ts` já tem `selectedOptions`; adicionar `recommendationSet` por opção. | A/B. |
-| D5 | **"Pediu junto"** no modal (carrossel horizontal de produtos que costumam acompanhar) | Mesmo motor de `cart-recommendations`, sinal "frequentemente comprados juntos". | A/B. |
-| D6 | **Modo "Pedido salvo"** (cliente volta 1 dia depois e a sacola ainda está lá com a data) | Já persiste; falta UI de "Sacola de ontem — retomar?". | E2E com `cart.requiresWrite`. |
-| D7 | ✅ **Histórico local de pedidos públicos** | Histórico salvo automaticamente por loja e aparelho, usando tokens públicos validados por `/api/orders/track`; o `last-order-store` atual permanece compatível. | Testes de storage, expiração, isolamento e tracking. |
+| #   | Refinamento                                                                              | Por que                                                                                                                                                         | Como medir                                                        |
+| --- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| D1  | **Recomendação também no cardápio** (não só no carrinho)                                 | Reaproveita `/api/storefront/.../recommendations` para "Combina com" abaixo do hero.                                                                            | E2E.                                                              |
+| D2  | **Ordenação por popularidade local**                                                     | Ranking 30d calculado no servidor (`getPopularProductsByStore`), nunca exposto no DTO.                                                                          | A/B com feature flag via `StoreCustomizationConfig.experimental`. |
+| D3  | **Filtro por faixa de preço**                                                            | Slider de range que envia `minPrice/maxPrice` no `?` da URL para deep-linking.                                                                                  | E2E.                                                              |
+| D4  | **Sugestão automática de adicionais** com base no `cartItem.fingerprint`                 | A `cart-validator.ts` já tem `selectedOptions`; adicionar `recommendationSet` por opção.                                                                        | A/B.                                                              |
+| D5  | **"Pediu junto"** no modal (carrossel horizontal de produtos que costumam acompanhar)    | Mesmo motor de `cart-recommendations`, sinal "frequentemente comprados juntos".                                                                                 | A/B.                                                              |
+| D6  | **Modo "Pedido salvo"** (cliente volta 1 dia depois e a sacola ainda está lá com a data) | Já persiste; falta UI de "Sacola de ontem — retomar?".                                                                                                          | E2E com `cart.requiresWrite`.                                     |
+| D7  | ✅ **Histórico local de pedidos públicos**                                               | Histórico salvo automaticamente por loja e aparelho, usando tokens públicos validados por `/api/orders/track`; o `last-order-store` atual permanece compatível. | Testes de storage, expiração, isolamento e tracking.              |
 
 ### Fase E — Qualidade de produção, polimento, motion (paralelo, contínuo)
 
-| # | Refinamento | Por que | Como medir |
-|---|-------------|---------|------------|
-| E1 | ✅ | **Adotar `next/image` com o binding `IMAGES` do Cloudflare** para todas as imagens do cardápio (logo, cover, produto, banner, categoria) | Hoje é `<img>` com `srcSet`. Trocar para `next/image` com loader do `IMAGES` libera AVIF/WebP on the fly e LCP. | Lighthouse LCP. |
-| E2 | **Code-split de `CatalogView`** com `dynamic` (mantendo o SSR do server component) | `docs/storefront-catalog-payload.md` já sinaliza 268 KiB. Extrair o modal e a busca em um `next/dynamic` reduz JS inicial. | `pnpm build` + comparação. |
-| E3 | **SWR / cache do `quote`** | Hoje o `useCartQuote` refaz a cada mudança. Implementar debounce de 300 ms e `stale-while-revalidate` para evitar pingue-pongue. | `pnpm perf:orders:load`. |
-| E4 | **Animações honrando `prefers-reduced-motion`** em `section-reveal` e `storefront-featured-track` | Boa prática de acessibilidade. | axe + manual. |
-| E5 | **Testes de regressão visual** (Playwright snapshots) por preset (`CLASSIC`, `MODERN`, `DARK_PREMIUM`, etc.) | Garantir que mudanças de tema não quebrem layout. | `pnpm test:e2e` com `toHaveScreenshot`. |
-| E6 | **Auditoria de imagens quebradas** com telemetria de `onError` em `ProductImage` | Hoje o `failedUrl` apenas esconde a imagem. Subir evento `product_image_failed` para o dashboard do lojista. | Já é trivial. |
-| E7 | **Internacionalização** preparada (en/es) | Hoje 100% pt-BR. Mover textos para `messages/pt-BR.json` (estrutura flat, sem i18n runtime) para reduzir retrabalho. | Lint de chaves faltantes. |
-| E8 | **Doc de "Operação da home"** em `docs/storefront-runbook.md` | Complementar `phase-10-production-readiness.md` com checklist pós-deploy de cardápio (smoke manual, LCP, axe, JSON-LD). | Manual. |
+| #   | Refinamento                                                                                                  | Por que                                                                                                                                  | Como medir                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| E1  | ✅                                                                                                           | **Adotar `next/image` com o binding `IMAGES` do Cloudflare** para todas as imagens do cardápio (logo, cover, produto, banner, categoria) | Hoje é `<img>` com `srcSet`. Trocar para `next/image` com loader do `IMAGES` libera AVIF/WebP on the fly e LCP. | Lighthouse LCP. |
+| E2  | **Code-split de `CatalogView`** com `dynamic` (mantendo o SSR do server component)                           | `docs/storefront-catalog-payload.md` já sinaliza 268 KiB. Extrair o modal e a busca em um `next/dynamic` reduz JS inicial.               | `pnpm build` + comparação.                                                                                      |
+| E3  | **SWR / cache do `quote`**                                                                                   | Hoje o `useCartQuote` refaz a cada mudança. Implementar debounce de 300 ms e `stale-while-revalidate` para evitar pingue-pongue.         | `pnpm perf:orders:load`.                                                                                        |
+| E4  | **Animações honrando `prefers-reduced-motion`** em `section-reveal` e `storefront-featured-track`            | Boa prática de acessibilidade.                                                                                                           | axe + manual.                                                                                                   |
+| E5  | **Testes de regressão visual** (Playwright snapshots) por preset (`CLASSIC`, `MODERN`, `DARK_PREMIUM`, etc.) | Garantir que mudanças de tema não quebrem layout.                                                                                        | `pnpm test:e2e` com `toHaveScreenshot`.                                                                         |
+| E6  | **Auditoria de imagens quebradas** com telemetria de `onError` em `ProductImage`                             | Hoje o `failedUrl` apenas esconde a imagem. Subir evento `product_image_failed` para o dashboard do lojista.                             | Já é trivial.                                                                                                   |
+| E7  | **Internacionalização** preparada (en/es)                                                                    | Hoje 100% pt-BR. Mover textos para `messages/pt-BR.json` (estrutura flat, sem i18n runtime) para reduzir retrabalho.                     | Lint de chaves faltantes.                                                                                       |
+| E8  | **Doc de "Operação da home"** em `docs/storefront-runbook.md`                                                | Complementar `phase-10-production-readiness.md` com checklist pós-deploy de cardápio (smoke manual, LCP, axe, JSON-LD).                  | Manual.                                                                                                         |
 
 ---
 
@@ -362,22 +363,26 @@ dedicado aos itens, valores e checkout.
 
 ### C5 — Service worker
 
-**Plano**:
+**Implementação**:
 
-- Manual em `public/sw.js` registrado a partir de um `useEffect` em
-  `src/app/layout.tsx` (somente após aceite, sem prompt intrusivo).
-- Estratégias: cache-first para `api/store-assets` e
-  `/api/store-assets/[id]`; stale-while-revalidate para o documento do
-  cardápio; network-first para `/api/*` que envolve checkout.
-- Versionamento por `BUILD_ID` da OpenNext para evitar cache fantasma.
+- Manual em `public/sw.js`, sem Workbox, `next-pwa` ou novo Worker.
+- O precache contém somente `/offline` e ícones PWA versionados. Respostas
+  `private` ou `no-store` são recusadas.
+- HTML do cardápio usa a rede e nunca entra no CacheStorage; quando offline,
+  somente navegações públicas recebem `/offline`.
+- `/api/**`, `/dashboard/**`, `/admin/**`, autenticação, carrinho, checkout,
+  pedidos e acompanhamento permanecem Network Only.
+- O lifecycle de atualização exige confirmação em rota segura e adia o aviso
+  em fluxos sensíveis. O versionamento é explícito pelo nome do cache.
+- Detalhes de operação e rollback estão em `docs/pwa.md`.
 
 ### E1 — `next/image` com `IMAGES`
 
 **Implementação**:
 
 - `next.config.ts`定义 `images: { loader: 'custom', loaderFile:
-  'src/lib/images/cloudflare-images.ts', deviceSizes: [96, 192, 384, 768,
-  1280], imageSizes: [] }`. Os `deviceSizes` espelham
+'src/lib/images/cloudflare-images.ts', deviceSizes: [96, 192, 384, 768,
+1280], imageSizes: [] }`. Os `deviceSizes` espelham
   `STORE_ASSET_ALLOWED_WIDTHS` para que toda variante do `srcset` gerado pelo
   `next/image` seja servida pela rota pública, sem cair no fallback do asset
   original.
@@ -455,16 +460,16 @@ Para qualidade:
 
 ## 6. Riscos e mitigações
 
-| Risco | Mitigação |
-|-------|-----------|
-| Crescimento do JS no cardápio ao adicionar features | Medir com `pnpm build` em cada PR; limite de 350 KiB gzip para o entrypoint. |
-| Invalidação de cache ao mudar personalização | Reusar `revalidateTag` por loja; tag única `storefront:${slug}` no novo bundle (A10). |
-| Service worker quebrar o `?coupon=` ou cookies Supabase | Restringir o SW a `GET` em rotas públicas; nunca interceptar `POST`. |
-| PWA manifest com cores hard-coded | Derivar `theme_color` da `StoreCustomizationConfig.palette.primary`. |
-| Migrações de produto (B3, B4) quebrarem tenants legados | Padrão expand → backfill → guard + preflight (ver Fase 8/9). |
-| Mudanças de copy/IA quebrarem testes existentes | Manter `getByRole` / `getByLabelText` em E2E; evitar selectors por texto literal. |
-| JSON-LD inválido | Validador `schema-dts` + teste unitário que monta e parseia o JSON. |
-| Over-fetching de produto no modal | `useDeferredValue` em `productDetail` + cache de 60s já existente. Considerar SWR no E3. |
+| Risco                                                   | Mitigação                                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Crescimento do JS no cardápio ao adicionar features     | Medir com `pnpm build` em cada PR; limite de 350 KiB gzip para o entrypoint.                                                         |
+| Invalidação de cache ao mudar personalização            | Reusar `revalidateTag` por loja; tag única `storefront:${slug}` no novo bundle (A10).                                                |
+| Service worker quebrar o `?coupon=` ou cookies Supabase | Não armazenar HTML nem `/api/**`; rotas transacionais/autenticadas são sempre Network Only e métodos mutáveis não são interceptados. |
+| PWA manifest com cores hard-coded                       | Derivar `theme_color` da `StoreCustomizationConfig.palette.primary`.                                                                 |
+| Migrações de produto (B3, B4) quebrarem tenants legados | Padrão expand → backfill → guard + preflight (ver Fase 8/9).                                                                         |
+| Mudanças de copy/IA quebrarem testes existentes         | Manter `getByRole` / `getByLabelText` em E2E; evitar selectors por texto literal.                                                    |
+| JSON-LD inválido                                        | Validador `schema-dts` + teste unitário que monta e parseia o JSON.                                                                  |
+| Over-fetching de produto no modal                       | `useDeferredValue` em `productDetail` + cache de 60s já existente. Considerar SWR no E3.                                             |
 
 ---
 
@@ -474,7 +479,7 @@ Para qualidade:
 2. **E1, E2** — performance e payload antes de adicionar mais features.
 3. **C1, C2, C3** — SEO e descoberta (ganho composto).
 4. **B1, B2, B6, B7** — sinais operacionais no cardápio/cart.
-5. **C4, C5, C6, C7** — PWA e share rico.
+5. **C7** — share rico; C4, C5 e C6 foram concluídos com política conservadora.
 6. **B3, B4, B5, D1-D5** — personalização e inteligência (com migrations).
 7. **D6, D7, E3-E8** — longo prazo, mantendo qualidade.
 

@@ -54,19 +54,19 @@ pnpm db:seed
 
 Veja `.env.example` para todas as variáveis necessárias.
 
-| Variável                                        | Descrição                               |
-| ----------------------------------------------- | --------------------------------------- |
-| `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling) |
-| `DIRECT_URL`                                    | URL de conexão direta (para migrations) |
-| `APP_URL`                                       | URL base da aplicação                   |
-| `SEED_SUPER_ADMIN_EMAIL`                        | Identidade criada pelo seed local       |
-| `NEXT_PUBLIC_SUPABASE_URL`                      | URL da API do projeto Supabase          |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`          | Chave publicável da API Supabase        |
-| `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor      |
-| `PUSHER_APP_ID`                                 | ID da aplicação Pusher (servidor)       |
-| `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente     |
-| `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)       |
-| `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente    |
+| Variável                                        | Descrição                                                                    |
+| ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                                  | URL de conexão PostgreSQL (com pooling)                                      |
+| `DIRECT_URL`                                    | URL de conexão direta (para migrations)                                      |
+| `APP_URL`                                       | URL base da aplicação                                                        |
+| `SEED_SUPER_ADMIN_EMAIL`                        | Identidade criada pelo seed local                                            |
+| `NEXT_PUBLIC_SUPABASE_URL`                      | URL da API do projeto Supabase                                               |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`          | Chave publicável da API Supabase                                             |
+| `SUPABASE_SECRET_KEY`                           | Chave secreta, somente no servidor                                           |
+| `PUSHER_APP_ID`                                 | ID da aplicação Pusher (servidor)                                            |
+| `PUSHER_KEY` / `NEXT_PUBLIC_PUSHER_KEY`         | Chaves Pusher do servidor e cliente                                          |
+| `PUSHER_SECRET`                                 | Segredo Pusher (somente servidor)                                            |
+| `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente                                         |
 | `PUSHER_LEGACY_PUBLIC_CHANNELS`                 | Compatibilidade temporária de rollout; veja `docs/order-realtime-rollout.md` |
 
 ## Scripts
@@ -143,6 +143,10 @@ src/
 
 Monólito modular full-stack com Next.js. Veja `docs/architecture.md` para detalhes.
 
+## PWA
+
+A plataforma e cada loja possuem manifest instalável. O Service Worker oferece apenas um fallback offline seguro e nunca armazena HTML, APIs, carrinho, checkout, pedidos ou dados autenticados. Operação, política de cache, atualização e rollback estão documentados em [`docs/pwa.md`](docs/pwa.md).
+
 ## Multi-tenancy
 
 Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja `docs/multi-tenancy.md`.
@@ -164,7 +168,7 @@ Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja
 - Sem pagamentos online (PIX manual via WhatsApp)
 - Realtime depende da configuração do Pusher; sem as chaves, os eventos ficam desabilitados
 - Sem Redis (rate limiting in-memory)
-- Sem app mobile nativo (PWA-friendly)
+- Sem app mobile nativo (a experiência web é instalável como PWA)
 - Sem rastreamento de entrega
 - Sem cálculo de frete por distância
 

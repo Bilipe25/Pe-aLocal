@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Bricolage_Grotesque, Inter, Space_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { ServiceWorkerRegistration } from '@/components/pwa/service-worker-registration';
 import './globals.css';
 
 const bricolage = Bricolage_Grotesque({
@@ -33,6 +34,19 @@ export const metadata: Metadata = {
     'Monte sua loja virtual própria. Receba pedidos diretamente pelo celular, sem comissões de marketplace.',
   keywords: ['pedido online', 'lanchonete', 'cardápio digital', 'delivery', 'comida'],
   authors: [{ name: 'PedidoLocal' }],
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/pwa/pedidolocal-icon-v1-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/pwa/pedidolocal-icon-v1-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/pwa/apple-touch-icon-v1-180.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'PedidoLocal',
+    statusBarStyle: 'default',
+  },
   openGraph: {
     type: 'website',
     locale: 'pt_BR',
@@ -44,6 +58,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  themeColor: '#D9480F',
+  colorScheme: 'light',
 };
 
 export default function RootLayout({
@@ -55,6 +71,7 @@ export default function RootLayout({
     <html lang="pt-BR" className={`${bricolage.variable} ${inter.variable} ${spaceMono.variable}`}>
       <body className="bg-papel font-body text-tinta min-h-screen antialiased">
         {children}
+        <ServiceWorkerRegistration />
         <Toaster
           position="top-right"
           richColors
