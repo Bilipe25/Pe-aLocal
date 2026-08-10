@@ -1,4 +1,15 @@
-import { Activity, Ban, Building2, Eye, LifeBuoy, ShieldCheck, Users } from 'lucide-react';
+import { AuditAction } from '@prisma/client';
+import {
+  Activity,
+  Ban,
+  Building2,
+  Download,
+  Eye,
+  LifeBuoy,
+  Search,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import Link from 'next/link';
 
 import { TenantStatusAction } from '@/components/admin/tenant-status-action';
@@ -15,8 +26,27 @@ function formatDate(value: Date) {
   }).format(value);
 }
 
-export default async function AdminPage() {
-  const { metrics, tenants, auditLogs } = await getAdminDashboardData();
+function auditHref(input: { query?: string; action?: string; page?: number }) {
+  const params = new URLSearchParams();
+  if (input.query) params.set('auditQuery', input.query);
+  if (input.action) params.set('auditAction', input.action);
+  if (input.page && input.page > 1) params.set('auditPage', String(input.page));
+  const query = params.toString();
+  return query ? `/admin?${query}#audit-log-heading` : '/admin#audit-log-heading';
+}
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ auditQuery?: string; auditAction?: string; auditPage?: string }>;
+}) {
+  const params = await searchParams;
+  const filters = {
+    query: params.auditQuery,
+    action: params.auditAction,
+    page: params.auditPage,
+  };
+  const { metrics, tenants, audit } = await getAdminDashboardData(filters);
   const cards = [
     {
       label: 'Estabelecimentos',
@@ -169,10 +199,63 @@ export default async function AdminPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
         <section className="border-border bg-surface overflow-hidden rounded-xl border shadow-sm">
           <div className="border-border border-b px-5 py-4">
-            <h2 id="audit-log-heading" className="text-text-primary text-lg font-semibold">
-              Logs de auditoria
-            </h2>
-            <p className="text-text-secondary text-sm">100 eventos mais recentes.</p>
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <h2 id="audit-log-heading" className="text-text-primary text-lg font-semibold">
+                  Logs de auditoria
+                </h2>
+                <p className="text-text-secondary text-sm">
+                  {audit.total} {audit.total === 1 ? 'evento encontrado' : 'eventos encontrados'}.
+                </p>
+              </div>
+              <a
+                href={`/admin/audit/export?${new URLSearchParams({
+                  ...(filters.query ? { query: filters.query } : {}),
+                  ...(filters.action ? { action: filters.action } : {}),
+                }).toString()}`}
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <Download aria-hidden="true" /> Exportar CSV
+              </a>
+            </div>
+            <form
+              action="/admin"
+              method="GET"
+              className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]"
+            >
+              <label className="relative">
+                <span className="sr-only">Buscar nos logs</span>
+                <Search
+                  className="text-text-muted pointer-events-none absolute top-3.5 left-3 h-4 w-4"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  name="auditQuery"
+                  defaultValue={filters.query}
+                  placeholder="Entidade, loja, usuário ou ID"
+                  className="border-border bg-surface min-h-11 w-full rounded-md border pr-3 pl-9 text-sm"
+                />
+              </label>
+              <label>
+                <span className="sr-only">Filtrar por ação</span>
+                <select
+                  name="auditAction"
+                  defaultValue={filters.action ?? ''}
+                  className="border-border bg-surface min-h-11 w-full rounded-md border px-3 text-sm"
+                >
+                  <option value="">Todas as ações</option>
+                  {Object.values(AuditAction).map((action) => (
+                    <option key={action} value={action}>
+                      {action}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={buttonVariants({ size: 'sm' })}>
+                Filtrar
+              </button>
+            </form>
           </div>
           <div
             className="max-h-[480px] overflow-auto"
@@ -181,7 +264,7 @@ export default async function AdminPage() {
             tabIndex={0}
           >
             <ul className="divide-border divide-y">
-              {auditLogs.map((log) => (
+              {audit.logs.map((log) => (
                 <li key={log.id} className="px-5 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-text-primary font-medium">{log.action}</span>
@@ -191,15 +274,67 @@ export default async function AdminPage() {
                     {log.user?.email ?? 'Sistema'} · {log.tenant?.name ?? 'Plataforma'} ·{' '}
                     {log.entity}
                   </p>
+                  <p className="text-text-muted mt-1 text-xs">
+                    {log.store ? `${log.store.name} (/${log.store.slug})` : 'Sem loja associada'}
+                    {log.entityId ? ` · ID ${log.entityId}` : ''}
+                  </p>
+                  {log.metadata && (
+                    <details className="mt-2">
+                      <summary className="text-brand-700 focus-visible:ring-brand-500 inline-flex min-h-11 cursor-pointer items-center rounded-md text-xs font-medium focus-visible:ring-2 focus-visible:outline-none">
+                        Ver detalhes estruturados
+                      </summary>
+                      <pre className="bg-surface-secondary text-text-secondary max-h-48 overflow-auto rounded-md p-3 text-xs break-words whitespace-pre-wrap">
+                        {JSON.stringify(log.metadata, null, 2)}
+                      </pre>
+                    </details>
+                  )}
                 </li>
               ))}
-              {auditLogs.length === 0 && (
+              {audit.logs.length === 0 && (
                 <li className="text-text-muted px-5 py-10 text-center text-sm">
                   Nenhum evento registrado.
                 </li>
               )}
             </ul>
           </div>
+          {audit.pageCount > 1 && (
+            <nav
+              aria-label="Páginas dos logs de auditoria"
+              className="border-border flex items-center justify-between gap-3 border-t px-5 py-3"
+            >
+              <Link
+                href={auditHref({
+                  query: filters.query,
+                  action: filters.action,
+                  page: audit.page - 1,
+                })}
+                aria-disabled={audit.page <= 1}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  audit.page <= 1 && 'pointer-events-none opacity-50',
+                )}
+              >
+                Anterior
+              </Link>
+              <span className="text-text-secondary text-xs">
+                Página {audit.page} de {audit.pageCount}
+              </span>
+              <Link
+                href={auditHref({
+                  query: filters.query,
+                  action: filters.action,
+                  page: audit.page + 1,
+                })}
+                aria-disabled={audit.page >= audit.pageCount}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  audit.page >= audit.pageCount && 'pointer-events-none opacity-50',
+                )}
+              >
+                Próxima
+              </Link>
+            </nav>
+          )}
         </section>
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">

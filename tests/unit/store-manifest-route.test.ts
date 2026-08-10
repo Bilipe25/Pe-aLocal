@@ -17,7 +17,7 @@ const publicStore = {
   requestedSlug: 'loja-um',
   description: null,
   config: createDefaultCustomization(),
-  icon: null,
+  iconAssetId: null,
 };
 
 describe('manifest white-label', () => {

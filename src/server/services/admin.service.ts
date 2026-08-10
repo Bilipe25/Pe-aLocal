@@ -1,13 +1,38 @@
-import type { TenantStatus } from '@prisma/client';
+import { AuditAction, type TenantStatus } from '@prisma/client';
 
 import { requireSuperAdmin, requireSuperAdminStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import { NotFoundError, ValidationError } from '@/server/errors';
 import * as adminRepo from '@/server/repositories/admin.repository';
 
-export async function getAdminDashboardData() {
+export interface AdminAuditFilters {
+  query?: string;
+  action?: string;
+  page?: string | number;
+}
+
+function normalizeAuditFilters(filters: AdminAuditFilters = {}) {
+  const query = filters.query?.trim().slice(0, 120) || undefined;
+  const action = Object.values(AuditAction).includes(filters.action as AuditAction)
+    ? (filters.action as AuditAction)
+    : undefined;
+  const parsedPage = Number(filters.page);
+  const page = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  return { query, action, page };
+}
+
+export async function getAdminDashboardData(filters: AdminAuditFilters = {}) {
   await requireSuperAdmin();
-  return adminRepo.getPlatformOverview();
+  return adminRepo.getPlatformOverview({ ...normalizeAuditFilters(filters), pageSize: 25 });
+}
+
+export async function getAdminAuditExportData(filters: AdminAuditFilters = {}) {
+  await requireSuperAdmin();
+  return adminRepo.listAuditLogsForAdmin({
+    ...normalizeAuditFilters(filters),
+    page: 1,
+    pageSize: 1000,
+  });
 }
 
 export async function getAdminTenantDetails(tenantId: string) {

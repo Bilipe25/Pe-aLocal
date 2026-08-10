@@ -7,6 +7,8 @@ import { useState, useTransition } from 'react';
 import type { AdminStoreAssetItem } from '@/components/admin/store-assets-manager';
 import { deleteStoreBannerAction, saveStoreBannerAction } from '@/features/banners/actions';
 import { BANNER_DESTINATION_TYPES, type BannerDestinationTypeValue } from '@/schemas/store-banner';
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export interface AdminStoreBannerItem {
   id: string;
@@ -69,7 +71,9 @@ export function StoreBannersManager({
 }) {
   const router = useRouter();
   const [form, setForm] = useState(EMPTY_FORM);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const bannerAssets = assets.filter((asset) => asset.assetType === 'BANNER');
   const destinationOptions =
@@ -114,27 +118,30 @@ export function StoreBannersManager({
         priority: form.priority,
       });
       if (!result.success) {
-        setFeedback(result.error.message);
+        setFeedback({ tone: 'error', message: result.error.message });
         return;
       }
       setForm(EMPTY_FORM);
-      setFeedback('Banner salvo e cache público invalidado.');
+      setFeedback({ tone: 'success', message: 'Banner salvo e cache público invalidado.' });
       router.refresh();
     });
   }
 
-  function remove(bannerId: string) {
-    if (!window.confirm('Excluir este banner? A ação será auditada.')) return;
-    startTransition(async () => {
-      const result = await deleteStoreBannerAction(tenantId, storeId, bannerId);
-      if (!result.success) {
-        setFeedback(result.error.message);
-        return;
-      }
-      setForm(EMPTY_FORM);
-      setFeedback('Banner excluído.');
-      router.refresh();
-    });
+  async function remove(bannerId: string) {
+    return new Promise<boolean>((resolve) =>
+      startTransition(async () => {
+        const result = await deleteStoreBannerAction(tenantId, storeId, bannerId);
+        if (!result.success) {
+          setFeedback({ tone: 'error', message: result.error.message });
+          resolve(false);
+          return;
+        }
+        setForm(EMPTY_FORM);
+        setFeedback({ tone: 'success', message: 'Banner excluído.' });
+        router.refresh();
+        resolve(true);
+      }),
+    );
   }
 
   return (
@@ -146,6 +153,9 @@ export function StoreBannersManager({
       <p className="text-text-secondary mt-1 text-sm">
         Até {maxBanners} cadastrados e no máximo três ativos no mesmo período.
       </p>
+      <div className="mt-3">
+        <ChangeScopeBadge scope="immediate" />
+      </div>
 
       <div className="border-border mt-5 grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-2">
         <label className="text-text-secondary grid gap-1 text-sm sm:col-span-2">
@@ -297,7 +307,12 @@ export function StoreBannersManager({
       </div>
 
       {feedback && (
-        <p className="bg-info-light text-info mt-3 rounded-md p-3 text-sm">{feedback}</p>
+        <p
+          role={feedback.tone === 'error' ? 'alert' : 'status'}
+          className={`${feedback.tone === 'error' ? 'bg-error-light text-error' : 'bg-info-light text-info'} mt-3 rounded-md p-3 text-sm`}
+        >
+          {feedback.message}
+        </p>
       )}
       <div className="mt-4 space-y-3">
         {initialBanners.map((banner) => (
@@ -312,12 +327,30 @@ export function StoreBannersManager({
                 {banner.isActive ? 'Ativo' : 'Inativo'} · prioridade {banner.priority}
               </p>
             </div>
-            <button type="button" onClick={() => edit(banner)} aria-label="Editar banner">
+            <button
+              type="button"
+              onClick={() => edit(banner)}
+              aria-label="Editar banner"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md"
+            >
               <Pencil className="h-4 w-4" />
             </button>
-            <button type="button" onClick={() => remove(banner.id)} aria-label="Excluir banner">
-              <Trash2 className="text-error h-4 w-4" />
-            </button>
+            <ConfirmDialog
+              title="Excluir banner?"
+              description="O banner sairá do cardápio imediatamente e a ação será auditada."
+              confirmLabel="Excluir banner"
+              destructive
+              onConfirm={() => remove(banner.id)}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Excluir banner"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md"
+                >
+                  <Trash2 className="text-error h-4 w-4" />
+                </button>
+              }
+            />
           </article>
         ))}
       </div>

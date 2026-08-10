@@ -91,6 +91,68 @@ describe('serveStoreAsset', () => {
     expect(response.headers.get('etag')).toBe('"etag-abc-w384-image/webp"');
   });
 
+  it('gera variantes PWA quadradas em PNG com dimensões declaradas', async () => {
+    mocks.bucket.get.mockReturnValue(r2Object('"etag-pwa"'));
+    const transformer = {
+      transform: vi.fn().mockReturnThis(),
+      output: vi.fn().mockResolvedValue({ response: () => new Response('png') }),
+    };
+    mocks.images.input.mockReturnValue(transformer);
+
+    const response = await serveStoreAsset(
+      new Request('http://localhost/api/store-assets/abc?variant=pwa-any-512'),
+      asset,
+      'public, max-age=86400, immutable',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('x-image-width')).toBe('512');
+    expect(response.headers.get('x-image-height')).toBe('512');
+    expect(transformer.transform).toHaveBeenCalledWith({
+      width: 512,
+      height: 512,
+      fit: 'cover',
+      gravity: 'center',
+    });
+    expect(transformer.output).toHaveBeenCalledWith({ format: 'image/png' });
+  });
+
+  it('mantém o conteúdo na zona segura da variante maskable', async () => {
+    mocks.bucket.get.mockReturnValue(r2Object('"etag-maskable"'));
+    const transformer = {
+      transform: vi.fn().mockReturnThis(),
+      output: vi.fn().mockResolvedValue({ response: () => new Response('png') }),
+    };
+    mocks.images.input.mockReturnValue(transformer);
+
+    const response = await serveStoreAsset(
+      new Request('http://localhost/api/store-assets/abc?variant=pwa-maskable-512'),
+      asset,
+      'public, max-age=86400, immutable',
+    );
+
+    expect(response.status).toBe(200);
+    expect(transformer.transform).toHaveBeenNthCalledWith(1, {
+      width: 410,
+      height: 410,
+      fit: 'contain',
+    });
+    expect(transformer.transform).toHaveBeenNthCalledWith(2, {
+      border: { color: '#FFFFFF', width: 51 },
+    });
+  });
+
+  it('recusa variante PWA desconhecida', async () => {
+    const response = await serveStoreAsset(
+      new Request('http://localhost/api/store-assets/abc?variant=pwa-999'),
+      asset,
+      'public, max-age=86400, immutable',
+    );
+    expect(response.status).toBe(400);
+    expect(mocks.bucket.get).not.toHaveBeenCalled();
+  });
+
   it('responde 304 quando If-None-Match casa com etag composto', async () => {
     mocks.bucket.get.mockReturnValue(r2Object('"etag-abc"'));
     const request = new Request('http://localhost/api/store-assets/abc?width=384', {

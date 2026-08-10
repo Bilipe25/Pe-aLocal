@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, Palette, Store, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ExternalLink, Palette, Store, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -42,6 +42,10 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
             <Users className="text-brand-600 h-5 w-5" aria-hidden="true" />
             <h2 className="text-text-primary font-semibold">Acessos da equipe (somente leitura)</h2>
           </div>
+          <p className="border-border text-text-secondary border-b px-5 py-3 text-xs">
+            O nome e o endereço abaixo definem o nome e o início do aplicativo instalável. Eles são
+            gerenciados pela equipe da loja em Configurações › Geral.
+          </p>
           <ul className="divide-border divide-y">
             {tenant.members.map((member) => (
               <li key={member.id} className="px-5 py-4">
@@ -84,8 +88,16 @@ export default async function AdminTenantPage({ params }: { params: Promise<{ id
                     <p className="text-text-primary font-medium">{store.name}</p>
                     <p className="text-text-secondary text-sm">/{store.slug}</p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <span className="text-text-muted text-xs">{store.status}</span>
+                    <Link
+                      href={`/${store.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                    >
+                      <ExternalLink aria-hidden="true" /> Abrir loja
+                    </Link>
                     <Link
                       href={`/admin/tenants/${tenant.id}/stores/${store.id}/customization`}
                       className={buttonVariants({ variant: 'outline', size: 'sm' })}

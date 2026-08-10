@@ -14,6 +14,7 @@ interface ConfirmDialogProps {
   onConfirm: () => Promise<boolean | void> | boolean | void;
   destructive?: boolean;
   pendingLabel?: string;
+  portalToStorefrontTheme?: boolean;
 }
 
 export function ConfirmDialog({
@@ -24,12 +25,13 @@ export function ConfirmDialog({
   onConfirm,
   destructive = false,
   pendingLabel = 'Processando…',
+  portalToStorefrontTheme = false,
 }: ConfirmDialogProps) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const portalContainer =
-    typeof document === 'undefined'
+    !portalToStorefrontTheme || typeof document === 'undefined'
       ? undefined
       : (document.querySelector<HTMLElement>('.storefront-theme') ?? undefined);
 

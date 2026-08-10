@@ -3,9 +3,7 @@ import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
-import { storeAssetUrl } from '@/features/assets/urls';
 import { resolvePublicCustomization } from '@/features/customization/public';
-import type { StorePwaIcon } from '@/lib/pwa/manifest';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
 
@@ -37,23 +35,19 @@ const publicStorePwaSelect = {
   },
 } as const;
 
-function toInstallableIcon(asset: {
+function toInstallableIconAssetId(asset: {
   id: string;
   mimeType: string;
   width: number;
   height: number;
-}): StorePwaIcon | null {
+}): string | null {
   if (!SUPPORTED_ICON_TYPES.has(asset.mimeType.toLowerCase())) return null;
   if (Math.min(asset.width, asset.height) < 192) return null;
 
   const ratio = asset.width / asset.height;
   if (ratio < 0.9 || ratio > 1.1) return null;
 
-  return {
-    src: storeAssetUrl(asset.id),
-    sizes: `${asset.width}x${asset.height}`,
-    type: asset.mimeType.toLowerCase(),
-  };
+  return asset.id;
 }
 
 async function getStorePwaFromDb(requestedSlug: string) {
@@ -104,15 +98,15 @@ async function getStorePwaFromDb(requestedSlug: string) {
       })
     : [];
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
-  const icon =
+  const iconAssetId =
     preferredAssets
       .map((candidate) => {
         const asset = assetsById.get(candidate.id);
         return asset?.assetType === candidate.assetType ? asset : null;
       })
       .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset))
-      .map(toInstallableIcon)
-      .find((candidate): candidate is StorePwaIcon => Boolean(candidate)) ?? null;
+      .map(toInstallableIconAssetId)
+      .find((candidate): candidate is string => Boolean(candidate)) ?? null;
 
   return {
     id: store.id,
@@ -121,7 +115,7 @@ async function getStorePwaFromDb(requestedSlug: string) {
     requestedSlug,
     description: store.description,
     config: customization.config,
-    icon,
+    iconAssetId,
   };
 }
 

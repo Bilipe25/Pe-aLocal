@@ -1,4 +1,4 @@
-import type { Prisma, TenantStatus } from '@prisma/client';
+import type { AuditAction, Prisma, TenantStatus } from '@prisma/client';
 
 import { getDb } from '@/server/database/client';
 
@@ -10,9 +10,61 @@ export interface AdminTenantListParams {
   pageSize: number;
 }
 
-export async function getPlatformOverview() {
+export interface AdminAuditListParams {
+  query?: string;
+  action?: AuditAction;
+  page: number;
+  pageSize: number;
+}
+
+function auditWhere(
+  params: Pick<AdminAuditListParams, 'query' | 'action'>,
+): Prisma.AuditLogWhereInput {
+  return {
+    ...(params.action ? { action: params.action } : {}),
+    ...(params.query
+      ? {
+          OR: [
+            { entity: { contains: params.query, mode: 'insensitive' } },
+            { entityId: { contains: params.query, mode: 'insensitive' } },
+            { tenant: { is: { name: { contains: params.query, mode: 'insensitive' } } } },
+            { user: { is: { name: { contains: params.query, mode: 'insensitive' } } } },
+            { user: { is: { email: { contains: params.query, mode: 'insensitive' } } } },
+          ],
+        }
+      : {}),
+  };
+}
+
+export async function listAuditLogsForAdmin(params: AdminAuditListParams) {
   const db = getDb();
-  const [totalTenants, activeTenants, suspendedTenants, totalUsers, tenants, auditLogs] =
+  const where = auditWhere(params);
+  const total = await db.auditLog.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / params.pageSize));
+  const page = Math.min(params.page, pageCount);
+  const logs = await db.auditLog.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    skip: (page - 1) * params.pageSize,
+    take: params.pageSize,
+    include: {
+      tenant: { select: { id: true, name: true } },
+      store: { select: { id: true, name: true, slug: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+  return {
+    logs,
+    total,
+    page,
+    pageSize: params.pageSize,
+    pageCount,
+  };
+}
+
+export async function getPlatformOverview(auditParams: AdminAuditListParams) {
+  const db = getDb();
+  const [totalTenants, activeTenants, suspendedTenants, totalUsers, tenants, audit] =
     await Promise.all([
       db.tenant.count(),
       db.tenant.count({ where: { status: 'ACTIVE' } }),
@@ -25,20 +77,13 @@ export async function getPlatformOverview() {
           _count: { select: { members: true, stores: true } },
         },
       }),
-      db.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-        include: {
-          tenant: { select: { id: true, name: true } },
-          user: { select: { id: true, name: true, email: true } },
-        },
-      }),
+      listAuditLogsForAdmin(auditParams),
     ]);
 
   return {
     metrics: { totalTenants, activeTenants, suspendedTenants, totalUsers },
     tenants,
-    auditLogs,
+    audit,
   };
 }
 

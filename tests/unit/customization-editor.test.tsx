@@ -71,6 +71,7 @@ describe('CustomizationEditor', () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/json/i)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Prévia responsiva' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Aplicativo instalável' })).toBeInTheDocument();
     expect(screen.getByLabelText('Tipo de domínio')).toBeInTheDocument();
     expect(screen.getByLabelText('Endereço do domínio')).toBeInTheDocument();
   });
@@ -90,5 +91,27 @@ describe('CustomizationEditor', () => {
     renderEditor(true);
 
     expect(screen.getByLabelText('Exibir “Tecnologia por PedidoLocal”')).toBeDisabled();
+  });
+
+  it('explica quais alterações publicam com o rascunho e quais são imediatas', () => {
+    renderEditor();
+
+    expect(screen.getAllByText('Publica com o rascunho').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Aplica imediatamente').length).toBeGreaterThan(0);
+  });
+
+  it('intercepta navegação interna quando existem alterações não salvas', () => {
+    renderEditor();
+    fireEvent.change(screen.getByLabelText('Slogan'), { target: { value: 'Sabor local' } });
+    const link = document.createElement('a');
+    link.href = '/admin/tenants';
+    link.textContent = 'Sair';
+    document.body.appendChild(link);
+
+    fireEvent.click(link);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sair sem salvar?' })).toBeInTheDocument();
+    link.remove();
   });
 });

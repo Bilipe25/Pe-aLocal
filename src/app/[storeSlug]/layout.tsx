@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
 import { getPublicStoreBySlug } from '@/server/queries/public-store';
+import { getPublicStorePwaBySlug } from '@/server/queries/public-store-pwa';
+import { storePwaIconUrl } from '@/features/assets/urls';
 
 interface StoreLayoutProps {
   children: React.ReactNode;
@@ -12,7 +14,10 @@ interface StoreLayoutProps {
 
 export async function generateMetadata({ params }: StoreLayoutProps): Promise<Metadata> {
   const { storeSlug } = await params;
-  const store = await getPublicStoreBySlug(storeSlug);
+  const [store, pwa] = await Promise.all([
+    getPublicStoreBySlug(storeSlug),
+    getPublicStorePwaBySlug(storeSlug),
+  ]);
 
   if (!store) return { title: 'Loja não encontrada', robots: { index: false, follow: false } };
 
@@ -41,10 +46,24 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     alternates: canonical ? { canonical } : undefined,
     manifest: `/${encodeURIComponent(store.slug)}/manifest.webmanifest`,
     icons: {
-      icon: store.customization.assets.favicon
-        ? [{ url: store.customization.assets.favicon.url }]
+      icon: pwa?.iconAssetId
+        ? [
+            {
+              url: storePwaIconUrl(pwa.iconAssetId, 'any-192'),
+              sizes: '192x192',
+              type: 'image/png',
+            },
+          ]
         : [{ url: '/pwa/pedidolocal-icon-v1-192.png', sizes: '192x192', type: 'image/png' }],
-      apple: [{ url: '/pwa/apple-touch-icon-v1-180.png', sizes: '180x180', type: 'image/png' }],
+      apple: [
+        pwa?.iconAssetId
+          ? {
+              url: storePwaIconUrl(pwa.iconAssetId, 'apple-180'),
+              sizes: '180x180',
+              type: 'image/png',
+            }
+          : { url: '/pwa/apple-touch-icon-v1-180.png', sizes: '180x180', type: 'image/png' },
+      ],
     },
     appleWebApp: {
       capable: true,

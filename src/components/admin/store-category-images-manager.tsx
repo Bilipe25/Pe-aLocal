@@ -6,6 +6,8 @@ import { useMemo, useState, useTransition } from 'react';
 import { uploadAdminStoreAsset } from '@/components/admin/store-asset-upload';
 import type { AdminStoreAssetItem } from '@/components/admin/store-assets-manager';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 
 export interface AdminStoreCategoryItem {
   id: string;
@@ -36,20 +38,21 @@ function CategoryImageRow({
 }: CategoryImageRowProps) {
   const [file, setFile] = useState<File | null>(null);
   const [altText, setAltText] = useState(`Imagem representando a categoria ${category.name}`);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const inputId = `category-image-${category.id}`;
 
   function removeAssociation() {
-    if (!window.confirm(`Remover a imagem associada à categoria ${category.name}?`)) return;
     onAssociate(null);
-    setFeedback('Associação removida do rascunho em memória.');
+    setFeedback({ tone: 'success', message: 'Associação removida do rascunho em memória.' });
   }
 
   async function upload() {
     if (!file) {
-      setFeedback('Selecione uma imagem.');
+      setFeedback({ tone: 'error', message: 'Selecione uma imagem.' });
       return;
     }
     try {
@@ -63,11 +66,16 @@ function CategoryImageRow({
       onAssetUploaded(asset);
       onAssociate(asset.id);
       setFile(null);
-      setFeedback(
-        'Imagem enviada e associada ao rascunho. Salve e publique para exibi-la no cardápio.',
-      );
+      setFeedback({
+        tone: 'success',
+        message:
+          'Imagem enviada e associada ao rascunho. Salve e publique para exibi-la no cardápio.',
+      });
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível enviar a imagem.');
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível enviar a imagem.',
+      });
     }
   }
 
@@ -152,18 +160,29 @@ function CategoryImageRow({
           >
             <Upload className="h-4 w-4" /> Enviar e associar
           </button>
-          <button
-            type="button"
-            disabled={isPending || !selectedAssetId}
-            onClick={removeAssociation}
-            className="border-border text-error inline-flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
-          >
-            <Trash2 className="h-4 w-4" /> Remover associação
-          </button>
+          <ConfirmDialog
+            title={`Remover a imagem de ${category.name}?`}
+            description="A associação será removida apenas do rascunho atual."
+            confirmLabel="Remover associação"
+            destructive
+            onConfirm={removeAssociation}
+            trigger={
+              <button
+                type="button"
+                disabled={isPending || !selectedAssetId}
+                className="border-border text-error inline-flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" /> Remover associação
+              </button>
+            }
+          />
         </div>
         {feedback && (
-          <p role="status" className="bg-info-light text-info rounded-md p-2 text-xs">
-            {feedback}
+          <p
+            role={feedback.tone === 'error' ? 'alert' : 'status'}
+            className={`${feedback.tone === 'error' ? 'bg-error-light text-error' : 'bg-info-light text-info'} rounded-md p-2 text-xs`}
+          >
+            {feedback.message}
           </p>
         )}
       </div>
@@ -226,6 +245,9 @@ export function StoreCategoryImagesManager({
       <p className="text-text-secondary mt-1 text-sm">
         As associações ficam no rascunho até serem salvas e publicadas explicitamente.
       </p>
+      <div className="mt-3">
+        <ChangeScopeBadge scope="draft" />
+      </div>
 
       <label className="border-border mt-5 flex items-center gap-3 rounded-lg border p-4 text-sm">
         <input
@@ -287,7 +309,7 @@ export function StoreCategoryImagesManager({
                 <button
                   type="button"
                   onClick={() => associate(association.categoryId, null)}
-                  className="border-warning text-warning rounded-md border px-2 py-1"
+                  className="border-warning text-warning min-h-11 rounded-md border px-3 py-2"
                 >
                   Limpar associação
                 </button>

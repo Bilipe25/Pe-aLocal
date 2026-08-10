@@ -11,7 +11,11 @@ O PedidoLocal oferece instalação global e por loja sem bibliotecas adicionais.
 - Favicon ou logo white-label só é usado quando tem MIME PNG/JPEG/WebP/AVIF, ao menos 192 px e proporção entre 0,9 e 1,1. Caso contrário, são usados os ícones PedidoLocal.
 - Drafts de personalização nunca são consultados.
 
-O PNG oficial fornecido em 10/08/2026 é a fonte dos ícones versionados em `public/pwa/`. Os ícones comuns usam recorte quadrado central; o maskable mantém a mesma arte dentro da área segura.
+O PNG oficial fornecido em 10/08/2026 é a fonte dos ícones versionados em `public/pwa/`. Os arquivos estáticos têm dimensões reais declaradas no manifest (180, 192 e 512 px). Para lojas com favicon ou logo elegível, o Cloudflare Images entrega variantes PNG exatas de 180, 192 e 512 px; a variante maskable preserva a arte dentro da área segura central.
+
+O superadmin mostra uma prévia de instalação com nome, `start_url`, cor e fonte do ícone. Uploads novos de favicon exigem ao menos 192×192 px e proporção entre 0,9 e 1,1; 512×512 px é recomendado. Quando o favicon publicado não atende aos requisitos, um logo publicado elegível é usado. Sem fonte válida, o painel sinaliza o fallback PedidoLocal.
+
+As associações de logo, favicon e imagens de categoria pertencem ao fluxo rascunho → publicação. Banners, domínios e entitlements são operações imediatas e auditadas; o painel identifica explicitamente esses dois ciclos.
 
 ## Política do Service Worker
 

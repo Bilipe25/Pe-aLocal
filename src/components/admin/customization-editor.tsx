@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-  type ReactNode,
-} from 'react';
+import { useDeferredValue, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Check, ChevronDown, History, RotateCcw, Save, Send } from 'lucide-react';
 import {
@@ -31,6 +24,10 @@ import {
   type AdminStoreEntitlementItem,
 } from '@/components/admin/store-entitlements-form';
 import { StorefrontPreview } from '@/components/admin/storefront-preview';
+import { InstallableAppPreview } from '@/components/admin/installable-app-preview';
+import { UnsavedChangesGuard } from '@/components/admin/unsaved-changes-guard';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 import { cn } from '@/lib/utils';
 
 import {
@@ -111,7 +108,13 @@ function CustomizationGroup({
     >
       <summary className="focus-visible:ring-brand-500 flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-md py-2 focus-visible:ring-2 focus-visible:outline-none">
         <span className="min-w-0">
-          <h2 className="text-text-primary text-lg font-semibold text-balance">{title}</h2>
+          <span
+            role="heading"
+            aria-level={2}
+            className="text-text-primary block text-lg font-semibold text-balance"
+          >
+            {title}
+          </span>
           <span className="text-text-secondary mt-0.5 block text-sm text-pretty">
             {description}
           </span>
@@ -192,15 +195,6 @@ export function CustomizationEditor({
   const coverUrl =
     assets.find((asset) => asset.id === deferredConfig.identity.coverAssetId)?.url ?? null;
 
-  useEffect(() => {
-    const preventExit = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
-      event.preventDefault();
-    };
-    window.addEventListener('beforeunload', preventExit);
-    return () => window.removeEventListener('beforeunload', preventExit);
-  }, [dirty]);
-
   function change(next: StoreCustomizationConfig) {
     setConfig(next);
     setDirty(true);
@@ -263,21 +257,24 @@ export function CustomizationEditor({
     });
   }
 
-  function discardDraft() {
-    if (!window.confirm('Descartar o rascunho e voltar para a versão publicada?')) return;
-    startTransition(async () => {
-      const result = await discardCustomizationDraftAction(tenantId, storeId, draftVersion);
-      if (!result.success) {
-        setFeedback({ tone: 'error', message: errorMessage(result) });
-        return;
-      }
-      setConfig(structuredClone(publishedConfig));
-      setDraftVersion(result.data.draftVersion);
-      setHasDraft(false);
-      setDirty(false);
-      setFeedback({ tone: 'success', message: 'Rascunho descartado.' });
-      router.refresh();
-    });
+  async function discardDraft() {
+    return new Promise<boolean>((resolve) =>
+      startTransition(async () => {
+        const result = await discardCustomizationDraftAction(tenantId, storeId, draftVersion);
+        if (!result.success) {
+          setFeedback({ tone: 'error', message: errorMessage(result) });
+          resolve(false);
+          return;
+        }
+        setConfig(structuredClone(publishedConfig));
+        setDraftVersion(result.data.draftVersion);
+        setHasDraft(false);
+        setDirty(false);
+        setFeedback({ tone: 'success', message: 'Rascunho descartado.' });
+        router.refresh();
+        resolve(true);
+      }),
+    );
   }
 
   function publish() {
@@ -302,61 +299,65 @@ export function CustomizationEditor({
     });
   }
 
-  function restoreDefault() {
+  async function restoreDefault() {
     if (!requireReason()) return;
-    if (!window.confirm('Criar um novo rascunho com a configuração padrão?')) return;
-    startTransition(async () => {
-      const result = await restoreDefaultCustomizationAction(tenantId, storeId, {
-        expectedDraftVersion: draftVersion,
-        reason,
-      });
-      if (!result.success) {
-        setFeedback({ tone: 'error', message: errorMessage(result) });
-        return;
-      }
-      setDraftVersion(result.data.draftVersion);
-      setHasDraft(true);
-      setDirty(false);
-      setFeedback({
-        tone: 'success',
-        message: 'Padrão restaurado como rascunho. Recarregando o editor…',
-      });
-      router.refresh();
-    });
-  }
-
-  function restoreRevision(revision: RevisionItem) {
-    if (!requireReason()) return;
-    if (!window.confirm(`Restaurar a versão ${revision.version} como novo rascunho?`)) return;
-    startTransition(async () => {
-      const result = await restoreCustomizationRevisionAction(tenantId, storeId, revision.id, {
-        expectedDraftVersion: draftVersion,
-        reason,
-      });
-      if (!result.success) {
-        setFeedback({ tone: 'error', message: errorMessage(result) });
-        return;
-      }
-      setDraftVersion(result.data.draftVersion);
-      setHasDraft(true);
-      setDirty(false);
-      setFeedback({
-        tone: 'success',
-        message: `Versão ${revision.version} restaurada como rascunho.`,
-      });
-      router.refresh();
-    });
-  }
-
-  function applyPresetProposal() {
-    const replacePalette = window.confirm(
-      'Aplicar também as cores sugeridas? Cancelar preserva a paleta atual e aplica layout e tipografia.',
+    return new Promise<boolean>((resolve) =>
+      startTransition(async () => {
+        const result = await restoreDefaultCustomizationAction(tenantId, storeId, {
+          expectedDraftVersion: draftVersion,
+          reason,
+        });
+        if (!result.success) {
+          setFeedback({ tone: 'error', message: errorMessage(result) });
+          resolve(false);
+          return;
+        }
+        setDraftVersion(result.data.draftVersion);
+        setHasDraft(true);
+        setDirty(false);
+        setFeedback({
+          tone: 'success',
+          message: 'Padrão restaurado como rascunho. Recarregando o editor…',
+        });
+        router.refresh();
+        resolve(true);
+      }),
     );
+  }
+
+  async function restoreRevision(revision: RevisionItem) {
+    if (!requireReason()) return;
+    return new Promise<boolean>((resolve) =>
+      startTransition(async () => {
+        const result = await restoreCustomizationRevisionAction(tenantId, storeId, revision.id, {
+          expectedDraftVersion: draftVersion,
+          reason,
+        });
+        if (!result.success) {
+          setFeedback({ tone: 'error', message: errorMessage(result) });
+          resolve(false);
+          return;
+        }
+        setDraftVersion(result.data.draftVersion);
+        setHasDraft(true);
+        setDirty(false);
+        setFeedback({
+          tone: 'success',
+          message: `Versão ${revision.version} restaurada como rascunho.`,
+        });
+        router.refresh();
+        resolve(true);
+      }),
+    );
+  }
+
+  function applyPresetProposal(replacePalette: boolean) {
     change(applyVisualPreset(config, selectedPreset, replacePalette));
   }
 
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6 pb-24 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] xl:pb-0">
+      <UnsavedChangesGuard active={dirty} />
       <div className="order-2 min-w-0 space-y-6 xl:order-1">
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -383,7 +384,7 @@ export function CustomizationEditor({
           </div>
           {feedback && (
             <p
-              role="status"
+              role={feedback.tone === 'error' ? 'alert' : 'status'}
               className={`mt-4 rounded-lg p-3 text-sm ${
                 feedback.tone === 'success'
                   ? 'bg-success-light text-success'
@@ -413,22 +414,37 @@ export function CustomizationEditor({
             />
           </label>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <button
-              type="button"
-              disabled={isPending || !hasDraft}
-              onClick={discardDraft}
-              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
-            >
-              <RotateCcw className="h-4 w-4" /> Descartar rascunho
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={restoreDefault}
-              className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
-            >
-              <RotateCcw className="h-4 w-4" /> Restaurar configuração padrão
-            </button>
+            <ConfirmDialog
+              title="Descartar o rascunho?"
+              description="A configuração voltará para a última versão publicada."
+              confirmLabel="Descartar rascunho"
+              destructive
+              onConfirm={discardDraft}
+              trigger={
+                <button
+                  type="button"
+                  disabled={isPending || !hasDraft}
+                  className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
+                >
+                  <RotateCcw className="h-4 w-4" /> Descartar rascunho
+                </button>
+              }
+            />
+            <ConfirmDialog
+              title="Restaurar a configuração padrão?"
+              description="Um novo rascunho será criado. A versão publicada continuará no ar."
+              confirmLabel="Criar rascunho padrão"
+              onConfirm={restoreDefault}
+              trigger={
+                <button
+                  type="button"
+                  disabled={isPending}
+                  className="border-border text-text-secondary hover:bg-surface-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 text-sm disabled:opacity-50"
+                >
+                  <RotateCcw className="h-4 w-4" /> Restaurar configuração padrão
+                </button>
+              }
+            />
           </div>
         </section>
 
@@ -603,10 +619,17 @@ export function CustomizationEditor({
                   </select>
                   <button
                     type="button"
-                    onClick={applyPresetProposal}
+                    onClick={() => applyPresetProposal(false)}
                     className="border-border hover:bg-surface-secondary min-h-11 rounded-md border px-3 text-sm"
                   >
-                    Aplicar
+                    Aplicar estrutura
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPresetProposal(true)}
+                    className="border-border hover:bg-surface-secondary min-h-11 rounded-md border px-3 text-sm"
+                  >
+                    Incluir cores
                   </button>
                 </div>
               </div>
@@ -647,6 +670,12 @@ export function CustomizationEditor({
           description="Organize imagens da marca, categorias e banners promocionais."
           defaultOpen
         >
+          <div className="flex flex-wrap gap-2">
+            <ChangeScopeBadge scope="draft" />
+            <span className="text-text-secondary self-center text-xs">
+              Imagens de marca e categorias entram no próximo publicar.
+            </span>
+          </div>
           <StoreAssetsManager
             tenantId={tenantId}
             storeId={storeId}
@@ -800,14 +829,21 @@ export function CustomizationEditor({
                       {revision.actor?.email ?? 'Sistema'}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => restoreRevision(revision)}
-                    className="border-border text-text-secondary hover:bg-surface-secondary min-h-11 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
-                  >
-                    Restaurar como rascunho
-                  </button>
+                  <ConfirmDialog
+                    title={`Restaurar a versão ${revision.version}?`}
+                    description="A versão será copiada para um novo rascunho; nada será publicado automaticamente."
+                    confirmLabel="Restaurar como rascunho"
+                    onConfirm={() => restoreRevision(revision)}
+                    trigger={
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        className="border-border text-text-secondary hover:bg-surface-secondary min-h-11 rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                      >
+                        Restaurar como rascunho
+                      </button>
+                    }
+                  />
                 </li>
               ))}
               {revisions.length === 0 && (
@@ -828,6 +864,13 @@ export function CustomizationEditor({
           categories={destinations.categories}
           assets={assets}
           displaySettings={displaySettings}
+        />
+
+        <InstallableAppPreview
+          config={deferredConfig}
+          storeName={storeName}
+          storeSlug={storeSlug}
+          assets={assets}
         />
 
         <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">
