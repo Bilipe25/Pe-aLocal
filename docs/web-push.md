@@ -4,7 +4,7 @@ O Web Push do PedidoLocal avisa o consumidor sobre mudanças de status de um ped
 
 ## Escopo e privacidade
 
-São notificáveis somente `CONFIRMED`, `PREPARING`, `READY`, `OUT_FOR_DELIVERY`, `DELIVERED` e `CANCELLED`. Criação, pagamentos, notas internas e reversões não geram Push.
+Para reduzir interrupções e proteger a permissão do navegador, a matriz prioriza mudanças de alto valor. Entregas notificam `CONFIRMED`, `OUT_FOR_DELIVERY`, `DELIVERED` e `CANCELLED`; retiradas notificam `CONFIRMED`, `READY`, `DELIVERED` e `CANCELLED`. `PREPARING`, `READY` de entrega, criação, pagamentos, notas internas e reversões não geram Push.
 
 Título, corpo e tag não contêm nome do cliente, número do pedido, endereço, valor, pagamento ou token público. O token aparece apenas no link privado de navegação. Logs registram IDs técnicos, resultado e código HTTP; endpoint e chaves nunca devem ser logados.
 
@@ -19,7 +19,9 @@ Uma inscrição do navegador pode acompanhar vários pedidos. Desativar notifica
 - `/api/orders/track/[token]/push-subscription`: reconciliação, ativação e desativação same-origin.
 - `public/sw.js`: handlers `push` e `notificationclick`, além do cache/fallback existente.
 
-O Worker de eventos projeta o Push depois que o Pusher é confirmado, mas esse passo é best-effort. O cron reconcilia eventos ausentes e cobre também `ORDER_EVENT_PUBLISH_MODE=direct`. Falhas do Push nunca alteram o outbox nem repetem Pusher.
+No caminho Queue, o Worker projeta e tenta entregar o Push antes e independentemente da publicação Pusher. As duas ramificações possuem ledger, locks e tentativas próprios: falhar em uma não repete nem bloqueia a outra. O cron reconcilia eventos ausentes e cobre também `ORDER_EVENT_PUBLISH_MODE=direct`.
+
+Cada pedido reutiliza uma única `tag`, substituindo a notificação anterior. Somente `READY` de retirada, `OUT_FOR_DELIVERY` e `CANCELLED` usam `renotify`, evitando som/vibração repetidos em atualizações informativas.
 
 ## Configuração
 
@@ -32,7 +34,7 @@ Gere uma única chave VAPID de longa duração. A chave pública deve ser a mesm
 | `WEB_PUSH_VAPID_PRIVATE_KEY` |        Não |             Sim |      Sim |
 | `WEB_PUSH_VAPID_SUBJECT`     |        Não |             Sim |      Não |
 
-Use `wrangler secret put` para as chaves em cada ambiente; não versione valores reais. `WEB_PUSH_ENABLED` permanece `false` no repositório. Ative somente depois de publicar a migration e configurar as três propriedades VAPID.
+Use `wrangler secret put` para as chaves em cada ambiente; não versione valores reais. A configuração padrão de produção permanece desligada; staging só deve ficar ativo depois de publicar a migration e configurar as três propriedades VAPID.
 
 Rotação VAPID não é automática: inscrições existentes estão vinculadas à chave usada no `subscribe()`. Uma rotação exige plano de reinscrição e não deve ser feita como correção rotineira.
 
@@ -51,7 +53,7 @@ Entregas de uma mesma associação são serializadas. Antes de enviar, o process
 1. Publique código e migration com a flag desligada.
 2. Configure VAPID no staging e ative aplicativo e Worker.
 3. Valide Android/Chromium e iOS/iPadOS com a PWA adicionada à Tela de Início.
-4. Teste os seis estados, domínio customizado, `404/410` e ausência de duplicação Pusher.
+4. Teste as matrizes de entrega e retirada, domínio customizado, `404/410` e ausência de duplicação Pusher.
 5. Repita em produção.
 
 Para rollback, desligue `WEB_PUSH_ENABLED` nos dois Workers. Não remova tabelas nem gire VAPID. Pusher, polling e a página de acompanhamento continuam funcionando.

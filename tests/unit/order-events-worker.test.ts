@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   processOrderOutboxMessage: vi.fn(),
   relayPendingOrderOutboxEvents: vi.fn(),
   purgeProcessedOrderOutboxEvents: vi.fn(),
+  projectWebPushDispatch: vi.fn(),
+  reconcileWebPushDispatches: vi.fn(),
+  processPendingWebPushDeliveries: vi.fn(),
+  processWebPushDeliveriesForEvent: vi.fn(),
+  readWebPushSenderConfig: vi.fn(),
 }));
 
 vi.mock('@/server/database/factory', () => ({
@@ -21,6 +26,17 @@ vi.mock('@/server/services/order-outbox-processor', () => ({
 }));
 vi.mock('@/server/services/order-outbox-retention', () => ({
   purgeProcessedOrderOutboxEvents: mocks.purgeProcessedOrderOutboxEvents,
+}));
+vi.mock('@/server/services/web-push-dispatch.service', () => ({
+  projectWebPushDispatch: mocks.projectWebPushDispatch,
+  reconcileWebPushDispatches: mocks.reconcileWebPushDispatches,
+}));
+vi.mock('@/server/services/web-push-delivery.service', () => ({
+  processPendingWebPushDeliveries: mocks.processPendingWebPushDeliveries,
+  processWebPushDeliveriesForEvent: mocks.processWebPushDeliveriesForEvent,
+}));
+vi.mock('@/server/services/web-push-sender', () => ({
+  readWebPushSenderConfig: mocks.readWebPushSenderConfig,
 }));
 
 import worker from '../../workers/order-events/worker';
@@ -79,6 +95,12 @@ describe('order events worker', () => {
       deleted: 0,
       retentionDays: 30,
     });
+    mocks.projectWebPushDispatch.mockResolvedValue({ projected: true, deliveries: 1 });
+    mocks.processWebPushDeliveriesForEvent.mockResolvedValue({
+      candidates: 1,
+      outcomes: { sent: 1 },
+    });
+    mocks.readWebPushSenderConfig.mockReturnValue(null);
   });
 
   it('envia falha terminal explicitamente à DLQ antes de confirmar', async () => {
@@ -167,6 +189,35 @@ describe('order events worker', () => {
     expect(mocks.processOrderOutboxMessage).toHaveBeenCalledOnce();
     expect(first.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
     expect(second.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
+  });
+
+  it('envia Web Push antes do Pusher e mesmo quando o outbox precisa de retry', async () => {
+    const env = { ...environment(), WEB_PUSH_ENABLED: 'true' };
+    const input = batch();
+    const senderConfig = {
+      publicKey: 'public',
+      privateKey: 'private',
+      subject: 'mailto:test@test',
+    };
+    mocks.readWebPushSenderConfig.mockReturnValue(senderConfig);
+    mocks.processOrderOutboxMessage.mockResolvedValue({
+      action: 'retry',
+      eventId,
+      delaySeconds: 10,
+    });
+
+    await worker.queue(input as never, env as never);
+
+    expect(mocks.projectWebPushDispatch).toHaveBeenCalledWith(expect.anything(), eventId);
+    expect(mocks.processWebPushDeliveriesForEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      senderConfig,
+      eventId,
+    );
+    expect(mocks.processWebPushDeliveriesForEvent.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.processOrderOutboxMessage.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(input.message.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
   });
 
   it('limita o paralelismo entre pedidos independentes', async () => {

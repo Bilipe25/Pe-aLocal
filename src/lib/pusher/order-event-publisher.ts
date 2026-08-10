@@ -1,9 +1,9 @@
-import Pusher from 'pusher';
 import type { OrderOutboxEventType } from '@prisma/client';
 
 import { orderEventPayloadSchema, type OrderEventPayload } from '@/domain/orders/order-events';
 import { storeEventChannels } from '@/lib/pusher/channels';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
+import { createPusherHttpClient } from '@/lib/pusher/http-client';
 
 export interface OrderRealtimeEvent {
   id: string;
@@ -52,14 +52,14 @@ export function createOrderEventPublisher(config: {
   cluster: string;
   includeLegacyPublicChannel: boolean;
   resolvePublicToken?: (orderId: string) => Promise<string | null>;
+  fetch?: typeof globalThis.fetch;
 }): OrderEventPublisher {
-  const pusher = new Pusher({
+  const pusher = createPusherHttpClient({
     appId: config.appId,
     key: config.key,
     secret: config.secret,
     cluster: config.cluster,
-    useTLS: true,
-    timeout: 5_000,
+    fetch: config.fetch,
   });
 
   return {

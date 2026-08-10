@@ -2,6 +2,8 @@
 
 O Web Push do consumidor é uma projeção independente deste pipeline. O ACK/retry do Pusher nunca depende do Push; consulte [`web-push.md`](web-push.md).
 
+Publicações Pusher usam a API HTTP assinada com `fetch` nativo do runtime Cloudflare. O pacote Node do Pusher permanece apenas na autorização de canais privados; seu transporte baseado em `node-fetch` não deve ser usado para publicar dentro de Workers.
+
 O dashboard novo usa canais Pusher privados e polling de reconciliação. Faça a
 transição sem interromper abas antigas:
 
@@ -24,6 +26,8 @@ quando o Pusher estiver ausente ou degradado.
 O PostgreSQL é a fonte da verdade. Cada mutação cria o evento de outbox na mesma
 transação; Pusher e Cloudflare Queues são efeitos posteriores e podem entregar o
 mesmo evento mais de uma vez.
+
+No consumer da Queue, a projeção e a entrega Web Push são tentadas antes da publicação Pusher. Essa ordem evita que indisponibilidade ou incompatibilidade do Pusher acrescente a latência do cron ao aviso do consumidor. Todos os passos são idempotentes e a reconciliação agendada continua obrigatória como recuperação.
 
 Antes do primeiro deploy de cada ambiente:
 

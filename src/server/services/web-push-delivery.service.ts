@@ -3,7 +3,11 @@ import type { PrismaClient } from '@prisma/client';
 import { createCustomizationFromLegacy } from '@/features/customization/domain/defaults';
 import { migrateCustomizationToCurrentVersion } from '@/features/customization/domain/migrations';
 import { isInstallablePwaIconAsset } from '@/lib/pwa/manifest';
-import { buildWebPushNotification, type NotifiableOrderStatus } from '@/lib/web-push/notification';
+import {
+  buildWebPushNotification,
+  shouldNotifyOrderStatus,
+  type NotifiableOrderStatus,
+} from '@/lib/web-push/notification';
 import {
   sendWebPushNotification,
   webPushFailure,
@@ -159,6 +163,7 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       newer ||
       order.status !== claim.orderStatus ||
       order.version < claim.aggregateVersion ||
+      !shouldNotifyOrderStatus(claim.orderStatus as NotifiableOrderStatus, order.modality) ||
       (association.terminalNotifiedAt && ['DELIVERED', 'CANCELLED'].includes(claim.orderStatus))
     ) {
       await skipDelivery(db, claim.id, lockToken, 'delivery_superseded_or_disabled');
@@ -298,6 +303,32 @@ export async function processPendingWebPushDeliveries(
       OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(Date.now() - CLAIM_TIMEOUT_MS) } }],
     },
     orderBy: [{ availableAt: 'asc' }, { aggregateVersion: 'desc' }, { id: 'asc' }],
+    take: batchSize,
+    select: { id: true },
+  });
+  const outcomes: Record<string, number> = {};
+  for (const candidate of candidates) {
+    const outcome = await processDelivery(db, config, candidate.id);
+    outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
+  }
+  return { candidates: candidates.length, outcomes };
+}
+
+export async function processWebPushDeliveriesForEvent(
+  db: PrismaClient,
+  config: WebPushSenderConfig,
+  orderOutboxEventId: string,
+  batchSize = 10,
+) {
+  const candidates = await db.webPushDelivery.findMany({
+    where: {
+      orderOutboxEventId,
+      status: { in: ['PENDING', 'PROCESSING'] },
+      attempts: { lt: MAX_ATTEMPTS },
+      availableAt: { lte: new Date() },
+      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(Date.now() - CLAIM_TIMEOUT_MS) } }],
+    },
+    orderBy: [{ aggregateVersion: 'desc' }, { id: 'asc' }],
     take: batchSize,
     select: { id: true },
   });

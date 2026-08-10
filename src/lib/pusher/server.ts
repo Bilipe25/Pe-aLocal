@@ -4,6 +4,7 @@ import Pusher from 'pusher';
 
 import { storeEventChannels } from '@/lib/pusher/channels';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
+import { createPusherHttpClient, type PusherHttpClient } from '@/lib/pusher/http-client';
 import { getDb } from '@/server/database/client';
 
 // =============================================================================
@@ -11,6 +12,7 @@ import { getDb } from '@/server/database/client';
 // =============================================================================
 
 let pusherInstance: Pusher | null = null;
+let pusherHttpClient: PusherHttpClient | null = null;
 
 export function isPusherServerConfigured() {
   return Boolean(
@@ -53,6 +55,23 @@ function getPusherServer(): Pusher {
 
 export const pusherServer = getPusherServer();
 
+function getPusherHttpClient(): PusherHttpClient {
+  if (pusherHttpClient) return pusherHttpClient;
+  const appId = process.env.PUSHER_APP_ID;
+  const key = process.env.PUSHER_KEY;
+  const secret = process.env.PUSHER_SECRET;
+  const cluster = process.env.PUSHER_CLUSTER;
+  if (!appId || !key || !secret || !cluster) {
+    return {
+      trigger: async () => {
+        throw new Error('Pusher server is not configured.');
+      },
+    };
+  }
+  pusherHttpClient = createPusherHttpClient({ appId, key, secret, cluster });
+  return pusherHttpClient;
+}
+
 export function authorizePusherChannel(socketId: string, channelName: string) {
   return pusherServer.authorizeChannel(socketId, channelName);
 }
@@ -73,7 +92,7 @@ async function triggerCustomerTracking(orderId: string) {
     },
   });
   if (!order) return null;
-  return pusherServer.trigger(
+  return getPusherHttpClient().trigger(
     await privateCustomerOrderChannel(order.publicToken),
     'tracking-updated',
     {
@@ -91,7 +110,7 @@ async function triggerCustomerTracking(orderId: string) {
 
 export async function triggerNewOrder(storeId: string, orderId: string, orderNumber: number) {
   return Promise.all([
-    pusherServer.trigger(eventChannels(storeId), 'new-order', {
+    getPusherHttpClient().trigger(eventChannels(storeId), 'new-order', {
       orderId,
       orderNumber,
       timestamp: Date.now(),
@@ -107,7 +126,7 @@ export async function triggerOrderUpdated(
   options: { notifyCustomer?: boolean } = {},
 ) {
   const publications: Promise<unknown>[] = [
-    pusherServer.trigger(eventChannels(storeId), 'order-updated', {
+    getPusherHttpClient().trigger(eventChannels(storeId), 'order-updated', {
       orderId,
       status,
       timestamp: Date.now(),
@@ -125,7 +144,7 @@ export async function triggerPaymentUpdated(
   paymentStatus: string,
 ) {
   return Promise.all([
-    pusherServer.trigger(eventChannels(storeId), 'payment-updated', {
+    getPusherHttpClient().trigger(eventChannels(storeId), 'payment-updated', {
       orderId,
       paymentStatus,
       timestamp: Date.now(),

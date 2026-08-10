@@ -2,18 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createOrderEventPublisher } from '@/lib/pusher/order-event-publisher';
 
-const mocks = vi.hoisted(() => ({ trigger: vi.fn() }));
+const mocks = vi.hoisted(() => ({ trigger: vi.fn(), createPusherHttpClient: vi.fn() }));
 
-vi.mock('pusher', () => ({
-  default: vi.fn(function MockPusher() {
-    return { trigger: mocks.trigger };
-  }),
+vi.mock('@/lib/pusher/http-client', () => ({
+  createPusherHttpClient: mocks.createPusherHttpClient,
 }));
 
 describe('publicação do acompanhamento privado do cliente', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.trigger.mockResolvedValue({});
+    mocks.trigger.mockResolvedValue(undefined);
+    mocks.createPusherHttpClient.mockReturnValue({ trigger: mocks.trigger });
   });
 
   it('envia payload mínimo ao canal derivado sem orderId ou token', async () => {
