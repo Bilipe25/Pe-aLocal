@@ -13,7 +13,10 @@ import {
   projectWebPushDispatch,
   reconcileWebPushDispatches,
 } from '../../src/server/services/web-push-dispatch.service';
-import { processPendingWebPushDeliveries } from '../../src/server/services/web-push-delivery.service';
+import {
+  processPendingWebPushDeliveries,
+  processWebPushDeliveriesForEvent,
+} from '../../src/server/services/web-push-delivery.service';
 import { readWebPushSenderConfig } from '../../src/server/services/web-push-sender';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
@@ -157,12 +160,37 @@ async function disconnect(db: PrismaClient) {
   }
 }
 
+async function processFastWebPush(
+  db: PrismaClient,
+  config: ReturnType<typeof readWebPushSenderConfig>,
+  rawMessage: unknown,
+) {
+  if (!config) return;
+  const parsed = orderOutboxQueueMessageSchema.safeParse(rawMessage);
+  if (!parsed.success) return;
+  const eventId = parsed.data.eventId;
+  try {
+    await projectWebPushDispatch(db, eventId);
+    const delivery = await processWebPushDeliveriesForEvent(db, config, eventId);
+    console.info('[WEB_PUSH_FAST_CYCLE_COMPLETED]', { eventId, ...delivery });
+  } catch (error) {
+    console.error('[WEB_PUSH_FAST_CYCLE_FAILED]', {
+      eventId,
+      error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+    });
+  }
+}
+
 export default {
   async queue(batch: MessageBatch<OrderOutboxQueueMessage>, env: OrderEventsEnv) {
     const db = database(env);
     const startedAt = Date.now();
     try {
       const eventPublisher = publisher(env, db);
+      const webPushConfig = env.WEB_PUSH_ENABLED === 'true' ? readWebPushSenderConfig(env) : null;
+      if (env.WEB_PUSH_ENABLED === 'true' && !webPushConfig) {
+        console.error('[WEB_PUSH_CONFIGURATION_MISSING]');
+      }
       const groups = await groupMessagesByAggregate(db, batch.messages);
       const outcomes = { acknowledged: 0, retried: 0, deadLettered: 0 };
       await runWithBoundedConcurrency(groups, async (group) => {
@@ -171,6 +199,7 @@ export default {
           if (!item) continue;
           const { message } = item;
           try {
+            await processFastWebPush(db, webPushConfig, message.body);
             const result = await processOrderOutboxMessage(
               db,
               eventPublisher,
@@ -179,16 +208,6 @@ export default {
               message.id,
             );
             if (result.action === 'ack') {
-              if (env.WEB_PUSH_ENABLED === 'true' && result.eventId) {
-                try {
-                  await projectWebPushDispatch(db, result.eventId);
-                } catch (error) {
-                  console.error('[WEB_PUSH_FAST_PROJECTION_FAILED]', {
-                    eventId: result.eventId,
-                    error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
-                  });
-                }
-              }
               message.ack();
               outcomes.acknowledged += 1;
             } else if (result.action === 'dead-letter') {

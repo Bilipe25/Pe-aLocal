@@ -5,7 +5,6 @@ import { sha256Topic } from '@/lib/web-push/base64url';
 
 export const WEB_PUSH_EVENT_STATUS = {
   ORDER_ACCEPTED: 'CONFIRMED',
-  ORDER_PREPARING: 'PREPARING',
   ORDER_READY: 'READY',
   ORDER_DISPATCHED: 'OUT_FOR_DELIVERY',
   ORDER_COMPLETED: 'DELIVERED',
@@ -19,8 +18,6 @@ function notificationBody(status: NotifiableOrderStatus, modality: OrderModality
   switch (status) {
     case 'CONFIRMED':
       return 'Seu pedido foi confirmado.';
-    case 'PREPARING':
-      return 'Seu pedido já está sendo preparado.';
     case 'READY':
       return modality === 'PICKUP'
         ? 'Seu pedido está pronto para retirada.'
@@ -34,6 +31,24 @@ function notificationBody(status: NotifiableOrderStatus, modality: OrderModality
     case 'CANCELLED':
       return 'Seu pedido foi cancelado. Abra para ver os detalhes.';
   }
+}
+
+export function shouldNotifyOrderStatus(
+  status: NotifiableOrderStatus,
+  modality: OrderModality,
+): boolean {
+  return status !== 'READY' || modality === 'PICKUP';
+}
+
+export function shouldRenotifyOrderStatus(
+  status: NotifiableOrderStatus,
+  modality: OrderModality,
+): boolean {
+  return (
+    status === 'CANCELLED' ||
+    status === 'OUT_FOR_DELIVERY' ||
+    (status === 'READY' && modality === 'PICKUP')
+  );
 }
 
 export interface WebPushNotificationInput {
@@ -72,7 +87,7 @@ export async function buildWebPushNotification(input: WebPushNotificationInput) 
         tag,
         lang: 'pt-BR',
         dir: 'ltr',
-        renotify: true,
+        renotify: shouldRenotifyOrderStatus(input.status, input.modality),
         app_badge: '1',
       },
       pedidolocal: {

@@ -1,5 +1,6 @@
-import type { OrderOutboxEventType, OrderStatus, PrismaClient } from '@prisma/client';
+import type { OrderOutboxEventType, PrismaClient } from '@prisma/client';
 
+import { ORDER_EVENT_SCHEMA_VERSION, orderEventPayloadSchema } from '@/domain/orders/order-events';
 import { WEB_PUSH_EVENT_STATUS, type NotifiableOrderStatus } from '@/lib/web-push/notification';
 
 const ELIGIBLE_EVENT_TYPES = Object.keys(WEB_PUSH_EVENT_STATUS) as OrderOutboxEventType[];
@@ -17,6 +18,7 @@ export async function projectWebPushDispatch(db: PrismaClient, eventId: string) 
       storeId: true,
       orderId: true,
       eventType: true,
+      schemaVersion: true,
       aggregateVersion: true,
       occurredAt: true,
       payload: true,
@@ -24,8 +26,16 @@ export async function projectWebPushDispatch(db: PrismaClient, eventId: string) 
   });
   if (!event) return { projected: false, reason: 'missing' } as const;
   const expectedStatus = statusForEvent(event.eventType);
-  const payload = event.payload as { status?: OrderStatus };
-  if (!expectedStatus || payload.status !== expectedStatus) {
+  const parsedPayload = orderEventPayloadSchema.safeParse(event.payload);
+  const payload = parsedPayload.success ? parsedPayload.data : null;
+  if (
+    event.schemaVersion !== ORDER_EVENT_SCHEMA_VERSION ||
+    !expectedStatus ||
+    !payload ||
+    payload.status !== expectedStatus ||
+    payload.orderId !== event.orderId ||
+    payload.version !== event.aggregateVersion
+  ) {
     return { projected: false, reason: 'ineligible' } as const;
   }
 
