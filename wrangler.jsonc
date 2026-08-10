@@ -28,6 +28,7 @@
     },
   },
   "vars": {
+    "APP_URL": "https://pedidolocal-staging.gabriellion97.workers.dev",
     "APP_ENV": "staging",
     "ORDER_EVENT_PUBLISH_MODE": "outbox",
     "WEB_PUSH_ENABLED": "true",
@@ -94,6 +95,7 @@
     "staging": {
       "name": "pedidolocal-staging",
       "vars": {
+        "APP_URL": "https://pedidolocal-staging.gabriellion97.workers.dev",
         "APP_ENV": "staging",
         "ORDER_EVENT_PUBLISH_MODE": "outbox",
         "WEB_PUSH_ENABLED": "true",
