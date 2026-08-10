@@ -14,8 +14,8 @@ import {
 import { cn, formatCurrency } from '@/lib/utils';
 
 const SWIPE_START_THRESHOLD = 12;
-const SWIPE_DISMISS_RATIO = 0.4;
-const SWIPE_DISMISS_VELOCITY = 0.55;
+const SWIPE_DISMISS_RATIO = 0.25;
+const SWIPE_DISMISS_VELOCITY = 0.35;
 const FAB_EXIT_DURATION = 200;
 const MOBILE_VIEWPORT_QUERY = '(max-width: 767px)';
 
@@ -41,11 +41,14 @@ const initialSwipeState = (): SwipeState => ({
   suppressClick: false,
 });
 
-function isMobileTouchGesture(event: ReactPointerEvent<HTMLElement>) {
+function isDismissGesture(event: ReactPointerEvent<HTMLElement>) {
+  if (event.isPrimary === false) return false;
+  if (event.pointerType === 'touch' || event.pointerType === 'pen') return true;
+
   return (
-    event.pointerType === 'touch' &&
-    event.isPrimary !== false &&
+    event.pointerType === 'mouse' &&
     typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
     window.matchMedia(MOBILE_VIEWPORT_QUERY).matches
   );
 }
@@ -110,7 +113,7 @@ export function CartFab({ storeId }: { storeId: string }) {
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!isMobileTouchGesture(event) || dismissDirection) return;
+    if (!isDismissGesture(event) || dismissDirection || event.button !== 0) return;
 
     swipeRef.current = {
       pointerId: event.pointerId,

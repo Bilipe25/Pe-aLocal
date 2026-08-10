@@ -306,7 +306,7 @@ describe('storefront mobile — fase 1', () => {
     const originalMatchMedia = window.matchMedia;
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
-      value: vi.fn().mockReturnValue({ matches: true }),
+      value: vi.fn().mockReturnValue({ matches: false }),
     });
 
     const { container, rerender } = render(<CartFab storeId="store-1" />);
