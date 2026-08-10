@@ -4,6 +4,13 @@
 /favicon.ico
   Cache-Control: public, max-age=86400
 
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/javascript; charset=utf-8
+
+/pwa/*
+  Cache-Control: public, max-age=31536000, immutable
+
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY

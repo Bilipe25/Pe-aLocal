@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
@@ -39,9 +39,18 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
     title: { default: title, template: `%s | ${store.name}` },
     description,
     alternates: canonical ? { canonical } : undefined,
-    icons: store.customization.assets.favicon
-      ? { icon: store.customization.assets.favicon.url }
-      : undefined,
+    manifest: `/${encodeURIComponent(store.slug)}/manifest.webmanifest`,
+    icons: {
+      icon: store.customization.assets.favicon
+        ? [{ url: store.customization.assets.favicon.url }]
+        : [{ url: '/pwa/pedidolocal-icon-v1-192.png', sizes: '192x192', type: 'image/png' }],
+      apple: [{ url: '/pwa/apple-touch-icon-v1-180.png', sizes: '180x180', type: 'image/png' }],
+    },
+    appleWebApp: {
+      capable: true,
+      title: store.name,
+      statusBarStyle: 'default',
+    },
     robots: { index: config.seo.indexable, follow: config.seo.indexable },
     openGraph: {
       title,
@@ -49,6 +58,18 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
       type: 'website',
       images: socialImage ? [{ url: socialImage }] : undefined,
     },
+  };
+}
+
+export async function generateViewport({ params }: StoreLayoutProps): Promise<Viewport> {
+  const { storeSlug } = await params;
+  const store = await getPublicStoreBySlug(storeSlug);
+
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    viewportFit: 'cover',
+    themeColor: store?.customization.config.palette.primary ?? '#D9480F',
   };
 }
 
