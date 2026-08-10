@@ -27,7 +27,7 @@
     "ORDER_OUTBOX_RETENTION_ENABLED": "true",
     "ORDER_OUTBOX_RETENTION_DAYS": "30",
     "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
-    "WEB_PUSH_ENABLED": "false",
+    "WEB_PUSH_ENABLED": "true",
   },
   "triggers": {
     "crons": ["* * * * *"],
@@ -72,7 +72,7 @@
         "ORDER_OUTBOX_RETENTION_ENABLED": "true",
         "ORDER_OUTBOX_RETENTION_DAYS": "30",
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
-        "WEB_PUSH_ENABLED": "false",
+        "WEB_PUSH_ENABLED": "true",
       },
       "triggers": {
         "crons": ["* * * * *"],
