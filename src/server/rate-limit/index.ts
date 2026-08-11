@@ -92,6 +92,8 @@ export const RATE_LIMITS = {
   publicOrderRealtimeAuthByToken: { maxAttempts: 10, windowInSeconds: 60 },
   publicOrderPushByIp: { maxAttempts: 30, windowInSeconds: 60 },
   publicOrderPushByToken: { maxAttempts: 10, windowInSeconds: 60 },
+  merchantPush: { maxAttempts: 20, windowInSeconds: 60 },
+  merchantPushTest: { maxAttempts: 5, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
 } as const;

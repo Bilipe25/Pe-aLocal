@@ -10,6 +10,15 @@ import {
 } from '../../src/server/services/order-outbox-processor';
 import { purgeProcessedOrderOutboxEvents } from '../../src/server/services/order-outbox-retention';
 import {
+  projectStoreWebPushDispatch,
+  reconcileStoreWebPushDispatches,
+} from '../../src/server/services/store-web-push-dispatch.service';
+import {
+  processPendingStoreWebPushDeliveries,
+  processStoreWebPushDeliveriesForEvent,
+  sendStoreStaffPushTest,
+} from '../../src/server/services/store-web-push-delivery.service';
+import {
   projectWebPushDispatch,
   reconcileWebPushDispatches,
 } from '../../src/server/services/web-push-dispatch.service';
@@ -18,6 +27,7 @@ import {
   processWebPushDeliveriesForEvent,
 } from '../../src/server/services/web-push-delivery.service';
 import { readWebPushSenderConfig } from '../../src/server/services/web-push-sender';
+import { revokeExpiredWebPushSubscriptions } from '../../src/server/services/web-push-revocation.service';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
 const RETENTION_UTC_MINUTE = 17;
@@ -35,6 +45,7 @@ interface OrderEventsEnv {
   ORDER_OUTBOX_RETENTION_ENABLED?: string;
   ORDER_OUTBOX_RETENTION_DAYS?: string;
   WEB_PUSH_ENABLED?: string;
+  MERCHANT_WEB_PUSH_ENABLED?: string;
   WEB_PUSH_VAPID_PUBLIC_KEY?: string;
   WEB_PUSH_VAPID_PRIVATE_KEY?: string;
   WEB_PUSH_VAPID_SUBJECT?: string;
@@ -181,6 +192,27 @@ async function processFastWebPush(
   }
 }
 
+async function processFastStoreWebPush(
+  db: PrismaClient,
+  config: ReturnType<typeof readWebPushSenderConfig>,
+  rawMessage: unknown,
+) {
+  if (!config) return;
+  const parsed = orderOutboxQueueMessageSchema.safeParse(rawMessage);
+  if (!parsed.success) return;
+  const eventId = parsed.data.eventId;
+  try {
+    await projectStoreWebPushDispatch(db, eventId);
+    const delivery = await processStoreWebPushDeliveriesForEvent(db, config, eventId);
+    console.info('[MERCHANT_WEB_PUSH_FAST_CYCLE_COMPLETED]', { eventId, ...delivery });
+  } catch (error) {
+    console.error('[MERCHANT_WEB_PUSH_FAST_CYCLE_FAILED]', {
+      eventId,
+      error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+    });
+  }
+}
+
 export default {
   async queue(batch: MessageBatch<OrderOutboxQueueMessage>, env: OrderEventsEnv) {
     const db = database(env);
@@ -188,8 +220,15 @@ export default {
     try {
       const eventPublisher = publisher(env, db);
       const webPushConfig = env.WEB_PUSH_ENABLED === 'true' ? readWebPushSenderConfig(env) : null;
+      const merchantWebPushConfig = readWebPushSenderConfig(
+        env,
+        env.MERCHANT_WEB_PUSH_ENABLED === 'true',
+      );
       if (env.WEB_PUSH_ENABLED === 'true' && !webPushConfig) {
         console.error('[WEB_PUSH_CONFIGURATION_MISSING]');
+      }
+      if (env.MERCHANT_WEB_PUSH_ENABLED === 'true' && !merchantWebPushConfig) {
+        console.error('[MERCHANT_WEB_PUSH_CONFIGURATION_MISSING]');
       }
       const groups = await groupMessagesByAggregate(db, batch.messages);
       const outcomes = { acknowledged: 0, retried: 0, deadLettered: 0 };
@@ -199,6 +238,7 @@ export default {
           if (!item) continue;
           const { message } = item;
           try {
+            await processFastStoreWebPush(db, merchantWebPushConfig, message.body);
             await processFastWebPush(db, webPushConfig, message.body);
             const result = await processOrderOutboxMessage(
               db,
@@ -253,7 +293,8 @@ export default {
       env.ORDER_OUTBOX_RETENTION_ENABLED === 'true' &&
       shouldRunOrderOutboxRetention(controller.scheduledTime);
     const webPushEnabled = env.WEB_PUSH_ENABLED === 'true';
-    if (!relayEnabled && !retentionEnabled && !webPushEnabled) return;
+    const merchantWebPushEnabled = env.MERCHANT_WEB_PUSH_ENABLED === 'true';
+    if (!relayEnabled && !retentionEnabled && !webPushEnabled && !merchantWebPushEnabled) return;
     const db = database(env);
     try {
       if (relayEnabled) {
@@ -286,6 +327,72 @@ export default {
           }
         }
       }
+      if (merchantWebPushEnabled) {
+        const config = readWebPushSenderConfig(env, true);
+        if (!config) {
+          console.error('[MERCHANT_WEB_PUSH_CONFIGURATION_MISSING]');
+        } else {
+          try {
+            const projection = await reconcileStoreWebPushDispatches(db);
+            const delivery = await processPendingStoreWebPushDeliveries(db, config);
+            console.info('[MERCHANT_WEB_PUSH_CYCLE_COMPLETED]', {
+              ...projection,
+              ...delivery,
+            });
+          } catch (error) {
+            console.error('[MERCHANT_WEB_PUSH_CYCLE_FAILED]', {
+              error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+            });
+          }
+        }
+      }
+      if (webPushEnabled || merchantWebPushEnabled) {
+        const expired = await revokeExpiredWebPushSubscriptions(db);
+        if (expired.revoked > 0) console.info('[WEB_PUSH_EXPIRED_REVOKED]', expired);
+      }
+    } finally {
+      await disconnect(db);
+    }
+  },
+
+  async fetch(request: Request, env: OrderEventsEnv) {
+    if (
+      request.method !== 'POST' ||
+      new URL(request.url).pathname !== '/internal/merchant-push/test'
+    ) {
+      return new Response('Not found', { status: 404 });
+    }
+    if (env.MERCHANT_WEB_PUSH_ENABLED !== 'true') {
+      return Response.json({ sent: false, reason: 'disabled' }, { status: 503 });
+    }
+    const contentLength = Number(request.headers.get('content-length') ?? '0');
+    if (contentLength > 1_024) return Response.json({ error: 'invalid_request' }, { status: 413 });
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 1_024) {
+      return Response.json({ error: 'invalid_request' }, { status: 413 });
+    }
+    const body = (() => {
+      try {
+        return JSON.parse(rawBody) as unknown;
+      } catch {
+        return null;
+      }
+    })();
+    const associationId =
+      body && typeof body === 'object' && 'associationId' in body ? String(body.associationId) : '';
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        associationId,
+      )
+    ) {
+      return Response.json({ error: 'invalid_request' }, { status: 400 });
+    }
+    const config = readWebPushSenderConfig(env, true);
+    if (!config) return Response.json({ sent: false, reason: 'configuration' }, { status: 503 });
+    const db = database(env);
+    try {
+      const result = await sendStoreStaffPushTest(db, config, associationId);
+      return Response.json(result, { status: result.sent ? 200 : 422 });
     } finally {
       await disconnect(db);
     }

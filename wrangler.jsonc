@@ -32,11 +32,16 @@
     "APP_ENV": "staging",
     "ORDER_EVENT_PUBLISH_MODE": "outbox",
     "WEB_PUSH_ENABLED": "true",
+    "MERCHANT_WEB_PUSH_ENABLED": "false",
   },
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
       "service": "pedidolocal-staging",
+    },
+    {
+      "binding": "ORDER_EVENTS_WORKER",
+      "service": "pedidolocal-order-events-staging",
     },
   ],
   "r2_buckets": [
@@ -99,6 +104,7 @@
         "APP_ENV": "staging",
         "ORDER_EVENT_PUBLISH_MODE": "outbox",
         "WEB_PUSH_ENABLED": "true",
+        "MERCHANT_WEB_PUSH_ENABLED": "false",
       },
       "images": {
         "binding": "IMAGES",
@@ -108,6 +114,10 @@
         {
           "binding": "WORKER_SELF_REFERENCE",
           "service": "pedidolocal-staging",
+        },
+        {
+          "binding": "ORDER_EVENTS_WORKER",
+          "service": "pedidolocal-order-events-staging",
         },
       ],
       "r2_buckets": [
@@ -169,6 +179,7 @@
         "APP_ENV": "production",
         "ORDER_EVENT_PUBLISH_MODE": "direct",
         "WEB_PUSH_ENABLED": "false",
+        "MERCHANT_WEB_PUSH_ENABLED": "false",
       },
       "images": {
         "binding": "IMAGES",
@@ -177,6 +188,10 @@
         {
           "binding": "WORKER_SELF_REFERENCE",
           "service": "pedidolocal-production",
+        },
+        {
+          "binding": "ORDER_EVENTS_WORKER",
+          "service": "pedidolocal-order-events-production",
         },
       ],
       "r2_buckets": [

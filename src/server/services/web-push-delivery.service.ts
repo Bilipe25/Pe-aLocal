@@ -1,8 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
 
-import { createCustomizationFromLegacy } from '@/features/customization/domain/defaults';
-import { migrateCustomizationToCurrentVersion } from '@/features/customization/domain/migrations';
-import { isInstallablePwaIconAsset } from '@/lib/pwa/manifest';
 import {
   buildWebPushNotification,
   shouldNotifyOrderStatus,
@@ -13,36 +10,14 @@ import {
   webPushFailure,
   type WebPushSenderConfig,
 } from '@/server/services/web-push-sender';
+import { revokeWebPushSubscription } from '@/server/services/web-push-revocation.service';
+import { resolveWebPushStoreIdentity } from '@/server/services/web-push-store-identity.service';
 
 const MAX_ATTEMPTS = 5;
 const CLAIM_TIMEOUT_MS = 2 * 60 * 1_000;
 
 function retryDelaySeconds(attempt: number) {
   return Math.min(300, 5 * 2 ** Math.max(0, attempt - 1));
-}
-
-async function resolveIconAssetId(
-  db: PrismaClient,
-  tenantId: string,
-  storeId: string,
-  ids: Array<{ id: string | null; assetType: 'FAVICON' | 'LOGO' }>,
-) {
-  for (const candidate of ids) {
-    if (!candidate.id) continue;
-    const asset = await db.storeAsset.findFirst({
-      where: {
-        id: candidate.id,
-        tenantId,
-        storeId,
-        assetType: candidate.assetType,
-        status: 'ACTIVE',
-        deletedAt: null,
-      },
-      select: { id: true, mimeType: true, width: true, height: true },
-    });
-    if (asset && isInstallablePwaIconAsset(asset)) return asset.id;
-  }
-  return null;
 }
 
 async function skipDelivery(
@@ -120,7 +95,14 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
           disabledAt: true,
           terminalNotifiedAt: true,
           subscription: {
-            select: { endpoint: true, p256dh: true, auth: true, origin: true, revokedAt: true },
+            select: {
+              endpoint: true,
+              p256dh: true,
+              auth: true,
+              origin: true,
+              revokedAt: true,
+              expirationTime: true,
+            },
           },
         },
       }),
@@ -131,18 +113,7 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
           version: true,
           modality: true,
           publicToken: true,
-          store: {
-            select: {
-              name: true,
-              slug: true,
-              tenantId: true,
-              id: true,
-              settings: { select: { primaryColor: true, secondaryColor: true, fontFamily: true } },
-              customization: {
-                select: { publishedConfig: true, publishedVersion: true, publishedAt: true },
-              },
-            },
-          },
+          store: { select: { name: true, slug: true, tenantId: true, id: true } },
         },
       }),
       db.webPushDelivery.findFirst({
@@ -159,6 +130,7 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       !association ||
       association.disabledAt ||
       association.subscription.revokedAt ||
+      (association.subscription.expirationTime && association.subscription.expirationTime <= now) ||
       !order ||
       newer ||
       order.status !== claim.orderStatus ||
@@ -170,21 +142,11 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       return 'skipped' as const;
     }
 
-    let customization;
-    try {
-      customization = migrateCustomizationToCurrentVersion(
-        order.store.customization?.publishedConfig,
-      );
-    } catch {
-      customization = createCustomizationFromLegacy({
-        primaryColor: order.store.settings?.primaryColor,
-        secondaryColor: order.store.settings?.secondaryColor,
-        fontFamily: order.store.settings?.fontFamily,
-      });
-    }
-    const iconAssetId = await resolveIconAssetId(db, claim.tenantId, claim.storeId, [
-      { id: customization.identity.faviconAssetId, assetType: 'FAVICON' },
-      { id: customization.identity.logoAssetId, assetType: 'LOGO' },
+    const [identity, activeMerchantAssociationCount] = await Promise.all([
+      resolveWebPushStoreIdentity(db, claim.tenantId, claim.storeId),
+      db.storeStaffPushSubscription.count({
+        where: { webPushSubscriptionId: claim.webPushSubscriptionId, disabledAt: null },
+      }),
     ]);
     const notification = await buildWebPushNotification({
       eventId: claim.orderOutboxEventId,
@@ -196,7 +158,8 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       origin: association.subscription.origin,
       status: claim.orderStatus as NotifiableOrderStatus,
       modality: order.modality,
-      iconAssetId,
+      iconAssetId: identity?.iconAssetId ?? null,
+      preserveMerchantBadge: activeMerchantAssociationCount > 0,
     });
     await sendWebPushNotification(config, {
       endpoint: association.subscription.endpoint,
@@ -232,30 +195,12 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
   } catch (error) {
     const failure = webPushFailure(error);
     if (failure.revoked) {
-      await db.$transaction([
-        db.webPushSubscription.update({
-          where: { id: claim.webPushSubscriptionId },
-          data: { revokedAt: new Date(), revokedReason: `push_${failure.statusCode}` },
-        }),
-        db.orderPushSubscription.updateMany({
-          where: { webPushSubscriptionId: claim.webPushSubscriptionId, disabledAt: null },
-          data: { disabledAt: new Date(), lockedAt: null, lockToken: null },
-        }),
-        db.webPushDelivery.updateMany({
-          where: {
-            webPushSubscriptionId: claim.webPushSubscriptionId,
-            status: { in: ['PENDING', 'PROCESSING'] },
-          },
-          data: {
-            status: 'REVOKED',
-            failedAt: new Date(),
-            lockedAt: null,
-            lockToken: null,
-            lastStatusCode: failure.statusCode,
-            lastError: 'push_subscription_revoked',
-          },
-        }),
-      ]);
+      await revokeWebPushSubscription(
+        db,
+        claim.webPushSubscriptionId,
+        `push_${failure.statusCode}`,
+        failure.statusCode,
+      );
       return 'revoked' as const;
     }
     const exhausted = !failure.transient || claim.attempts >= MAX_ATTEMPTS;
