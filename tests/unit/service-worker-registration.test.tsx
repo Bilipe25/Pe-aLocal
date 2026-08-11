@@ -22,9 +22,12 @@ describe('registro do Service Worker', () => {
     expect(isPwaUpdateSafePath(pathname)).toBe(false);
   });
 
-  it.each(['/', '/offline', '/loja', '/sobre'])('permite aviso na rota segura %s', (pathname) => {
-    expect(isPwaUpdateSafePath(pathname)).toBe(true);
-  });
+  it.each(['/', '/offline', '/offline.html', '/loja', '/sobre'])(
+    'permite aviso na rota segura %s',
+    (pathname) => {
+      expect(isPwaUpdateSafePath(pathname)).toBe(true);
+    },
+  );
 
   it('registra na raiz sem cachear a atualização e anuncia worker waiting', async () => {
     const waiting = { postMessage: vi.fn() } as unknown as ServiceWorker;

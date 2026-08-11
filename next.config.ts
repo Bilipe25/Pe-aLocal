@@ -15,6 +15,10 @@ if (process.env.NODE_ENV === 'development') {
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@prisma/client', '.prisma/client', 'pg-cloudflare'],
 
+  async redirects() {
+    return [{ source: '/offline', destination: '/offline.html', permanent: false }];
+  },
+
   // Otimizações de imagem
   //
   // O runtime é OpenNext/Cloudflare Workers, onde o otimizador de imagem nativo
@@ -119,7 +123,7 @@ const nextConfig: NextConfig = {
         headers: [{ key: 'Cache-Control', value: 'private, no-store, max-age=0' }],
       },
       {
-        source: '/offline',
+        source: '/offline.html',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
           { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },

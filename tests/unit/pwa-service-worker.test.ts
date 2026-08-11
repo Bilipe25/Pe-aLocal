@@ -16,6 +16,7 @@ function loadServiceWorker() {
       .mockResolvedValue([
         'pedidolocal-shell-v0',
         'pedidolocal-shell-v1',
+        'pedidolocal-shell-v2',
         'cache-de-outra-aplicacao',
       ]),
     delete: vi.fn().mockResolvedValue(true),
@@ -106,7 +107,7 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('fetch')?.({ request, respondWith });
 
     await expect(respondWith.mock.calls[0][0]).resolves.toBeInstanceOf(Response);
-    expect(caches.match).toHaveBeenCalledWith('/offline');
+    expect(caches.match).toHaveBeenCalledWith('/offline.html');
   });
 
   it('recusa precache private/no-store', async () => {
@@ -127,9 +128,10 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('activate')?.({ waitUntil });
     await waitUntil.mock.calls[0][0];
 
-    expect(caches.delete).toHaveBeenCalledTimes(2);
+    expect(caches.delete).toHaveBeenCalledTimes(3);
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v0');
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v1');
+    expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v2');
   });
 
   it('exibe Push válido sem incluir o token no título ou corpo', async () => {

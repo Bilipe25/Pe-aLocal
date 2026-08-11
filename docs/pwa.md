@@ -19,17 +19,17 @@ As associações de logo, favicon e imagens de categoria pertencem ao fluxo rasc
 
 ## Política do Service Worker
 
-O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v2`. Alterações no conteúdo do shell exigem incremento explícito da versão.
+O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v3`. Alterações no conteúdo do shell exigem incremento explícito da versão.
 
-| Requisição                                              | Estratégia                            | CacheStorage    |
-| ------------------------------------------------------- | ------------------------------------- | --------------- |
-| `/offline` e quatro ícones versionados                  | Cache First após precache validado    | Sim             |
-| Navegação pública `/` e `/{storeSlug}`                  | Network First com fallback `/offline` | Não guarda HTML |
-| Carrinho, checkout, pedidos e acompanhamento            | Network Only                          | Não             |
-| Dashboard, admin e autenticação                         | Network Only                          | Não             |
-| `/api/**`, inclusive assets da loja                     | Network Only                          | Não             |
-| Métodos diferentes de GET                               | Pass-through/Network Only             | Não             |
-| `_next/static`, fontes, scripts, imagens e cross-origin | Pass-through                          | Não             |
+| Requisição                                              | Estratégia                                 | CacheStorage    |
+| ------------------------------------------------------- | ------------------------------------------ | --------------- |
+| `/offline.html` e quatro ícones versionados             | Cache First após precache validado         | Sim             |
+| Navegação pública `/` e `/{storeSlug}`                  | Network First com fallback `/offline.html` | Não guarda HTML |
+| Carrinho, checkout, pedidos e acompanhamento            | Network Only                               | Não             |
+| Dashboard, admin e autenticação                         | Network Only                               | Não             |
+| `/api/**`, inclusive assets da loja                     | Network Only                               | Não             |
+| Métodos diferentes de GET                               | Pass-through/Network Only                  | Não             |
+| `_next/static`, fontes, scripts, imagens e cross-origin | Pass-through                               | Não             |
 
 O precache usa `credentials: omit`, exige resposta `ok` e recusa respostas com `Cache-Control: private` ou `no-store`. Ativação exclui somente caches antigos iniciados por `pedidolocal-shell-`. Não são armazenados catálogo, preços, carrinho, cookies, tokens, pedidos, PII ou respostas autenticadas.
 
@@ -54,7 +54,7 @@ Service Workers sobrevivem a rollback do servidor. Para mudar arquivos precachea
 4. em rollback, publique um SW corretivo com uma versão nova — nunca dependa apenas da reversão do HTML;
 5. não exclua caches sem o prefixo `pedidolocal-shell-`.
 
-No DevTools, verifique Application → Service Workers e Cache Storage. O cache ativo deve conter somente `/offline` e os quatro ícones. O HTML de loja e todas as URLs sensíveis devem estar ausentes.
+No DevTools, verifique Application → Service Workers e Cache Storage. O cache ativo deve conter somente `/offline.html` e os quatro ícones. O HTML de loja e todas as URLs sensíveis devem estar ausentes. O fallback é um asset autocontido de `public/`, sem React, App Router ou chunks do OpenNext.
 
 ## Validação
 

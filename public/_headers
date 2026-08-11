@@ -8,6 +8,11 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Content-Type: application/javascript; charset=utf-8
 
+/offline.html
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: text/html; charset=utf-8
+  X-Robots-Tag: noindex, nofollow, noarchive
+
 /pwa/*
   Cache-Control: public, max-age=31536000, immutable
 
