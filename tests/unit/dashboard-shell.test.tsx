@@ -235,4 +235,36 @@ describe('shell operacional do painel do tenant', () => {
     expect(screen.getByLabelText(/Data e hora da loja:/)).toHaveTextContent('31 de jul de 2026');
     expect(screen.getByLabelText(/Data e hora da loja:/)).toHaveTextContent('11:30');
   });
+
+  it('mantém os alertas da loja disponíveis globalmente no desktop e no menu mobile', async () => {
+    render(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+        merchantPush={{
+          publicVapidKey: 'vapid-public-key',
+          storeId: store.id,
+          storeName: store.name,
+        }}
+      >
+        <p>Catálogo</p>
+      </DashboardShell>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Alertas de pedidos/ }));
+    expect(
+      screen.getByRole('region', { name: `Alertas de novos pedidos — ${store.name}` }),
+    ).toHaveTextContent(`Loja: ${store.name}`);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu do painel' }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'Menu do painel' })).getByRole('button', {
+        name: /Alertas de pedidos/,
+      }),
+    ).toBeInTheDocument();
+  });
 });

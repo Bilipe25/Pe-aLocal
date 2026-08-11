@@ -55,6 +55,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
         activeStoreTimeZone={activeContext?.store.timeZone ?? null}
         initialNowIso={new Date().toISOString()}
         canViewCoupons={hasTenantPermission(session.tenantRole, Permission.VIEW_COUPONS)}
+        merchantPush={
+          activeStore &&
+          String(process.env.MERCHANT_WEB_PUSH_ENABLED) === 'true' &&
+          process.env.WEB_PUSH_VAPID_PUBLIC_KEY &&
+          hasTenantPermission(session.tenantRole, Permission.VIEW_ORDERS) &&
+          hasTenantPermission(session.tenantRole, Permission.VIEW_ORDER_DETAILS)
+            ? {
+                publicVapidKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY,
+                storeId: activeStore.id,
+                storeName: activeStore.name,
+              }
+            : undefined
+        }
       >
         <QueryProvider>{children}</QueryProvider>
       </DashboardShell>

@@ -38,6 +38,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TenantRole } from '@/server/permissions';
 import { useDashboardOperations } from '@/components/dashboard/dashboard-operations-context';
+import {
+  StorePushSubscription,
+  StorePushSubscriptionProvider,
+} from '@/components/dashboard/store-push-subscription';
 
 interface DashboardShellProps {
   children: ReactNode;
@@ -48,6 +52,7 @@ interface DashboardShellProps {
   activeStoreTimeZone: string | null;
   initialNowIso: string;
   canViewCoupons?: boolean;
+  merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
 
 const TENANT_ROLE_LABELS: Record<TenantRole, string> = {
@@ -415,6 +420,7 @@ export function DashboardShell({
   activeStoreTimeZone,
   initialNowIso,
   canViewCoupons = false,
+  merchantPush,
 }: DashboardShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -451,7 +457,7 @@ export function DashboardShell({
     degraded: 'bg-warning',
   }[operations.realtimeState];
 
-  return (
+  const shell = (
     <div className="dashboard-shell bg-surface-secondary min-h-dvh xl:grid xl:grid-cols-[13rem_minmax(0,1fr)]">
       <aside className="bg-tinta sticky top-0 hidden h-dvh border-r border-white/8 p-3 xl:flex xl:flex-col">
         <div className="px-1 py-1.5">
@@ -465,6 +471,11 @@ export function DashboardShell({
             appearance="dark"
           />
         </div>
+        {merchantPush && (
+          <div className="mb-3">
+            <StorePushSubscription storeName={merchantPush.storeName} />
+          </div>
+        )}
         {isOrdersWorkspace && (
           <div className="mb-3 rounded-xl border border-white/10 bg-white/6 p-3 text-white">
             <p className="flex items-center gap-2 text-sm font-semibold">
@@ -668,6 +679,14 @@ export function DashboardShell({
                       canViewCoupons={canViewCoupons}
                       onNavigate={() => setMenuOpen(false)}
                     />
+                    {merchantPush && (
+                      <div className="mt-5 border-t pt-5">
+                        <StorePushSubscription
+                          storeName={merchantPush.storeName}
+                          surface="mobile-menu"
+                        />
+                      </div>
+                    )}
                   </div>
                   <AccountFooter userName={userName} tenantRole={tenantRole} />
                 </Dialog.Content>
@@ -785,5 +804,16 @@ export function DashboardShell({
         </main>
       </div>
     </div>
+  );
+
+  return merchantPush ? (
+    <StorePushSubscriptionProvider
+      key={merchantPush.storeId}
+      publicVapidKey={merchantPush.publicVapidKey}
+    >
+      {shell}
+    </StorePushSubscriptionProvider>
+  ) : (
+    shell
   );
 }

@@ -1,6 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Bell, BellOff, LoaderCircle, Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -9,6 +18,7 @@ import {
   applyMerchantBadge,
   MERCHANT_PUSH_ACTIVE_STORAGE_KEY,
 } from '@/lib/web-push/merchant-badge';
+import { cn } from '@/lib/utils';
 
 type State =
   | 'unsupported'
@@ -20,6 +30,17 @@ type State =
   | 'testing'
   | 'error'
   | 'blocked';
+
+interface StorePushSubscriptionController {
+  state: State;
+  message: string | null;
+  enable: () => Promise<void>;
+  disable: () => Promise<void>;
+  test: () => Promise<void>;
+}
+
+const StorePushSubscriptionContext = createContext<StorePushSubscriptionController | null>(null);
+export const MERCHANT_PUSH_RECONCILE_EVENT = 'pedidolocal:merchant-push-reconcile';
 
 function supported() {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -43,17 +64,28 @@ function rememberMerchantPush(active: boolean) {
   }
 }
 
-export function StorePushSubscription({
+async function responseError(response: Response, fallback: string) {
+  try {
+    const data = (await response.json()) as { message?: unknown };
+    return typeof data.message === 'string' && data.message.trim() ? data.message : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function requestMerchantPushReconciliation() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(MERCHANT_PUSH_RECONCILE_EVENT));
+}
+
+export function StorePushSubscriptionProvider({
   publicVapidKey,
-  reconcileKey,
+  children,
 }: {
   publicVapidKey: string;
-  reconcileKey: string;
+  children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   const [state, setState] = useState<State>('permission-default');
   const [message, setMessage] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   const reconcile = useCallback(async () => {
     if (!publicVapidKey || !supported()) {
@@ -80,8 +112,12 @@ export function StorePushSubscription({
         setState('blocked');
         return;
       }
+      if (!response.ok) {
+        throw new Error(
+          await responseError(response, 'Não foi possível verificar os alertas agora.'),
+        );
+      }
       const data = (await response.json()) as { enabled?: boolean; badgeCount?: number };
-      if (!response.ok) throw new Error('state');
       if (data.enabled) {
         rememberMerchantPush(true);
         setState('enabled');
@@ -89,17 +125,20 @@ export function StorePushSubscription({
         if (!data.badgeCount) rememberMerchantPush(false);
         setState('permission-default');
       }
+      setMessage(null);
       await applyMerchantBadge(data.badgeCount ?? 0);
-    } catch {
+    } catch (error) {
       setState('error');
-      setMessage('Não foi possível verificar os alertas agora.');
+      setMessage(
+        error instanceof Error ? error.message : 'Não foi possível verificar os alertas agora.',
+      );
     }
   }, [publicVapidKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void reconcile(), 0);
     return () => window.clearTimeout(timer);
-  }, [reconcile, reconcileKey]);
+  }, [reconcile]);
 
   useEffect(() => {
     const refresh = () => {
@@ -107,22 +146,15 @@ export function StorePushSubscription({
     };
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('focus', refresh);
+    window.addEventListener(MERCHANT_PUSH_RECONCILE_EVENT, refresh);
     return () => {
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener(MERCHANT_PUSH_RECONCILE_EVENT, refresh);
     };
   }, [reconcile]);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [open]);
-
-  async function enable() {
+  const enable = useCallback(async () => {
     if (!supported()) return;
     setMessage(null);
     try {
@@ -145,17 +177,23 @@ export function StorePushSubscription({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(subscription.toJSON()),
       });
-      if (!response.ok) throw new Error('enable');
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'Não foi possível ativar os alertas.'));
+      }
       rememberMerchantPush(true);
       setState('enabled');
       await reconcile();
-    } catch {
+    } catch (error) {
       setState('error');
-      setMessage('Não foi possível ativar os alertas. Tente novamente.');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível ativar os alertas. Tente novamente.',
+      );
     }
-  }
+  }, [publicVapidKey, reconcile]);
 
-  async function disable() {
+  const disable = useCallback(async () => {
     setState('disabling');
     setMessage(null);
     try {
@@ -167,68 +205,148 @@ export function StorePushSubscription({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ endpointHash: await hashFor(subscription) }),
         });
+        if (!response.ok) {
+          throw new Error(await responseError(response, 'Não foi possível desativar os alertas.'));
+        }
         const data = (await response.json()) as { remaining?: number };
-        if (!response.ok) throw new Error('disable');
         if (!data.remaining) {
           rememberMerchantPush(false);
           await applyMerchantBadge(0);
         }
       }
       await reconcile();
-    } catch {
+    } catch (error) {
       setState('enabled');
-      setMessage('Não foi possível desativar os alertas agora.');
+      setMessage(
+        error instanceof Error ? error.message : 'Não foi possível desativar os alertas agora.',
+      );
     }
-  }
+  }, [reconcile]);
 
-  async function test() {
+  const test = useCallback(async () => {
     setState('testing');
     setMessage(null);
     try {
       const subscription = await currentSubscription();
-      if (!subscription) throw new Error('subscription');
+      if (!subscription) throw new Error('Ative os alertas antes de realizar o teste.');
       const response = await fetch('/dashboard/api/push-subscription/test', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpointHash: await hashFor(subscription) }),
       });
-      if (!response.ok) throw new Error('test');
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'O teste não pôde ser enviado.'));
+      }
       setState('enabled');
       setMessage('Notificação de teste enviada para este dispositivo.');
-    } catch {
+    } catch (error) {
       setState('enabled');
-      setMessage('O teste não pôde ser enviado. Verifique a permissão do navegador.');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'O teste não pôde ser enviado. Verifique a permissão do navegador.',
+      );
     }
-  }
+  }, []);
 
+  const value = useMemo(
+    () => ({ state, message, enable, disable, test }),
+    [disable, enable, message, state, test],
+  );
+
+  return (
+    <StorePushSubscriptionContext.Provider value={value}>
+      {children}
+    </StorePushSubscriptionContext.Provider>
+  );
+}
+
+export function StorePushSubscription({
+  storeName,
+  surface = 'sidebar',
+}: {
+  storeName: string;
+  surface?: 'sidebar' | 'mobile-menu';
+}) {
+  const controller = useContext(StorePushSubscriptionContext);
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  if (!controller) return null;
+
+  const { state, message, enable, disable, test } = controller;
   const busy = state === 'subscribing' || state === 'disabling' || state === 'testing';
   const active = state === 'enabled' || state === 'testing';
+  const panelId = `merchant-push-panel-${surface}`;
 
   return (
     <div className="relative" ref={panelRef}>
       <Button
         type="button"
         variant="outline"
-        size="sm"
         aria-expanded={open}
-        aria-controls="merchant-push-panel"
+        aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
+        className={cn(
+          'h-auto min-h-11 w-full justify-start gap-3 px-3 py-2 text-left',
+          surface === 'sidebar' &&
+            'focus-visible:ring-offset-tinta border-white/15 bg-white/6 text-white hover:bg-white/10 hover:text-white focus-visible:ring-white/80',
+        )}
       >
-        {active ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
-        <span>Alertas</span>
-        <span className="text-text-secondary text-xs">{active ? 'Ativos' : 'Inativos'}</span>
+        <span
+          className={cn(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+            active
+              ? surface === 'sidebar'
+                ? 'bg-success/25 text-white'
+                : 'bg-success-light text-success'
+              : surface === 'sidebar'
+                ? 'bg-white/10 text-white/70'
+                : 'bg-surface-secondary text-text-secondary',
+          )}
+        >
+          {active ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">Alertas de pedidos</span>
+          <span
+            className={cn(
+              'block truncate text-xs',
+              surface === 'sidebar' ? 'text-white/60' : 'text-text-muted',
+            )}
+          >
+            {active ? 'Ativos neste dispositivo' : 'Inativos neste dispositivo'}
+          </span>
+        </span>
       </Button>
+
       {open && (
         <section
-          id="merchant-push-panel"
-          aria-label="Alertas de novos pedidos"
-          className="bg-surface border-border absolute top-full right-0 z-30 mt-2 w-80 rounded-xl border p-4 shadow-lg"
+          id={panelId}
+          aria-label={`Alertas de novos pedidos — ${storeName}`}
+          className={cn(
+            'border-border bg-surface text-text-primary z-40 w-full rounded-xl border p-4 text-left shadow-md',
+            surface === 'sidebar' && 'absolute bottom-[calc(100%+0.5rem)] left-0 w-80',
+            surface === 'mobile-menu' && 'mt-2',
+          )}
         >
-          <h2 className="text-text-primary font-semibold">Alertas neste dispositivo</h2>
+          <h2 className="font-semibold">Alertas de novos pedidos</h2>
           <p className="text-text-secondary mt-1 text-sm">
-            Receba novos pedidos mesmo com a Central fechada. O som depende das configurações do
-            dispositivo.
+            Loja: <strong className="text-text-primary font-semibold">{storeName}</strong>
+          </p>
+          <p className="text-text-secondary mt-2 text-sm">
+            Receba novos pedidos mesmo em outra página ou com o painel fechado. O som depende das
+            configurações do dispositivo.
           </p>
           {state === 'unsupported' && (
             <p className="text-warning mt-3 text-sm">Este navegador não oferece Web Push.</p>
@@ -255,7 +373,7 @@ export function StorePushSubscription({
               state !== 'blocked' && (
                 <Button type="button" size="sm" disabled={busy} onClick={() => void enable()}>
                   {busy && <LoaderCircle className="animate-spin" aria-hidden="true" />}
-                  Ativar
+                  Ativar para esta loja
                 </Button>
               )}
             {active && (
@@ -275,7 +393,7 @@ export function StorePushSubscription({
                   disabled={busy}
                   onClick={() => void disable()}
                 >
-                  Desativar
+                  Desativar nesta loja
                 </Button>
               </>
             )}
