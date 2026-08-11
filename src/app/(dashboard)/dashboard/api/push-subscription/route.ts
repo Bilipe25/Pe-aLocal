@@ -37,43 +37,48 @@ function contextFrom(active: Awaited<ReturnType<typeof requireActiveStoreContext
 
 function assertMutationRequest(request: Request) {
   if (request.headers.get('sec-fetch-site') === 'cross-site') {
-    throw new ValidationError('RequisiÃ§Ã£o invÃ¡lida.');
+    throw new ValidationError('Requisição inválida.');
   }
   const origin = request.headers.get('origin');
   if (
     (isDeployedRuntime() && !origin) ||
     (origin && new URL(origin).origin !== new URL(request.url).origin)
   ) {
-    throw new ValidationError('Origem invÃ¡lida.');
+    throw new ValidationError('Origem inválida.');
   }
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
-    throw new ValidationError('ConteÃºdo invÃ¡lido.');
+    throw new ValidationError('Conteúdo inválido.');
   }
   const contentLength = Number(request.headers.get('content-length') ?? '0');
-  if (contentLength > 8_192) throw new ValidationError('ConteÃºdo muito grande.');
+  if (contentLength > 8_192) throw new ValidationError('Conteúdo muito grande.');
   return origin ?? new URL(request.url).origin;
 }
 
 async function readLimitedJson(request: Request) {
   const text = await request.text();
   if (new TextEncoder().encode(text).byteLength > 8_192) {
-    throw new ValidationError('ConteÃºdo muito grande.');
+    throw new ValidationError('Conteúdo muito grande.');
   }
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw new ValidationError('ConteÃºdo invÃ¡lido.');
+    throw new ValidationError('Conteúdo inválido.');
   }
 }
 
-async function assertRateLimit(userId: string) {
+async function assertRateLimit(userId: string, operation: 'read' | 'mutation') {
+  const isRead = operation === 'read';
   const result = await getRateLimiter().check({
-    identifier: `merchant-push:${userId}`,
-    ...RATE_LIMITS.merchantPush,
+    identifier: `merchant-push-${operation}:${userId}`,
+    ...(isRead ? RATE_LIMITS.merchantPushRead : RATE_LIMITS.merchantPush),
     strict: isDeployedRuntime(),
   });
   if (result.unavailable || !result.allowed) {
-    throw new RateLimitError('Muitas alteraÃ§Ãµes de notificaÃ§Ã£o. Aguarde um minuto.');
+    throw new RateLimitError(
+      isRead
+        ? 'Muitas verificações de notificação. Aguarde um minuto.'
+        : 'Muitas alterações de notificação. Aguarde um minuto.',
+    );
   }
 }
 
@@ -87,7 +92,7 @@ export async function GET(request: Request) {
   try {
     if (!enabled()) throw new NotFoundError('Recurso');
     const active = await requireActiveStoreContext(Permission.VIEW_ORDERS);
-    await assertRateLimit(active.session.userId);
+    await assertRateLimit(active.session.userId, 'read');
     const parsed = querySchema.safeParse({
       endpointHash: new URL(request.url).searchParams.get('endpointHash') ?? undefined,
     });
@@ -109,9 +114,9 @@ export async function POST(request: Request) {
     if (!enabled()) throw new NotFoundError('Recurso');
     const origin = assertMutationRequest(request);
     const active = await requireActiveStoreContext(Permission.VIEW_ORDERS);
-    await assertRateLimit(active.session.userId);
+    await assertRateLimit(active.session.userId, 'mutation');
     const body = webPushSubscriptionInputSchema.safeParse(await readLimitedJson(request));
-    if (!body.success) throw new ValidationError('InscriÃ§Ã£o Push invÃ¡lida.');
+    if (!body.success) throw new ValidationError('Inscrição Push inválida.');
     const result = await enableStoreStaffPushSubscription({
       context: contextFrom(active),
       origin,
@@ -119,7 +124,7 @@ export async function POST(request: Request) {
       ipAddress: request.headers.get('cf-connecting-ip'),
       userAgent: request.headers.get('user-agent'),
     });
-    if (!result) throw new ValidationError('Origem da inscriÃ§Ã£o invÃ¡lida.');
+    if (!result) throw new ValidationError('Origem da inscrição inválida.');
     await setMerchantPushDeviceCookie(result.subscriptionId);
     return Response.json(
       { enabled: true, endpointHash: result.endpointHash },
@@ -135,9 +140,9 @@ export async function DELETE(request: Request) {
     if (!enabled()) throw new NotFoundError('Recurso');
     assertMutationRequest(request);
     const active = await requireActiveStoreContext(Permission.VIEW_ORDERS);
-    await assertRateLimit(active.session.userId);
+    await assertRateLimit(active.session.userId, 'mutation');
     const body = webPushDisableInputSchema.safeParse(await readLimitedJson(request));
-    if (!body.success) throw new ValidationError('InscriÃ§Ã£o Push invÃ¡lida.');
+    if (!body.success) throw new ValidationError('Inscrição Push inválida.');
     const result = await disableStoreStaffPushSubscription({
       context: contextFrom(active),
       endpointHash: body.data.endpointHash,
