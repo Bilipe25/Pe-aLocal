@@ -1,10 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
-import {
-  buildWebPushNotification,
-  shouldNotifyOrderStatus,
-  type NotifiableOrderStatus,
-} from '@/lib/web-push/notification';
+import { buildWebPushNotification, type NotifiableOrderStatus } from '@/lib/web-push/notification';
 import {
   sendWebPushNotification,
   webPushFailure,
@@ -126,19 +122,34 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       }),
     ]);
 
-    if (
-      !association ||
-      association.disabledAt ||
-      association.subscription.revokedAt ||
-      (association.subscription.expirationTime && association.subscription.expirationTime <= now) ||
-      !order ||
-      newer ||
-      order.status !== claim.orderStatus ||
-      order.version < claim.aggregateVersion ||
-      !shouldNotifyOrderStatus(claim.orderStatus as NotifiableOrderStatus, order.modality) ||
-      (association.terminalNotifiedAt && ['DELIVERED', 'CANCELLED'].includes(claim.orderStatus))
-    ) {
-      await skipDelivery(db, claim.id, lockToken, 'delivery_superseded_or_disabled');
+    if (!association || !order) {
+      await skipDelivery(
+        db,
+        claim.id,
+        lockToken,
+        !association ? 'association_missing' : 'order_missing',
+      );
+      return 'skipped' as const;
+    }
+
+    const skipReason = association.disabledAt
+      ? 'association_disabled'
+      : association.subscription.revokedAt
+        ? 'subscription_revoked'
+        : association.subscription.expirationTime && association.subscription.expirationTime <= now
+          ? 'subscription_expired'
+          : newer
+            ? 'newer_status_available'
+            : order.status !== claim.orderStatus
+              ? 'current_status_changed'
+              : order.version < claim.aggregateVersion
+                ? 'order_version_behind'
+                : association.terminalNotifiedAt &&
+                    ['DELIVERED', 'CANCELLED'].includes(claim.orderStatus)
+                  ? 'terminal_already_notified'
+                  : null;
+    if (skipReason) {
+      await skipDelivery(db, claim.id, lockToken, skipReason);
       return 'skipped' as const;
     }
 

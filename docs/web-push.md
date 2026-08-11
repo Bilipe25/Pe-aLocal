@@ -14,7 +14,7 @@ O endpoint `/dashboard/api/push-subscription` consulta, ativa e desativa somente
 
 ## Escopo e privacidade
 
-Para reduzir interrupções e proteger a permissão do navegador, a matriz prioriza mudanças de alto valor. Entregas notificam `CONFIRMED`, `OUT_FOR_DELIVERY`, `DELIVERED` e `CANCELLED`; retiradas notificam `CONFIRMED`, `READY`, `DELIVERED` e `CANCELLED`. `PREPARING`, `READY` de entrega, criação, pagamentos, notas internas e reversões não geram Push.
+O consumidor recebe Push em todas as etapas operacionais: `CONFIRMED`, `PREPARING`, `READY`, `OUT_FOR_DELIVERY`, `DELIVERED` e `CANCELLED`, respeitando as etapas aplicáveis a cada modalidade. Criação, pagamentos, notas internas e reversões não geram Push.
 
 Título, corpo e tag não contêm nome do cliente, número do pedido, endereço, valor, pagamento ou token público. O token aparece apenas no link privado de navegação. Logs registram IDs técnicos, resultado e código HTTP; endpoint e chaves nunca devem ser logados.
 
@@ -31,7 +31,7 @@ Uma inscrição do navegador pode acompanhar vários pedidos. Desativar notifica
 
 No caminho Queue, o Worker projeta e tenta entregar o Push antes e independentemente da publicação Pusher. As duas ramificações possuem ledger, locks e tentativas próprios: falhar em uma não repete nem bloqueia a outra. O cron reconcilia eventos ausentes e cobre também `ORDER_EVENT_PUBLISH_MODE=direct`.
 
-Cada pedido reutiliza uma única `tag`, substituindo a notificação anterior. Todas as notificações da matriz de alto valor usam `renotify`, incluindo confirmação, `READY` de retirada, `OUT_FOR_DELIVERY`, conclusão e cancelamento. Estados intermediários continuam fora do Push para limitar o volume total.
+Cada pedido reutiliza uma única `tag`, substituindo a notificação anterior. Todas as notificações operacionais usam `renotify`, incluindo confirmação, preparo, pedido pronto, saída para entrega, conclusão e cancelamento.
 
 ## Configuração
 

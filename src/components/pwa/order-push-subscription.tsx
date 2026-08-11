@@ -178,7 +178,7 @@ export function OrderPushSubscription({
           <p className="text-tinta text-sm font-bold">Atualizações deste pedido</p>
           <p className="text-text-secondary mt-0.5 text-xs leading-relaxed">
             {state === 'enabled'
-              ? 'Você receberá uma notificação quando o pedido avançar.'
+              ? 'Você receberá avisos de confirmação, preparo, pedido pronto, entrega, conclusão ou cancelamento.'
               : state === 'denied'
                 ? 'As notificações estão bloqueadas nas configurações do navegador.'
                 : 'Receba avisos mesmo quando esta tela estiver fechada.'}
