@@ -10,6 +10,10 @@ describe('migration Merchant Web Push', () => {
     ),
     'utf8',
   );
+  const subscriptionService = readFileSync(
+    resolve(process.cwd(), 'src/server/services/store-staff-push-subscription.service.ts'),
+    'utf8',
+  );
 
   it('cria associaÃ§Ã£o e ledgers separados com idempotÃªncia e RLS', () => {
     expect(sql).toContain('store_staff_push_subscriptions');
@@ -21,5 +25,10 @@ describe('migration Merchant Web Push', () => {
     expect(sql.match(/ENABLE ROW LEVEL SECURITY/g)).toHaveLength(3);
     expect(sql.match(/REVOKE ALL ON TABLE/g)).toHaveLength(3);
     expect(sql).toContain('tenant_members');
+  });
+
+  it('mantem o bloqueio da inscricao compativel com IDs TEXT', () => {
+    expect(subscriptionService).toContain('WHERE id = ${subscription.id} FOR UPDATE');
+    expect(subscriptionService).not.toContain('${subscription.id}::uuid');
   });
 });
