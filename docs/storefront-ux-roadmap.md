@@ -366,10 +366,10 @@ dedicado aos itens, valores e checkout.
 **Implementação**:
 
 - Manual em `public/sw.js`, sem Workbox, `next-pwa` ou novo Worker.
-- O precache contém somente `/offline` e ícones PWA versionados. Respostas
+- O precache contém somente `/offline.html` e ícones PWA versionados. Respostas
   `private` ou `no-store` são recusadas.
 - HTML do cardápio usa a rede e nunca entra no CacheStorage; quando offline,
-  somente navegações públicas recebem `/offline`.
+  somente navegações públicas recebem `/offline.html`.
 - `/api/**`, `/dashboard/**`, `/admin/**`, autenticação, carrinho, checkout,
   pedidos e acompanhamento permanecem Network Only.
 - O lifecycle de atualização exige confirmação em rota segura e adia o aviso

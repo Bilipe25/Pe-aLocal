@@ -1,8 +1,8 @@
 'use strict';
 
 const CACHE_PREFIX = 'pedidolocal-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
-const OFFLINE_URL = '/offline';
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
   '/pwa/pedidolocal-icon-v1-192.png',

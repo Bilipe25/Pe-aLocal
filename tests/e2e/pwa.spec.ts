@@ -102,12 +102,12 @@ test.describe('PWA', () => {
     }
 
     const cacheEntries = await page.evaluate(async () => {
-      const cache = await caches.open('pedidolocal-shell-v2');
+      const cache = await caches.open('pedidolocal-shell-v3');
       return (await cache.keys()).map((request) => new URL(request.url).pathname).sort();
     });
     expect(cacheEntries).toEqual(
       [
-        '/offline',
+        '/offline.html',
         '/pwa/apple-touch-icon-v1-180.png',
         '/pwa/pedidolocal-icon-v1-192.png',
         '/pwa/pedidolocal-icon-v1-512.png',

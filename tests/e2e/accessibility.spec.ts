@@ -32,7 +32,7 @@ test.describe('acessibilidade WCAG', () => {
     await page.goto('/access-help');
     await expectNoHighImpactViolations(page);
 
-    await page.goto('/offline');
+    await page.goto('/offline.html');
     await expectNoHighImpactViolations(page);
   });
 
