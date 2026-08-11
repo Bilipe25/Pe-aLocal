@@ -11,6 +11,12 @@ const mocks = vi.hoisted(() => ({
   reconcileWebPushDispatches: vi.fn(),
   processPendingWebPushDeliveries: vi.fn(),
   processWebPushDeliveriesForEvent: vi.fn(),
+  projectStoreWebPushDispatch: vi.fn(),
+  reconcileStoreWebPushDispatches: vi.fn(),
+  processPendingStoreWebPushDeliveries: vi.fn(),
+  processStoreWebPushDeliveriesForEvent: vi.fn(),
+  sendStoreStaffPushTest: vi.fn(),
+  revokeExpiredWebPushSubscriptions: vi.fn(),
   readWebPushSenderConfig: vi.fn(),
 }));
 
@@ -34,6 +40,18 @@ vi.mock('@/server/services/web-push-dispatch.service', () => ({
 vi.mock('@/server/services/web-push-delivery.service', () => ({
   processPendingWebPushDeliveries: mocks.processPendingWebPushDeliveries,
   processWebPushDeliveriesForEvent: mocks.processWebPushDeliveriesForEvent,
+}));
+vi.mock('@/server/services/store-web-push-dispatch.service', () => ({
+  projectStoreWebPushDispatch: mocks.projectStoreWebPushDispatch,
+  reconcileStoreWebPushDispatches: mocks.reconcileStoreWebPushDispatches,
+}));
+vi.mock('@/server/services/store-web-push-delivery.service', () => ({
+  processPendingStoreWebPushDeliveries: mocks.processPendingStoreWebPushDeliveries,
+  processStoreWebPushDeliveriesForEvent: mocks.processStoreWebPushDeliveriesForEvent,
+  sendStoreStaffPushTest: mocks.sendStoreStaffPushTest,
+}));
+vi.mock('@/server/services/web-push-revocation.service', () => ({
+  revokeExpiredWebPushSubscriptions: mocks.revokeExpiredWebPushSubscriptions,
 }));
 vi.mock('@/server/services/web-push-sender', () => ({
   readWebPushSenderConfig: mocks.readWebPushSenderConfig,
@@ -100,6 +118,12 @@ describe('order events worker', () => {
       candidates: 1,
       outcomes: { sent: 1 },
     });
+    mocks.projectStoreWebPushDispatch.mockResolvedValue({ projected: true, deliveries: 1 });
+    mocks.processStoreWebPushDeliveriesForEvent.mockResolvedValue({
+      candidates: 1,
+      outcomes: { sent: 1 },
+    });
+    mocks.revokeExpiredWebPushSubscriptions.mockResolvedValue({ revoked: 0 });
     mocks.readWebPushSenderConfig.mockReturnValue(null);
   });
 
@@ -218,6 +242,26 @@ describe('order events worker', () => {
       mocks.processOrderOutboxMessage.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
     );
     expect(input.message.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
+  });
+
+  it('mantÃ©m Merchant Push independente do consumidor e do Pusher', async () => {
+    const env = { ...environment(), MERCHANT_WEB_PUSH_ENABLED: 'true' };
+    const input = batch();
+    const senderConfig = {
+      publicKey: 'public',
+      privateKey: 'private',
+      subject: 'mailto:test@test',
+    };
+    mocks.readWebPushSenderConfig.mockReturnValue(senderConfig);
+    mocks.projectStoreWebPushDispatch.mockRejectedValue(new Error('merchant unavailable'));
+    mocks.processOrderOutboxMessage.mockResolvedValue({ action: 'ack', eventId });
+
+    await worker.queue(input as never, env as never);
+
+    expect(mocks.projectStoreWebPushDispatch).toHaveBeenCalledWith(expect.anything(), eventId);
+    expect(mocks.projectWebPushDispatch).not.toHaveBeenCalled();
+    expect(mocks.processOrderOutboxMessage).toHaveBeenCalledOnce();
+    expect(input.message.ack).toHaveBeenCalledOnce();
   });
 
   it('limita o paralelismo entre pedidos independentes', async () => {

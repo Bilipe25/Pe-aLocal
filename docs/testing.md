@@ -5,6 +5,8 @@ condicionado por `E2E_WEB_PUSH_ENABLED`, `E2E_STORE_SLUG` e `E2E_ORDER_TRACKING_
 real deve ser validada manualmente no staging, pois serviços Push externos não são simulados pelo
 workerd.
 
+O Push operacional adiciona testes da regra `ORDER_CREATED + PENDING`, payload sem PII, associação multi-loja, projeção idempotente, retries/revogação, deep link, logout, badge e parser discriminado do Service Worker. A entrega externa e recursos progressivos do sistema operacional continuam exigindo smoke real em staging.
+
 ## Objetivo
 
 A Fase 8 consolida a pirâmide de qualidade do PedidoLocal: regras de negócio rápidas no Vitest,

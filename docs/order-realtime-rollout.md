@@ -1,6 +1,6 @@
 # Rollout do realtime de pedidos
 
-O Web Push do consumidor é uma projeção independente deste pipeline. O ACK/retry do Pusher nunca depende do Push; consulte [`web-push.md`](web-push.md).
+O Web Push do consumidor e o Push operacional são projeções independentes deste pipeline. O ACK/retry do Pusher nunca depende de nenhuma das duas; consulte [`web-push.md`](web-push.md).
 
 Publicações Pusher usam a API HTTP assinada com `fetch` nativo do runtime Cloudflare. O pacote Node do Pusher permanece apenas na autorização de canais privados; seu transporte baseado em `node-fetch` não deve ser usado para publicar dentro de Workers.
 

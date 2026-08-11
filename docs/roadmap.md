@@ -94,6 +94,7 @@
 - [x] Build de produção local
 - [x] PWA instalável com manifest global/white-label e fallback offline seguro
 - [x] Web Push transacional opt-in para acompanhamento do consumidor
+- [x] Web Push operacional opt-in para novos pedidos na Central
 - [ ] Deploy na Vercel
 
 ---

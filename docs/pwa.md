@@ -42,7 +42,7 @@ O precache usa `credentials: omit`, exige resposta `ok` e recusa respostas com `
 - Em carrinho, checkout, pedidos, dashboard, admin e autenticação, o aviso fica adiado.
 - Ao confirmar, a página envia `SKIP_WAITING` e recarrega uma única vez após `controllerchange`.
 
-Não há prompt de instalação, Background Sync, checkout offline nem catálogo em IndexedDB. O mesmo SW recebe Web Push transacional e abre somente rotas same-origin de acompanhamento; ele não altera a política de CacheStorage. Detalhes em [`web-push.md`](web-push.md).
+Não há prompt de instalação, Background Sync, checkout offline nem catálogo em IndexedDB. O mesmo SW recebe Push do consumidor e do estabelecimento. Ele aceita somente rotas same-origin validadas de acompanhamento ou da Central, nunca altera pedidos e não muda a política de CacheStorage. Detalhes em [`web-push.md`](web-push.md).
 
 ## Rollout, rollback e diagnóstico
 
