@@ -139,7 +139,7 @@ export async function enableStoreStaffPushSubscription(input: {
       select: { id: true },
     });
     await tx.$queryRaw(Prisma.sql`
-      SELECT id FROM web_push_subscriptions WHERE id = ${subscription.id}::uuid FOR UPDATE
+      SELECT id FROM web_push_subscriptions WHERE id = ${subscription.id} FOR UPDATE
     `);
     await tx.storeStaffPushSubscription.updateMany({
       where: {
