@@ -12,15 +12,20 @@ export interface WebPushSendInput {
   auth: string;
   payload: unknown;
   topic: string;
+  ttlSeconds?: number;
+  urgency?: 'very-low' | 'low' | 'normal' | 'high';
 }
 
-export function readWebPushSenderConfig(env: {
-  WEB_PUSH_ENABLED?: string;
-  WEB_PUSH_VAPID_PUBLIC_KEY?: string;
-  WEB_PUSH_VAPID_PRIVATE_KEY?: string;
-  WEB_PUSH_VAPID_SUBJECT?: string;
-}): WebPushSenderConfig | null {
-  if (env.WEB_PUSH_ENABLED !== 'true') return null;
+export function readWebPushSenderConfig(
+  env: {
+    WEB_PUSH_ENABLED?: string;
+    WEB_PUSH_VAPID_PUBLIC_KEY?: string;
+    WEB_PUSH_VAPID_PRIVATE_KEY?: string;
+    WEB_PUSH_VAPID_SUBJECT?: string;
+  },
+  enabled = env.WEB_PUSH_ENABLED === 'true',
+): WebPushSenderConfig | null {
+  if (!enabled) return null;
   const publicKey = env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
   const privateKey = env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
   const subject = env.WEB_PUSH_VAPID_SUBJECT?.trim();
@@ -51,7 +56,11 @@ export async function sendWebPushNotification(
   return webPush.sendNotification(
     { endpoint: input.endpoint, keys: { p256dh: input.p256dh, auth: input.auth } },
     JSON.stringify(input.payload),
-    { TTL: 3_600, urgency: 'normal', topic: input.topic },
+    {
+      TTL: input.ttlSeconds ?? 3_600,
+      urgency: input.urgency ?? 'normal',
+      topic: input.topic,
+    },
   );
 }
 

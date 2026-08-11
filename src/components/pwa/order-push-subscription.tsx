@@ -6,6 +6,7 @@ import type { OrderStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
 import { base64UrlToUint8Array, sha256Hex } from '@/lib/web-push/base64url';
+import { MERCHANT_PUSH_ACTIVE_STORAGE_KEY } from '@/lib/web-push/merchant-badge';
 
 type PushState =
   | 'unsupported'
@@ -85,8 +86,15 @@ export function OrderPushSubscription({
   }, [reconcile]);
 
   useEffect(() => {
+    const merchantPushIsActive = () => {
+      try {
+        return window.localStorage?.getItem?.(MERCHANT_PUSH_ACTIVE_STORAGE_KEY) === '1';
+      } catch {
+        return false;
+      }
+    };
     const clearBadge = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !merchantPushIsActive()) {
         void navigator.clearAppBadge?.().catch(() => undefined);
       }
     };

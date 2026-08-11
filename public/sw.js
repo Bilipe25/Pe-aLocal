@@ -65,6 +65,22 @@ function validTrackingPath(pathname) {
   return /^\/[^/]+\/order\/[0-9a-f-]{36}$/.test(pathname);
 }
 
+function validUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value || '',
+  );
+}
+
+function validMerchantTarget(target, type) {
+  if (type === 'test') return target.pathname === '/dashboard/orders' && !target.search;
+  if (type !== 'new-order' || target.pathname !== '/dashboard/orders/open') return false;
+  return (
+    validUuid(target.searchParams.get('store')) &&
+    validUuid(target.searchParams.get('order')) &&
+    [...target.searchParams.keys()].every((key) => key === 'store' || key === 'order')
+  );
+}
+
 function readPushPayload(event) {
   if (!event.data) return null;
   try {
@@ -82,8 +98,13 @@ function readPushPayload(event) {
       return null;
     }
     const target = new URL(privateData.relativeUrl, self.location.origin);
-    if (target.origin !== self.location.origin || !validTrackingPath(target.pathname)) return null;
-    return { notification, privateData, target };
+    const audience = privateData.audience || 'consumer';
+    const validTarget =
+      audience === 'merchant'
+        ? validMerchantTarget(target, privateData.type)
+        : audience === 'consumer' && validTrackingPath(target.pathname);
+    if (target.origin !== self.location.origin || !validTarget) return null;
+    return { notification, privateData, target, audience };
   } catch {
     return null;
   }
@@ -99,9 +120,18 @@ self.addEventListener('push', (event) => {
         badge: '/pwa/pedidolocal-icon-v1-192.png',
         tag: parsed.notification.tag,
         renotify: Boolean(parsed.notification.renotify),
+        requireInteraction: Boolean(parsed.notification.requireInteraction),
+        actions: Array.isArray(parsed.notification.actions)
+          ? parsed.notification.actions.slice(0, 2)
+          : undefined,
         lang: 'pt-BR',
         dir: 'ltr',
-        data: { relativeUrl: parsed.privateData.relativeUrl },
+        data: {
+          relativeUrl: parsed.privateData.relativeUrl,
+          audience: parsed.audience,
+          type: parsed.privateData.type,
+          badgeMode: parsed.privateData.badgeMode,
+        },
       }
     : {
         body: 'Há uma nova atualização do seu pedido.',
@@ -111,21 +141,36 @@ self.addEventListener('push', (event) => {
         data: { relativeUrl: '/' },
       };
 
-  event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(title, options),
-      typeof self.navigator?.setAppBadge === 'function'
-        ? self.navigator.setAppBadge(1).catch(() => undefined)
-        : Promise.resolve(),
-    ]),
-  );
+  const badgePromise = (() => {
+    if (!parsed) return Promise.resolve();
+    if (parsed.audience === 'merchant') {
+      const count = Number(parsed.privateData.pendingActionableCount);
+      if (!Number.isSafeInteger(count) || count < 0) return Promise.resolve();
+      return count === 0 && typeof self.navigator.clearAppBadge === 'function'
+        ? self.navigator.clearAppBadge().catch(() => undefined)
+        : typeof self.navigator.setAppBadge === 'function'
+          ? self.navigator.setAppBadge(count).catch(() => undefined)
+          : Promise.resolve();
+    }
+    if (parsed.privateData.badgeMode === 'preserve') return Promise.resolve();
+    return typeof self.navigator?.setAppBadge === 'function'
+      ? self.navigator.setAppBadge(1).catch(() => undefined)
+      : Promise.resolve();
+  })();
+
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), badgePromise]));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     (async () => {
-      if (typeof self.navigator?.clearAppBadge === 'function') {
+      const audience = event.notification.data?.audience;
+      if (
+        audience === 'merchant' &&
+        event.notification.data?.type === 'new-order' &&
+        typeof self.navigator?.clearAppBadge === 'function'
+      ) {
         await self.navigator.clearAppBadge().catch(() => undefined);
       }
       const relativeUrl = event.notification.data?.relativeUrl;
@@ -133,16 +178,22 @@ self.addEventListener('notificationclick', (event) => {
         typeof relativeUrl === 'string' ? relativeUrl : '/',
         self.location.origin,
       );
-      if (
-        target.origin !== self.location.origin ||
-        (target.pathname !== '/' && !validTrackingPath(target.pathname))
-      )
-        return;
+      const validTarget =
+        audience === 'merchant'
+          ? validMerchantTarget(
+              target,
+              target.pathname === '/dashboard/orders/open' ? 'new-order' : 'test',
+            )
+          : target.pathname === '/' || validTrackingPath(target.pathname);
+      if (target.origin !== self.location.origin || !validTarget) return;
 
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const exact = windows.find((client) => new URL(client.url).pathname === target.pathname);
+      const exact = windows.find((client) => client.url === target.href);
       if (exact) return exact.focus();
-      const existing = windows[0];
+      const existing =
+        audience === 'merchant'
+          ? windows.find((client) => new URL(client.url).pathname.startsWith('/dashboard'))
+          : windows[0];
       if (existing && 'navigate' in existing) {
         await existing.navigate(target.href);
         return existing.focus();

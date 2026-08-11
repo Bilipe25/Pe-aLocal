@@ -57,6 +57,7 @@ import {
   type ActiveOrderBoardLaneKey,
 } from './order-board-metrics';
 import { useDashboardOperations } from './dashboard-operations-context';
+import { StorePushSubscription } from './store-push-subscription';
 
 const OrderDetailModal = dynamic(
   () => import('./order-detail-modal').then((module) => module.OrderDetailModal),
@@ -234,6 +235,7 @@ export function OrdersPanel({
   authorizationScope,
   notificationBaseline,
   initialBoard,
+  merchantPush,
 }: {
   storeId: string;
   storeName: string;
@@ -243,6 +245,7 @@ export function OrdersPanel({
   authorizationScope: string;
   notificationBaseline: OrderNotificationSignalsDTO;
   initialBoard: OrderBoardSnapshotDTO;
+  merchantPush?: { publicVapidKey: string };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -596,17 +599,25 @@ export function OrdersPanel({
               Acompanhe a operação de {storeName} em tempo real.
             </p>
           </div>
-          <Button variant="ghost" size="sm" asChild className="orders-storefront-link shrink-0">
-            <Link
-              href={`/${storeSlug}`}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Abrir cardápio em nova aba"
-            >
-              <span className="orders-storefront-link-label">Ver cardápio</span>
-              <ExternalLink aria-hidden="true" />
-            </Link>
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {merchantPush && (
+              <StorePushSubscription
+                publicVapidKey={merchantPush.publicVapidKey}
+                reconcileKey={`${boardQuery.dataUpdatedAt}:${boardQuery.data?.summary.newCount ?? 0}`}
+              />
+            )}
+            <Button variant="ghost" size="sm" asChild className="orders-storefront-link shrink-0">
+              <Link
+                href={`/${storeSlug}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Abrir cardápio em nova aba"
+              >
+                <span className="orders-storefront-link-label">Ver cardápio</span>
+                <ExternalLink aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
         </header>
 
         {sound.error && (

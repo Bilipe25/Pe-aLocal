@@ -28,6 +28,7 @@
     "ORDER_OUTBOX_RETENTION_DAYS": "30",
     "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
     "WEB_PUSH_ENABLED": "true",
+    "MERCHANT_WEB_PUSH_ENABLED": "false",
   },
   "triggers": {
     "crons": ["* * * * *"],
@@ -73,6 +74,7 @@
         "ORDER_OUTBOX_RETENTION_DAYS": "30",
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
         "WEB_PUSH_ENABLED": "true",
+        "MERCHANT_WEB_PUSH_ENABLED": "true",
       },
       "triggers": {
         "crons": ["* * * * *"],
@@ -118,6 +120,7 @@
         "ORDER_OUTBOX_RETENTION_DAYS": "30",
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
         "WEB_PUSH_ENABLED": "false",
+        "MERCHANT_WEB_PUSH_ENABLED": "false",
       },
       "triggers": {
         "crons": ["* * * * *"],

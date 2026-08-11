@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   requireAuthenticatedUser: vi.fn(),
   requireSuperAdminStoreAccess: vi.fn(),
   uploadStoreAsset: vi.fn(),
+  getMerchantPushDeviceCookie: vi.fn(),
+  disableStoreStaffPushSubscriptionsForLogout: vi.fn(),
+  clearMerchantPushDeviceCookie: vi.fn(),
 }));
 
 vi.mock('@/server/services/auth.service', () => ({
@@ -28,6 +31,12 @@ vi.mock('@/server/auth', () => ({
 
 vi.mock('@/server/services/store-asset.service', () => ({
   uploadStoreAsset: mocks.uploadStoreAsset,
+}));
+
+vi.mock('@/server/services/store-staff-push-subscription.service', () => ({
+  getMerchantPushDeviceCookie: mocks.getMerchantPushDeviceCookie,
+  disableStoreStaffPushSubscriptionsForLogout: mocks.disableStoreStaffPushSubscriptionsForLogout,
+  clearMerchantPushDeviceCookie: mocks.clearMerchantPushDeviceCookie,
 }));
 
 describe('API routes', () => {
@@ -156,6 +165,38 @@ describe('API routes', () => {
     await expect(response.json()).resolves.toEqual({
       message: 'Logout realizado com sucesso.',
     });
+  });
+
+  it('desabilita alertas administrativos do dispositivo antes do logout', async () => {
+    const deviceId = '00000000-0000-4000-8000-000000000001';
+    mocks.requireAuthenticatedUser.mockResolvedValue({ userId: 'user-1' });
+    mocks.getMerchantPushDeviceCookie.mockResolvedValue(deviceId);
+    mocks.disableStoreStaffPushSubscriptionsForLogout.mockResolvedValue(undefined);
+    mocks.clearMerchantPushDeviceCookie.mockResolvedValue(undefined);
+    mocks.logout.mockResolvedValue(undefined);
+
+    const response = await postLogout();
+
+    expect(mocks.disableStoreStaffPushSubscriptionsForLogout).toHaveBeenCalledWith(
+      'user-1',
+      deviceId,
+    );
+    expect(
+      mocks.disableStoreStaffPushSubscriptionsForLogout.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.logout.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER);
+    expect(mocks.clearMerchantPushDeviceCookie).toHaveBeenCalledOnce();
+    expect(response.status).toBe(200);
+  });
+
+  it('não encerra a sessão quando a desabilitação de segurança falha', async () => {
+    mocks.requireAuthenticatedUser.mockResolvedValue({ userId: 'user-1' });
+    mocks.getMerchantPushDeviceCookie.mockResolvedValue('00000000-0000-4000-8000-000000000001');
+    mocks.disableStoreStaffPushSubscriptionsForLogout.mockRejectedValue(new Error('database'));
+
+    const response = await postLogout();
+
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect(response.status).toBe(500);
   });
 
   it('GET /api/auth/me protege e serializa o contexto atual', async () => {

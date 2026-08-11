@@ -69,6 +69,7 @@ Veja `.env.example` para todas as variáveis necessárias.
 | `PUSHER_CLUSTER` / `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher do servidor e cliente                                         |
 | `PUSHER_LEGACY_PUBLIC_CHANNELS`                 | Compatibilidade temporária de rollout; veja `docs/order-realtime-rollout.md` |
 | `WEB_PUSH_ENABLED`                              | Feature flag do Web Push; segura e desligada por padrão                      |
+| `MERCHANT_WEB_PUSH_ENABLED`                     | Alertas de novos pedidos na Central; independente e desligada por padrão     |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`                     | Chave VAPID pública compartilhada pelo app e Worker                          |
 | `WEB_PUSH_VAPID_PRIVATE_KEY`                    | Chave VAPID privada, exclusiva do Worker auxiliar                            |
 | `WEB_PUSH_VAPID_SUBJECT`                        | Contato VAPID (`mailto:` ou URL HTTPS)                                       |
@@ -149,7 +150,7 @@ Monólito modular full-stack com Next.js. Veja `docs/architecture.md` para detal
 
 ## PWA
 
-A plataforma e cada loja possuem manifest instalável. O Service Worker oferece fallback offline seguro, não armazena HTML/API/pedidos e também recebe Web Push transacional quando habilitado. Consulte [`docs/pwa.md`](docs/pwa.md) e [`docs/web-push.md`](docs/web-push.md).
+A plataforma e cada loja possuem manifest instalável. O Service Worker oferece fallback offline seguro, não armazena HTML/API/pedidos e recebe Push do consumidor e, por opt-in separado, alertas operacionais da Central. Consulte [`docs/pwa.md`](docs/pwa.md) e [`docs/web-push.md`](docs/web-push.md).
 
 ## Multi-tenancy
 

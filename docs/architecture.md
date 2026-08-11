@@ -67,17 +67,17 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 
 ## Decisões Técnicas
 
-| Decisão           | Razão                                           |
-| ----------------- | ----------------------------------------------- |
-| Monólito          | Simplicidade, menos infra, deploy único         |
-| Server Components | Menos JS no cliente, SSR rápido                 |
-| Prisma            | Type-safe, migrations, studio                   |
-| Zustand           | Leve, simples, persistência local               |
-| TanStack Query    | Cache e invalidação para o painel               |
-| Pusher            | Eventos em tempo real para pedidos e pagamentos |
-| Cloudflare Queues | Entrega at-least-once do outbox de pedidos      |
-| Web Push          | Avisos transacionais independentes do Pusher    |
-| Zod               | Validação compartilhada client/server           |
+| Decisão           | Razão                                                       |
+| ----------------- | ----------------------------------------------------------- |
+| Monólito          | Simplicidade, menos infra, deploy único                     |
+| Server Components | Menos JS no cliente, SSR rápido                             |
+| Prisma            | Type-safe, migrations, studio                               |
+| Zustand           | Leve, simples, persistência local                           |
+| TanStack Query    | Cache e invalidação para o painel                           |
+| Pusher            | Eventos em tempo real para pedidos e pagamentos             |
+| Cloudflare Queues | Entrega at-least-once do outbox de pedidos                  |
+| Web Push          | Avisos do consumidor e da operação, independentes do Pusher |
+| Zod               | Validação compartilhada client/server                       |
 
 ## O que NÃO usamos
 

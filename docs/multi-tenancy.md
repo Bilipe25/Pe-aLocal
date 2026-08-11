@@ -12,3 +12,5 @@ O tenant é derivado da sessão em rotas privadas e de recursos públicos já re
 - Tokens públicos são opacos, expiram e autorizam somente o contrato público específico; reconhecimento de dispositivo nunca é autorização.
 
 No Web Push, a inscrição é global por origem+navegador, mas cada vínculo com pedido carrega tenant/loja/pedido e possui FK composta. O endpoint nunca determina tenant. Projeções e deliveries copiam o escopo exclusivamente do `OrderOutboxEvent` persistido.
+
+Para operadores, `StoreStaffPushSubscription` usa FKs compostas para membership e loja. Usuário, membership, tenant, loja, permissões e inscrição são revalidados antes de cada envio. Uma inscrição física pode acompanhar várias lojas do mesmo usuário, mas somente um usuário administrativo fica ativo por dispositivo; trocar o usuário desabilita os vínculos administrativos anteriores sem tocar nos vínculos do consumidor.

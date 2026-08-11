@@ -38,6 +38,12 @@ export default async function OrdersPage() {
       authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
       notificationBaseline={notificationBaseline}
       initialBoard={initialBoard}
+      merchantPush={
+        String(process.env.MERCHANT_WEB_PUSH_ENABLED) === 'true' &&
+        process.env.WEB_PUSH_VAPID_PUBLIC_KEY
+          ? { publicVapidKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY }
+          : undefined
+      }
     />
   );
 }

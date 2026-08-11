@@ -1,6 +1,16 @@
 # Web Push transacional
 
-O Web Push do PedidoLocal avisa o consumidor sobre mudanças de status de um pedido. Ele complementa Pusher e polling: a tela de acompanhamento e sua consulta HTTP continuam sendo a fonte de verdade.
+O Web Push do PedidoLocal possui dois públicos independentes: avisa o consumidor sobre mudanças de status e alerta operadores sobre novos pedidos acionáveis. Ele complementa Pusher e polling; as consultas HTTP continuam sendo a fonte de verdade.
+
+## Alertas operacionais da Central
+
+O operador ativa explicitamente **Alertas** no cabeçalho de `/dashboard/orders`. A associação `StoreStaffPushSubscription` liga sessão, loja e dispositivo sem confiar em IDs enviados pelo cliente. Somente `ORDER_CREATED` cujo pedido ainda está em `PENDING` gera uma entrega; aceitar, cancelar ou mover o pedido antes do envio transforma a entrega em `SKIPPED`.
+
+O título usa o número visível do pedido e o corpo usa apenas total, modalidade e quantidade de itens. Nome, telefone, endereço, notas, token e dados de pagamento não entram no payload. O deep link autenticado seleciona a loja após validar tenant, permissões e ownership do pedido.
+
+Os ledgers `StoreWebPushDispatch` e `StoreWebPushDelivery` são independentes dos ledgers do consumidor e do Pusher. O alerta usa TTL de 120 segundos, urgência alta, `renotify` e `requireInteraction` progressivo. O badge representa pedidos `PENDING` agregados nas lojas ativas daquele usuário e dispositivo.
+
+O endpoint `/dashboard/api/push-subscription` consulta, ativa e desativa somente a loja ativa. O endpoint `/dashboard/api/push-subscription/test` usa a service binding `ORDER_EVENTS_WORKER`; não aceita endpoint arbitrário, não cria delivery e não altera badge. No logout, todas as associações administrativas do usuário naquele dispositivo são desabilitadas antes de encerrar a sessão.
 
 ## Escopo e privacidade
 
@@ -30,6 +40,7 @@ Gere uma única chave VAPID de longa duração. A chave pública deve ser a mesm
 | Variável                     | Aplicativo | Worker auxiliar | Sensível |
 | ---------------------------- | ---------: | --------------: | -------: |
 | `WEB_PUSH_ENABLED`           |        Sim |             Sim |      Não |
+| `MERCHANT_WEB_PUSH_ENABLED`  |        Sim |             Sim |      Não |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`  |        Sim |             Sim |      Não |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` |        Não |             Sim |      Sim |
 | `WEB_PUSH_VAPID_SUBJECT`     |        Não |             Sim |      Não |
@@ -56,7 +67,9 @@ Entregas de uma mesma associação são serializadas. Antes de enviar, o process
 4. Teste as matrizes de entrega e retirada, domínio customizado, `404/410` e ausência de duplicação Pusher.
 5. Repita em produção.
 
-Para rollback, desligue `WEB_PUSH_ENABLED` nos dois Workers. Não remova tabelas nem gire VAPID. Pusher, polling e a página de acompanhamento continuam funcionando.
+Não ative o Push operacional em produção enquanto `ORDER_EVENT_PUBLISH_MODE=direct`: nesse modo, a reconciliação pode depender do cron e atrasar o alerta em aproximadamente um minuto. Use `dual` ou `outbox` com a Queue saudável.
+
+Para rollback do consumidor, desligue `WEB_PUSH_ENABLED`. Para rollback operacional, desligue somente `MERCHANT_WEB_PUSH_ENABLED`. Não remova tabelas nem gire VAPID. Pusher, polling e as telas continuam funcionando.
 
 ## Limitações conhecidas
 
@@ -65,4 +78,4 @@ Para rollback, desligue `WEB_PUSH_ENABLED` nos dois Workers. Não remova tabelas
 - iOS/iPadOS exige instalação na Tela de Início.
 - Badge é progressivo e varia por plataforma.
 - A allowlist de hosts Push deve ser revisada ao adotar novos navegadores/provedores.
-- Push de lojistas, campanhas, marketing e preferências globais não fazem parte desta fase.
+- Lembretes, campanhas, marketing, ações de aceitar/cancelar e preferências avançadas não fazem parte desta fase.

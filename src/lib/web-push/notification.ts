@@ -55,6 +55,7 @@ export interface WebPushNotificationInput {
   status: NotifiableOrderStatus;
   modality: OrderModality;
   iconAssetId: string | null;
+  preserveMerchantBadge?: boolean;
 }
 
 export async function buildWebPushNotification(input: WebPushNotificationInput) {
@@ -85,11 +86,14 @@ export async function buildWebPushNotification(input: WebPushNotificationInput) 
       },
       pedidolocal: {
         schemaVersion: 1,
+        audience: 'consumer',
+        type: 'order-status',
         eventId: input.eventId,
         orderVersion: input.orderVersion,
         status: input.status,
         relativeUrl,
         tag,
+        badgeMode: input.preserveMerchantBadge ? 'preserve' : 'indicator',
       },
     },
   } as const;
