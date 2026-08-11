@@ -39,7 +39,7 @@ function rememberMerchantPush(active: boolean) {
     if (active) window.localStorage?.setItem?.(MERCHANT_PUSH_ACTIVE_STORAGE_KEY, '1');
     else window.localStorage?.removeItem?.(MERCHANT_PUSH_ACTIVE_STORAGE_KEY);
   } catch {
-    // O servidor continua sendo a fonte da verdade quando storage local estÃ¡ indisponÃ­vel.
+    // O servidor continua sendo a fonte da verdade quando storage local está indisponível.
   }
 }
 
@@ -92,7 +92,7 @@ export function StorePushSubscription({
       await applyMerchantBadge(data.badgeCount ?? 0);
     } catch {
       setState('error');
-      setMessage('NÃ£o foi possÃ­vel verificar os alertas agora.');
+      setMessage('Não foi possível verificar os alertas agora.');
     }
   }, [publicVapidKey]);
 
@@ -151,7 +151,7 @@ export function StorePushSubscription({
       await reconcile();
     } catch {
       setState('error');
-      setMessage('NÃ£o foi possÃ­vel ativar os alertas. Tente novamente.');
+      setMessage('Não foi possível ativar os alertas. Tente novamente.');
     }
   }
 
@@ -177,7 +177,7 @@ export function StorePushSubscription({
       await reconcile();
     } catch {
       setState('enabled');
-      setMessage('NÃ£o foi possÃ­vel desativar os alertas agora.');
+      setMessage('Não foi possível desativar os alertas agora.');
     }
   }
 
@@ -195,10 +195,10 @@ export function StorePushSubscription({
       });
       if (!response.ok) throw new Error('test');
       setState('enabled');
-      setMessage('NotificaÃ§Ã£o de teste enviada para este dispositivo.');
+      setMessage('Notificação de teste enviada para este dispositivo.');
     } catch {
       setState('enabled');
-      setMessage('O teste nÃ£o pôde ser enviado. Verifique a permissÃ£o do navegador.');
+      setMessage('O teste não pôde ser enviado. Verifique a permissão do navegador.');
     }
   }
 
@@ -227,20 +227,20 @@ export function StorePushSubscription({
         >
           <h2 className="text-text-primary font-semibold">Alertas neste dispositivo</h2>
           <p className="text-text-secondary mt-1 text-sm">
-            Receba novos pedidos mesmo com a Central fechada. O som depende das configuraÃ§Ãµes do
+            Receba novos pedidos mesmo com a Central fechada. O som depende das configurações do
             dispositivo.
           </p>
           {state === 'unsupported' && (
-            <p className="text-warning mt-3 text-sm">Este navegador nÃ£o oferece Web Push.</p>
+            <p className="text-warning mt-3 text-sm">Este navegador não oferece Web Push.</p>
           )}
           {state === 'permission-denied' && (
             <p className="text-warning mt-3 text-sm">
-              As notificaÃ§Ãµes estÃ£o bloqueadas. Libere-as nas configuraÃ§Ãµes do navegador.
+              As notificações estão bloqueadas. Libere-as nas configurações do navegador.
             </p>
           )}
           {state === 'blocked' && (
             <p className="text-warning mt-3 text-sm">
-              Os alertas operacionais estÃ£o desativados neste ambiente.
+              Os alertas operacionais estão desativados neste ambiente.
             </p>
           )}
           {message && (

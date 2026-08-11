@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/server/runtime-environment', () => ({ isDeployedRuntime: () => false }));
 vi.mock('@/server/rate-limit', () => ({
-  RATE_LIMITS: { merchantPush: { maxAttempts: 20, windowInSeconds: 60 } },
+  RATE_LIMITS: {
+    merchantPushRead: { maxAttempts: 60, windowInSeconds: 60 },
+    merchantPush: { maxAttempts: 10, windowInSeconds: 60 },
+  },
   getRateLimiter: () => ({ check: mocks.check }),
 }));
 vi.mock('@/server/services/store-context.service', () => ({
@@ -71,6 +74,9 @@ describe('API administrativa de Web Push', () => {
       },
       endpointHash,
     );
+    expect(mocks.check).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: 'merchant-push-read:user-1', maxAttempts: 60 }),
+    );
   });
 
   it('deriva todo o escopo da sessÃ£o e grava cookie opaco', async () => {
@@ -99,6 +105,9 @@ describe('API administrativa de Web Push', () => {
       }),
     );
     expect(mocks.setCookie).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001');
+    expect(mocks.check).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: 'merchant-push-mutation:user-1', maxAttempts: 10 }),
+    );
   });
 
   it('desabilita somente a loja ativa e limpa cookie quando nÃ£o resta vÃ­nculo', async () => {
