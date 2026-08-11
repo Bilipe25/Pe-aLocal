@@ -1,9 +1,14 @@
+BEGIN;
+
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
+
 CREATE TABLE "store_staff_push_subscriptions" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL,
-  "storeId" UUID NOT NULL,
-  "userId" UUID NOT NULL,
-  "webPushSubscriptionId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "storeId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "webPushSubscriptionId" TEXT NOT NULL,
   "enabledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "disabledAt" TIMESTAMP(3),
   "disabledReason" VARCHAR(64),
@@ -16,11 +21,11 @@ CREATE TABLE "store_staff_push_subscriptions" (
 );
 
 CREATE TABLE "store_web_push_dispatches" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL,
-  "storeId" UUID NOT NULL,
-  "orderId" UUID NOT NULL,
-  "orderOutboxEventId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "storeId" TEXT NOT NULL,
+  "orderId" TEXT NOT NULL,
+  "orderOutboxEventId" TEXT NOT NULL,
   "status" "WebPushDispatchStatus" NOT NULL DEFAULT 'PENDING',
   "attempts" INTEGER NOT NULL DEFAULT 0,
   "availableAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -35,14 +40,14 @@ CREATE TABLE "store_web_push_dispatches" (
 );
 
 CREATE TABLE "store_web_push_deliveries" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL,
-  "storeId" UUID NOT NULL,
-  "orderId" UUID NOT NULL,
-  "orderOutboxEventId" UUID NOT NULL,
-  "storeWebPushDispatchId" UUID NOT NULL,
-  "storeStaffPushSubscriptionId" UUID NOT NULL,
-  "webPushSubscriptionId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "storeId" TEXT NOT NULL,
+  "orderId" TEXT NOT NULL,
+  "orderOutboxEventId" TEXT NOT NULL,
+  "storeWebPushDispatchId" TEXT NOT NULL,
+  "storeStaffPushSubscriptionId" TEXT NOT NULL,
+  "webPushSubscriptionId" TEXT NOT NULL,
   "aggregateVersion" INTEGER NOT NULL,
   "status" "WebPushDeliveryStatus" NOT NULL DEFAULT 'PENDING',
   "attempts" INTEGER NOT NULL DEFAULT 0,
@@ -133,3 +138,5 @@ ALTER TABLE "store_web_push_deliveries" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE "store_staff_push_subscriptions" FROM anon, authenticated;
 REVOKE ALL ON TABLE "store_web_push_dispatches" FROM anon, authenticated;
 REVOKE ALL ON TABLE "store_web_push_deliveries" FROM anon, authenticated;
+
+COMMIT;
