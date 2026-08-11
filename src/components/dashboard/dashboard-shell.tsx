@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -15,7 +16,6 @@ import {
   Bell,
   ChevronDown,
   Clock3,
-  ConciergeBell,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -73,20 +73,20 @@ function Brand({
       href="/dashboard"
       aria-label="PedidoLocal — ir para a visão geral"
       className={cn(
-        'flex min-h-11 items-center gap-2 rounded-md px-1 text-xl font-bold tracking-[-0.035em] focus-visible:ring-2 focus-visible:outline-none',
+        'flex min-h-11 items-center gap-2.5 rounded-md px-1 text-[1.125rem] font-bold tracking-[-0.035em] focus-visible:ring-2 focus-visible:outline-none',
         inverse
           ? 'text-white focus-visible:ring-white/80'
           : 'text-text-primary focus-visible:ring-brand-500',
       )}
     >
-      <span
-        className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-          inverse ? 'bg-brand-500/15 text-brand-300' : 'bg-brand-50 text-brand-600',
-        )}
-      >
-        <ConciergeBell className="h-5 w-5" aria-hidden="true" />
-      </span>
+      <Image
+        src="/pwa/pedidolocal-icon-v1-192.png"
+        alt=""
+        width={40}
+        height={40}
+        className="h-10 w-10 shrink-0 object-contain"
+        priority
+      />
       <span className={compactOnNarrow ? 'hidden min-[360px]:inline' : undefined}>
         Pedido<span className={inverse ? 'text-brand-300' : 'text-brand-600'}>Local</span>
       </span>
@@ -141,6 +141,11 @@ function Navigation({
 
   return (
     <nav aria-label="Navegação do estabelecimento" className="space-y-1.5">
+      {appearance === 'dark' && (
+        <p className="px-3 pb-2 text-[0.6875rem] font-semibold tracking-[0.08em] text-white/45">
+          Operação
+        </p>
+      )}
       {navItems.map((item) => {
         const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
         return (
@@ -150,14 +155,14 @@ function Navigation({
             aria-current={active ? 'page' : undefined}
             onClick={onNavigate}
             className={cn(
-              'relative flex min-h-11 items-center gap-3 rounded-lg border px-3 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+              'relative flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition-[background-color,color] duration-200 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
               appearance === 'dark'
                 ? active
-                  ? 'focus-visible:ring-offset-tinta border-brand-400/25 text-brand-300 bg-white/10 focus-visible:ring-white/80'
-                  : 'focus-visible:ring-offset-tinta border-transparent text-white/70 hover:bg-white/7 hover:text-white focus-visible:ring-white/80'
+                  ? "before:bg-brand-400 focus-visible:ring-offset-tinta text-brand-300 bg-white/[0.08] before:absolute before:top-2 before:bottom-2 before:left-0 before:w-[3px] before:rounded-r-full before:content-[''] focus-visible:ring-white/80"
+                  : 'focus-visible:ring-offset-tinta text-white/70 hover:bg-white/[0.055] hover:text-white focus-visible:ring-white/80'
                 : active
-                  ? 'border-brand-500 bg-brand-50 text-brand-700 focus-visible:ring-brand-500'
-                  : 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary focus-visible:ring-brand-500 border-transparent',
+                  ? "before:bg-brand-500 bg-brand-50 text-brand-700 focus-visible:ring-brand-500 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-[3px] before:rounded-r-full before:content-['']"
+                  : 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary focus-visible:ring-brand-500',
             )}
           >
             <item.icon
@@ -458,12 +463,12 @@ export function DashboardShell({
   }[operations.realtimeState];
 
   const shell = (
-    <div className="dashboard-shell bg-surface-secondary min-h-dvh xl:grid xl:grid-cols-[13rem_minmax(0,1fr)]">
-      <aside className="bg-tinta sticky top-0 hidden h-dvh border-r border-white/8 p-3 xl:flex xl:flex-col">
-        <div className="px-1 py-1.5">
+    <div className="dashboard-shell bg-surface-secondary min-h-dvh xl:grid xl:grid-cols-[15rem_minmax(0,1fr)]">
+      <aside className="bg-tinta sticky top-0 hidden h-dvh border-r border-white/8 p-4 xl:flex xl:flex-col">
+        <div className="px-1 py-1">
           <Brand inverse />
         </div>
-        <div className="mt-6 flex-1 overflow-y-auto">
+        <div className="mt-8 flex-1 overflow-y-auto">
           <Navigation
             pathname={pathname}
             activeStoreId={activeStore?.id ?? null}
@@ -472,24 +477,34 @@ export function DashboardShell({
           />
         </div>
         {merchantPush && (
-          <div className="mb-3">
+          <div className="mb-2">
             <StorePushSubscription storeName={merchantPush.storeName} />
           </div>
         )}
         {isOrdersWorkspace && (
-          <div className="mb-3 rounded-xl border border-white/10 bg-white/6 p-3 text-white">
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <span className={cn('h-2 w-2 rounded-full', realtimeDot)} aria-hidden="true" />
+          <div className="mb-2 px-3 py-2 text-white/65">
+            <p className="flex items-center gap-2 text-xs font-medium">
+              <span className={cn('h-1.5 w-1.5 rounded-full', realtimeDot)} aria-hidden="true" />
               {realtimeLabel}
             </p>
-            <p className="mt-1 text-[0.6875rem] text-white/55">
+            <p className="mt-1 text-[0.6875rem] text-white/45">
               {operations.recentOrderCount > 0
                 ? `${operations.recentOrderCount} novo(s) nesta sessão`
                 : 'Fila sincronizada automaticamente'}
             </p>
           </div>
         )}
-        <p className="px-3 pb-2 text-xs leading-5 text-white/40">Painel do estabelecimento</p>
+        <div className="mt-2 flex items-center gap-2 border-t border-white/10 px-3 pt-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.6875rem] font-bold text-white/80">
+            {activeStore ? getInitials(activeStore.name) : 'PL'}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-xs font-semibold text-white/80">
+              {activeStore?.name ?? 'PedidoLocal'}
+            </span>
+            <span className="block text-[0.6875rem] text-white/45">Painel do estabelecimento</span>
+          </span>
+        </div>
       </aside>
 
       <div className="min-w-0">

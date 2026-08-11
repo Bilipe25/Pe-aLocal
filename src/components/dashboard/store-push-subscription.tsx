@@ -293,29 +293,32 @@ export function StorePushSubscription({
     <div className="relative" ref={panelRef}>
       <Button
         type="button"
-        variant="outline"
+        variant={surface === 'sidebar' ? 'ghost' : 'outline'}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          'h-auto min-h-11 w-full justify-start gap-3 px-3 py-2 text-left',
+          'h-auto min-h-11 w-full justify-start gap-3 rounded-md px-3 py-2 text-left',
           surface === 'sidebar' &&
-            'focus-visible:ring-offset-tinta border-white/15 bg-white/6 text-white hover:bg-white/10 hover:text-white focus-visible:ring-white/80',
+            'focus-visible:ring-offset-tinta text-white hover:bg-white/[0.055] hover:text-white focus-visible:ring-white/80',
         )}
       >
         <span
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+            'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
             active
               ? surface === 'sidebar'
-                ? 'bg-success/25 text-white'
+                ? 'text-white'
                 : 'bg-success-light text-success'
               : surface === 'sidebar'
-                ? 'bg-white/10 text-white/70'
+                ? 'text-white/70'
                 : 'bg-surface-secondary text-text-secondary',
           )}
         >
           {active ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
+          {active && surface === 'sidebar' && (
+            <span className="bg-success ring-tinta absolute top-0 right-0 h-2 w-2 rounded-full ring-2" />
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">Alertas de pedidos</span>
