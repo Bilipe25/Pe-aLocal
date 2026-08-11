@@ -104,7 +104,7 @@
         "APP_ENV": "staging",
         "ORDER_EVENT_PUBLISH_MODE": "outbox",
         "WEB_PUSH_ENABLED": "true",
-        "MERCHANT_WEB_PUSH_ENABLED": "false",
+        "MERCHANT_WEB_PUSH_ENABLED": "true",
       },
       "images": {
         "binding": "IMAGES",
