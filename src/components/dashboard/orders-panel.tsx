@@ -57,7 +57,7 @@ import {
   type ActiveOrderBoardLaneKey,
 } from './order-board-metrics';
 import { useDashboardOperations } from './dashboard-operations-context';
-import { StorePushSubscription } from './store-push-subscription';
+import { requestMerchantPushReconciliation } from './store-push-subscription';
 
 const OrderDetailModal = dynamic(
   () => import('./order-detail-modal').then((module) => module.OrderDetailModal),
@@ -235,7 +235,6 @@ export function OrdersPanel({
   authorizationScope,
   notificationBaseline,
   initialBoard,
-  merchantPush,
 }: {
   storeId: string;
   storeName: string;
@@ -245,7 +244,6 @@ export function OrdersPanel({
   authorizationScope: string;
   notificationBaseline: OrderNotificationSignalsDTO;
   initialBoard: OrderBoardSnapshotDTO;
-  merchantPush?: { publicVapidKey: string };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -589,6 +587,10 @@ export function OrdersPanel({
         )
     : 0;
 
+  useEffect(() => {
+    requestMerchantPushReconciliation();
+  }, [boardQuery.dataUpdatedAt, boardQuery.data?.summary.newCount]);
+
   return (
     <div className="orders-workspace">
       <div className="orders-workspace-main">
@@ -600,12 +602,6 @@ export function OrdersPanel({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {merchantPush && (
-              <StorePushSubscription
-                publicVapidKey={merchantPush.publicVapidKey}
-                reconcileKey={`${boardQuery.dataUpdatedAt}:${boardQuery.data?.summary.newCount ?? 0}`}
-              />
-            )}
             <Button variant="ghost" size="sm" asChild className="orders-storefront-link shrink-0">
               <Link
                 href={`/${storeSlug}`}
