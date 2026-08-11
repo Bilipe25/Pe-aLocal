@@ -86,53 +86,75 @@ export function StorePushSubscriptionProvider({
 }) {
   const [state, setState] = useState<State>('permission-default');
   const [message, setMessage] = useState<string | null>(null);
+  const operationInProgressRef = useRef(false);
+  const reconcileGenerationRef = useRef(0);
+  const reconcileInFlightRef = useRef<Promise<void> | null>(null);
 
-  const reconcile = useCallback(async () => {
-    if (!publicVapidKey || !supported()) {
-      setState('unsupported');
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      setState('permission-denied');
-      return;
-    }
-    try {
-      const subscription = await currentSubscription();
-      if (!subscription) {
-        setState('permission-default');
+  const reconcile = useCallback(() => {
+    if (operationInProgressRef.current) return Promise.resolve();
+    if (reconcileInFlightRef.current) return reconcileInFlightRef.current;
+
+    const generation = ++reconcileGenerationRef.current;
+    const isCurrent = () =>
+      generation === reconcileGenerationRef.current && !operationInProgressRef.current;
+    const task = (async () => {
+      if (!publicVapidKey || !supported()) {
+        if (isCurrent()) setState('unsupported');
         return;
       }
-      const hash = await hashFor(subscription);
-      const response = await fetch(`/dashboard/api/push-subscription?endpointHash=${hash}`, {
-        credentials: 'same-origin',
-        cache: 'no-store',
-      });
-      if (response.status === 404) {
-        rememberMerchantPush(false);
-        setState('blocked');
+      if (Notification.permission === 'denied') {
+        if (isCurrent()) setState('permission-denied');
         return;
       }
-      if (!response.ok) {
-        throw new Error(
-          await responseError(response, 'Não foi possível verificar os alertas agora.'),
+      try {
+        const subscription = await currentSubscription();
+        if (!isCurrent()) return;
+        if (!subscription) {
+          setState('permission-default');
+          return;
+        }
+        const hash = await hashFor(subscription);
+        const response = await fetch(`/dashboard/api/push-subscription?endpointHash=${hash}`, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!isCurrent()) return;
+        if (response.status === 404) {
+          rememberMerchantPush(false);
+          setState('blocked');
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(
+            await responseError(response, 'Não foi possível verificar os alertas agora.'),
+          );
+        }
+        const data = (await response.json()) as { enabled?: boolean; badgeCount?: number };
+        if (!isCurrent()) return;
+        if (data.enabled) {
+          rememberMerchantPush(true);
+          setState('enabled');
+        } else {
+          if (!data.badgeCount) rememberMerchantPush(false);
+          setState('permission-default');
+        }
+        setMessage(null);
+        await applyMerchantBadge(data.badgeCount ?? 0);
+      } catch (error) {
+        if (!isCurrent()) return;
+        setState('error');
+        setMessage(
+          error instanceof Error ? error.message : 'Não foi possível verificar os alertas agora.',
         );
       }
-      const data = (await response.json()) as { enabled?: boolean; badgeCount?: number };
-      if (data.enabled) {
-        rememberMerchantPush(true);
-        setState('enabled');
-      } else {
-        if (!data.badgeCount) rememberMerchantPush(false);
-        setState('permission-default');
+    })();
+    const trackedTask = task.finally(() => {
+      if (reconcileInFlightRef.current === trackedTask) {
+        reconcileInFlightRef.current = null;
       }
-      setMessage(null);
-      await applyMerchantBadge(data.badgeCount ?? 0);
-    } catch (error) {
-      setState('error');
-      setMessage(
-        error instanceof Error ? error.message : 'Não foi possível verificar os alertas agora.',
-      );
-    }
+    });
+    reconcileInFlightRef.current = trackedTask;
+    return trackedTask;
   }, [publicVapidKey]);
 
   useEffect(() => {
@@ -156,6 +178,8 @@ export function StorePushSubscriptionProvider({
 
   const enable = useCallback(async () => {
     if (!supported()) return;
+    operationInProgressRef.current = true;
+    reconcileGenerationRef.current += 1;
     setMessage(null);
     try {
       const permission = await Notification.requestPermission();
@@ -182,7 +206,7 @@ export function StorePushSubscriptionProvider({
       }
       rememberMerchantPush(true);
       setState('enabled');
-      await reconcile();
+      setMessage('Alertas ativados com sucesso neste dispositivo.');
     } catch (error) {
       setState('error');
       setMessage(
@@ -190,10 +214,14 @@ export function StorePushSubscriptionProvider({
           ? error.message
           : 'Não foi possível ativar os alertas. Tente novamente.',
       );
+    } finally {
+      operationInProgressRef.current = false;
     }
-  }, [publicVapidKey, reconcile]);
+  }, [publicVapidKey]);
 
   const disable = useCallback(async () => {
+    operationInProgressRef.current = true;
+    reconcileGenerationRef.current += 1;
     setState('disabling');
     setMessage(null);
     try {
@@ -214,16 +242,21 @@ export function StorePushSubscriptionProvider({
           await applyMerchantBadge(0);
         }
       }
-      await reconcile();
+      setState('permission-default');
+      setMessage('Alertas desativados para esta loja.');
     } catch (error) {
       setState('enabled');
       setMessage(
         error instanceof Error ? error.message : 'Não foi possível desativar os alertas agora.',
       );
+    } finally {
+      operationInProgressRef.current = false;
     }
-  }, [reconcile]);
+  }, []);
 
   const test = useCallback(async () => {
+    operationInProgressRef.current = true;
+    reconcileGenerationRef.current += 1;
     setState('testing');
     setMessage(null);
     try {
@@ -247,6 +280,8 @@ export function StorePushSubscriptionProvider({
           ? error.message
           : 'O teste não pôde ser enviado. Verifique a permissão do navegador.',
       );
+    } finally {
+      operationInProgressRef.current = false;
     }
   }, []);
 

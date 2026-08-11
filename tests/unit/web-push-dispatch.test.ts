@@ -59,9 +59,19 @@ describe('projeção Web Push', () => {
     );
   });
 
+  it('materializa a etapa de preparo', async () => {
+    const { db, transaction } = database('ORDER_PREPARING', 'PREPARING');
+    const result = await projectWebPushDispatch(db as never, 'event-1');
+
+    expect(result).toEqual({ projected: true, deliveries: 1 });
+    expect(transaction.webPushDelivery.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ orderStatus: 'PREPARING', aggregateVersion: 2 })],
+      skipDuplicates: true,
+    });
+  });
+
   it.each([
     ['ORDER_CREATED', 'PENDING'],
-    ['ORDER_PREPARING', 'PREPARING'],
     ['PAYMENT_UPDATED', 'CONFIRMED'],
     ['ORDER_READY', 'PREPARING'],
   ])('ignora evento/status fora da matriz: %s/%s', async (eventType, status) => {
