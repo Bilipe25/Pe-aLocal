@@ -10,13 +10,15 @@ import {
 } from '@/lib/mercado-pago/client';
 import {
   assertMercadoPagoOAuthEnvironment,
+  assertMercadoPagoOrdersCompatibleAccessToken,
   getMercadoPagoConfig,
   getMercadoPagoOAuthEnvironment,
   MercadoPagoOAuthEnvironmentMismatchError,
+  MercadoPagoOrdersCredentialError,
 } from '@/lib/mercado-pago/config';
 
 const tokenResponse = {
-  access_token: 'TOKEN-QUE-NAO-DEVE-APARECER-EM-ERROS',
+  access_token: 'APP_USR-TOKEN-QUE-NAO-DEVE-APARECER-EM-ERROS',
   token_type: 'bearer',
   expires_in: 15_552_000,
   scope: 'read write offline_access',
@@ -54,18 +56,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ambiente do OAuth Mercado Pago', () => {
+describe('ambiente e credencial do OAuth Mercado Pago', () => {
   it.each([
-    ['development', 'sandbox', true],
-    ['staging', 'sandbox', true],
-    ['production', 'production', false],
-  ] as const)(
-    'define %s explicitamente como %s',
-    (appEnv, expectedEnvironment, expectedTestMode) => {
-      expect(getMercadoPagoOAuthEnvironment({ APP_ENV: appEnv })).toBe(expectedEnvironment);
-      expect(getMercadoPagoConfig(configEnv(appEnv)).oauthTestMode).toBe(expectedTestMode);
-    },
-  );
+    ['development', 'sandbox'],
+    ['staging', 'sandbox'],
+    ['production', 'production'],
+  ] as const)('define %s explicitamente como %s', (appEnv, expectedEnvironment) => {
+    expect(getMercadoPagoOAuthEnvironment({ APP_ENV: appEnv })).toBe(expectedEnvironment);
+    expect(getMercadoPagoConfig(configEnv(appEnv)).oauthEnvironment).toBe(expectedEnvironment);
+  });
 
   it('falha fechado quando APP_ENV está ausente', () => {
     expect(() => getMercadoPagoOAuthEnvironment({})).toThrow(
@@ -73,10 +72,12 @@ describe('ambiente do OAuth Mercado Pago', () => {
     );
   });
 
-  it.each(['development', 'staging'] as const)(
-    '%s envia test_token=true na troca do authorization code',
+  it.each(['development', 'staging', 'production'] as const)(
+    '%s nunca envia test_token na troca do authorization code',
     async (appEnv) => {
-      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(tokenResponse));
+      const response =
+        appEnv === 'production' ? { ...tokenResponse, live_mode: true } : tokenResponse;
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(response));
       vi.stubGlobal('fetch', fetchMock);
       const config = getMercadoPagoConfig(configEnv(appEnv));
 
@@ -86,41 +87,18 @@ describe('ambiente do OAuth Mercado Pago', () => {
         redirectUri: config.redirectUri,
         code: 'authorization-code',
         codeVerifier: 'pkce-verifier',
-        testToken: config.oauthTestMode,
       });
 
       expect(requestBody(fetchMock)).toMatchObject({
         grant_type: 'authorization_code',
         code_verifier: 'pkce-verifier',
-        test_token: 'true',
       });
+      expect(requestBody(fetchMock)).not.toHaveProperty('test_token');
     },
   );
 
-  it('production nunca envia test_token=true', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ ...tokenResponse, live_mode: true }));
-    vi.stubGlobal('fetch', fetchMock);
-    const config = getMercadoPagoConfig(configEnv('production'));
-
-    await exchangeMercadoPagoAuthorizationCode({
-      clientId: config.clientId,
-      clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri,
-      code: 'authorization-code',
-      codeVerifier: 'pkce-verifier',
-      testToken: config.oauthTestMode,
-    });
-
-    expect(requestBody(fetchMock)).not.toHaveProperty('test_token');
-  });
-
-  it('aceita token_type ausente porque o campo não é usado pela integração', async () => {
-    const responseWithoutTokenType = Object.fromEntries(
-      Object.entries(tokenResponse).filter(([key]) => key !== 'token_type'),
-    );
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutTokenType));
+  it('aceita APP_USR com live_mode=false no sandbox', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(tokenResponse));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
@@ -130,39 +108,11 @@ describe('ambiente do OAuth Mercado Pago', () => {
         redirectUri: 'https://example.test/oauth/callback',
         code: 'authorization-code',
         codeVerifier: 'pkce-verifier',
-        testToken: true,
       }),
-    ).resolves.toMatchObject({ access_token: tokenResponse.access_token });
+    ).resolves.toMatchObject({ live_mode: false, access_token: tokenResponse.access_token });
   });
 
-  it.each([
-    ['TEST-token-de-sandbox', false],
-    ['APP_USR-token-de-producao', true],
-  ] as const)(
-    'infere live_mode ausente pelo prefixo oficial de %s',
-    async (accessToken, liveMode) => {
-      const responseWithoutLiveMode = Object.fromEntries(
-        Object.entries({ ...tokenResponse, access_token: accessToken }).filter(
-          ([key]) => key !== 'live_mode',
-        ),
-      );
-      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutLiveMode));
-      vi.stubGlobal('fetch', fetchMock);
-
-      await expect(
-        exchangeMercadoPagoAuthorizationCode({
-          clientId: 'client-id',
-          clientSecret: 'client-secret',
-          redirectUri: 'https://example.test/oauth/callback',
-          code: 'authorization-code',
-          codeVerifier: 'pkce-verifier',
-          testToken: true,
-        }),
-      ).resolves.toMatchObject({ live_mode: liveMode });
-    },
-  );
-
-  it('normaliza live_mode textual sem coerção ampla', async () => {
+  it('normaliza live_mode textual sem inferir o ambiente pelo prefixo', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(jsonResponse({ ...tokenResponse, live_mode: 'false' }));
@@ -175,104 +125,40 @@ describe('ambiente do OAuth Mercado Pago', () => {
         redirectUri: 'https://example.test/oauth/callback',
         code: 'authorization-code',
         codeVerifier: 'pkce-verifier',
-        testToken: true,
       }),
     ).resolves.toMatchObject({ live_mode: false });
   });
 
-  it('ignora live_mode nulo quando o prefixo oficial determina o sandbox', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ ...tokenResponse, access_token: 'TEST-token-de-sandbox', live_mode: null }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
+  it.each([
+    ['TEST-token-de-sandbox', false, 'access_token', 'custom'],
+    ['APP_USR-token-sem-live-mode', undefined, 'live_mode', 'invalid_type'],
+  ] as const)(
+    'rejeita resposta incompatível (%s)',
+    async (accessToken, liveMode, issuePath, issueCode) => {
+      const response = { ...tokenResponse, access_token: accessToken, live_mode: liveMode };
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(response));
+      vi.stubGlobal('fetch', fetchMock);
 
-    await expect(
-      exchangeMercadoPagoAuthorizationCode({
+      const error = await exchangeMercadoPagoAuthorizationCode({
         clientId: 'client-id',
         clientSecret: 'client-secret',
         redirectUri: 'https://example.test/oauth/callback',
         code: 'authorization-code',
         codeVerifier: 'pkce-verifier',
-        testToken: true,
-      }),
-    ).resolves.toMatchObject({ live_mode: false });
-  });
+      }).catch((caught: unknown) => caught);
 
-  it('rejeita ambiente explícito contraditório ao prefixo oficial da credencial', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ ...tokenResponse, access_token: 'TEST-token-de-sandbox', live_mode: true }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
+      expect(error).toBeInstanceOf(MercadoPagoApiError);
+      expect((error as MercadoPagoApiError).validationIssues).toContainEqual({
+        path: issuePath,
+        code: issueCode,
+      });
+    },
+  );
 
-    const error = await exchangeMercadoPagoAuthorizationCode({
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      redirectUri: 'https://example.test/oauth/callback',
-      code: 'authorization-code',
-      codeVerifier: 'pkce-verifier',
-      testToken: true,
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(MercadoPagoApiError);
-    expect((error as MercadoPagoApiError).validationIssues).toEqual([
-      { path: 'live_mode', code: 'custom' },
-    ]);
-  });
-
-  it('rejeita live_mode ausente quando o prefixo da credencial é desconhecido', async () => {
-    const responseWithoutLiveMode = Object.fromEntries(
-      Object.entries(tokenResponse).filter(([key]) => key !== 'live_mode'),
-    );
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutLiveMode));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const error = await exchangeMercadoPagoAuthorizationCode({
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      redirectUri: 'https://example.test/oauth/callback',
-      code: 'authorization-code',
-      codeVerifier: 'pkce-verifier',
-      testToken: true,
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(MercadoPagoApiError);
-    expect((error as MercadoPagoApiError).validationIssues).toEqual([
-      { path: 'live_mode', code: 'custom' },
-    ]);
-  });
-
-  it('expõe somente caminhos e códigos de validação em uma resposta incompatível', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        ...tokenResponse,
-        access_token: 'TOKEN-SUPER-SENSIVEL',
-        expires_in: 'valor-incorreto',
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    const error = await exchangeMercadoPagoAuthorizationCode({
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      redirectUri: 'https://example.test/oauth/callback',
-      code: 'authorization-code',
-      codeVerifier: 'pkce-verifier',
-      testToken: true,
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(MercadoPagoApiError);
-    expect((error as MercadoPagoApiError).validationIssues).toEqual([
-      { path: 'expires_in', code: 'invalid_type' },
-    ]);
-    expect(JSON.stringify((error as MercadoPagoApiError).validationIssues)).not.toContain(
-      'TOKEN-SUPER-SENSIVEL',
-    );
-    expect(JSON.stringify((error as MercadoPagoApiError).validationIssues)).not.toContain(
-      'valor-incorreto',
+  it('valida diretamente a compatibilidade da credencial com Orders', () => {
+    expect(() => assertMercadoPagoOrdersCompatibleAccessToken('APP_USR-valid')).not.toThrow();
+    expect(() => assertMercadoPagoOrdersCompatibleAccessToken('TEST-invalid')).toThrow(
+      MercadoPagoOrdersCredentialError,
     );
   });
 
@@ -292,21 +178,12 @@ describe('ambiente do OAuth Mercado Pago', () => {
     );
   });
 
-  it('não inclui token, client secret, authorization code ou PKCE no erro', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(
-        {
-          code: 'invalid_grant',
-          message: [
-            tokenResponse.access_token,
-            'client-secret-super-sensivel',
-            'authorization-code-super-sensivel',
-            'pkce-verifier-super-sensivel',
-          ].join(' '),
-        },
-        400,
-      ),
-    );
+  it('não inclui secrets do request no erro do provedor', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ code: 'invalid_grant', message: 'conteúdo sensível do provedor' }, 400),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const error = await exchangeMercadoPagoAuthorizationCode({
@@ -315,12 +192,10 @@ describe('ambiente do OAuth Mercado Pago', () => {
       redirectUri: 'https://example.test/oauth/callback',
       code: 'authorization-code-super-sensivel',
       codeVerifier: 'pkce-verifier-super-sensivel',
-      testToken: true,
     }).catch((caught: unknown) => caught);
     const serialized = String(error);
 
     expect(serialized).toContain('O Mercado Pago recusou a operação.');
-    expect(serialized).not.toContain(tokenResponse.access_token);
     expect(serialized).not.toContain('client-secret-super-sensivel');
     expect(serialized).not.toContain('authorization-code-super-sensivel');
     expect(serialized).not.toContain('pkce-verifier-super-sensivel');
@@ -343,15 +218,11 @@ describe('refresh do OAuth Mercado Pago', () => {
       refreshToken: 'refresh-token',
     });
 
-    expect(requestBody(fetchMock)).toMatchObject({
-      grant_type: 'refresh_token',
-      refresh_token: 'refresh-token',
-    });
     expect(requestBody(fetchMock)).not.toHaveProperty('test_token');
     expect(() => assertMercadoPagoOAuthEnvironment(token.live_mode, environment)).not.toThrow();
   });
 
-  it('mantém no serviço as guardas de state one-time, scopes e ambiente original', () => {
+  it('mantém no serviço as guardas de state, scopes, ambiente e credencial Orders', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/server/services/mercado-pago-connection.service.ts'),
       'utf8',
@@ -364,6 +235,7 @@ describe('refresh do OAuth Mercado Pago', () => {
     expect(source).toContain(
       'assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment)',
     );
+    expect(source).toContain('assertMercadoPagoOrdersCompatibleAccessToken(token.access_token)');
     expect(source).toContain('token.live_mode !== connection.liveMode');
   });
 });

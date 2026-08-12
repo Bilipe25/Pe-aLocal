@@ -2,12 +2,6 @@ import { z } from 'zod';
 
 const stringId = z.union([z.string(), z.number()]).transform(String);
 
-function liveModeFromAccessToken(accessToken: string) {
-  if (accessToken.startsWith('TEST-')) return false;
-  if (accessToken.startsWith('APP_USR-')) return true;
-  return null;
-}
-
 function normalizeLiveMode(value: unknown) {
   if (typeof value === 'boolean') return value;
   if (value === 'true') return true;
@@ -24,31 +18,30 @@ export const mercadoPagoOAuthTokenSchema = z
     user_id: stringId,
     refresh_token: z.string().min(1),
     public_key: z.string().optional(),
-    live_mode: z.unknown().optional(),
+    live_mode: z.unknown(),
   })
   .superRefine((token, context) => {
-    const tokenLiveMode = liveModeFromAccessToken(token.access_token);
-    const fieldLiveMode = normalizeLiveMode(token.live_mode);
-    if (tokenLiveMode === null && fieldLiveMode === null) {
+    if (!token.access_token.startsWith('APP_USR-')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['access_token'],
+        message: 'A credencial recebida não é compatível com a Orders API.',
+      });
+    }
+    if (normalizeLiveMode(token.live_mode) === null) {
       context.addIssue({
         code: 'custom',
         path: ['live_mode'],
         message: 'Não foi possível determinar o ambiente da credencial.',
       });
     }
-    if (tokenLiveMode !== null && fieldLiveMode !== null && tokenLiveMode !== fieldLiveMode) {
-      context.addIssue({
-        code: 'custom',
-        path: ['live_mode'],
-        message: 'O ambiente informado diverge do tipo da credencial.',
-      });
-    }
   })
   .transform((token) => ({
     ...token,
-    live_mode:
-      liveModeFromAccessToken(token.access_token) ?? normalizeLiveMode(token.live_mode) ?? false,
+    live_mode: normalizeLiveMode(token.live_mode) as boolean,
   }));
+
+const amountSchema = z.string().regex(/^\d+(?:\.\d{1,2})?$/u);
 
 const mercadoPagoPaymentMethodSchema = z.object({
   id: z.string().optional(),
@@ -57,31 +50,51 @@ const mercadoPagoPaymentMethodSchema = z.object({
   ticket_url: z.string().url().optional(),
 });
 
-export const mercadoPagoOrderSchema = z.object({
+const mercadoPagoPaymentSchema = z.object({
+  id: z.string().optional(),
+  amount: amountSchema.optional(),
+  paid_amount: amountSchema.optional(),
+  status: z.string().optional(),
+  status_detail: z.string().optional(),
+  date_of_expiration: z.string().optional(),
+  payment_method: mercadoPagoPaymentMethodSchema.default({}),
+});
+
+const mercadoPagoTransactionsSchema = z
+  .object({
+    payments: z.array(mercadoPagoPaymentSchema).default([]),
+  })
+  .default({ payments: [] });
+
+const mercadoPagoOrderBaseSchema = z.object({
   id: z.string().min(1),
-  user_id: stringId,
   external_reference: z.string().min(1),
-  currency: z.string().length(3),
-  total_amount: z.string(),
-  total_paid_amount: z.string().optional(),
-  total_refunded_amount: z.string().optional(),
+  currency: z.string().length(3).optional(),
+  total_amount: amountSchema,
+  total_paid_amount: amountSchema.optional(),
+  total_refunded_amount: amountSchema.optional(),
   status: z.string().min(1),
   status_detail: z.string().min(1),
-  transactions: z.object({
-    payments: z
-      .array(
-        z.object({
-          id: z.string().optional(),
-          amount: z.string().optional(),
-          paid_amount: z.string().optional(),
-          status: z.string().optional(),
-          status_detail: z.string().optional(),
-          date_of_expiration: z.string().optional(),
-          payment_method: mercadoPagoPaymentMethodSchema,
-        }),
-      )
-      .default([]),
-  }),
+  transactions: mercadoPagoTransactionsSchema,
+});
+
+/**
+ * O POST /v1/orders não garante user_id nem currency na resposta de criação.
+ * A resposta é persistida para apresentar o Pix, mas nunca promove o pedido.
+ */
+export const mercadoPagoCreatedOrderSchema = mercadoPagoOrderBaseSchema.extend({
+  user_id: stringId.optional(),
+});
+
+/**
+ * Consultas autenticadas são a fonte canônica para conciliação e exigem user_id.
+ */
+export const mercadoPagoOrderSchema = mercadoPagoOrderBaseSchema.extend({
+  user_id: stringId,
+});
+
+export const mercadoPagoOrderSearchSchema = z.object({
+  data: z.array(mercadoPagoOrderSchema).default([]),
 });
 
 export const mercadoPagoWebhookSchema = z
@@ -97,4 +110,5 @@ export const mercadoPagoWebhookSchema = z
   })
   .strict();
 
+export type MercadoPagoCreatedOrder = z.infer<typeof mercadoPagoCreatedOrderSchema>;
 export type MercadoPagoOrder = z.infer<typeof mercadoPagoOrderSchema>;

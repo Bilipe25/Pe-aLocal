@@ -56,6 +56,8 @@ const connectionFeedbackMessage: Record<MercadoPagoConnectionFeedback, string> =
     'O Mercado Pago retornou uma resposta inesperada. Tente novamente; se persistir, acione o suporte.',
   environment_mismatch:
     'O staging aceita apenas uma conta Mercado Pago de teste. Conecte um usuário de teste do tipo Vendedor.',
+  unsupported_credential:
+    'Essa credencial não funciona com o Pix pela Orders API. Reconecte usando um usuário Vendedor de teste do Mercado Pago.',
   missing_scope:
     'A conta não concedeu todas as permissões necessárias. Autorize leitura e escrita em uma nova tentativa.',
   internal_error: 'A conexão não pôde ser salva. Tente novamente; se persistir, acione o suporte.',

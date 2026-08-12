@@ -33,6 +33,15 @@ export class MercadoPagoOAuthEnvironmentMismatchError extends Error {
   }
 }
 
+export class MercadoPagoOrdersCredentialError extends Error {
+  readonly code = 'ORDERS_UNSUPPORTED_CREDENTIAL';
+
+  constructor() {
+    super('A credencial Mercado Pago não é compatível com a Orders API.');
+    this.name = 'MercadoPagoOrdersCredentialError';
+  }
+}
+
 export const MERCADO_PAGO_API_ORIGIN = 'https://api.mercadopago.com';
 export const MERCADO_PAGO_AUTH_ORIGIN = 'https://auth.mercadopago.com';
 export const MERCADO_PAGO_PIX_EXPIRATION = 'PT30M';
@@ -96,6 +105,12 @@ export function assertMercadoPagoOAuthEnvironment(
   }
 }
 
+export function assertMercadoPagoOrdersCompatibleAccessToken(accessToken: string): void {
+  if (!accessToken.startsWith('APP_USR-')) {
+    throw new MercadoPagoOrdersCredentialError();
+  }
+}
+
 export function getMercadoPagoConfig(env: MercadoPagoRuntimeEnv = process.env) {
   const parsed = configSchema.safeParse(env);
   if (!parsed.success) {
@@ -108,6 +123,5 @@ export function getMercadoPagoConfig(env: MercadoPagoRuntimeEnv = process.env) {
     webhookSecret: parsed.data.MERCADO_PAGO_WEBHOOK_SECRET,
     encryptionKey: parsed.data.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY,
     oauthEnvironment: getMercadoPagoOAuthEnvironment(parsed.data),
-    oauthTestMode: parsed.data.APP_ENV !== 'production',
   };
 }
