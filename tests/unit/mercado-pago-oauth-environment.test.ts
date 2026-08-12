@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   exchangeMercadoPagoAuthorizationCode,
+  MercadoPagoApiError,
   refreshMercadoPagoToken,
 } from '@/lib/mercado-pago/client';
 import {
@@ -113,6 +114,56 @@ describe('ambiente do OAuth Mercado Pago', () => {
     });
 
     expect(requestBody(fetchMock)).not.toHaveProperty('test_token');
+  });
+
+  it('aceita token_type ausente porque o campo não é usado pela integração', async () => {
+    const responseWithoutTokenType = Object.fromEntries(
+      Object.entries(tokenResponse).filter(([key]) => key !== 'token_type'),
+    );
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutTokenType));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      exchangeMercadoPagoAuthorizationCode({
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        redirectUri: 'https://example.test/oauth/callback',
+        code: 'authorization-code',
+        codeVerifier: 'pkce-verifier',
+        testToken: true,
+      }),
+    ).resolves.toMatchObject({ access_token: tokenResponse.access_token });
+  });
+
+  it('expõe somente caminhos e códigos de validação em uma resposta incompatível', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ...tokenResponse,
+        access_token: 'TOKEN-SUPER-SENSIVEL',
+        expires_in: 'valor-incorreto',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await exchangeMercadoPagoAuthorizationCode({
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://example.test/oauth/callback',
+      code: 'authorization-code',
+      codeVerifier: 'pkce-verifier',
+      testToken: true,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MercadoPagoApiError);
+    expect((error as MercadoPagoApiError).validationIssues).toEqual([
+      { path: 'expires_in', code: 'invalid_type' },
+    ]);
+    expect(JSON.stringify((error as MercadoPagoApiError).validationIssues)).not.toContain(
+      'TOKEN-SUPER-SENSIVEL',
+    );
+    expect(JSON.stringify((error as MercadoPagoApiError).validationIssues)).not.toContain(
+      'valor-incorreto',
+    );
   });
 
   it.each([

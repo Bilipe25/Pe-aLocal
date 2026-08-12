@@ -11,6 +11,7 @@ export class MercadoPagoApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly retryAfterSeconds: number | null = null,
+    readonly validationIssues: ReadonlyArray<{ path: string; code: string }> = [],
   ) {
     super(message);
     this.name = 'MercadoPagoApiError';
@@ -60,7 +61,16 @@ async function requestJson<T>(input: {
     }
     const parsed = input.schema.safeParse(payload);
     if (!parsed.success) {
-      throw new MercadoPagoApiError('Resposta inválida do Mercado Pago.', 502, 'INVALID_RESPONSE');
+      throw new MercadoPagoApiError(
+        'Resposta inválida do Mercado Pago.',
+        502,
+        'INVALID_RESPONSE',
+        null,
+        parsed.error.issues.slice(0, 8).map((issue) => ({
+          path: issue.path.length > 0 ? issue.path.join('.') : '$',
+          code: issue.code,
+        })),
+      );
     }
     return parsed.data;
   } finally {

@@ -4,7 +4,7 @@ const stringId = z.union([z.string(), z.number()]).transform(String);
 
 export const mercadoPagoOAuthTokenSchema = z.object({
   access_token: z.string().min(1),
-  token_type: z.string(),
+  token_type: z.string().optional(),
   expires_in: z.number().int().positive(),
   scope: z.string().default(''),
   user_id: stringId,

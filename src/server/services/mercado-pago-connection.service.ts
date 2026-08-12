@@ -86,6 +86,8 @@ function logOAuthCompletionFailure(input: {
     reason: input.reason,
     providerCode: input.error instanceof MercadoPagoApiError ? input.error.code : null,
     providerStatus: input.error instanceof MercadoPagoApiError ? input.error.status : null,
+    validationIssues:
+      input.error instanceof MercadoPagoApiError ? input.error.validationIssues : [],
     storeId: input.storeId,
     tenantId: input.tenantId,
   });
