@@ -26,6 +26,7 @@ import {
   randomBase64Url,
   sha256Hex,
 } from '@/lib/mercado-pago/crypto';
+import type { MercadoPagoOAuthFailureReason } from '@/lib/mercado-pago/oauth-feedback';
 
 const OAUTH_TTL_MS = 10 * 60 * 1000;
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -44,6 +45,50 @@ function logEnvironmentMismatch(input: {
   tenantId: string;
 }) {
   console.error('[MERCADO_PAGO_OAUTH_ENVIRONMENT_MISMATCH]', input);
+}
+
+export class MercadoPagoOAuthCompletionError extends Error {
+  constructor(
+    readonly reason: MercadoPagoOAuthFailureReason,
+    readonly returnPath: string,
+  ) {
+    super('Não foi possível concluir a conexão com o Mercado Pago.');
+    this.name = 'MercadoPagoOAuthCompletionError';
+  }
+}
+
+function classifyOAuthCompletionError(error: unknown): MercadoPagoOAuthFailureReason {
+  if (!(error instanceof MercadoPagoApiError)) return 'internal_error';
+
+  switch (error.code.toLowerCase()) {
+    case 'invalid_grant':
+      return 'invalid_grant';
+    case 'invalid_client':
+      return 'invalid_client';
+    case 'invalid_scope':
+      return 'invalid_scope';
+    case 'invalid_response':
+      return 'invalid_response';
+    case 'local_rate_limited':
+      return 'rate_limited';
+    default:
+      return error.status === 429 ? 'rate_limited' : 'provider_error';
+  }
+}
+
+function logOAuthCompletionFailure(input: {
+  error: unknown;
+  reason: MercadoPagoOAuthFailureReason;
+  storeId: string;
+  tenantId: string;
+}) {
+  console.error('[MP_OAUTH_CALLBACK_FAILED]', {
+    reason: input.reason,
+    providerCode: input.error instanceof MercadoPagoApiError ? input.error.code : null,
+    providerStatus: input.error instanceof MercadoPagoApiError ? input.error.status : null,
+    storeId: input.storeId,
+    tenantId: input.tenantId,
+  });
 }
 
 function assertOnlinePaymentsEnabled(entitlement: { onlinePaymentsEnabled: boolean } | null) {
@@ -201,114 +246,129 @@ export async function completeMercadoPagoOAuth(state: string, code: string) {
   });
   if (claimed.count !== 1) throw new ConflictError('A conexão já está sendo concluída.');
 
-  const token = await exchangeMercadoPagoAuthorizationCode({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
-    redirectUri: config.redirectUri,
-    code,
-    codeVerifier: verifier,
-    testToken: config.oauthTestMode,
-  });
   try {
-    assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
-  } catch (error) {
-    if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
-      logEnvironmentMismatch({
-        expectedEnvironment: error.expectedEnvironment,
-        receivedLiveMode: error.receivedLiveMode,
-        storeId: attempt.storeId,
-        tenantId: attempt.tenantId,
-      });
-      await getDb().storePaymentProviderConnection.updateMany({
-        where: {
+    const token = await exchangeMercadoPagoAuthorizationCode({
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      redirectUri: config.redirectUri,
+      code,
+      codeVerifier: verifier,
+      testToken: config.oauthTestMode,
+    });
+    try {
+      assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
+    } catch (error) {
+      if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
+        logEnvironmentMismatch({
+          expectedEnvironment: error.expectedEnvironment,
+          receivedLiveMode: error.receivedLiveMode,
+          storeId: attempt.storeId,
+          tenantId: attempt.tenantId,
+        });
+        await getDb().storePaymentProviderConnection.updateMany({
+          where: {
+            tenantId: attempt.tenantId,
+            storeId: attempt.storeId,
+            provider: 'MERCADO_PAGO',
+          },
+          data: { status: 'ERROR', lastErrorCode: error.code },
+        });
+        throw new MercadoPagoOAuthCompletionError('environment_mismatch', attempt.returnPath);
+      }
+      throw error;
+    }
+    const [access, refresh] = await Promise.all([
+      encryptCredential(
+        token.access_token,
+        config.encryptionKey,
+        credentialAad({
           tenantId: attempt.tenantId,
           storeId: attempt.storeId,
           provider: 'MERCADO_PAGO',
-        },
-        data: { status: 'ERROR', lastErrorCode: error.code },
-      });
-      throw new BusinessRuleError(environmentMismatchMessage(error.expectedEnvironment));
+          kind: 'access_token',
+        }),
+      ),
+      encryptCredential(
+        token.refresh_token,
+        config.encryptionKey,
+        credentialAad({
+          tenantId: attempt.tenantId,
+          storeId: attempt.storeId,
+          provider: 'MERCADO_PAGO',
+          kind: 'refresh_token',
+        }),
+      ),
+    ]);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + token.expires_in * 1000);
+    const scopes = token.scope.split(/\s+/u).filter(Boolean);
+    if (!scopes.includes('read') || !scopes.includes('write')) {
+      throw new MercadoPagoOAuthCompletionError('missing_scope', attempt.returnPath);
     }
-    throw error;
-  }
-  const [access, refresh] = await Promise.all([
-    encryptCredential(
-      token.access_token,
-      config.encryptionKey,
-      credentialAad({
-        tenantId: attempt.tenantId,
-        storeId: attempt.storeId,
-        provider: 'MERCADO_PAGO',
-        kind: 'access_token',
-      }),
-    ),
-    encryptCredential(
-      token.refresh_token,
-      config.encryptionKey,
-      credentialAad({
-        tenantId: attempt.tenantId,
-        storeId: attempt.storeId,
-        provider: 'MERCADO_PAGO',
-        kind: 'refresh_token',
-      }),
-    ),
-  ]);
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + token.expires_in * 1000);
-  const scopes = token.scope.split(/\s+/u).filter(Boolean);
-  if (!scopes.includes('read') || !scopes.includes('write')) {
-    throw new BusinessRuleError('A autorização não concedeu as permissões necessárias.');
-  }
-  return getDb().$transaction(async (tx) => {
-    const connection = await tx.storePaymentProviderConnection.upsert({
-      where: { storeId_provider: { storeId: attempt.storeId, provider: 'MERCADO_PAGO' } },
-      update: {
-        status: 'ACTIVE',
-        providerUserId: token.user_id,
-        liveMode: token.live_mode,
-        scopes,
-        accessTokenCiphertext: access.ciphertext,
-        accessTokenIv: access.iv,
-        refreshTokenCiphertext: refresh.ciphertext,
-        refreshTokenIv: refresh.iv,
-        tokenExpiresAt: expiresAt,
-        connectedAt: now,
-        refreshedAt: now,
-        disconnectedAt: null,
-        reauthRequiredAt: null,
-        lastErrorCode: null,
-      },
-      create: {
-        tenantId: attempt.tenantId,
-        storeId: attempt.storeId,
-        provider: 'MERCADO_PAGO',
-        status: 'ACTIVE',
-        providerUserId: token.user_id,
-        liveMode: token.live_mode,
-        scopes,
-        accessTokenCiphertext: access.ciphertext,
-        accessTokenIv: access.iv,
-        refreshTokenCiphertext: refresh.ciphertext,
-        refreshTokenIv: refresh.iv,
-        tokenExpiresAt: expiresAt,
-        connectedAt: now,
-        refreshedAt: now,
-      },
+    return await getDb().$transaction(async (tx) => {
+      const connection = await tx.storePaymentProviderConnection.upsert({
+        where: { storeId_provider: { storeId: attempt.storeId, provider: 'MERCADO_PAGO' } },
+        update: {
+          status: 'ACTIVE',
+          providerUserId: token.user_id,
+          liveMode: token.live_mode,
+          scopes,
+          accessTokenCiphertext: access.ciphertext,
+          accessTokenIv: access.iv,
+          refreshTokenCiphertext: refresh.ciphertext,
+          refreshTokenIv: refresh.iv,
+          tokenExpiresAt: expiresAt,
+          connectedAt: now,
+          refreshedAt: now,
+          disconnectedAt: null,
+          reauthRequiredAt: null,
+          lastErrorCode: null,
+        },
+        create: {
+          tenantId: attempt.tenantId,
+          storeId: attempt.storeId,
+          provider: 'MERCADO_PAGO',
+          status: 'ACTIVE',
+          providerUserId: token.user_id,
+          liveMode: token.live_mode,
+          scopes,
+          accessTokenCiphertext: access.ciphertext,
+          accessTokenIv: access.iv,
+          refreshTokenCiphertext: refresh.ciphertext,
+          refreshTokenIv: refresh.iv,
+          tokenExpiresAt: expiresAt,
+          connectedAt: now,
+          refreshedAt: now,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: attempt.tenantId,
+          storeId: attempt.storeId,
+          userId: session.userId,
+          action: 'PAYMENT_PROVIDER_CONNECTED',
+          entity: 'StorePaymentProviderConnection',
+          entityId: connection.id,
+          metadata: { provider: 'MERCADO_PAGO', liveMode: token.live_mode, scopes },
+        },
+      });
+      console.info('[MP_OAUTH_CONNECTED]', { storeId: attempt.storeId, liveMode: token.live_mode });
+      return { returnPath: attempt.returnPath };
     });
-    await tx.auditLog.create({
-      data: {
-        tenantId: attempt.tenantId,
-        storeId: attempt.storeId,
-        userId: session.userId,
-        action: 'PAYMENT_PROVIDER_CONNECTED',
-        entity: 'StorePaymentProviderConnection',
-        entityId: connection.id,
-        metadata: { provider: 'MERCADO_PAGO', liveMode: token.live_mode, scopes },
-      },
+  } catch (error) {
+    const reason =
+      error instanceof MercadoPagoOAuthCompletionError
+        ? error.reason
+        : classifyOAuthCompletionError(error);
+    logOAuthCompletionFailure({
+      error,
+      reason,
+      storeId: attempt.storeId,
+      tenantId: attempt.tenantId,
     });
-    console.info('[MP_OAUTH_CONNECTED]', { storeId: attempt.storeId, liveMode: token.live_mode });
-    return { returnPath: attempt.returnPath };
-  });
+    if (error instanceof MercadoPagoOAuthCompletionError) throw error;
+    throw new MercadoPagoOAuthCompletionError(reason, attempt.returnPath);
+  }
 }
 
 export async function disconnectMercadoPago(storeId: string, expectedConfigurationVersion: number) {

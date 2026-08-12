@@ -83,4 +83,19 @@ describe('OnlinePaymentSettings', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('conectada com sucesso');
   });
+
+  it('orienta usar vendedor de teste quando o ambiente não corresponde', () => {
+    render(
+      <OnlinePaymentSettings
+        storeId="store-1"
+        expectedConfigurationVersion={4}
+        readOnly={false}
+        connectionFeedback="environment_mismatch"
+        capability={baseCapability}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('apenas uma conta Mercado Pago de teste');
+    expect(screen.getByRole('alert')).toHaveTextContent('usuário de teste do tipo Vendedor');
+  });
 });

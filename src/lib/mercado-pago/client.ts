@@ -86,7 +86,7 @@ export function exchangeMercadoPagoAuthorizationCode(input: {
       code: input.code,
       code_verifier: input.codeVerifier,
       redirect_uri: input.redirectUri,
-      ...(input.testToken ? { test_token: true } : {}),
+      ...(input.testToken ? { test_token: 'true' } : {}),
     },
     schema: mercadoPagoOAuthTokenSchema,
   });
