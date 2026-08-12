@@ -47,6 +47,11 @@ const input: StoreEntitlementInput = {
   customDomainEnabled: false,
   platformBrandingRemovalEnabled: false,
   scheduledBannersEnabled: false,
+  onlinePaymentsEnabled: false,
+  operationalSlaEnabled: false,
+  kdsEnabled: false,
+  advancedReportsEnabled: false,
+  orderPrintingEnabled: false,
 };
 
 const current = {

@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 const wrangler = fileURLToPath(
   new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url),
 );
+const prettier = fileURLToPath(
+  new URL('../node_modules/prettier/bin/prettier.cjs', import.meta.url),
+);
+const generatedTypes = fileURLToPath(new URL('../cloudflare-env.d.ts', import.meta.url));
 const worker = fileURLToPath(new URL('../.open-next/worker.js', import.meta.url));
 const hiddenWorker = `${worker}.typegen-${process.pid}`;
 const hasBuiltWorker = existsSync(worker);
@@ -39,4 +43,12 @@ try {
 }
 
 if (result.error) throw result.error;
-process.exitCode = result.status ?? 1;
+if (result.status !== 0) {
+  process.exitCode = result.status ?? 1;
+} else {
+  const formatResult = spawnSync(process.execPath, [prettier, '--write', generatedTypes], {
+    stdio: 'inherit',
+  });
+  if (formatResult.error) throw formatResult.error;
+  process.exitCode = formatResult.status ?? 1;
+}

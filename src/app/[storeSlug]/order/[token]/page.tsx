@@ -10,6 +10,7 @@ import {
 } from '@/server/queries/public-store';
 import { formatCurrency } from '@/lib/utils';
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
+import { OnlinePixPayment } from '@/components/storefront/online-pix-payment';
 import { cache } from 'react';
 import { CustomerOrderTracking } from '@/components/storefront/customer-order-tracking';
 import {
@@ -118,10 +119,26 @@ export default async function OrderPage({ params }: OrderPageProps) {
             timeZone={order.store.timeZone}
             initialState={initialTrackingState}
             publicVapidKey={getPublicVapidKey()}
+            automaticPayment={order.payment?.provider === 'MERCADO_PAGO'}
           />
+
+          {order.payment?.provider === 'MERCADO_PAGO' &&
+            order.paymentStatus === 'PENDING' &&
+            order.mercadoPagoPayment && (
+              <OnlinePixPayment
+                storeSlug={order.store.slug}
+                publicToken={order.publicToken}
+                initialPayment={{
+                  creationStatus: order.mercadoPagoPayment.creationStatus,
+                  qrCode: order.mercadoPagoPayment.qrCode,
+                  expiresAt: order.mercadoPagoPayment.expiresAt?.toISOString() ?? null,
+                }}
+              />
+            )}
 
           {/* Pix Instructions */}
           {order.paymentMethod === 'PIX' &&
+            order.payment?.provider === null &&
             ['PENDING', 'CUSTOMER_REPORTED_PAID'].includes(order.paymentStatus) && (
               <PixPaymentInfo
                 pixKeyType={order.store.settings?.pixKeyType ?? null}

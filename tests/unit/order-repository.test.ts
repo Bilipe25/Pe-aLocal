@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     coupon: { update: vi.fn() },
     couponUsage: { create: vi.fn() },
     customer: { findFirst: vi.fn() },
+    mercadoPagoPayment: { create: vi.fn() },
   };
   return {
     tx,
@@ -134,6 +135,7 @@ const params = {
 
 describe('OrderRepository checkout v2', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.clearAllMocks();
     mocks.tx.$executeRaw.mockResolvedValue(1);
@@ -148,7 +150,10 @@ describe('OrderRepository checkout v2', () => {
         pixKey: 'financeiro@loja.test',
         acceptsCash: true,
         acceptsCardOnDelivery: true,
+        paymentMode: 'MANUAL',
       },
+      entitlement: { onlinePaymentsEnabled: false },
+      paymentProviderConnections: [],
     });
     mocks.tx.order.findUnique.mockResolvedValue(null);
     mocks.tx.order.create.mockResolvedValue({
@@ -176,6 +181,72 @@ describe('OrderRepository checkout v2', () => {
     mocks.consumeRecognitionSession.mockResolvedValue(true);
   });
 
+  it('persiste AWAITING_PAYMENT e não publica ORDER_CREATED antes do Pix online', async () => {
+    vi.stubEnv('MERCADO_PAGO_ENABLED', 'true');
+    vi.stubEnv('APP_ENV', 'development');
+    vi.stubEnv('MERCADO_PAGO_CLIENT_ID', 'client-id');
+    vi.stubEnv('MERCADO_PAGO_CLIENT_SECRET', 'client-secret');
+    vi.stubEnv(
+      'MERCADO_PAGO_REDIRECT_URI',
+      'https://app.test/api/integrations/mercado-pago/oauth/callback',
+    );
+    vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', 'webhook-secret');
+    vi.stubEnv('MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY', btoa('\0'.repeat(32)));
+    mocks.tx.store.findUnique.mockResolvedValue({
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      address: { city: 'São Paulo', state: 'SP' },
+      settings: {
+        acceptsPix: false,
+        pixKeyType: null,
+        pixKey: null,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+        paymentMode: 'ONLINE',
+      },
+      entitlement: { onlinePaymentsEnabled: true },
+      paymentProviderConnections: [{ id: 'connection-a' }],
+    });
+    mocks.tx.order.create.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 1,
+      paymentReportToken: null,
+      createdAt: now,
+      payment: { id: 'payment-a' },
+    });
+    mocks.tx.mercadoPagoPayment.create.mockResolvedValue({ id: 'mp-a' });
+
+    const onlineInput = { ...input, payerEmail: 'cliente@exemplo.com' };
+    const result = await createOrder({ ...params, input: onlineInput });
+
+    expect(result).toMatchObject({
+      onlinePayment: true,
+      paymentReportToken: null,
+      outboxEventIds: [],
+    });
+    expect(mocks.tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'AWAITING_PAYMENT',
+          paymentReportToken: null,
+          payment: { create: expect.objectContaining({ provider: 'MERCADO_PAGO' }) },
+        }),
+      }),
+    );
+    expect(mocks.tx.mercadoPagoPayment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          connectionId: 'connection-a',
+          creationStatus: 'PENDING',
+        }),
+      }),
+    );
+    const encryptedEmail = mocks.tx.mercadoPagoPayment.create.mock.calls[0][0].data;
+    expect(encryptedEmail.payerEmailCiphertext).not.toContain('cliente@exemplo.com');
+    expect(mocks.appendOrderOutboxEvent).not.toHaveBeenCalled();
+  });
+
   it('recalcula e grava pedido, auditoria e outbox na mesma transação serializável', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -192,6 +263,8 @@ describe('OrderRepository checkout v2', () => {
       outboxEventIds: ['outbox-a'],
       customerNameConflict: false,
       rememberDeviceExpiresAt: null,
+      mercadoPagoPaymentId: null,
+      onlinePayment: false,
     });
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',

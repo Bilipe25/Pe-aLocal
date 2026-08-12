@@ -106,6 +106,7 @@ export async function writeOrderCreatedAudit(
     storeId: string;
     orderId: string;
     orderNumber: number;
+    status?: OrderStatus;
   },
 ): Promise<string> {
   const audit = await auditRepo.createAuditLog(
@@ -120,7 +121,7 @@ export async function writeOrderCreatedAudit(
         source: 'CUSTOMER',
         orderNumber: data.orderNumber,
         previousStatus: null,
-        nextStatus: 'PENDING',
+        nextStatus: data.status ?? 'PENDING',
         previousVersion: null,
         nextVersion: 0,
       },

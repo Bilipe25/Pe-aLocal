@@ -3,6 +3,8 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 
 import { normalizePhone, validatePixKey } from '@/lib/brazil';
+import { getMercadoPagoConfig, isMercadoPagoEnabled } from '@/lib/mercado-pago/config';
+import { credentialAad, encryptCredential } from '@/lib/mercado-pago/crypto';
 import type { CheckoutInput } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import {
@@ -47,7 +49,9 @@ interface CreateOrderResult {
   storeId: string;
   publicToken: string;
   orderNumber: number;
-  paymentReportToken: string;
+  paymentReportToken: string | null;
+  mercadoPagoPaymentId: string | null;
+  onlinePayment: boolean;
   created: boolean;
   outboxEventIds: string[];
   customerNameConflict: boolean;
@@ -77,7 +81,14 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               pixKey: true,
               acceptsCash: true,
               acceptsCardOnDelivery: true,
+              paymentMode: true,
             },
+          },
+          entitlement: { select: { onlinePaymentsEnabled: true } },
+          paymentProviderConnections: {
+            where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
+            take: 1,
+            select: { id: true },
           },
         },
       });
@@ -146,6 +157,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           paymentReportToken: true,
           idempotencyFingerprint: true,
           customerId: true,
+          mercadoPagoPayment: { select: { id: true } },
         },
       });
       if (existing) {
@@ -171,6 +183,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           outboxEventIds: [],
           customerNameConflict: false,
           rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
+          mercadoPagoPaymentId: existing.mercadoPagoPayment?.id ?? null,
+          onlinePayment: Boolean(existing.mercadoPagoPayment),
         };
       }
 
@@ -266,7 +280,21 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
-      if (input.paymentMethod === 'PIX') {
+      const onlinePayment = Boolean(
+        isMercadoPagoEnabled() &&
+        store.entitlement?.onlinePaymentsEnabled &&
+        settings.paymentMode === 'ONLINE' &&
+        store.paymentProviderConnections[0],
+      );
+      if (onlinePayment) {
+        if (input.paymentMethod !== 'PIX' || !input.payerEmail) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Informe um e-mail válido para gerar o Pix com confirmação automática.',
+            422,
+          );
+        }
+      } else if (input.paymentMethod === 'PIX') {
         if (
           !settings.acceptsPix ||
           !settings.pixKeyType ||
@@ -343,6 +371,20 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           );
         }
       }
+      const mercadoPagoPaymentId = onlinePayment ? crypto.randomUUID() : null;
+      const encryptedPayerEmail =
+        onlinePayment && input.payerEmail
+          ? await encryptCredential(
+              input.payerEmail.toLowerCase(),
+              getMercadoPagoConfig().encryptionKey,
+              credentialAad({
+                tenantId: store.tenantId,
+                storeId: store.id,
+                provider: 'MERCADO_PAGO',
+                kind: 'payer_email',
+              }),
+            )
+          : null;
       const order = await tx.order.create({
         data: {
           tenantId: store.tenantId,
@@ -351,8 +393,10 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           idempotencyFingerprint,
           quoteFingerprint: quote.quoteFingerprint,
           publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
-          paymentReportToken: crypto.randomUUID(),
-          paymentReportExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
+          paymentReportToken: onlinePayment ? null : crypto.randomUUID(),
+          paymentReportExpiresAt: onlinePayment
+            ? null
+            : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
           customerName: resolvedIdentity.customerName,
           customerPhone: resolvedIdentity.customerPhone,
           customerPhoneNormalized: resolvedIdentity.phoneNormalized,
@@ -375,7 +419,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           total: quote.total,
           paymentMethod: input.paymentMethod,
           changeFor: input.changeFor ?? null,
-          status: 'PENDING',
+          status: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
           paymentStatus: 'PENDING',
           notes: input.notes || null,
           couponId: quote.couponId,
@@ -407,6 +451,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           payment: {
             create: {
               method: input.paymentMethod,
+              provider: onlinePayment ? 'MERCADO_PAGO' : null,
               status: 'PENDING',
               amount: quote.total,
             },
@@ -414,8 +459,10 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           statusHistory: {
             create: {
               fromStatus: null,
-              toStatus: 'PENDING',
-              note: 'Pedido criado pelo cliente',
+              toStatus: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
+              note: onlinePayment
+                ? 'Pedido criado e aguardando confirmação do pagamento online'
+                : 'Pedido criado pelo cliente',
               changedBy: 'system',
               actorNameSnapshot: 'Cliente',
               source: 'CUSTOMER',
@@ -434,6 +481,24 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
+
+      if (onlinePayment && mercadoPagoPaymentId && encryptedPayerEmail) {
+        await tx.mercadoPagoPayment.create({
+          data: {
+            id: mercadoPagoPaymentId,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            orderId: order.id,
+            paymentId: order.payment.id,
+            connectionId: store.paymentProviderConnections[0]!.id,
+            creationStatus: 'PENDING',
+            externalReference: `pl_${mercadoPagoPaymentId}`,
+            idempotencyKey: `pl_${mercadoPagoPaymentId}`,
+            payerEmailCiphertext: encryptedPayerEmail.ciphertext,
+            payerEmailIv: encryptedPayerEmail.iv,
+          },
+        });
+      }
 
       const persistedCustomer = await persistCheckoutCustomerAfterOrder({
         tx,
@@ -496,19 +561,22 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         storeId: store.id,
         orderId: order.id,
         orderNumber: order.orderNumber,
+        status: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
       });
-      const outboxEvent = await appendOrderOutboxEvent(tx, {
-        tenantId: store.tenantId,
-        storeId: store.id,
-        orderId: order.id,
-        auditLogId,
-        eventType: 'ORDER_CREATED',
-        orderNumber: order.orderNumber,
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
-        aggregateVersion: 0,
-        occurredAt: order.createdAt,
-      });
+      const outboxEvent = onlinePayment
+        ? null
+        : await appendOrderOutboxEvent(tx, {
+            tenantId: store.tenantId,
+            storeId: store.id,
+            orderId: order.id,
+            auditLogId,
+            eventType: 'ORDER_CREATED',
+            orderNumber: order.orderNumber,
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
+            aggregateVersion: 0,
+            occurredAt: order.createdAt,
+          });
 
       return {
         id: order.id,
@@ -517,9 +585,11 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         orderNumber: order.orderNumber,
         paymentReportToken: order.paymentReportToken,
         created: true,
-        outboxEventIds: [outboxEvent.id],
+        outboxEventIds: outboxEvent ? [outboxEvent.id] : [],
         customerNameConflict: persistedCustomer.nameConflict,
         rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
+        mercadoPagoPaymentId,
+        onlinePayment,
       };
     },
     {
@@ -570,6 +640,15 @@ export async function getOrderByPublicToken(publicToken: string) {
       changeFor: true,
       status: true,
       paymentStatus: true,
+      payment: { select: { provider: true } },
+      mercadoPagoPayment: {
+        select: {
+          creationStatus: true,
+          qrCode: true,
+          ticketUrl: true,
+          expiresAt: true,
+        },
+      },
       version: true,
       statusChangedAt: true,
       preparingAt: true,

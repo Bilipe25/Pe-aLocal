@@ -128,6 +128,11 @@ describe('StoreCustomizationService', () => {
       customDomainEnabled: false,
       platformBrandingRemovalEnabled: false,
       scheduledBannersEnabled: false,
+      onlinePaymentsEnabled: false,
+      operationalSlaEnabled: false,
+      kdsEnabled: false,
+      advancedReportsEnabled: false,
+      orderPrintingEnabled: false,
       createdAt: new Date('2026-07-17T12:00:00Z'),
       updatedAt: new Date('2026-07-17T12:00:00Z'),
     });
@@ -177,6 +182,11 @@ describe('StoreCustomizationService', () => {
       customDomainEnabled: false,
       platformBrandingRemovalEnabled: false,
       scheduledBannersEnabled: false,
+      onlinePaymentsEnabled: false,
+      operationalSlaEnabled: false,
+      kdsEnabled: false,
+      advancedReportsEnabled: false,
+      orderPrintingEnabled: false,
     });
     expect(result.entitlement).not.toHaveProperty('id');
     expect(result.entitlement).not.toHaveProperty('tenantId');

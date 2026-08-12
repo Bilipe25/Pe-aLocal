@@ -13,6 +13,11 @@ export const DEFAULT_STORE_ENTITLEMENT = {
   customDomainEnabled: false,
   platformBrandingRemovalEnabled: false,
   scheduledBannersEnabled: false,
+  onlinePaymentsEnabled: false,
+  operationalSlaEnabled: false,
+  kdsEnabled: false,
+  advancedReportsEnabled: false,
+  orderPrintingEnabled: false,
 };
 
 export const entitlementSelect = {
@@ -28,6 +33,11 @@ export const entitlementSelect = {
   customDomainEnabled: true,
   platformBrandingRemovalEnabled: true,
   scheduledBannersEnabled: true,
+  onlinePaymentsEnabled: true,
+  operationalSlaEnabled: true,
+  kdsEnabled: true,
+  advancedReportsEnabled: true,
+  orderPrintingEnabled: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.StoreEntitlementSelect;
@@ -53,6 +63,11 @@ export async function lockStoreEntitlement(
       maxAssetStorageBytes: number;
       maxBanners: number;
       scheduledBannersEnabled: boolean;
+      onlinePaymentsEnabled: boolean;
+      operationalSlaEnabled: boolean;
+      kdsEnabled: boolean;
+      advancedReportsEnabled: boolean;
+      orderPrintingEnabled: boolean;
     }[]
   >(Prisma.sql`
     SELECT
@@ -60,7 +75,12 @@ export async function lockStoreEntitlement(
       "maxAssetCount",
       "maxAssetStorageBytes",
       "maxBanners",
-      "scheduledBannersEnabled"
+      "scheduledBannersEnabled",
+      "onlinePaymentsEnabled",
+      "operationalSlaEnabled",
+      "kdsEnabled",
+      "advancedReportsEnabled",
+      "orderPrintingEnabled"
     FROM "store_entitlements"
     WHERE "tenantId" = ${tenantId} AND "storeId" = ${storeId}
     FOR UPDATE

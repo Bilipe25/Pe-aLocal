@@ -68,6 +68,30 @@ enum PaymentMethodType {
   CARD_ON_DELIVERY
 }
 
+enum StorePaymentMode {
+  MANUAL
+  ONLINE
+}
+
+enum PaymentProvider {
+  MERCADO_PAGO
+}
+
+enum PaymentProviderConnectionStatus {
+  ACTIVE
+  REAUTH_REQUIRED
+  DISCONNECTED
+  REVOKED
+  ERROR
+}
+
+enum MercadoPagoCreationStatus {
+  PENDING
+  CREATED
+  RETRYABLE_ERROR
+  FAILED
+}
+
 enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
@@ -237,6 +261,10 @@ enum AuditAction {
   COUPON_CREATED
   COUPON_UPDATED
   COUPON_DELETED
+  PAYMENT_PROVIDER_CONNECTED
+  PAYMENT_PROVIDER_DISCONNECTED
+  PAYMENT_PROVIDER_REAUTH_REQUIRED
+  PAYMENT_PROVIDER_STATUS_UPDATED
 }
 
 enum CustomizationRevisionAction {
@@ -316,6 +344,7 @@ model User {
   orderStatusChanges        OrderStatusHistory[]         @relation("OrderStatusChangedBy")
   orderInternalNotes        OrderInternalNote[]          @relation("OrderInternalNoteAuthor")
   paymentStatusChanges      PaymentStatusHistory[]       @relation("PaymentStatusChangedBy")
+  paymentOAuthAttempts      PaymentProviderOAuthAttempt[] @relation("PaymentProviderOAuthAttemptInitiatedBy")
 
   @@index([email])
   @@map("users")
@@ -371,6 +400,9 @@ model Tenant {
   storeStaffPushSubscriptions StoreStaffPushSubscription[]
   storeWebPushDispatches      StoreWebPushDispatch[]
   storeWebPushDeliveries      StoreWebPushDelivery[]
+  paymentProviderConnections  StorePaymentProviderConnection[]
+  paymentOAuthAttempts        PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments         MercadoPagoPayment[]
 
   @@map("tenants")
 }
@@ -449,6 +481,9 @@ model Store {
   storeStaffPushSubscriptions  StoreStaffPushSubscription[]
   storeWebPushDispatches       StoreWebPushDispatch[]
   storeWebPushDeliveries       StoreWebPushDelivery[]
+  paymentProviderConnections   StorePaymentProviderConnection[]
+  paymentOAuthAttempts         PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments          MercadoPagoPayment[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -487,6 +522,7 @@ model StoreSettings {
   acceptsPix            Boolean @default(true)
   acceptsCash           Boolean @default(true)
   acceptsCardOnDelivery Boolean @default(true)
+  paymentMode           StorePaymentMode @default(MANUAL)
 
   // Pix
   pixKeyType      PixKeyType?
@@ -668,6 +704,11 @@ model StoreEntitlement {
   customDomainEnabled            Boolean  @default(false)
   platformBrandingRemovalEnabled Boolean  @default(false)
   scheduledBannersEnabled        Boolean  @default(false)
+  onlinePaymentsEnabled          Boolean  @default(false)
+  operationalSlaEnabled          Boolean  @default(false)
+  kdsEnabled                     Boolean  @default(false)
+  advancedReportsEnabled         Boolean  @default(false)
+  orderPrintingEnabled           Boolean  @default(false)
   createdAt                      DateTime @default(now())
   updatedAt                      DateTime @updatedAt
 
@@ -1127,8 +1168,8 @@ model Order {
   quoteFingerprint       String?  @db.VarChar(64)
   publicToken            String   @unique @default(uuid())
   publicTokenExpiresAt   DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
-  paymentReportToken     String   @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  paymentReportExpiresAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
+  paymentReportToken     String?   @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  paymentReportExpiresAt DateTime? @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
   // Dados do cliente (snapshot)
   customerName            String
@@ -1206,6 +1247,7 @@ model Order {
   webPushDeliveries      WebPushDelivery[]
   storeWebPushDispatches StoreWebPushDispatch[]
   storeWebPushDeliveries StoreWebPushDelivery[]
+  mercadoPagoPayment     MercadoPagoPayment?
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -1324,6 +1366,7 @@ model Payment {
   id                String            @id @default(uuid())
   orderId           String            @unique
   method            PaymentMethodType
+  provider          PaymentProvider?
   status            PaymentStatus     @default(PENDING)
   amount            Int // Em centavos
   paidAt            DateTime?
@@ -1344,10 +1387,129 @@ model Payment {
 
   order         Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   statusHistory PaymentStatusHistory[]
+  mercadoPagoPayment MercadoPagoPayment?
 
   @@unique([id, orderId])
   @@index([status])
   @@map("payments")
+}
+
+model StorePaymentProviderConnection {
+  id                     String                          @id @default(uuid())
+  tenantId               String
+  storeId                String
+  provider               PaymentProvider
+  status                 PaymentProviderConnectionStatus @default(ERROR)
+  providerUserId         String                          @db.VarChar(64)
+  liveMode               Boolean
+  scopes                 String[]                        @default([])
+  accessTokenCiphertext  String?                         @db.Text
+  accessTokenIv          String?                         @db.VarChar(64)
+  refreshTokenCiphertext String?                         @db.Text
+  refreshTokenIv         String?                         @db.VarChar(64)
+  tokenExpiresAt         DateTime?
+  credentialVersion      Int                             @default(1)
+  refreshLeaseId         String?                         @db.Uuid
+  refreshLeaseExpiresAt  DateTime?
+  connectedAt            DateTime?
+  refreshedAt            DateTime?
+  disconnectedAt         DateTime?
+  reauthRequiredAt       DateTime?
+  lastErrorCode          String?                         @db.VarChar(64)
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+
+  tenant        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                          @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  mercadoPagoPayments MercadoPagoPayment[]
+
+  @@unique([storeId, provider])
+  @@unique([id, tenantId, storeId])
+  @@index([provider, providerUserId])
+  @@index([tenantId, storeId, status])
+  @@index([refreshLeaseExpiresAt])
+  @@map("store_payment_provider_connections")
+}
+
+model PaymentProviderOAuthAttempt {
+  id                       String          @id @default(uuid())
+  tenantId                 String
+  storeId                  String
+  provider                 PaymentProvider
+  initiatedById            String
+  stateHash                String          @unique @db.VarChar(64)
+  codeVerifierCiphertext   String?         @db.Text
+  codeVerifierIv           String?         @db.VarChar(64)
+  credentialVersion        Int             @default(1)
+  returnPath               String          @db.VarChar(500)
+  expiresAt                DateTime
+  consumedAt               DateTime?
+  createdAt                DateTime        @default(now())
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  initiatedBy User   @relation("PaymentProviderOAuthAttemptInitiatedBy", fields: [initiatedById], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, provider, createdAt])
+  @@index([expiresAt, consumedAt])
+  @@index([initiatedById])
+  @@map("payment_provider_oauth_attempts")
+}
+
+model MercadoPagoPayment {
+  id                       String                     @id @default(uuid())
+  tenantId                 String
+  storeId                  String
+  orderId                  String                     @unique
+  paymentId                String                     @unique
+  connectionId             String
+  creationStatus           MercadoPagoCreationStatus @default(PENDING)
+  externalReference        String                     @unique @db.VarChar(150)
+  idempotencyKey           String                     @unique @db.VarChar(150)
+  providerOrderId          String?                    @unique @db.VarChar(100)
+  providerPaymentId        String?                    @unique @db.VarChar(100)
+  providerStatus           String?                    @db.VarChar(64)
+  providerStatusDetail     String?                    @db.VarChar(64)
+  qrCode                   String?                    @db.Text
+  ticketUrl                String?                    @db.Text
+  expiresAt                DateTime?
+  payerEmailCiphertext     String?                    @db.Text
+  payerEmailIv             String?                    @db.VarChar(64)
+  credentialVersion        Int                        @default(1)
+  lastErrorCode            String?                    @db.VarChar(64)
+  lastSyncedAt             DateTime?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  tenant     Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store      Store                          @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order      Order                          @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  payment    Payment                        @relation(fields: [paymentId, orderId], references: [id, orderId], onDelete: Cascade)
+  connection StorePaymentProviderConnection @relation(fields: [connectionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([orderId, tenantId, storeId])
+  @@unique([paymentId, orderId])
+  @@index([tenantId, storeId, creationStatus])
+  @@index([connectionId, createdAt])
+  @@index([providerStatus, providerStatusDetail])
+  @@map("mercado_pago_payments")
+}
+
+model PaymentProviderWebhookEvent {
+  id              String          @id @default(uuid())
+  provider        PaymentProvider
+  providerEventId String          @db.VarChar(150)
+  topic           String          @db.VarChar(32)
+  action          String          @db.VarChar(64)
+  providerUserId  String?         @db.VarChar(100)
+  processedAt     DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([provider, providerUserId, createdAt])
+  @@map("payment_provider_webhook_events")
 }
 
 model PaymentStatusHistory {

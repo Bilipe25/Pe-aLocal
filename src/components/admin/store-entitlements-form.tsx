@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 
 import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 import { updateStoreEntitlementAction } from '@/features/entitlements/actions';
+import { STORE_FEATURE_DEFINITIONS } from '@/domain/entitlements/store-features';
 import {
   LAYOUT_TEMPLATES,
   VISUAL_PRESETS,
@@ -23,6 +24,11 @@ export interface AdminStoreEntitlementItem {
   customDomainEnabled: boolean;
   platformBrandingRemovalEnabled: boolean;
   scheduledBannersEnabled: boolean;
+  onlinePaymentsEnabled: boolean;
+  operationalSlaEnabled: boolean;
+  kdsEnabled: boolean;
+  advancedReportsEnabled: boolean;
+  orderPrintingEnabled: boolean;
 }
 
 export function StoreEntitlementsForm({
@@ -177,6 +183,48 @@ export function StoreEntitlementsForm({
           </label>
         ))}
       </div>
+      <fieldset className="border-border mt-5 border-t pt-5">
+        <legend className="text-text-primary px-1 text-sm font-semibold">
+          Recursos do estabelecimento
+        </legend>
+        <p className="text-text-secondary mt-1 max-w-3xl text-sm">
+          Estes controles concedem capacidade à loja. Recursos marcados como “Em breve” ainda não
+          aparecem no painel do estabelecimento.
+        </p>
+        <div className="divide-border mt-3 divide-y">
+          {Object.values(STORE_FEATURE_DEFINITIONS).map((feature) => {
+            const field = feature.entitlementField;
+            const available = feature.implementationStatus === 'AVAILABLE';
+            return (
+              <label key={feature.key} className="flex min-h-16 items-start gap-3 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-5 w-5 shrink-0"
+                  checked={form[field]}
+                  onChange={(event) => setForm({ ...form, [field]: event.target.checked })}
+                />
+                <span className="min-w-0">
+                  <span className="text-text-primary flex flex-wrap items-center gap-2 text-sm font-medium">
+                    {feature.label}
+                    <span
+                      className={
+                        available
+                          ? 'bg-success-light text-success rounded-full px-2 py-0.5 text-xs'
+                          : 'bg-surface-secondary text-text-secondary rounded-full px-2 py-0.5 text-xs'
+                      }
+                    >
+                      {available ? 'Disponível' : 'Em breve'}
+                    </span>
+                  </span>
+                  <span className="text-text-secondary mt-0.5 block text-sm">
+                    {feature.description}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
       <button
         type="button"
         disabled={isPending}

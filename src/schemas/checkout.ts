@@ -127,6 +127,12 @@ const checkoutOrderShape = {
   addressLabel: z.enum(['HOME', 'WORK', 'OTHER']).default('HOME'),
   setAddressAsDefault: z.boolean().default(false),
   paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
+  payerEmail: z
+    .string()
+    .trim()
+    .email('Informe um e-mail válido para gerar o Pix.')
+    .max(254)
+    .optional(),
   changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
   notes: boundedTrimmedString(500).optional().default(''),
   expectedQuoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),

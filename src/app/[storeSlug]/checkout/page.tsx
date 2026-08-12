@@ -113,6 +113,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               acceptsPix={store.settings.acceptsPix}
               acceptsCash={store.settings.acceptsCash}
               acceptsCardOnDelivery={store.settings.acceptsCardOnDelivery}
+              paymentConfig={store.paymentConfig}
               deliveryZones={deliveryZones}
               storeCity={store.address?.city ?? ''}
               storeState={store.address?.state ?? ''}

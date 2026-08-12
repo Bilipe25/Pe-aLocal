@@ -82,6 +82,11 @@ describe('recursos white-label', () => {
       customDomainEnabled: false,
       platformBrandingRemovalEnabled: false,
       scheduledBannersEnabled: false,
+      onlinePaymentsEnabled: false,
+      operationalSlaEnabled: false,
+      kdsEnabled: false,
+      advancedReportsEnabled: false,
+      orderPrintingEnabled: false,
     };
     expect(storeEntitlementInputSchema.safeParse(base).success).toBe(true);
     expect(

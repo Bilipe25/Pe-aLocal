@@ -168,9 +168,13 @@ Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja
 | 6    | Painel Operacional     | ✅ Concluída                  |
 | 7    | Qualidade e Deploy     | 🚧 Em andamento               |
 
+## Pagamentos
+
+O fluxo manual continua sendo o padrão. A integração opcional de Pix online usa a Mercado Pago Orders API e OAuth individual por loja; ela só cria cobranças quando o kill switch global, o entitlement da loja, a preferência `ONLINE` e a conexão ativa estão presentes. Consulte [`docs/payments/mercado-pago.md`](docs/payments/mercado-pago.md).
+
 ## Limitações do MVP
 
-- Sem pagamentos online (PIX manual via WhatsApp)
+- Pagamento online limitado a Pix; cartão, boleto, split e reembolso iniciado pela plataforma não fazem parte desta versão
 - Realtime depende da configuração do Pusher; sem as chaves, os eventos ficam desabilitados
 - Sem Redis (rate limiting in-memory)
 - Sem app mobile nativo (a experiência web é instalável como PWA)

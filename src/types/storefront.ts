@@ -10,6 +10,18 @@ export interface PublicStorefrontOptionDto {
   price: number;
 }
 
+export type PublicCheckoutPaymentConfig =
+  | {
+      mode: 'MANUAL';
+      methods: Array<'PIX' | 'CASH' | 'CARD_ON_DELIVERY'>;
+    }
+  | {
+      mode: 'ONLINE';
+      provider: 'MERCADO_PAGO';
+      method: 'PIX';
+      requiresEmail: true;
+    };
+
 /**
  * Snapshot ordenado da opção usado pela cotação e persistido no pedido.
  * Os campos do grupo evitam consultar o catálogo mutável ao exibir o histórico.

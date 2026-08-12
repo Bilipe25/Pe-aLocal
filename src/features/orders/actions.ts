@@ -22,6 +22,7 @@ import { createOrder } from '@/server/repositories/order.repository';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
+import { ensureMercadoPagoPixCreated } from '@/server/services/mercado-pago-payment.service';
 import { reportCustomerPixPayment } from '@/server/services/order-payment.service';
 import { getRecognitionCookieName } from '@/server/services/customer-recognition.service';
 import {
@@ -38,6 +39,7 @@ interface CreateOrderData {
   publicToken: string;
   orderNumber: number;
   paymentReportToken: string | null;
+  onlinePayment: boolean;
 }
 
 interface ReportPixPaymentData {
@@ -217,7 +219,20 @@ export async function createOrderAction(
       );
     }
 
-    if (order.created) {
+    if (order.onlinePayment && order.mercadoPagoPaymentId) {
+      const sync = await ensureMercadoPagoPixCreated(order.mercadoPagoPaymentId);
+      if (sync?.eventIds.length) {
+        await dispatchCommittedOrderEvents({
+          eventIds: sync.eventIds,
+          publishDirect: async () => {
+            await triggerPaymentUpdated(sync.storeId, sync.orderId, sync.paymentStatus);
+            if (sync.becameActionable) {
+              await triggerNewOrder(sync.storeId, sync.orderId, sync.orderNumber);
+            }
+          },
+        });
+      }
+    } else if (order.created) {
       await dispatchCommittedOrderEvents({
         eventIds: order.outboxEventIds,
         publishDirect: async () => {
@@ -238,7 +253,9 @@ export async function createOrderAction(
     return actionSuccess({
       publicToken: order.publicToken,
       orderNumber: order.orderNumber,
-      paymentReportToken: input.paymentMethod === 'PIX' ? order.paymentReportToken : null,
+      paymentReportToken:
+        !order.onlinePayment && input.paymentMethod === 'PIX' ? order.paymentReportToken : null,
+      onlinePayment: order.onlinePayment,
     });
   } catch (error) {
     console.warn('[CHECKOUT_ORDER_REJECTED]', {

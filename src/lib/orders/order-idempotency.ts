@@ -57,6 +57,7 @@ export function canonicalizeCheckoutForIdempotency(
     setAddressAsDefault: input.setAddressAsDefault,
     couponCode: input.couponCode ?? null,
     paymentMethod: input.paymentMethod,
+    payerEmail: input.payerEmail?.trim().toLowerCase() ?? null,
     changeFor: input.changeFor ?? null,
     expectedQuoteFingerprint: input.expectedQuoteFingerprint ?? null,
     notes: input.notes ?? '',
