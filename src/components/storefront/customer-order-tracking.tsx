@@ -119,6 +119,7 @@ export function CustomerOrderTracking({
   timeZone,
   initialState,
   publicVapidKey,
+  automaticPayment = false,
 }: {
   publicToken: string;
   storeSlug: string;
@@ -126,6 +127,7 @@ export function CustomerOrderTracking({
   timeZone: string;
   initialState: CustomerOrderTrackingStateDTO;
   publicVapidKey?: string | null;
+  automaticPayment?: boolean;
 }) {
   const expireCustomerOrderAccess = useExpireCustomerOrderAccess();
   const tracking = useCustomerOrderTracking({
@@ -151,11 +153,13 @@ export function CustomerOrderTracking({
       ? 0
       : timeline.findIndex((step) => step.status === state.status);
   const statusDescription =
-    state.status === 'READY'
-      ? state.modality === 'PICKUP'
-        ? 'Seu pedido está pronto para retirada.'
-        : 'Seu pedido está pronto e aguarda a saída para entrega.'
-      : presentation.description;
+    state.status === 'AWAITING_PAYMENT' && automaticPayment
+      ? 'Conclua o Pix. A confirmação será feita automaticamente.'
+      : state.status === 'READY'
+        ? state.modality === 'PICKUP'
+          ? 'Seu pedido está pronto para retirada.'
+          : 'Seu pedido está pronto e aguarda a saída para entrega.'
+        : presentation.description;
 
   return (
     <section className="border-tinta/10 bg-papel rounded-2xl border p-4.5 shadow-sm sm:p-5">

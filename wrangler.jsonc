@@ -33,6 +33,7 @@
     "ORDER_EVENT_PUBLISH_MODE": "outbox",
     "WEB_PUSH_ENABLED": "true",
     "MERCHANT_WEB_PUSH_ENABLED": "false",
+    "MERCADO_PAGO_ENABLED": "false",
   },
   "services": [
     {
@@ -105,6 +106,7 @@
         "ORDER_EVENT_PUBLISH_MODE": "outbox",
         "WEB_PUSH_ENABLED": "true",
         "MERCHANT_WEB_PUSH_ENABLED": "true",
+        "MERCADO_PAGO_ENABLED": "false",
       },
       "images": {
         "binding": "IMAGES",
@@ -180,6 +182,7 @@
         "ORDER_EVENT_PUBLISH_MODE": "direct",
         "WEB_PUSH_ENABLED": "false",
         "MERCHANT_WEB_PUSH_ENABLED": "false",
+        "MERCADO_PAGO_ENABLED": "false",
       },
       "images": {
         "binding": "IMAGES",

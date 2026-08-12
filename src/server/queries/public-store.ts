@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
 import { storeAssetUrl } from '@/features/assets/urls';
+import { isMercadoPagoEnabled } from '@/lib/mercado-pago/config';
 import type { RankedCartRecommendation } from '@/features/storefront/cart-recommendations';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
@@ -104,7 +105,14 @@ const publicPurchaseStoreSelect = {
       acceptsPix: true,
       acceptsCash: true,
       acceptsCardOnDelivery: true,
+      paymentMode: true,
     },
+  },
+  entitlement: { select: { onlinePaymentsEnabled: true } },
+  paymentProviderConnections: {
+    where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
+    take: 1,
+    select: { id: true },
   },
   customization: {
     select: {
@@ -319,9 +327,7 @@ interface PublicStorefrontSitemapEntry {
   lastModified: Date;
 }
 
-async function getPublicStorefrontSitemapEntriesFromDb(): Promise<
-  PublicStorefrontSitemapEntry[]
-> {
+async function getPublicStorefrontSitemapEntriesFromDb(): Promise<PublicStorefrontSitemapEntry[]> {
   const stores = await getDb().store.findMany({
     where: {
       isActive: true,
@@ -385,11 +391,9 @@ async function getPublicStorefrontSitemapEntriesFromDb(): Promise<
 }
 
 export async function getPublicStorefrontSitemapEntries() {
-  return unstable_cache(
-    getPublicStorefrontSitemapEntriesFromDb,
-    ['public-storefront-sitemap'],
-    { revalidate: 300 },
-  )();
+  return unstable_cache(getPublicStorefrontSitemapEntriesFromDb, ['public-storefront-sitemap'], {
+    revalidate: 300,
+  })();
 }
 
 /**
@@ -441,6 +445,33 @@ async function getPurchaseStoreFromDb(slug: string) {
       })
     : null;
 
+  const paymentMode = store.settings?.paymentMode ?? 'MANUAL';
+  const publicSettings = store.settings
+    ? {
+        primaryColor: store.settings.primaryColor,
+        secondaryColor: store.settings.secondaryColor,
+        fontFamily: store.settings.fontFamily,
+        minOrderValue: store.settings.minOrderValue,
+        deliveryEnabled: store.settings.deliveryEnabled,
+        pickupEnabled: store.settings.pickupEnabled,
+        acceptsPix: store.settings.acceptsPix,
+        acceptsCash: store.settings.acceptsCash,
+        acceptsCardOnDelivery: store.settings.acceptsCardOnDelivery,
+      }
+    : null;
+  const onlinePayment =
+    isMercadoPagoEnabled() &&
+    store.entitlement?.onlinePaymentsEnabled === true &&
+    paymentMode === 'ONLINE' &&
+    store.paymentProviderConnections.length > 0;
+  const methods = publicSettings
+    ? [
+        publicSettings.acceptsPix ? ('PIX' as const) : null,
+        publicSettings.acceptsCash ? ('CASH' as const) : null,
+        publicSettings.acceptsCardOnDelivery ? ('CARD_ON_DELIVERY' as const) : null,
+      ].filter((method): method is 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' => method !== null)
+    : [];
+
   return {
     id: store.id,
     tenantId: store.tenantId,
@@ -448,7 +479,15 @@ async function getPurchaseStoreFromDb(slug: string) {
     slug: store.slug,
     timeZone: store.timeZone,
     logoUrl: store.logoUrl,
-    settings: store.settings,
+    settings: publicSettings,
+    paymentConfig: onlinePayment
+      ? ({
+          mode: 'ONLINE',
+          provider: 'MERCADO_PAGO',
+          method: 'PIX',
+          requiresEmail: true,
+        } as const)
+      : ({ mode: 'MANUAL', methods } as const),
     address: store.address,
     customization: {
       assets: {

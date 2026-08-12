@@ -97,5 +97,6 @@ export const RATE_LIMITS = {
   merchantPush: { maxAttempts: 10, windowInSeconds: 60 },
   merchantPushTest: { maxAttempts: 5, windowInSeconds: 60 },
   reportPayment: { maxAttempts: 5, windowInSeconds: 60 },
+  resumeProviderPayment: { maxAttempts: 5, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
 } as const;

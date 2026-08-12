@@ -102,7 +102,8 @@
 ## Futuro (pós-MVP)
 
 - Supabase Realtime (WebSockets) para pedidos em tempo real
-- Integração com gateways de pagamento (Mercado Pago, Efí, Asaas)
+- [x] Pix online via Mercado Pago Orders API, protegido por entitlement e kill switch
+- Cartões, boleto, split e outros gateways de pagamento
 - Redis (Upstash) para rate limiting e cache
 - Impressão de comanda térmica
 - Cupons automáticos

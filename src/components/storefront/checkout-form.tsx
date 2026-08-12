@@ -63,7 +63,11 @@ import type {
   CustomerRecognitionResult,
   MaskedCustomerAddressDto,
 } from '@/types/customer-recognition';
-import type { CheckoutQuoteDto, PublicDeliveryZoneDto } from '@/types/storefront';
+import type {
+  CheckoutQuoteDto,
+  PublicCheckoutPaymentConfig,
+  PublicDeliveryZoneDto,
+} from '@/types/storefront';
 
 export function preloadCustomerRecognitionDialog() {
   return import('@/components/storefront/customer-recognition-dialog');
@@ -97,6 +101,8 @@ const checkoutFormSchema = object({
   addressLabel: enumSchema(['HOME', 'WORK', 'OTHER']),
   setAddressAsDefault: boolean(),
   paymentMethod: enumSchema(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
+  onlinePayment: boolean(),
+  payerEmail: string().check(trim(), maxLength(254)),
   cashWithoutChange: boolean(),
   changeFor: string().check(maxLength(20)),
   couponCode: string().check(trim(), maxLength(32)),
@@ -182,6 +188,14 @@ const checkoutFormSchema = object({
         input: data.changeFor,
       });
     }
+    if (data.onlinePayment && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(data.payerEmail.trim())) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payerEmail'],
+        message: 'Informe um e-mail válido para gerar o Pix.',
+        input: data.payerEmail,
+      });
+    }
   }),
 );
 
@@ -199,6 +213,7 @@ export interface CheckoutFormProps {
   acceptsPix: boolean;
   acceptsCash: boolean;
   acceptsCardOnDelivery: boolean;
+  paymentConfig: PublicCheckoutPaymentConfig;
   initialStep?: CheckoutStep;
   initialModality?: 'DELIVERY' | 'PICKUP';
   initialCouponCode?: string;
@@ -541,6 +556,7 @@ export function CheckoutForm({
   acceptsPix,
   acceptsCash,
   acceptsCardOnDelivery,
+  paymentConfig,
   deliveryZones = [],
   storeCity = '',
   storeState = '',
@@ -604,7 +620,14 @@ export function CheckoutForm({
         : canDeliver
           ? 'DELIVERY'
           : 'PICKUP';
-  const defaultPayment = acceptsPix ? 'PIX' : acceptsCash ? 'CASH' : 'CARD_ON_DELIVERY';
+  const onlinePayment = paymentConfig.mode === 'ONLINE';
+  const defaultPayment = onlinePayment
+    ? 'PIX'
+    : acceptsPix
+      ? 'PIX'
+      : acceptsCash
+        ? 'CASH'
+        : 'CARD_ON_DELIVERY';
 
   const {
     control,
@@ -639,6 +662,8 @@ export function CheckoutForm({
       addressLabel: 'HOME',
       setAddressAsDefault: false,
       paymentMethod: defaultPayment,
+      onlinePayment,
+      payerEmail: '',
       cashWithoutChange: true,
       changeFor: '',
       couponCode: initialCouponCode,
@@ -861,10 +886,11 @@ export function CheckoutForm({
           : draft.modality === 'PICKUP' && pickupEnabled
             ? 'PICKUP'
             : defaultModality,
-      paymentMethod:
-        (draft.paymentMethod === 'PIX' && acceptsPix) ||
-        (draft.paymentMethod === 'CASH' && acceptsCash) ||
-        (draft.paymentMethod === 'CARD_ON_DELIVERY' && acceptsCardOnDelivery)
+      paymentMethod: onlinePayment
+        ? 'PIX'
+        : (draft.paymentMethod === 'PIX' && acceptsPix) ||
+            (draft.paymentMethod === 'CASH' && acceptsCash) ||
+            (draft.paymentMethod === 'CARD_ON_DELIVERY' && acceptsCardOnDelivery)
           ? draft.paymentMethod
           : defaultPayment,
       deliveryZoneId:
@@ -885,6 +911,7 @@ export function CheckoutForm({
     deliveryZones,
     initialCouponCode,
     initialModality,
+    onlinePayment,
     pickupEnabled,
     reset,
     setValue,
@@ -1122,7 +1149,12 @@ export function CheckoutForm({
     const fieldsByStep: Record<Exclude<CheckoutStep, 'review'>, FieldPath<CheckoutFormValues>[]> = {
       identification: ['customerPhone', 'customerName'],
       fulfillment: ['modality'],
-      payment: ['paymentMethod', 'cashWithoutChange', 'changeFor'],
+      payment: [
+        'paymentMethod',
+        'cashWithoutChange',
+        'changeFor',
+        ...(onlinePayment ? (['payerEmail'] as FieldPath<CheckoutFormValues>[]) : []),
+      ],
     };
     if (step === 'review') return;
     const baseFields =
@@ -1144,7 +1176,7 @@ export function CheckoutForm({
       let latestQuote = quote;
       const isQuoteFresh = lastUpdatedAt && Date.now() - lastUpdatedAt < 5000;
       const hasCoverageIssue = quote?.issues.some(
-        (issue) => issue.code === 'OUTSIDE_DELIVERY_AREA'
+        (issue) => issue.code === 'OUTSIDE_DELIVERY_AREA',
       );
 
       if (!isQuoteFresh || hasCoverageIssue || !quote?.deliveryZoneId) {
@@ -1233,6 +1265,7 @@ export function CheckoutForm({
               ? validValues.setAddressAsDefault
               : false,
           paymentMethod: validValues.paymentMethod,
+          payerEmail: onlinePayment ? validValues.payerEmail.trim() : undefined,
           changeFor,
           notes: validValues.notes,
           expectedQuoteFingerprint: effectiveQuote.quoteFingerprint,
@@ -1897,7 +1930,9 @@ export function CheckoutForm({
                     Como prefere pagar?
                   </h1>
                   <p className="text-text-muted mt-1 text-sm">
-                    O pagamento é combinado diretamente com o estabelecimento.
+                    {onlinePayment
+                      ? 'Pague por Pix e receba a confirmação automaticamente.'
+                      : 'O pagamento é combinado diretamente com o estabelecimento.'}
                   </p>
                 </div>
               </header>
@@ -1910,16 +1945,18 @@ export function CheckoutForm({
                 aria-describedby={errors.paymentMethod ? 'paymentMethod-error' : undefined}
               >
                 {[
-                  acceptsPix
+                  onlinePayment || acceptsPix
                     ? {
                         value: 'PIX' as const,
                         label: 'Pix',
-                        description: 'Use a chave exibida após confirmar',
+                        description: onlinePayment
+                          ? 'Confirmação automática pelo Mercado Pago'
+                          : 'Use a chave exibida após confirmar',
                         Icon: QrCode,
                         iconClass: 'text-cyan-700 bg-cyan-50',
                       }
                     : null,
-                  acceptsCash
+                  !onlinePayment && acceptsCash
                     ? {
                         value: 'CASH' as const,
                         label: 'Dinheiro',
@@ -1928,7 +1965,7 @@ export function CheckoutForm({
                         iconClass: 'text-emerald-700 bg-emerald-50',
                       }
                     : null,
-                  acceptsCardOnDelivery
+                  !onlinePayment && acceptsCardOnDelivery
                     ? {
                         value: 'CARD_ON_DELIVERY' as const,
                         label: 'Cartão no recebimento',
@@ -1984,6 +2021,28 @@ export function CheckoutForm({
                 )}
               </div>
               <FieldError id="paymentMethod-error" message={errors.paymentMethod?.message} />
+
+              {onlinePayment && (
+                <div className="border-tinta/10 rounded-xl border p-4">
+                  <label htmlFor="payerEmail" className="text-tinta text-sm font-semibold">
+                    E-mail para o Pix
+                  </label>
+                  <Input
+                    id="payerEmail"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="voce@exemplo.com"
+                    className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1"
+                    aria-invalid={Boolean(errors.payerEmail)}
+                    aria-describedby={errors.payerEmail ? 'payerEmail-error' : 'payerEmail-help'}
+                    {...register('payerEmail')}
+                  />
+                  <p id="payerEmail-help" className="text-text-muted mt-2 text-xs">
+                    Usado apenas para gerar esta cobrança. A confirmação é automática.
+                  </p>
+                  <FieldError id="payerEmail-error" message={errors.payerEmail?.message} />
+                </div>
+              )}
 
               {paymentMethod === 'CASH' && (
                 <div className="border-tinta/10 rounded-xl border p-4">
@@ -2308,17 +2367,11 @@ export function CheckoutForm({
           aria-live="assertive"
           aria-atomic="true"
         >
-          <svg
-            className="checkout-success-check"
-            viewBox="0 0 36 36"
-            aria-hidden="true"
-          >
+          <svg className="checkout-success-check" viewBox="0 0 36 36" aria-hidden="true">
             <circle className="check-circle" cx="18" cy="18" r="16" />
             <polyline className="check-mark" points="11,18 16,23 25,13" />
           </svg>
-          <p className="checkout-success-title">
-            Pedido #{orderConfirmed.orderNumber} confirmado!
-          </p>
+          <p className="checkout-success-title">Pedido #{orderConfirmed.orderNumber} confirmado!</p>
         </div>
       )}
     </form>

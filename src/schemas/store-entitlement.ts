@@ -25,6 +25,11 @@ export const storeEntitlementInputSchema = z
     customDomainEnabled: z.boolean(),
     platformBrandingRemovalEnabled: z.boolean(),
     scheduledBannersEnabled: z.boolean(),
+    onlinePaymentsEnabled: z.boolean(),
+    operationalSlaEnabled: z.boolean(),
+    kdsEnabled: z.boolean(),
+    advancedReportsEnabled: z.boolean(),
+    orderPrintingEnabled: z.boolean(),
   })
   .strict();
 

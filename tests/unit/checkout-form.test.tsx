@@ -9,7 +9,10 @@ import {
   readPaymentReportToken,
 } from '@/lib/orders/payment-report-token-memory';
 import type { CartItem } from '@/stores/cart-store';
-import { readPublicOrderHistory, usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
+import {
+  readPublicOrderHistory,
+  usePublicOrderHistoryStore,
+} from '@/stores/public-order-history-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 
 const PUBLIC_TOKEN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -133,6 +136,7 @@ function renderCheckout(
       acceptsPix
       acceptsCash={false}
       acceptsCardOnDelivery={false}
+      paymentConfig={{ mode: 'MANUAL', methods: ['PIX'] }}
       deliveryZones={[
         {
           id: quote.deliveryZoneId!,
@@ -774,7 +778,7 @@ describe('checkout público v2', () => {
     await waitFor(() => expect(mocks.createOrderAction).toHaveBeenCalledOnce(), {
       timeout: 5_000,
     });
-    
+
     // Espera a UI reagir ao sucesso (isso garante que a microtask queue foi resolvida)
     expect(await screen.findByText(/Pedido #1 confirmado/i)).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeInTheDocument();
@@ -789,9 +793,7 @@ describe('checkout público v2', () => {
     expect(window.sessionStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
     expect(window.localStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
 
-    await waitFor(() => 
-      expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`)
-    );
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`));
   });
 
   it('assina a sincronização entre abas e remove o listener ao desmontar', () => {

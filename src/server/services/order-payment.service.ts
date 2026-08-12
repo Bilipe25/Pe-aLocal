@@ -5,6 +5,7 @@ import type {
   OrderChangeSource,
   OrderStatus,
   PaymentMethodType,
+  PaymentProvider,
   PaymentStatus,
   Prisma,
 } from '@prisma/client';
@@ -50,6 +51,7 @@ interface PaymentOrderSnapshot {
     status: PaymentStatus;
     method: PaymentMethodType;
     amount: number;
+    provider: PaymentProvider | null;
   } | null;
 }
 
@@ -158,6 +160,11 @@ async function transitionPayment(
 ): Promise<OrderMutationResult> {
   if (order.version !== options.expectedVersion) conflict();
   assertPaymentConsistency(order);
+  if (order.payment?.provider) {
+    throw new BusinessRuleError(
+      'Pagamentos online são confirmados e reconciliados automaticamente.',
+    );
+  }
   assertPaymentTransition(
     {
       status: order.paymentStatus,
@@ -267,7 +274,9 @@ async function getScopedOrder(
       paymentStatus: true,
       paymentMethod: true,
       version: true,
-      payment: { select: { id: true, status: true, method: true, amount: true } },
+      payment: {
+        select: { id: true, status: true, method: true, amount: true, provider: true },
+      },
     },
   });
   if (!order) throw new NotFoundError('Pedido');
@@ -372,7 +381,9 @@ export async function reportCustomerPixPayment(reportToken: string): Promise<Ord
           paymentMethod: true,
           version: true,
           paymentReportExpiresAt: true,
-          payment: { select: { id: true, status: true, method: true, amount: true } },
+          payment: {
+            select: { id: true, status: true, method: true, amount: true, provider: true },
+          },
         },
       });
       if (!order) throw new NotFoundError('Pedido');
@@ -391,7 +402,7 @@ export async function reportCustomerPixPayment(reportToken: string): Promise<Ord
           outboxEventIds: [],
         };
       }
-      if (order.paymentReportExpiresAt <= new Date()) {
+      if (!order.paymentReportExpiresAt || order.paymentReportExpiresAt <= new Date()) {
         throw new BusinessRuleError('O prazo para informar este pagamento expirou.');
       }
 

@@ -78,6 +78,11 @@ function parseEntitlementConfig(entitlement: Awaited<ReturnType<typeof ensureSto
     customDomainEnabled: entitlement.customDomainEnabled,
     platformBrandingRemovalEnabled: entitlement.platformBrandingRemovalEnabled,
     scheduledBannersEnabled: entitlement.scheduledBannersEnabled,
+    onlinePaymentsEnabled: entitlement.onlinePaymentsEnabled,
+    operationalSlaEnabled: entitlement.operationalSlaEnabled,
+    kdsEnabled: entitlement.kdsEnabled,
+    advancedReportsEnabled: entitlement.advancedReportsEnabled,
+    orderPrintingEnabled: entitlement.orderPrintingEnabled,
   });
 }
 
