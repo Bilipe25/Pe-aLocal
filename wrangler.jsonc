@@ -106,7 +106,7 @@
         "ORDER_EVENT_PUBLISH_MODE": "outbox",
         "WEB_PUSH_ENABLED": "true",
         "MERCHANT_WEB_PUSH_ENABLED": "true",
-        "MERCADO_PAGO_ENABLED": "false",
+        "MERCADO_PAGO_ENABLED": "true",
       },
       "images": {
         "binding": "IMAGES",

@@ -52,6 +52,36 @@ function assertOnlinePaymentsEnabled(entitlement: { onlinePaymentsEnabled: boole
   }
 }
 
+interface MercadoPagoCapabilitySource {
+  entitlement: { onlinePaymentsEnabled: boolean } | null;
+  settings: { paymentMode: 'MANUAL' | 'ONLINE' } | null;
+  paymentProviderConnections: Array<{
+    status: PaymentProviderConnectionStatus;
+    liveMode: boolean;
+    connectedAt: Date | null;
+    refreshedAt: Date | null;
+    reauthRequiredAt: Date | null;
+  }>;
+}
+
+export function resolveMercadoPagoCapability(
+  store: MercadoPagoCapabilitySource,
+  rolloutEnabled: boolean,
+) {
+  if (!rolloutEnabled || !store.entitlement?.onlinePaymentsEnabled) return null;
+
+  const connection = store.paymentProviderConnections[0] ?? null;
+  const mode = store.settings?.paymentMode ?? 'MANUAL';
+  const canSelectOnline = connection?.status === 'ACTIVE';
+
+  return {
+    mode,
+    effectiveMode: mode === 'ONLINE' && canSelectOnline ? ('ONLINE' as const) : ('MANUAL' as const),
+    connection,
+    canSelectOnline,
+  } as const;
+}
+
 export async function getMercadoPagoCapability(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_PAYMENT_SETTINGS);
   const store = await getDb().store.findFirst({
@@ -73,13 +103,7 @@ export async function getMercadoPagoCapability(storeId: string) {
     },
   });
   if (!store) throw new NotFoundError('Loja');
-  if (!isMercadoPagoEnabled() || !store.entitlement?.onlinePaymentsEnabled) return null;
-  const connection = store.paymentProviderConnections[0] ?? null;
-  return {
-    mode: store.settings?.paymentMode ?? 'MANUAL',
-    connection,
-    canSelectOnline: connection?.status === 'ACTIVE',
-  } as const;
+  return resolveMercadoPagoCapability(store, isMercadoPagoEnabled());
 }
 
 export async function startMercadoPagoOAuth(storeId: string) {

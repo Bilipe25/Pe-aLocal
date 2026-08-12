@@ -29,6 +29,7 @@ import { UnsavedChangesGuard } from '@/components/admin/unsaved-changes-guard';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 import { cn } from '@/lib/utils';
+import type { MercadoPagoOperationalReadiness } from '@/lib/mercado-pago/config';
 
 import {
   discardCustomizationDraftAction,
@@ -69,6 +70,7 @@ interface CustomizationEditorProps {
   initialBanners: AdminStoreBannerItem[];
   initialDomains: AdminStoreDomainItem[];
   initialEntitlement: AdminStoreEntitlementItem;
+  mercadoPagoReadiness: MercadoPagoOperationalReadiness;
   destinations: {
     categories: AdminStoreCategoryItem[];
     products: { id: string; name: string }[];
@@ -167,6 +169,7 @@ export function CustomizationEditor({
   initialBanners,
   initialDomains,
   initialEntitlement,
+  mercadoPagoReadiness,
   destinations,
   storeSlug,
   storeName,
@@ -806,6 +809,7 @@ export function CustomizationEditor({
             tenantId={tenantId}
             storeId={storeId}
             initialEntitlement={initialEntitlement}
+            mercadoPagoReadiness={mercadoPagoReadiness}
           />
 
           <section className="border-border bg-surface rounded-xl border p-5 shadow-sm">

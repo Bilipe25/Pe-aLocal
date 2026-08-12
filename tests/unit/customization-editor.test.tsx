@@ -49,6 +49,13 @@ function renderEditor(hasDraft = false) {
         advancedReportsEnabled: false,
         orderPrintingEnabled: false,
       }}
+      mercadoPagoReadiness={{
+        rolloutEnabled: false,
+        configurationReady: false,
+        configuredBindings: 0,
+        requiredBindings: 5,
+        environment: 'sandbox',
+      }}
       destinations={{ categories: [], products: [], coupons: [] }}
       storeSlug="loja-1"
       storeName="Loja de teste"

@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Link2, Link2Off, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CircleAlert, CheckCircle2, Link2, Link2Off, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
@@ -17,8 +17,10 @@ interface OnlinePaymentSettingsProps {
   storeId: string;
   expectedConfigurationVersion: number;
   readOnly: boolean;
+  connectionFeedback: 'connected' | 'error' | null;
   capability: {
     mode: 'MANUAL' | 'ONLINE';
+    effectiveMode: 'MANUAL' | 'ONLINE';
     canSelectOnline: boolean;
     connection: {
       status: 'ACTIVE' | 'REAUTH_REQUIRED' | 'DISCONNECTED' | 'REVOKED' | 'ERROR';
@@ -42,6 +44,7 @@ export function OnlinePaymentSettings({
   storeId,
   expectedConfigurationVersion,
   readOnly,
+  connectionFeedback,
   capability,
 }: OnlinePaymentSettingsProps) {
   const router = useRouter();
@@ -101,6 +104,23 @@ export function OnlinePaymentSettings({
 
       <div className="space-y-5 p-4 sm:p-5">
         <FormMessage message={error} />
+        {connectionFeedback ? (
+          <div
+            role={connectionFeedback === 'error' ? 'alert' : 'status'}
+            className={`${connectionFeedback === 'error' ? 'bg-error-light text-error' : 'bg-success-light text-success'} flex items-start gap-2 rounded-lg px-3 py-2 text-sm`}
+          >
+            {connectionFeedback === 'error' ? (
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            )}
+            <p className="font-medium">
+              {connectionFeedback === 'error'
+                ? 'Não foi possível conectar a conta. Tente novamente ou confira a configuração com o suporte.'
+                : 'Conta Mercado Pago conectada com sucesso. Agora você pode ativar o modo Online.'}
+            </p>
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modo de pagamento">
           {(['MANUAL', 'ONLINE'] as const).map((option) => {
             const selected = mode === option;
@@ -112,6 +132,11 @@ export function OnlinePaymentSettings({
                 type="button"
                 role="radio"
                 aria-checked={selected}
+                aria-describedby={
+                  option === 'ONLINE' && !capability.canSelectOnline
+                    ? 'online-mode-requirement'
+                    : undefined
+                }
                 disabled={disabled}
                 onClick={() => changeMode(option)}
                 className="border-border bg-surface hover:border-brand-300 disabled:bg-surface-secondary/50 disabled:text-text-muted flex min-h-20 items-start gap-3 rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed"
@@ -133,6 +158,20 @@ export function OnlinePaymentSettings({
             );
           })}
         </div>
+
+        {!capability.canSelectOnline ? (
+          <p
+            id="online-mode-requirement"
+            className="bg-info-light text-info flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              {capability.mode === 'ONLINE' && capability.effectiveMode === 'MANUAL'
+                ? 'O modo Online continua salvo, mas o checkout está usando o modo Manual até a conta ser reconectada.'
+                : 'Conecte uma conta Mercado Pago para habilitar e selecionar o modo Online.'}
+            </span>
+          </p>
+        ) : null}
 
         <div className="border-border flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <div>
