@@ -1,11 +1,23 @@
 import { NextResponse } from 'next/server';
 
-import { completeMercadoPagoOAuth } from '@/server/services/mercado-pago-connection.service';
+import type { MercadoPagoConnectionFeedback } from '@/lib/mercado-pago/oauth-feedback';
+import {
+  completeMercadoPagoOAuth,
+  MercadoPagoOAuthCompletionError,
+} from '@/server/services/mercado-pago-connection.service';
 
 export const dynamic = 'force-dynamic';
 
-function safeFallback(request: Request, state: 'connected' | 'error') {
-  return NextResponse.redirect(new URL(`/dashboard?connection=${state}`, request.url), 303);
+function redirectWithFeedback(
+  request: Request,
+  returnPath: string,
+  feedback: MercadoPagoConnectionFeedback,
+) {
+  const destination = new URL(returnPath, request.url);
+  destination.searchParams.set('connection', feedback);
+  const response = NextResponse.redirect(destination, 303);
+  response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+  return response;
 }
 
 export async function GET(request: Request) {
@@ -14,15 +26,16 @@ export async function GET(request: Request) {
   const code = url.searchParams.get('code') ?? '';
   try {
     const result = await completeMercadoPagoOAuth(state, code);
-    const response = NextResponse.redirect(
-      new URL(`${result.returnPath}?connection=connected`, request.url),
-      303,
-    );
-    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
-    return response;
-  } catch {
-    const response = safeFallback(request, 'error');
-    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
-    return response;
+    return redirectWithFeedback(request, result.returnPath, 'connected');
+  } catch (error) {
+    if (error instanceof MercadoPagoOAuthCompletionError) {
+      return redirectWithFeedback(request, error.returnPath, error.reason);
+    }
+    console.error('[MP_OAUTH_CALLBACK_FAILED]', {
+      reason: 'precondition_error',
+      hasState: Boolean(state),
+      hasCode: Boolean(code),
+    });
+    return redirectWithFeedback(request, '/dashboard', 'error');
   }
 }

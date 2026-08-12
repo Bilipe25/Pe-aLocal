@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { PaymentSettingsForm } from '@/features/stores/components/payment-settings-form';
 import { OnlinePaymentSettings } from '@/features/stores/components/online-payment-settings';
 import { loadStorePageData } from '@/features/stores/page-access';
+import { parseMercadoPagoConnectionFeedback } from '@/lib/mercado-pago/oauth-feedback';
 import { getStorePaymentSettings } from '@/server/services/store-settings.service';
 import { getMercadoPagoCapability } from '@/server/services/mercado-pago-connection.service';
 
@@ -19,6 +20,11 @@ export default async function StorePaymentsPage({
     loadStorePageData(() => getStorePaymentSettings(storeId)),
     getMercadoPagoCapability(storeId),
   ]);
+  const requestedFeedback = parseMercadoPagoConnectionFeedback(query.connection);
+  const connectionFeedback =
+    requestedFeedback === 'connected' && onlineCapability?.connection?.status !== 'ACTIVE'
+      ? 'error'
+      : requestedFeedback;
 
   return (
     <div>
@@ -34,13 +40,7 @@ export default async function StorePaymentsPage({
             storeId={storeId}
             expectedConfigurationVersion={store.configurationVersion}
             capability={onlineCapability}
-            connectionFeedback={
-              query.connection === 'connected' && onlineCapability.connection?.status === 'ACTIVE'
-                ? 'connected'
-                : query.connection === 'error' || query.connection === 'connected'
-                  ? 'error'
-                  : null
-            }
+            connectionFeedback={connectionFeedback}
             readOnly={!canEdit}
           />
         ) : null}

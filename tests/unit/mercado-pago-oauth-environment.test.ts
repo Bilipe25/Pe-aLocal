@@ -91,7 +91,7 @@ describe('ambiente do OAuth Mercado Pago', () => {
       expect(requestBody(fetchMock)).toMatchObject({
         grant_type: 'authorization_code',
         code_verifier: 'pkce-verifier',
-        test_token: true,
+        test_token: 'true',
       });
     },
   );

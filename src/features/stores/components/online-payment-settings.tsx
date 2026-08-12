@@ -12,12 +12,13 @@ import {
   disconnectMercadoPagoAction,
   updateStorePaymentModeAction,
 } from '@/features/stores/payment-provider-actions';
+import type { MercadoPagoConnectionFeedback } from '@/lib/mercado-pago/oauth-feedback';
 
 interface OnlinePaymentSettingsProps {
   storeId: string;
   expectedConfigurationVersion: number;
   readOnly: boolean;
-  connectionFeedback: 'connected' | 'error' | null;
+  connectionFeedback: MercadoPagoConnectionFeedback | null;
   capability: {
     mode: 'MANUAL' | 'ONLINE';
     effectiveMode: 'MANUAL' | 'ONLINE';
@@ -39,6 +40,26 @@ const statusLabel = {
   REVOKED: 'Acesso revogado',
   ERROR: 'Conexão indisponível',
 } as const;
+
+const connectionFeedbackMessage: Record<MercadoPagoConnectionFeedback, string> = {
+  connected: 'Conta Mercado Pago conectada com sucesso. Agora você pode ativar o modo Online.',
+  error: 'Não foi possível conectar a conta. Inicie uma nova tentativa.',
+  invalid_grant:
+    'A autorização expirou ou não corresponde a esta integração. Inicie uma nova conexão.',
+  invalid_client:
+    'A configuração da integração precisa ser revisada pelo suporte antes de conectar.',
+  invalid_scope:
+    'O Mercado Pago não aceitou as permissões solicitadas. Revise a aplicação antes de tentar novamente.',
+  rate_limited: 'O Mercado Pago limitou temporariamente as tentativas. Aguarde e tente novamente.',
+  provider_error: 'O Mercado Pago não conseguiu concluir a autorização. Inicie uma nova tentativa.',
+  invalid_response:
+    'O Mercado Pago retornou uma resposta inesperada. Tente novamente; se persistir, acione o suporte.',
+  environment_mismatch:
+    'O staging aceita apenas uma conta Mercado Pago de teste. Conecte um usuário de teste do tipo Vendedor.',
+  missing_scope:
+    'A conta não concedeu todas as permissões necessárias. Autorize leitura e escrita em uma nova tentativa.',
+  internal_error: 'A conexão não pôde ser salva. Tente novamente; se persistir, acione o suporte.',
+};
 
 export function OnlinePaymentSettings({
   storeId,
@@ -106,19 +127,15 @@ export function OnlinePaymentSettings({
         <FormMessage message={error} />
         {connectionFeedback ? (
           <div
-            role={connectionFeedback === 'error' ? 'alert' : 'status'}
-            className={`${connectionFeedback === 'error' ? 'bg-error-light text-error' : 'bg-success-light text-success'} flex items-start gap-2 rounded-lg px-3 py-2 text-sm`}
+            role={connectionFeedback === 'connected' ? 'status' : 'alert'}
+            className={`${connectionFeedback === 'connected' ? 'bg-success-light text-success' : 'bg-error-light text-error'} flex items-start gap-2 rounded-lg px-3 py-2 text-sm`}
           >
-            {connectionFeedback === 'error' ? (
-              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            ) : (
+            {connectionFeedback === 'connected' ? (
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             )}
-            <p className="font-medium">
-              {connectionFeedback === 'error'
-                ? 'Não foi possível conectar a conta. Tente novamente ou confira a configuração com o suporte.'
-                : 'Conta Mercado Pago conectada com sucesso. Agora você pode ativar o modo Online.'}
-            </p>
+            <p className="font-medium">{connectionFeedbackMessage[connectionFeedback]}</p>
           </div>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modo de pagamento">

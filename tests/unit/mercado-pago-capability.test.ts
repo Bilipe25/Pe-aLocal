@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { getMercadoPagoOperationalReadiness } from '@/lib/mercado-pago/config';
+import { parseMercadoPagoConnectionFeedback } from '@/lib/mercado-pago/oauth-feedback';
 import { resolveMercadoPagoCapability } from '@/server/services/mercado-pago-connection.service';
 
 const activeConnection = {
@@ -91,5 +92,19 @@ describe('diagnóstico operacional Mercado Pago', () => {
 
     expect(readiness).toMatchObject({ configurationReady: false, configuredBindings: 4 });
     expect(JSON.stringify(readiness)).not.toContain('client-secret');
+  });
+});
+
+describe('feedback seguro do callback OAuth', () => {
+  it.each(['connected', 'invalid_grant', 'environment_mismatch', 'internal_error'] as const)(
+    'aceita o motivo conhecido %s',
+    (reason) => {
+      expect(parseMercadoPagoConnectionFeedback(reason)).toBe(reason);
+    },
+  );
+
+  it('descarta motivos forjados ou dados brutos do provedor', () => {
+    expect(parseMercadoPagoConnectionFeedback('access-token-sensível')).toBeNull();
+    expect(parseMercadoPagoConnectionFeedback(undefined)).toBeNull();
   });
 });
