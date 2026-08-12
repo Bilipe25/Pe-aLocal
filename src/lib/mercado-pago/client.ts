@@ -3,7 +3,12 @@ import 'server-only';
 import type { z } from 'zod';
 
 import { MERCADO_PAGO_API_ORIGIN } from './config';
-import { mercadoPagoOAuthTokenSchema, mercadoPagoOrderSchema } from './schemas';
+import {
+  mercadoPagoCreatedOrderSchema,
+  mercadoPagoOAuthTokenSchema,
+  mercadoPagoOrderSchema,
+  mercadoPagoOrderSearchSchema,
+} from './schemas';
 
 export class MercadoPagoApiError extends Error {
   constructor(
@@ -51,7 +56,8 @@ async function requestJson<T>(input: {
         typeof payload.code === 'string'
           ? payload.code
           : `HTTP_${response.status}`;
-      const retryAfter = Number(response.headers.get('retry-after'));
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfter = retryAfterHeader === null ? Number.NaN : Number(retryAfterHeader);
       throw new MercadoPagoApiError(
         'O Mercado Pago recusou a operação.',
         response.status,
@@ -84,7 +90,6 @@ export function exchangeMercadoPagoAuthorizationCode(input: {
   redirectUri: string;
   code: string;
   codeVerifier: string;
-  testToken: boolean;
 }) {
   return requestJson({
     path: '/oauth/token',
@@ -96,7 +101,6 @@ export function exchangeMercadoPagoAuthorizationCode(input: {
       code: input.code,
       code_verifier: input.codeVerifier,
       redirect_uri: input.redirectUri,
-      ...(input.testToken ? { test_token: 'true' } : {}),
     },
     schema: mercadoPagoOAuthTokenSchema,
   });
@@ -150,7 +154,31 @@ export function createMercadoPagoPixOrder(input: {
       },
       payer: { email: input.payerEmail },
     },
-    schema: mercadoPagoOrderSchema,
+    schema: mercadoPagoCreatedOrderSchema,
+  });
+}
+
+export function searchMercadoPagoOrders(input: {
+  accessToken: string;
+  externalReference: string;
+  beginDate: Date;
+  endDate: Date;
+}) {
+  const query = new URLSearchParams({
+    external_reference: input.externalReference,
+    begin_date: input.beginDate.toISOString(),
+    end_date: input.endDate.toISOString(),
+    type: 'online',
+    page: '1',
+    page_size: '2',
+    sort_by: 'created_date',
+    sort_order: 'desc',
+  });
+  return requestJson({
+    path: `/v1/orders?${query.toString()}`,
+    method: 'GET',
+    accessToken: input.accessToken,
+    schema: mercadoPagoOrderSearchSchema,
   });
 }
 

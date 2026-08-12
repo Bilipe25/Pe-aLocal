@@ -6,10 +6,11 @@ import {
   createMercadoPagoPixOrder,
   getMercadoPagoOrder,
   MercadoPagoApiError,
+  searchMercadoPagoOrders,
 } from '@/lib/mercado-pago/client';
 import { getMercadoPagoConfig, MERCADO_PAGO_PIX_EXPIRATION } from '@/lib/mercado-pago/config';
 import { credentialAad, decryptCredential } from '@/lib/mercado-pago/crypto';
-import type { MercadoPagoOrder } from '@/lib/mercado-pago/schemas';
+import type { MercadoPagoCreatedOrder, MercadoPagoOrder } from '@/lib/mercado-pago/schemas';
 import { mapMercadoPagoOrderStatus } from '@/lib/mercado-pago/status-mapper';
 import { getDb } from '@/server/database/client';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/server/errors';
@@ -40,21 +41,60 @@ function amountToCents(value: string | undefined): number | null {
   return Number.isSafeInteger(cents) ? cents : null;
 }
 
-function firstPayment(order: MercadoPagoOrder) {
+function firstPayment(order: MercadoPagoOrder | MercadoPagoCreatedOrder) {
   return order.transactions.payments[0] ?? null;
+}
+
+class AmbiguousProviderOrderError extends Error {
+  readonly code = 'AMBIGUOUS_EXTERNAL_REFERENCE';
+
+  constructor() {
+    super('Mais de uma order foi encontrada para a referência local.');
+    this.name = 'AmbiguousProviderOrderError';
+  }
 }
 
 function safeProviderErrorCode(error: unknown): string {
   if (error instanceof MercadoPagoApiError) return error.code.slice(0, 64);
+  if (error instanceof AmbiguousProviderOrderError) return error.code;
   if (error instanceof DOMException && error.name === 'AbortError') return 'TIMEOUT';
+  if (error instanceof TypeError) return 'NETWORK_ERROR';
   return 'PROVIDER_UNAVAILABLE';
 }
 
-function isRetryableProviderError(error: unknown): boolean {
+export function isRetryableMercadoPagoCreationError(error: unknown): boolean {
   return (
-    (error instanceof MercadoPagoApiError && (error.status === 429 || error.status >= 500)) ||
-    (error instanceof DOMException && error.name === 'AbortError')
+    error instanceof AmbiguousProviderOrderError ||
+    (error instanceof MercadoPagoApiError &&
+      ([402, 409, 423, 429].includes(error.status) || error.status >= 500)) ||
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    error instanceof TypeError
   );
+}
+
+function canRepeatCreationImmediately(error: unknown): boolean {
+  if (error instanceof MercadoPagoApiError) {
+    if (error.status === 402 || error.status === 409) return false;
+    if (![423, 429].includes(error.status) && error.status < 500) return false;
+    return error.retryAfterSeconds === null || error.retryAfterSeconds <= 2;
+  }
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') || error instanceof TypeError
+  );
+}
+
+async function waitBeforeCreationRetry(error: unknown) {
+  const retryAfterMs =
+    error instanceof MercadoPagoApiError && error.retryAfterSeconds !== null
+      ? error.retryAfterSeconds * 1_000
+      : 150;
+  await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfterMs, 2_000)));
+}
+
+function safeExpiration(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 async function writeProviderAudit(
@@ -120,7 +160,7 @@ export async function reconcileMercadoPagoOrder(
   const providerPayment = firstPayment(providerOrder);
   const providerPaymentAmount = amountToCents(providerPayment?.amount);
   if (
-    providerOrder.currency !== 'BRL' ||
+    (providerOrder.currency !== undefined && providerOrder.currency !== 'BRL') ||
     amountToCents(providerOrder.total_amount) !== local.order.total ||
     (providerPaymentAmount !== null && providerPaymentAmount !== local.order.total)
   ) {
@@ -194,9 +234,7 @@ export async function reconcileMercadoPagoOrder(
         providerStatusDetail: providerOrder.status_detail,
         qrCode: providerPayment?.payment_method.qr_code ?? local.qrCode,
         ticketUrl: providerPayment?.payment_method.ticket_url ?? local.ticketUrl,
-        expiresAt: providerPayment?.date_of_expiration
-          ? new Date(providerPayment.date_of_expiration)
-          : local.expiresAt,
+        expiresAt: safeExpiration(providerPayment?.date_of_expiration) ?? local.expiresAt,
         payerEmailCiphertext: null,
         payerEmailIv: null,
         lastErrorCode: mapped === 'REVIEW' ? 'UNMAPPED_STATUS' : null,
@@ -389,6 +427,154 @@ export async function reconcileMercadoPagoOrder(
   });
 }
 
+interface LocalMercadoPagoCreation {
+  id: string;
+  tenantId: string;
+  storeId: string;
+  orderId: string;
+  connectionId: string;
+  externalReference: string;
+  idempotencyKey: string;
+  createdAt: Date;
+  credentialVersion: number;
+  payerEmailCiphertext: string | null;
+  payerEmailIv: string | null;
+  providerOrderId: string | null;
+  creationStatus: 'PENDING' | 'CREATED' | 'RETRYABLE_ERROR' | 'FAILED';
+  qrCode: string | null;
+  ticketUrl: string | null;
+  expiresAt: Date | null;
+  order: { total: number };
+  connection: { providerUserId: string };
+}
+
+async function recordMercadoPagoCreatedOrder(
+  local: LocalMercadoPagoCreation,
+  providerOrder: MercadoPagoCreatedOrder,
+) {
+  const providerPayment = firstPayment(providerOrder);
+  const providerPaymentAmount = amountToCents(providerPayment?.amount);
+  const scopeMismatch =
+    providerOrder.external_reference !== local.externalReference ||
+    (providerOrder.user_id !== undefined &&
+      providerOrder.user_id !== local.connection.providerUserId);
+  const amountMismatch =
+    (providerOrder.currency !== undefined && providerOrder.currency !== 'BRL') ||
+    amountToCents(providerOrder.total_amount) !== local.order.total ||
+    (providerPaymentAmount !== null && providerPaymentAmount !== local.order.total);
+
+  if (scopeMismatch || amountMismatch) {
+    const code = scopeMismatch ? 'PROVIDER_SCOPE_MISMATCH' : 'AMOUNT_MISMATCH';
+    console.error(`[MP_${code}]`, {
+      mercadoPagoPaymentId: local.id,
+      orderId: local.orderId,
+    });
+    await getDb().mercadoPagoPayment.updateMany({
+      where: { id: local.id, tenantId: local.tenantId, storeId: local.storeId },
+      data: { lastErrorCode: code, lastSyncedAt: new Date() },
+    });
+    throw new BusinessRuleError('A resposta do provedor não corresponde ao pagamento local.');
+  }
+
+  await getDb().mercadoPagoPayment.updateMany({
+    where: { id: local.id, tenantId: local.tenantId, storeId: local.storeId },
+    data: {
+      creationStatus: 'CREATED',
+      providerOrderId: providerOrder.id,
+      providerPaymentId: providerPayment?.id ?? null,
+      providerStatus: providerOrder.status,
+      providerStatusDetail: providerOrder.status_detail,
+      qrCode: providerPayment?.payment_method.qr_code ?? local.qrCode,
+      ticketUrl: providerPayment?.payment_method.ticket_url ?? local.ticketUrl,
+      expiresAt: safeExpiration(providerPayment?.date_of_expiration) ?? local.expiresAt,
+      payerEmailCiphertext: null,
+      payerEmailIv: null,
+      lastErrorCode: null,
+      lastSyncedAt: new Date(),
+    },
+  });
+}
+
+async function fetchAndReconcileMercadoPagoOrder(
+  local: LocalMercadoPagoCreation,
+  initialAccessToken: string,
+  providerOrderId: string,
+) {
+  let accessToken = initialAccessToken;
+  try {
+    const providerOrder = await getMercadoPagoOrder({
+      accessToken,
+      orderId: providerOrderId,
+    });
+    return reconcileMercadoPagoOrder(providerOrder);
+  } catch (error) {
+    if (!(error instanceof MercadoPagoApiError) || error.status !== 401) throw error;
+    accessToken = await getMercadoPagoAccessToken(local.connectionId, {
+      allowReconciliation: true,
+      forceRefresh: true,
+    });
+    try {
+      const providerOrder = await getMercadoPagoOrder({
+        accessToken,
+        orderId: providerOrderId,
+      });
+      return reconcileMercadoPagoOrder(providerOrder);
+    } catch (retryError) {
+      if (retryError instanceof MercadoPagoApiError && retryError.status === 401) {
+        await markMercadoPagoReauthRequired(local.connectionId, 'SECOND_401');
+      }
+      throw retryError;
+    }
+  }
+}
+
+async function recoverMercadoPagoOrderByExternalReference(
+  local: LocalMercadoPagoCreation,
+  initialAccessToken: string,
+) {
+  const search = (accessToken: string) =>
+    searchMercadoPagoOrders({
+      accessToken,
+      externalReference: local.externalReference,
+      beginDate: new Date(local.createdAt.getTime() - 5 * 60 * 1_000),
+      endDate: new Date(Date.now() + 5 * 60 * 1_000),
+    });
+  let result;
+  try {
+    result = await search(initialAccessToken);
+  } catch (error) {
+    if (!(error instanceof MercadoPagoApiError) || error.status !== 401) throw error;
+    const refreshedAccessToken = await getMercadoPagoAccessToken(local.connectionId, {
+      allowReconciliation: true,
+      forceRefresh: true,
+    });
+    try {
+      result = await search(refreshedAccessToken);
+    } catch (retryError) {
+      if (retryError instanceof MercadoPagoApiError && retryError.status === 401) {
+        await markMercadoPagoReauthRequired(local.connectionId, 'SECOND_401');
+      }
+      throw retryError;
+    }
+  }
+  const matches = result.data.filter(
+    (candidate) => candidate.external_reference === local.externalReference,
+  );
+  if (matches.length > 1) {
+    console.error('[MP_AMBIGUOUS_EXTERNAL_REFERENCE]', {
+      mercadoPagoPaymentId: local.id,
+      matches: matches.length,
+    });
+    throw new AmbiguousProviderOrderError();
+  }
+  const providerOrder = matches[0];
+  if (!providerOrder) return { found: false, result: null } as const;
+  return {
+    found: true,
+    result: await reconcileMercadoPagoOrder(providerOrder),
+  } as const;
+}
+
 async function failCreation(
   mercadoPagoPaymentId: string,
   errorCode: string,
@@ -536,32 +722,35 @@ export async function ensureMercadoPagoPixCreated(
 ): Promise<MercadoPagoSyncResult | null> {
   const local = await getDb().mercadoPagoPayment.findUnique({
     where: { id: mercadoPagoPaymentId },
-    include: { order: { select: { total: true } } },
+    include: {
+      order: { select: { total: true } },
+      connection: { select: { providerUserId: true } },
+    },
   });
   if (!local) throw new NotFoundError('Pagamento Mercado Pago');
   if (local.providerOrderId) {
-    let accessToken = await getMercadoPagoAccessToken(local.connectionId, {
+    const accessToken = await getMercadoPagoAccessToken(local.connectionId, {
       allowReconciliation: true,
     });
+    return fetchAndReconcileMercadoPagoOrder(local, accessToken, local.providerOrderId);
+  }
+
+  let accessToken = await getMercadoPagoAccessToken(local.connectionId);
+  if (local.creationStatus === 'RETRYABLE_ERROR') {
     try {
-      const providerOrder = await getMercadoPagoOrder({
-        accessToken,
-        orderId: local.providerOrderId,
-      });
-      return reconcileMercadoPagoOrder(providerOrder);
+      const recovered = await recoverMercadoPagoOrderByExternalReference(local, accessToken);
+      if (recovered.found) return recovered.result;
     } catch (error) {
-      if (!(error instanceof MercadoPagoApiError) || error.status !== 401) throw error;
-      accessToken = await getMercadoPagoAccessToken(local.connectionId, {
-        allowReconciliation: true,
-        forceRefresh: true,
+      const code = safeProviderErrorCode(error);
+      await failCreation(local.id, code, true);
+      console.warn('[MP_ORDER_RECOVERY_FAILED]', {
+        mercadoPagoPaymentId: local.id,
+        code,
       });
-      const providerOrder = await getMercadoPagoOrder({
-        accessToken,
-        orderId: local.providerOrderId,
-      });
-      return reconcileMercadoPagoOrder(providerOrder);
+      return null;
     }
   }
+
   if (!local.payerEmailCiphertext || !local.payerEmailIv) {
     throw new BusinessRuleError(
       'Não foi possível recuperar os dados necessários para gerar o Pix.',
@@ -580,11 +769,11 @@ export async function ensureMercadoPagoPixCreated(
     }),
   );
 
-  let accessToken = await getMercadoPagoAccessToken(local.connectionId);
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    let createdOrder: MercadoPagoCreatedOrder;
     try {
-      const providerOrder = await createMercadoPagoPixOrder({
+      createdOrder = await createMercadoPagoPixOrder({
         accessToken,
         idempotencyKey: local.idempotencyKey,
         totalAmount: centsToAmount(local.order.total),
@@ -596,7 +785,6 @@ export async function ensureMercadoPagoPixCreated(
         mercadoPagoPaymentId: local.id,
         orderId: local.orderId,
       });
-      return reconcileMercadoPagoOrder(providerOrder);
     } catch (error) {
       lastError = error;
       if (attempt === 0 && error instanceof MercadoPagoApiError && error.status === 401) {
@@ -606,11 +794,45 @@ export async function ensureMercadoPagoPixCreated(
       if (attempt === 1 && error instanceof MercadoPagoApiError && error.status === 401) {
         await markMercadoPagoReauthRequired(local.connectionId, 'SECOND_401');
       }
-      if (attempt === 0 && isRetryableProviderError(error)) continue;
+
+      if (isRetryableMercadoPagoCreationError(error)) {
+        try {
+          const recovered = await recoverMercadoPagoOrderByExternalReference(local, accessToken);
+          if (recovered.found) return recovered.result;
+        } catch (recoveryError) {
+          // A falha da busca não transforma uma criação originalmente ambígua
+          // em falha definitiva. Mantemos o erro original, exceto quando a
+          // própria busca comprova referências duplicadas.
+          if (recoveryError instanceof AmbiguousProviderOrderError) {
+            lastError = recoveryError;
+          }
+          break;
+        }
+      }
+      if (attempt === 0 && canRepeatCreationImmediately(error)) {
+        await waitBeforeCreationRetry(error);
+        continue;
+      }
       break;
     }
+
+    await recordMercadoPagoCreatedOrder(local, createdOrder);
+    try {
+      return await fetchAndReconcileMercadoPagoOrder(local, accessToken, createdOrder.id);
+    } catch (error) {
+      const code = safeProviderErrorCode(error);
+      await getDb().mercadoPagoPayment.updateMany({
+        where: { id: local.id, tenantId: local.tenantId, storeId: local.storeId },
+        data: { lastErrorCode: code },
+      });
+      console.warn('[MP_ORDER_CANONICAL_SYNC_FAILED]', {
+        mercadoPagoPaymentId: local.id,
+        code,
+      });
+      return null;
+    }
   }
-  const retryable = isRetryableProviderError(lastError);
+  const retryable = isRetryableMercadoPagoCreationError(lastError);
   const code = safeProviderErrorCode(lastError);
   const failureResult = await failCreation(local.id, code, retryable);
   console.warn('[MP_ORDER_CREATE_FAILED]', { mercadoPagoPaymentId: local.id, code, retryable });

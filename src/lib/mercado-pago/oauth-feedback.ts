@@ -8,6 +8,7 @@ export const MERCADO_PAGO_CONNECTION_FEEDBACK = [
   'provider_error',
   'invalid_response',
   'environment_mismatch',
+  'unsupported_credential',
   'missing_scope',
   'internal_error',
 ] as const;

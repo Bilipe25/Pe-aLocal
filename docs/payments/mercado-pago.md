@@ -31,12 +31,12 @@ MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=
 
 O ambiente do OAuth é determinado no servidor por `APP_ENV`; não existe flag `NEXT_PUBLIC` nem Access Token global compartilhado:
 
-- `APP_ENV=development` ou `APP_ENV=staging`: a troca do authorization code envia `test_token=true` e exige `live_mode=false` na resposta;
-- `APP_ENV=production`: a troca omite `test_token` e exige `live_mode=true`.
+- `APP_ENV=development` ou `APP_ENV=staging`: a conta autorizadora deve ser um usuário Vendedor de teste e a resposta deve trazer `live_mode=false`;
+- `APP_ENV=production`: a conta autorizadora é real e a resposta deve trazer `live_mode=true`.
 
-O campo é omitido em produção porque a documentação oficial reserva `test_token=true` para gerar credenciais sandbox. `APP_ENV` ausente ou inválido impede a conexão. Se `live_mode` divergir do ambiente esperado, as credenciais retornadas não são criptografadas nem persistidas e uma conexão anterior da loja é marcada como `ERROR`, com o código sanitizado `OAUTH_ENVIRONMENT_MISMATCH`.
+A troca OAuth nunca envia `test_token`: a Orders API não aceita credenciais `TEST-`, inclusive no sandbox. Ela exige um Access Token OAuth `APP_USR-` emitido para o Vendedor de teste. O prefixo `APP_USR-` indica compatibilidade com a API, não diferencia sandbox de produção; essa separação é validada exclusivamente pelo `live_mode` retornado. `APP_ENV` ausente ou inválido impede a conexão. Se `live_mode` divergir do ambiente esperado, as credenciais retornadas não são criptografadas nem persistidas.
 
-O refresh segue o contrato oficial apenas com `client_id`, `client_secret`, `grant_type=refresh_token` e `refresh_token`; ele não envia `test_token`. A resposta é revalidada contra `APP_ENV` e contra o `liveMode` persistido na conexão antes da rotação atômica das credenciais. Assim, um refresh sandbox não pode promover a conexão para live, nem o inverso.
+O refresh segue o contrato oficial apenas com `client_id`, `client_secret`, `grant_type=refresh_token` e `refresh_token`; ele não envia `test_token`. A resposta é revalidada contra `APP_ENV`, contra o `liveMode` persistido e quanto à compatibilidade `APP_USR-` antes da rotação atômica das credenciais. Uma conexão antiga com credencial `TEST-` é marcada como `REAUTH_REQUIRED` e precisa ser reconectada.
 
 `MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_CLIENT_SECRET` continuam sendo as credenciais da aplicação OAuth. Não os substitua por Public Key, Access Token de teste, User ID ou credenciais de uma conta de teste. O PedidoLocal sempre recebe via OAuth um token próprio do vendedor que autorizou a aplicação.
 
@@ -68,11 +68,11 @@ Nenhum pagamento real deve ser feito nesse smoke test.
 
 ### Promoção futura para produção
 
-Antes de habilitar uma loja produtiva, configure `APP_ENV=production`, a redirect URI produtiva e o segredo de webhook produtivo. Confirme que a troca OAuth não envia `test_token` e que somente respostas com `live_mode=true` são aceitas. Nunca reutilize o segredo de webhook de teste em produção.
+Antes de habilitar uma loja produtiva, configure `APP_ENV=production`, a redirect URI produtiva e o segredo de webhook produtivo. Confirme que a troca OAuth continua sem `test_token` e que somente respostas com `live_mode=true` são aceitas. Nunca reutilize o segredo de webhook de teste em produção.
 
 Referências oficiais consultadas:
 
-- [OAuth Authorization Code, PKCE e `test_token`](https://www.mercadopago.com.br/developers/pt/docs/security/oauth/creation)
+- [OAuth Authorization Code e PKCE](https://www.mercadopago.com.br/developers/pt/docs/security/oauth/creation)
 - [Renovação do Access Token](https://www.mercadopago.com.br/developers/pt/docs/security/oauth/renewal)
 - [Contas de teste](https://www.mercadopago.com.br/developers/pt/docs/your-integrations/test/accounts)
 
@@ -90,7 +90,7 @@ Referências oficiais consultadas:
 - Nenhum `ORDER_CREATED` operacional é emitido antes do pagamento.
 - O webhook é validado por HMAC e o estado sempre é confirmado com `GET /v1/orders/{id}` usando a credencial da conta conectada.
 - Somente um pagamento integral e com valor exato promove o pedido para `PENDING`; essa transição grava históricos, auditoria e outbox na mesma transação.
-- Falhas ambíguas mantêm o pedido em “Gerando seu Pix” e podem ser retomadas pelo tracking com a mesma idempotency key.
+- Falhas ambíguas mantêm o pedido em “Gerando seu Pix”. Antes de repetir o `POST`, o backend pesquisa a `external_reference`; conflitos `402/409/423`, timeout, `429` e `5xx` nunca geram uma nova idempotency key.
 
 ## Operação e rollback
 

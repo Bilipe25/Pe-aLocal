@@ -12,10 +12,12 @@ import {
   refreshMercadoPagoToken,
 } from '@/lib/mercado-pago/client';
 import {
+  assertMercadoPagoOrdersCompatibleAccessToken,
   assertMercadoPagoOAuthEnvironment,
   getMercadoPagoConfig,
   isMercadoPagoEnabled,
   MERCADO_PAGO_AUTH_ORIGIN,
+  MercadoPagoOrdersCredentialError,
   MercadoPagoOAuthEnvironmentMismatchError,
 } from '@/lib/mercado-pago/config';
 import {
@@ -60,6 +62,10 @@ export class MercadoPagoOAuthCompletionError extends Error {
 function classifyOAuthCompletionError(error: unknown): MercadoPagoOAuthFailureReason {
   if (!(error instanceof MercadoPagoApiError)) return 'internal_error';
 
+  if (error.validationIssues.some((issue) => issue.path === 'access_token')) {
+    return 'unsupported_credential';
+  }
+
   switch (error.code.toLowerCase()) {
     case 'invalid_grant':
       return 'invalid_grant';
@@ -74,6 +80,13 @@ function classifyOAuthCompletionError(error: unknown): MercadoPagoOAuthFailureRe
     default:
       return error.status === 429 ? 'rate_limited' : 'provider_error';
   }
+}
+
+function isUnsupportedCredentialResponse(error: unknown): boolean {
+  return (
+    error instanceof MercadoPagoApiError &&
+    error.validationIssues.some((issue) => issue.path === 'access_token')
+  );
 }
 
 function logOAuthCompletionFailure(input: {
@@ -255,7 +268,6 @@ export async function completeMercadoPagoOAuth(state: string, code: string) {
       redirectUri: config.redirectUri,
       code,
       codeVerifier: verifier,
-      testToken: config.oauthTestMode,
     });
     try {
       assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
@@ -532,6 +544,20 @@ export async function markMercadoPagoReauthRequired(connectionId: string, code: 
   });
 }
 
+async function requireOrdersCompatibleStoredToken(connectionId: string, accessToken: string) {
+  try {
+    assertMercadoPagoOrdersCompatibleAccessToken(accessToken);
+    return accessToken;
+  } catch (error) {
+    if (!(error instanceof MercadoPagoOrdersCredentialError)) throw error;
+    await markMercadoPagoReauthRequired(connectionId, error.code);
+    console.warn('[MP_REAUTH_REQUIRED]', { connectionId, code: error.code });
+    throw new BusinessRuleError(
+      'Reconecte a conta Mercado Pago para usar uma credencial compatível com pagamentos Pix.',
+    );
+  }
+}
+
 export async function getMercadoPagoAccessToken(
   connectionId: string,
   options: { forceRefresh?: boolean; allowReconciliation?: boolean } = {},
@@ -572,7 +598,7 @@ export async function getMercadoPagoAccessToken(
     !connection.tokenExpiresAt ||
     connection.tokenExpiresAt.getTime() <= Date.now() + REFRESH_MARGIN_MS;
   if (!needsRefresh) {
-    return decryptCredential(
+    const accessToken = await decryptCredential(
       { ciphertext: connection.accessTokenCiphertext, iv: connection.accessTokenIv },
       config.encryptionKey,
       credentialAad({
@@ -583,6 +609,7 @@ export async function getMercadoPagoAccessToken(
         version: connection.credentialVersion,
       }),
     );
+    return requireOrdersCompatibleStoredToken(connection.id, accessToken);
   }
   if (!connection.refreshTokenCiphertext || !connection.refreshTokenIv) {
     await markMercadoPagoReauthRequired(connection.id, 'MISSING_REFRESH_TOKEN');
@@ -610,7 +637,7 @@ export async function getMercadoPagoAccessToken(
       current.tokenExpiresAt &&
       current.tokenExpiresAt.getTime() > Date.now() + 30_000
     ) {
-      return decryptCredential(
+      const accessToken = await decryptCredential(
         { ciphertext: current.accessTokenCiphertext, iv: current.accessTokenIv },
         config.encryptionKey,
         credentialAad({
@@ -621,6 +648,7 @@ export async function getMercadoPagoAccessToken(
           version: current.credentialVersion,
         }),
       );
+      return requireOrdersCompatibleStoredToken(connection.id, accessToken);
     }
     throw new ConflictError('A credencial está sendo atualizada. Tente novamente.');
   }
@@ -642,6 +670,7 @@ export async function getMercadoPagoAccessToken(
       clientSecret: config.clientSecret,
       refreshToken,
     });
+    assertMercadoPagoOrdersCompatibleAccessToken(token.access_token);
     assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
     if (token.live_mode !== connection.liveMode) {
       throw new MercadoPagoOAuthEnvironmentMismatchError(
@@ -694,9 +723,11 @@ export async function getMercadoPagoAccessToken(
       throw new ConflictError('A credencial foi atualizada por outro processo.');
     return token.access_token;
   } catch (error) {
-    const code =
-      error instanceof MercadoPagoApiError ||
-      error instanceof MercadoPagoOAuthEnvironmentMismatchError
+    const code = isUnsupportedCredentialResponse(error)
+      ? 'ORDERS_UNSUPPORTED_CREDENTIAL'
+      : error instanceof MercadoPagoApiError ||
+          error instanceof MercadoPagoOAuthEnvironmentMismatchError ||
+          error instanceof MercadoPagoOrdersCredentialError
         ? error.code
         : 'REFRESH_FAILED';
     if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
@@ -708,8 +739,10 @@ export async function getMercadoPagoAccessToken(
       });
     }
     if (
-      error instanceof MercadoPagoApiError &&
-      (error.status === 401 || error.code.toLowerCase() === 'invalid_grant')
+      error instanceof MercadoPagoOrdersCredentialError ||
+      isUnsupportedCredentialResponse(error) ||
+      (error instanceof MercadoPagoApiError &&
+        (error.status === 401 || error.code.toLowerCase() === 'invalid_grant'))
     ) {
       await markMercadoPagoReauthRequired(connection.id, code);
       console.warn('[MP_REAUTH_REQUIRED]', { connectionId: connection.id, code });
