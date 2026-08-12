@@ -1,12 +1,13 @@
 'use client';
 
-import { SlidersHorizontal } from 'lucide-react';
+import { CircleAlert, SlidersHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
 import { ChangeScopeBadge } from '@/components/admin/change-scope-badge';
 import { updateStoreEntitlementAction } from '@/features/entitlements/actions';
 import { STORE_FEATURE_DEFINITIONS } from '@/domain/entitlements/store-features';
+import type { MercadoPagoOperationalReadiness } from '@/lib/mercado-pago/config';
 import {
   LAYOUT_TEMPLATES,
   VISUAL_PRESETS,
@@ -35,10 +36,12 @@ export function StoreEntitlementsForm({
   tenantId,
   storeId,
   initialEntitlement,
+  mercadoPagoReadiness,
 }: {
   tenantId: string;
   storeId: string;
   initialEntitlement: AdminStoreEntitlementItem;
+  mercadoPagoReadiness: MercadoPagoOperationalReadiness;
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initialEntitlement);
@@ -75,6 +78,15 @@ export function StoreEntitlementsForm({
         return;
       }
       setFeedback({ tone: 'success', message: 'Recursos e limites atualizados com auditoria.' });
+      if (form.onlinePaymentsEnabled) {
+        setFeedback({
+          tone: 'success',
+          message:
+            mercadoPagoReadiness.rolloutEnabled && mercadoPagoReadiness.configurationReady
+              ? 'Capacidade concedida. A loja já pode conectar a conta Mercado Pago.'
+              : 'Capacidade concedida. O pagamento online continuará oculto até o rollout global estar pronto.',
+        });
+      }
       router.refresh();
     });
   }
@@ -195,6 +207,7 @@ export function StoreEntitlementsForm({
           {Object.values(STORE_FEATURE_DEFINITIONS).map((feature) => {
             const field = feature.entitlementField;
             const available = feature.implementationStatus === 'AVAILABLE';
+            const isOnlinePayment = feature.key === 'onlinePayments';
             return (
               <label key={feature.key} className="flex min-h-16 items-start gap-3 py-3">
                 <input
@@ -213,12 +226,34 @@ export function StoreEntitlementsForm({
                           : 'bg-surface-secondary text-text-secondary rounded-full px-2 py-0.5 text-xs'
                       }
                     >
-                      {available ? 'Disponível' : 'Em breve'}
+                      {available ? 'Implementado' : 'Em breve'}
                     </span>
+                    {isOnlinePayment ? (
+                      <span
+                        className={`${mercadoPagoReadiness.rolloutEnabled && mercadoPagoReadiness.configurationReady ? 'bg-success-light text-success' : 'bg-warning-light text-warning'} rounded-full px-2 py-0.5 text-xs`}
+                      >
+                        {mercadoPagoReadiness.rolloutEnabled &&
+                        mercadoPagoReadiness.configurationReady
+                          ? 'Rollout ativo'
+                          : 'Rollout indisponível'}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-text-secondary mt-0.5 block text-sm">
                     {feature.description}
                   </span>
+                  {isOnlinePayment ? (
+                    <span className="text-text-secondary mt-2 flex max-w-2xl items-start gap-2 text-xs">
+                      <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        {mercadoPagoReadiness.configurationReady
+                          ? mercadoPagoReadiness.rolloutEnabled
+                            ? `Configuração operacional pronta em ${mercadoPagoReadiness.environment === 'production' ? 'produção' : 'sandbox'}. Ao salvar, a opção aparecerá para o proprietário.`
+                            : 'A capacidade pode ser concedida, mas a loja só verá a opção depois que o rollout global for ligado.'
+                          : `Configuração incompleta no Worker (${mercadoPagoReadiness.configuredBindings} de ${mercadoPagoReadiness.requiredBindings} bindings presentes). A loja não verá a opção online.`}
+                      </span>
+                    </span>
+                  ) : null}
                 </span>
               </label>
             );

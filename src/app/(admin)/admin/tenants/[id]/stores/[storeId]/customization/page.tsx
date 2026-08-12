@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 
 import { TenantAccessError } from '@/server/errors';
 import { CustomizationEditor } from '@/components/admin/customization-editor';
+import { getMercadoPagoOperationalReadiness } from '@/lib/mercado-pago/config';
 import { getAdminCustomizationData } from '@/server/services/store-customization.service';
 
 export const metadata = { title: 'Personalização da loja' };
@@ -105,6 +106,7 @@ export default async function AdminStoreCustomizationPage({
           updatedAt: domain.updatedAt.toISOString(),
         }))}
         initialEntitlement={entitlement}
+        mercadoPagoReadiness={getMercadoPagoOperationalReadiness()}
         destinations={destinations}
       />
     </div>

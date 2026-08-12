@@ -68,7 +68,10 @@ const current = {
 describe('StoreEntitlementService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireSuperAdminStoreAccess.mockResolvedValue({ session: { userId: 'admin-1' } });
+    mocks.requireSuperAdminStoreAccess.mockResolvedValue({
+      session: { userId: 'admin-1' },
+      store: { slug: 'loja-teste' },
+    });
     mocks.ensureStoreEntitlement.mockResolvedValue(current);
     mocks.lockStoreEntitlement.mockResolvedValue({ id: current.id });
     mocks.entitlementFind.mockResolvedValue(current);

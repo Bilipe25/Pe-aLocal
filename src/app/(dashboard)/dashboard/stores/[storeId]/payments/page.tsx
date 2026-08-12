@@ -9,10 +9,12 @@ export const metadata = { title: 'Pagamentos' };
 
 export default async function StorePaymentsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ storeId: string }>;
+  searchParams: Promise<{ connection?: string }>;
 }) {
-  const { storeId } = await params;
+  const [{ storeId }, query] = await Promise.all([params, searchParams]);
   const [{ store, canEdit }, onlineCapability] = await Promise.all([
     loadStorePageData(() => getStorePaymentSettings(storeId)),
     getMercadoPagoCapability(storeId),
@@ -32,6 +34,13 @@ export default async function StorePaymentsPage({
             storeId={storeId}
             expectedConfigurationVersion={store.configurationVersion}
             capability={onlineCapability}
+            connectionFeedback={
+              query.connection === 'connected' && onlineCapability.connection?.status === 'ACTIVE'
+                ? 'connected'
+                : query.connection === 'error' || query.connection === 'connected'
+                  ? 'error'
+                  : null
+            }
             readOnly={!canEdit}
           />
         ) : null}

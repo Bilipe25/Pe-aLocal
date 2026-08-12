@@ -139,6 +139,6 @@ export async function updateStoreEntitlement(
         },
       },
     });
-    return updated;
+    return { entitlement: updated, storeSlug: context.store.slug };
   });
 }
