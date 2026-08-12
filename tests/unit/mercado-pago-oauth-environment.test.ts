@@ -135,6 +135,116 @@ describe('ambiente do OAuth Mercado Pago', () => {
     ).resolves.toMatchObject({ access_token: tokenResponse.access_token });
   });
 
+  it.each([
+    ['TEST-token-de-sandbox', false],
+    ['APP_USR-token-de-producao', true],
+  ] as const)(
+    'infere live_mode ausente pelo prefixo oficial de %s',
+    async (accessToken, liveMode) => {
+      const responseWithoutLiveMode = Object.fromEntries(
+        Object.entries({ ...tokenResponse, access_token: accessToken }).filter(
+          ([key]) => key !== 'live_mode',
+        ),
+      );
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutLiveMode));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        exchangeMercadoPagoAuthorizationCode({
+          clientId: 'client-id',
+          clientSecret: 'client-secret',
+          redirectUri: 'https://example.test/oauth/callback',
+          code: 'authorization-code',
+          codeVerifier: 'pkce-verifier',
+          testToken: true,
+        }),
+      ).resolves.toMatchObject({ live_mode: liveMode });
+    },
+  );
+
+  it('normaliza live_mode textual sem coerção ampla', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...tokenResponse, live_mode: 'false' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      exchangeMercadoPagoAuthorizationCode({
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        redirectUri: 'https://example.test/oauth/callback',
+        code: 'authorization-code',
+        codeVerifier: 'pkce-verifier',
+        testToken: true,
+      }),
+    ).resolves.toMatchObject({ live_mode: false });
+  });
+
+  it('ignora live_mode nulo quando o prefixo oficial determina o sandbox', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ ...tokenResponse, access_token: 'TEST-token-de-sandbox', live_mode: null }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      exchangeMercadoPagoAuthorizationCode({
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        redirectUri: 'https://example.test/oauth/callback',
+        code: 'authorization-code',
+        codeVerifier: 'pkce-verifier',
+        testToken: true,
+      }),
+    ).resolves.toMatchObject({ live_mode: false });
+  });
+
+  it('rejeita ambiente explícito contraditório ao prefixo oficial da credencial', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ ...tokenResponse, access_token: 'TEST-token-de-sandbox', live_mode: true }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await exchangeMercadoPagoAuthorizationCode({
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://example.test/oauth/callback',
+      code: 'authorization-code',
+      codeVerifier: 'pkce-verifier',
+      testToken: true,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MercadoPagoApiError);
+    expect((error as MercadoPagoApiError).validationIssues).toEqual([
+      { path: 'live_mode', code: 'custom' },
+    ]);
+  });
+
+  it('rejeita live_mode ausente quando o prefixo da credencial é desconhecido', async () => {
+    const responseWithoutLiveMode = Object.fromEntries(
+      Object.entries(tokenResponse).filter(([key]) => key !== 'live_mode'),
+    );
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responseWithoutLiveMode));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await exchangeMercadoPagoAuthorizationCode({
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://example.test/oauth/callback',
+      code: 'authorization-code',
+      codeVerifier: 'pkce-verifier',
+      testToken: true,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MercadoPagoApiError);
+    expect((error as MercadoPagoApiError).validationIssues).toEqual([
+      { path: 'live_mode', code: 'custom' },
+    ]);
+  });
+
   it('expõe somente caminhos e códigos de validação em uma resposta incompatível', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

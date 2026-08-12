@@ -2,16 +2,53 @@ import { z } from 'zod';
 
 const stringId = z.union([z.string(), z.number()]).transform(String);
 
-export const mercadoPagoOAuthTokenSchema = z.object({
-  access_token: z.string().min(1),
-  token_type: z.string().optional(),
-  expires_in: z.number().int().positive(),
-  scope: z.string().default(''),
-  user_id: stringId,
-  refresh_token: z.string().min(1),
-  public_key: z.string().optional(),
-  live_mode: z.boolean(),
-});
+function liveModeFromAccessToken(accessToken: string) {
+  if (accessToken.startsWith('TEST-')) return false;
+  if (accessToken.startsWith('APP_USR-')) return true;
+  return null;
+}
+
+function normalizeLiveMode(value: unknown) {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+export const mercadoPagoOAuthTokenSchema = z
+  .object({
+    access_token: z.string().min(1),
+    token_type: z.string().optional(),
+    expires_in: z.number().int().positive(),
+    scope: z.string().default(''),
+    user_id: stringId,
+    refresh_token: z.string().min(1),
+    public_key: z.string().optional(),
+    live_mode: z.unknown().optional(),
+  })
+  .superRefine((token, context) => {
+    const tokenLiveMode = liveModeFromAccessToken(token.access_token);
+    const fieldLiveMode = normalizeLiveMode(token.live_mode);
+    if (tokenLiveMode === null && fieldLiveMode === null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['live_mode'],
+        message: 'Não foi possível determinar o ambiente da credencial.',
+      });
+    }
+    if (tokenLiveMode !== null && fieldLiveMode !== null && tokenLiveMode !== fieldLiveMode) {
+      context.addIssue({
+        code: 'custom',
+        path: ['live_mode'],
+        message: 'O ambiente informado diverge do tipo da credencial.',
+      });
+    }
+  })
+  .transform((token) => ({
+    ...token,
+    live_mode:
+      liveModeFromAccessToken(token.access_token) ?? normalizeLiveMode(token.live_mode) ?? false,
+  }));
 
 const mercadoPagoPaymentMethodSchema = z.object({
   id: z.string().optional(),
