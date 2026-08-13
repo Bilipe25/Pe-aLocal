@@ -595,6 +595,11 @@ export async function calculateCheckoutQuote(
         isActive: true,
         startsAt: true,
         expiresAt: true,
+        _count: {
+          select: {
+            reservations: { where: { status: 'ACTIVE', expiresAt: { gt: now } } },
+          },
+        },
       },
     });
     const invalid =
@@ -602,7 +607,8 @@ export async function calculateCheckoutQuote(
       !candidate.isActive ||
       (candidate.startsAt != null && candidate.startsAt > now) ||
       (candidate.expiresAt != null && candidate.expiresAt <= now) ||
-      (candidate.maxUsages != null && candidate.usageCount >= candidate.maxUsages) ||
+      (candidate.maxUsages != null &&
+        candidate.usageCount + candidate._count.reservations >= candidate.maxUsages) ||
       (candidate.minOrderValue != null && subtotal < candidate.minOrderValue);
     if (invalid || !candidate) {
       issues.push({

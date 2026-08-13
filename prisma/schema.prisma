@@ -92,6 +92,23 @@ enum MercadoPagoCreationStatus {
   FAILED
 }
 
+enum CouponReservationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+  EXPIRED
+}
+
+enum PaymentProviderAlertPriority {
+  HIGH
+  CRITICAL
+}
+
+enum PaymentProviderAlertStatus {
+  OPEN
+  RESOLVED
+}
+
 enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
@@ -334,16 +351,16 @@ model User {
   sessions                  Session[]
   tenantMembers             TenantMember[]
   auditLogs                 AuditLog[]
-  customizationsPublished   StoreCustomization[]         @relation("CustomizationPublishedBy")
-  customizationsUpdated     StoreCustomization[]         @relation("CustomizationUpdatedBy")
-  customizationRevisions    StoreCustomizationRevision[] @relation("CustomizationRevisionActor")
-  storeAssetsCreated        StoreAsset[]                 @relation("StoreAssetCreatedBy")
-  scheduleExceptionsCreated StoreScheduleException[]     @relation("StoreScheduleExceptionCreatedBy")
-  slugRedirectsCreated      StoreSlugRedirect[]          @relation("StoreSlugRedirectCreatedBy")
-  ordersCancelled           Order[]                      @relation("OrderCancelledBy")
-  orderStatusChanges        OrderStatusHistory[]         @relation("OrderStatusChangedBy")
-  orderInternalNotes        OrderInternalNote[]          @relation("OrderInternalNoteAuthor")
-  paymentStatusChanges      PaymentStatusHistory[]       @relation("PaymentStatusChangedBy")
+  customizationsPublished   StoreCustomization[]          @relation("CustomizationPublishedBy")
+  customizationsUpdated     StoreCustomization[]          @relation("CustomizationUpdatedBy")
+  customizationRevisions    StoreCustomizationRevision[]  @relation("CustomizationRevisionActor")
+  storeAssetsCreated        StoreAsset[]                  @relation("StoreAssetCreatedBy")
+  scheduleExceptionsCreated StoreScheduleException[]      @relation("StoreScheduleExceptionCreatedBy")
+  slugRedirectsCreated      StoreSlugRedirect[]           @relation("StoreSlugRedirectCreatedBy")
+  ordersCancelled           Order[]                       @relation("OrderCancelledBy")
+  orderStatusChanges        OrderStatusHistory[]          @relation("OrderStatusChangedBy")
+  orderInternalNotes        OrderInternalNote[]           @relation("OrderInternalNoteAuthor")
+  paymentStatusChanges      PaymentStatusHistory[]        @relation("PaymentStatusChangedBy")
   paymentOAuthAttempts      PaymentProviderOAuthAttempt[] @relation("PaymentProviderOAuthAttemptInitiatedBy")
 
   @@index([email])
@@ -519,9 +536,9 @@ model StoreSettings {
   showFeaturedProductsSection Boolean @default(true)
 
   // Formas de pagamento aceitas
-  acceptsPix            Boolean @default(true)
-  acceptsCash           Boolean @default(true)
-  acceptsCardOnDelivery Boolean @default(true)
+  acceptsPix            Boolean          @default(true)
+  acceptsCash           Boolean          @default(true)
+  acceptsCardOnDelivery Boolean          @default(true)
   paymentMode           StorePaymentMode @default(MANUAL)
 
   // Pix
@@ -1158,16 +1175,16 @@ model StoreOrderCounter {
 }
 
 model Order {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   tenantId               String
   storeId                String
   customerId             String?
-  orderNumber            Int      @default(0)
+  orderNumber            Int       @default(0)
   idempotencyKey         String
   idempotencyFingerprint String?
-  quoteFingerprint       String?  @db.VarChar(64)
-  publicToken            String   @unique @default(uuid())
-  publicTokenExpiresAt   DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
+  quoteFingerprint       String?   @db.VarChar(64)
+  publicToken            String    @unique @default(uuid())
+  publicTokenExpiresAt   DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
   paymentReportToken     String?   @unique @default(dbgenerated("(gen_random_uuid())::text"))
   paymentReportExpiresAt DateTime? @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
@@ -1190,6 +1207,7 @@ model Order {
   deliveryReference        String?       @db.VarChar(200)
   promisedFulfillmentMinAt DateTime?
   promisedFulfillmentMaxAt DateTime?
+  operationalStartedAt     DateTime?
 
   // Valores (em centavos)
   subtotal    Int
@@ -1242,6 +1260,7 @@ model Order {
   outboxEvents           OrderOutboxEvent[]
   paymentHistory         PaymentStatusHistory[]
   couponUsages           CouponUsage[]
+  couponReservation      CouponReservation?
   pushSubscriptions      OrderPushSubscription[]
   webPushDispatches      WebPushDispatch[]
   webPushDeliveries      WebPushDelivery[]
@@ -1385,8 +1404,8 @@ model Payment {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  order         Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  statusHistory PaymentStatusHistory[]
+  order              Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  statusHistory      PaymentStatusHistory[]
   mercadoPagoPayment MercadoPagoPayment?
 
   @@unique([id, orderId])
@@ -1419,8 +1438,8 @@ model StorePaymentProviderConnection {
   createdAt              DateTime                        @default(now())
   updatedAt              DateTime                        @updatedAt
 
-  tenant        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store         Store                          @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store               Store                @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   mercadoPagoPayments MercadoPagoPayment[]
 
   @@unique([storeId, provider])
@@ -1432,19 +1451,19 @@ model StorePaymentProviderConnection {
 }
 
 model PaymentProviderOAuthAttempt {
-  id                       String          @id @default(uuid())
-  tenantId                 String
-  storeId                  String
-  provider                 PaymentProvider
-  initiatedById            String
-  stateHash                String          @unique @db.VarChar(64)
-  codeVerifierCiphertext   String?         @db.Text
-  codeVerifierIv           String?         @db.VarChar(64)
-  credentialVersion        Int             @default(1)
-  returnPath               String          @db.VarChar(500)
-  expiresAt                DateTime
-  consumedAt               DateTime?
-  createdAt                DateTime        @default(now())
+  id                     String          @id @default(uuid())
+  tenantId               String
+  storeId                String
+  provider               PaymentProvider
+  initiatedById          String
+  stateHash              String          @unique @db.VarChar(64)
+  codeVerifierCiphertext String?         @db.Text
+  codeVerifierIv         String?         @db.VarChar(64)
+  credentialVersion      Int             @default(1)
+  returnPath             String          @db.VarChar(500)
+  expiresAt              DateTime
+  consumedAt             DateTime?
+  createdAt              DateTime        @default(now())
 
   tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store       Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
@@ -1458,29 +1477,29 @@ model PaymentProviderOAuthAttempt {
 }
 
 model MercadoPagoPayment {
-  id                       String                     @id @default(uuid())
-  tenantId                 String
-  storeId                  String
-  orderId                  String                     @unique
-  paymentId                String                     @unique
-  connectionId             String
-  creationStatus           MercadoPagoCreationStatus @default(PENDING)
-  externalReference        String                     @unique @db.VarChar(150)
-  idempotencyKey           String                     @unique @db.VarChar(150)
-  providerOrderId          String?                    @unique @db.VarChar(100)
-  providerPaymentId        String?                    @unique @db.VarChar(100)
-  providerStatus           String?                    @db.VarChar(64)
-  providerStatusDetail     String?                    @db.VarChar(64)
-  qrCode                   String?                    @db.Text
-  ticketUrl                String?                    @db.Text
-  expiresAt                DateTime?
-  payerEmailCiphertext     String?                    @db.Text
-  payerEmailIv             String?                    @db.VarChar(64)
-  credentialVersion        Int                        @default(1)
-  lastErrorCode            String?                    @db.VarChar(64)
-  lastSyncedAt             DateTime?
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime                   @updatedAt
+  id                   String                    @id @default(uuid())
+  tenantId             String
+  storeId              String
+  orderId              String                    @unique
+  paymentId            String                    @unique
+  connectionId         String
+  creationStatus       MercadoPagoCreationStatus @default(PENDING)
+  externalReference    String                    @unique @db.VarChar(150)
+  idempotencyKey       String                    @unique @db.VarChar(150)
+  providerOrderId      String?                   @unique @db.VarChar(100)
+  providerPaymentId    String?                   @unique @db.VarChar(100)
+  providerStatus       String?                   @db.VarChar(64)
+  providerStatusDetail String?                   @db.VarChar(64)
+  qrCode               String?                   @db.Text
+  ticketUrl            String?                   @db.Text
+  expiresAt            DateTime?
+  payerEmailCiphertext String?                   @db.Text
+  payerEmailIv         String?                   @db.VarChar(64)
+  credentialVersion    Int                       @default(1)
+  lastErrorCode        String?                   @db.VarChar(64)
+  lastSyncedAt         DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 
   tenant     Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store      Store                          @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
@@ -1498,18 +1517,51 @@ model MercadoPagoPayment {
 }
 
 model PaymentProviderWebhookEvent {
-  id              String          @id @default(uuid())
-  provider        PaymentProvider
-  providerEventId String          @db.VarChar(150)
-  topic           String          @db.VarChar(32)
-  action          String          @db.VarChar(64)
-  providerUserId  String?         @db.VarChar(100)
-  processedAt     DateTime?
-  createdAt       DateTime        @default(now())
+  id                  String          @id @default(uuid())
+  provider            PaymentProvider
+  providerEventId     String          @db.VarChar(150)
+  topic               String          @db.VarChar(32)
+  action              String          @db.VarChar(64)
+  providerUserId      String?         @db.VarChar(100)
+  providerObjectId    String?         @db.VarChar(150)
+  attempts            Int             @default(0)
+  availableAt         DateTime        @default(now())
+  processingStartedAt DateTime?
+  lastErrorCode       String?         @db.VarChar(64)
+  processedAt         DateTime?
+  createdAt           DateTime        @default(now())
 
   @@unique([provider, providerEventId])
   @@index([provider, providerUserId, createdAt])
+  @@index([provider, processedAt, availableAt, createdAt])
   @@map("payment_provider_webhook_events")
+}
+
+model PaymentProviderAlert {
+  id                   String                       @id @default(uuid())
+  provider             PaymentProvider
+  dedupeKey            String                       @db.VarChar(200)
+  priority             PaymentProviderAlertPriority
+  status               PaymentProviderAlertStatus   @default(OPEN)
+  tenantId             String?
+  storeId              String?
+  orderId              String?
+  paymentId            String?
+  mercadoPagoPaymentId String?
+  code                 String                       @db.VarChar(64)
+  occurrenceCount      Int                          @default(1)
+  firstOccurredAt      DateTime                     @default(now())
+  lastOccurredAt       DateTime                     @default(now())
+  resolvedAt           DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  @@unique([provider, dedupeKey])
+  @@index([status, priority, lastOccurredAt])
+  @@index([tenantId, storeId, status, lastOccurredAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@map("payment_provider_alerts")
 }
 
 model PaymentStatusHistory {
@@ -1822,15 +1874,37 @@ model Coupon {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store  Store?        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  usages CouponUsage[]
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store?              @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  usages       CouponUsage[]
+  reservations CouponReservation[]
 
   @@unique([tenantId, storeId, code])
   @@index([tenantId])
   @@index([tenantId, storeId, isActive])
   @@index([code])
   @@map("coupons")
+}
+
+model CouponReservation {
+  id         String                  @id @default(uuid())
+  couponId   String
+  orderId    String                  @unique
+  discount   Int
+  status     CouponReservationStatus @default(ACTIVE)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  releasedAt DateTime?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, orderId])
+  @@index([couponId, status, expiresAt])
+  @@index([status, expiresAt])
+  @@map("coupon_reservations")
 }
 
 model CouponUsage {

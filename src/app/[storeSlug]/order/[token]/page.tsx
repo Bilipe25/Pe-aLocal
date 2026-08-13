@@ -131,6 +131,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
                 initialPayment={{
                   creationStatus: order.mercadoPagoPayment.creationStatus,
                   qrCode: order.mercadoPagoPayment.qrCode,
+                  ticketUrl: order.mercadoPagoPayment.ticketUrl,
                   expiresAt: order.mercadoPagoPayment.expiresAt?.toISOString() ?? null,
                 }}
               />

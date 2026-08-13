@@ -12,10 +12,12 @@ import { getMercadoPagoConfig, MERCADO_PAGO_PIX_EXPIRATION } from '@/lib/mercado
 import { credentialAad, decryptCredential } from '@/lib/mercado-pago/crypto';
 import type { MercadoPagoCreatedOrder, MercadoPagoOrder } from '@/lib/mercado-pago/schemas';
 import { mapMercadoPagoOrderStatus } from '@/lib/mercado-pago/status-mapper';
+import { decideMercadoPagoTransition } from '@/lib/mercado-pago/transition-matrix';
 import { getDb } from '@/server/database/client';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/server/errors';
 import { appendOrderOutboxEvent } from './order-outbox.service';
 import { appendPaymentStatusHistory } from './order-payment-history.service';
+import { recordPaymentProviderAlert } from './payment-provider-alert.service';
 import {
   getMercadoPagoAccessToken,
   markMercadoPagoReauthRequired,
@@ -155,6 +157,15 @@ export async function reconcileMercadoPagoOrder(
     local.payment.provider !== 'MERCADO_PAGO'
   ) {
     console.error('[MP_PROVIDER_SCOPE_MISMATCH]', { mercadoPagoPaymentId: local.id });
+    await recordPaymentProviderAlert({
+      code: 'PROVIDER_SCOPE_MISMATCH',
+      priority: 'CRITICAL',
+      tenantId: local.tenantId,
+      storeId: local.storeId,
+      orderId: local.orderId,
+      paymentId: local.paymentId,
+      mercadoPagoPaymentId: local.id,
+    });
     return null;
   }
   const providerPayment = firstPayment(providerOrder);
@@ -178,6 +189,15 @@ export async function reconcileMercadoPagoOrder(
         lastSyncedAt: new Date(),
       },
     });
+    await recordPaymentProviderAlert({
+      code: 'AMOUNT_MISMATCH',
+      priority: 'CRITICAL',
+      tenantId: local.tenantId,
+      storeId: local.storeId,
+      orderId: local.orderId,
+      paymentId: local.paymentId,
+      mercadoPagoPaymentId: local.id,
+    });
     return null;
   }
 
@@ -191,6 +211,15 @@ export async function reconcileMercadoPagoOrder(
         orderId: local.orderId,
         mercadoPagoPaymentId: local.id,
       });
+      await recordPaymentProviderAlert({
+        code: 'PAID_AMOUNT_MISMATCH',
+        priority: 'CRITICAL',
+        tenantId: local.tenantId,
+        storeId: local.storeId,
+        orderId: local.orderId,
+        paymentId: local.paymentId,
+        mercadoPagoPaymentId: local.id,
+      });
       return null;
     }
   }
@@ -202,6 +231,15 @@ export async function reconcileMercadoPagoOrder(
       orderId: local.orderId,
       mercadoPagoPaymentId: local.id,
       kind: 'refund',
+    });
+    await recordPaymentProviderAlert({
+      code: 'PARTIAL_REFUND',
+      priority: 'CRITICAL',
+      tenantId: local.tenantId,
+      storeId: local.storeId,
+      orderId: local.orderId,
+      paymentId: local.paymentId,
+      mercadoPagoPaymentId: local.id,
     });
     return null;
   }
@@ -220,6 +258,16 @@ export async function reconcileMercadoPagoOrder(
         paymentStatus: true,
         version: true,
         payment: { select: { id: true, status: true, amount: true, provider: true } },
+        couponReservation: {
+          select: { id: true, couponId: true, discount: true, status: true },
+        },
+        store: {
+          select: {
+            settings: {
+              select: { estimatedTimeMinMinutes: true, estimatedTimeMaxMinutes: true },
+            },
+          },
+        },
       },
     });
     if (!current?.payment || current.payment.provider !== 'MERCADO_PAGO') return null;
@@ -249,6 +297,18 @@ export async function reconcileMercadoPagoOrder(
           status: providerOrder.status,
           statusDetail: providerOrder.status_detail,
         });
+        await recordPaymentProviderAlert(
+          {
+            code: 'UNMAPPED_STATUS',
+            priority: 'HIGH',
+            tenantId: current.tenantId,
+            storeId: current.storeId,
+            orderId: current.id,
+            paymentId: current.payment.id,
+            mercadoPagoPaymentId: local.id,
+          },
+          tx,
+        );
       }
       return {
         orderId: current.id,
@@ -260,33 +320,46 @@ export async function reconcileMercadoPagoOrder(
       };
     }
 
-    let nextPaymentStatus: PaymentStatus;
-    let nextOrderStatus = current.status;
-    let reasonCode: string | undefined;
-    if (mapped === 'PAID') {
-      nextPaymentStatus = 'PAID';
-      if (current.status === 'AWAITING_PAYMENT') nextOrderStatus = 'PENDING';
-    } else if (mapped === 'REFUNDED') {
-      if (current.paymentStatus !== 'PAID') {
-        return {
-          orderId: current.id,
-          storeId: current.storeId,
-          orderNumber: current.orderNumber,
-          paymentStatus: current.paymentStatus,
-          eventIds: [],
-          becameActionable: false,
-        };
-      }
-      nextPaymentStatus = 'REFUNDED';
-    } else if (mapped === 'CANCELLED') {
-      nextPaymentStatus = 'CANCELLED';
-      nextOrderStatus = 'CANCELLED';
-      reasonCode = 'PROVIDER_CANCELLED';
-    } else {
-      nextPaymentStatus = 'FAILED';
-      nextOrderStatus = 'CANCELLED';
-      reasonCode = mapped === 'EXPIRED' ? 'PROVIDER_EXPIRED' : 'PROVIDER_FAILED';
+    const decision = decideMercadoPagoTransition({
+      currentPaymentStatus: current.paymentStatus,
+      currentOrderStatus: current.status,
+      mapped,
+    });
+    if (decision.kind === 'NOOP') {
+      return {
+        orderId: current.id,
+        storeId: current.storeId,
+        orderNumber: current.orderNumber,
+        paymentStatus: current.paymentStatus,
+        eventIds: [],
+        becameActionable: false,
+      };
     }
+    if (decision.kind === 'ALERT') {
+      await recordPaymentProviderAlert(
+        {
+          code: decision.code,
+          priority: decision.priority,
+          tenantId: current.tenantId,
+          storeId: current.storeId,
+          orderId: current.id,
+          paymentId: current.payment.id,
+          mercadoPagoPaymentId: local.id,
+        },
+        tx,
+      );
+      return {
+        orderId: current.id,
+        storeId: current.storeId,
+        orderNumber: current.orderNumber,
+        paymentStatus: current.paymentStatus,
+        eventIds: [],
+        becameActionable: false,
+      };
+    }
+    const nextPaymentStatus = decision.paymentStatus;
+    const nextOrderStatus = decision.orderStatus;
+    const reasonCode = decision.reasonCode;
 
     if (current.paymentStatus === nextPaymentStatus && current.status === nextOrderStatus) {
       return {
@@ -317,6 +390,15 @@ export async function reconcileMercadoPagoOrder(
         cancellationReasonCode:
           nextOrderStatus === 'CANCELLED' ? 'PAYMENT_NOT_IDENTIFIED' : undefined,
         cancellationSource: nextOrderStatus === 'CANCELLED' ? 'WEBHOOK' : undefined,
+        operationalStartedAt: nextPaymentStatus === 'PAID' ? now : undefined,
+        promisedFulfillmentMinAt:
+          nextPaymentStatus === 'PAID' && current.store.settings
+            ? new Date(now.getTime() + current.store.settings.estimatedTimeMinMinutes * 60_000)
+            : undefined,
+        promisedFulfillmentMaxAt:
+          nextPaymentStatus === 'PAID' && current.store.settings
+            ? new Date(now.getTime() + current.store.settings.estimatedTimeMaxMinutes * 60_000)
+            : undefined,
       },
     });
     if (orderUpdated.count !== 1)
@@ -366,6 +448,36 @@ export async function reconcileMercadoPagoOrder(
         refundAmount: nextPaymentStatus === 'REFUNDED' ? current.payment.amount : undefined,
       },
     });
+    if (current.couponReservation && current.couponReservation.status !== 'CONSUMED') {
+      if (nextPaymentStatus === 'PAID') {
+        await tx.coupon.update({
+          where: { id: current.couponReservation.couponId },
+          data: { usageCount: { increment: 1 } },
+        });
+        await tx.couponUsage.create({
+          data: {
+            couponId: current.couponReservation.couponId,
+            orderId: current.id,
+            discount: current.couponReservation.discount,
+          },
+        });
+        await tx.couponReservation.update({
+          where: { id: current.couponReservation.id },
+          data: { status: 'CONSUMED', consumedAt: now, releasedAt: null },
+        });
+      } else if (
+        current.couponReservation.status === 'ACTIVE' &&
+        (nextPaymentStatus === 'FAILED' || nextPaymentStatus === 'CANCELLED')
+      ) {
+        await tx.couponReservation.update({
+          where: { id: current.couponReservation.id },
+          data: {
+            status: reasonCode === 'PROVIDER_EXPIRED' ? 'EXPIRED' : 'RELEASED',
+            releasedAt: now,
+          },
+        });
+      }
+    }
     const providerAudit = await writeProviderAudit(tx, {
       tenantId: current.tenantId,
       storeId: current.storeId,
@@ -604,6 +716,7 @@ async function failCreation(
             status: true,
             paymentStatus: true,
             version: true,
+            couponReservation: { select: { id: true, status: true } },
           },
         },
         payment: { select: { id: true, status: true } },
@@ -686,6 +799,12 @@ async function failCreation(
         failureReasonCode: 'PROVIDER_CREATE_FAILED',
       },
     });
+    if (local.order.couponReservation?.status === 'ACTIVE') {
+      await tx.couponReservation.update({
+        where: { id: local.order.couponReservation.id },
+        data: { status: 'RELEASED', releasedAt: now },
+      });
+    }
     const audit = await writeProviderAudit(tx, {
       tenantId: local.order.tenantId,
       storeId: local.order.storeId,
@@ -735,7 +854,9 @@ export async function ensureMercadoPagoPixCreated(
     return fetchAndReconcileMercadoPagoOrder(local, accessToken, local.providerOrderId);
   }
 
-  let accessToken = await getMercadoPagoAccessToken(local.connectionId);
+  let accessToken = await getMercadoPagoAccessToken(local.connectionId, {
+    allowReconciliation: true,
+  });
   if (local.creationStatus === 'RETRYABLE_ERROR') {
     try {
       const recovered = await recoverMercadoPagoOrderByExternalReference(local, accessToken);
@@ -851,4 +972,93 @@ export async function getMercadoPagoPaymentPresentation(orderId: string) {
       providerStatusDetail: true,
     },
   });
+}
+
+export async function reconcilePendingMercadoPagoPayments(options?: {
+  limit?: number;
+  concurrency?: number;
+}) {
+  const db = getDb();
+  const now = new Date();
+  const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+  const concurrency = Math.min(Math.max(options?.concurrency ?? 3, 1), 5);
+  const candidates = await db.mercadoPagoPayment.findMany({
+    where: {
+      payment: { status: 'PENDING' },
+      order: { status: 'AWAITING_PAYMENT' },
+      OR: [
+        { creationStatus: { in: ['PENDING', 'RETRYABLE_ERROR'] } },
+        {
+          creationStatus: 'CREATED',
+          providerStatus: { notIn: ['processed', 'failed', 'expired', 'canceled', 'refunded'] },
+        },
+      ],
+    },
+    orderBy: [{ lastSyncedAt: 'asc' }, { createdAt: 'asc' }],
+    take: limit,
+    select: { id: true, providerOrderId: true, expiresAt: true, createdAt: true },
+  });
+
+  let next = 0;
+  let synchronized = 0;
+  let failed = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, candidates.length) }, async () => {
+      while (next < candidates.length) {
+        const candidate = candidates[next++];
+        if (!candidate) continue;
+        try {
+          const expired =
+            (candidate.expiresAt && candidate.expiresAt <= now) ||
+            (!candidate.providerOrderId &&
+              now.getTime() - candidate.createdAt.getTime() > 35 * 60_000);
+          if (expired && !candidate.providerOrderId) {
+            await failCreation(candidate.id, 'PROVIDER_EXPIRED', false);
+          } else {
+            const result = await ensureMercadoPagoPixCreated(candidate.id);
+            if (expired && result?.paymentStatus === 'PENDING') {
+              await failCreation(candidate.id, 'PROVIDER_EXPIRED', false);
+            }
+          }
+          synchronized += 1;
+        } catch (error) {
+          failed += 1;
+          console.warn('[MP_PERIODIC_RECONCILIATION_FAILED]', {
+            mercadoPagoPaymentId: candidate.id,
+            code: safeProviderErrorCode(error),
+          });
+        }
+      }
+    }),
+  );
+
+  const expiredReservations = await db.couponReservation.updateMany({
+    where: {
+      status: 'ACTIVE',
+      expiresAt: { lte: now },
+      order: { status: 'AWAITING_PAYMENT', paymentStatus: 'PENDING' },
+    },
+    data: { status: 'EXPIRED', releasedAt: now },
+  });
+  const releasedConnections = await db.storePaymentProviderConnection.updateMany({
+    where: {
+      provider: 'MERCADO_PAGO',
+      status: 'DISCONNECTED',
+      mercadoPagoPayments: { none: { payment: { status: 'PENDING' } } },
+    },
+    data: {
+      accessTokenCiphertext: null,
+      accessTokenIv: null,
+      refreshTokenCiphertext: null,
+      refreshTokenIv: null,
+      tokenExpiresAt: null,
+    },
+  });
+  return {
+    selected: candidates.length,
+    synchronized,
+    failed,
+    expiredReservations: expiredReservations.count,
+    releasedConnections: releasedConnections.count,
+  };
 }

@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { createDatabaseClient } from './factory';
 
@@ -27,6 +28,16 @@ function getConnectionString(): string {
  * O cache do React é request-scoped no servidor do Next.js; não existe Pool
  * ou Prisma Client mutável em escopo global entre requisições do Worker.
  */
-export const getDb = cache(() => createDatabaseClient(getConnectionString()));
+const requestDatabase = cache(() => createDatabaseClient(getConnectionString()));
 
-export type DatabaseClient = ReturnType<typeof getDb>;
+export type DatabaseClient = ReturnType<typeof createDatabaseClient>;
+const databaseScope = new AsyncLocalStorage<DatabaseClient>();
+
+export function getDb(): DatabaseClient {
+  return databaseScope.getStore() ?? requestDatabase();
+}
+
+/** Reutiliza o cliente explicitamente gerenciado por Workers fora do ciclo React. */
+export function withDatabaseClient<T>(client: DatabaseClient, operation: () => T): T {
+  return databaseScope.run(client, operation);
+}

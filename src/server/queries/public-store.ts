@@ -503,14 +503,10 @@ async function getPurchaseStoreFromDb(slug: string) {
 }
 
 async function getPublicPurchaseStoreBySlugForRequest(slug: string) {
-  const store = await unstable_cache(
-    () => getPurchaseStoreFromDb(slug),
-    ['public-purchase-store', slug],
-    {
-      revalidate: PUBLIC_CACHE_SECONDS,
-      tags: [CACHE_TAGS.storeSlug(slug)],
-    },
-  )();
+  // A conexão do provedor pode mudar por OAuth, refresh ou webhook sem passar
+  // por uma action da loja. Esta leitura permanece dinâmica para que a forma
+  // anunciada no checkout seja sempre a mesma que o servidor aceitará.
+  const store = await getPurchaseStoreFromDb(slug);
   if (!store) return null;
 
   const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);

@@ -4,6 +4,7 @@ import type { OrderOutboxQueueMessage } from '../../src/domain/orders/order-even
 import { orderOutboxQueueMessageSchema } from '../../src/domain/orders/order-events';
 import { createOrderEventPublisher } from '../../src/lib/pusher/order-event-publisher';
 import { createDatabaseClient } from '../../src/server/database/factory';
+import { withDatabaseClient } from '../../src/server/database/client';
 import {
   processOrderOutboxMessage,
   relayPendingOrderOutboxEvents,
@@ -28,11 +29,14 @@ import {
 } from '../../src/server/services/web-push-delivery.service';
 import { readWebPushSenderConfig } from '../../src/server/services/web-push-sender';
 import { revokeExpiredWebPushSubscriptions } from '../../src/server/services/web-push-revocation.service';
+import { reconcilePendingMercadoPagoPayments } from '../../src/server/services/mercado-pago-payment.service';
+import { processPendingMercadoPagoWebhooks } from '../../src/server/services/mercado-pago-webhook.service';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
 const RETENTION_UTC_MINUTE = 17;
 
 interface OrderEventsEnv {
+  APP_ENV: string;
   HYPERDRIVE: Hyperdrive;
   ORDER_OUTBOX_QUEUE: Queue<OrderOutboxQueueMessage>;
   ORDER_OUTBOX_DLQ: Queue<OrderOutboxQueueMessage>;
@@ -46,9 +50,29 @@ interface OrderEventsEnv {
   ORDER_OUTBOX_RETENTION_DAYS?: string;
   WEB_PUSH_ENABLED?: string;
   MERCHANT_WEB_PUSH_ENABLED?: string;
+  MERCADO_PAGO_RECONCILIATION_ENABLED?: string;
+  MERCADO_PAGO_ENABLED?: string;
+  MERCADO_PAGO_CLIENT_ID?: string;
+  MERCADO_PAGO_CLIENT_SECRET?: string;
+  MERCADO_PAGO_REDIRECT_URI?: string;
+  MERCADO_PAGO_WEBHOOK_SECRET?: string;
+  MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY?: string;
   WEB_PUSH_VAPID_PUBLIC_KEY?: string;
   WEB_PUSH_VAPID_PRIVATE_KEY?: string;
   WEB_PUSH_VAPID_SUBJECT?: string;
+}
+
+function configureMercadoPagoRuntime(env: OrderEventsEnv) {
+  Object.assign(process.env, {
+    APP_ENV: env.APP_ENV,
+    DATABASE_URL: env.HYPERDRIVE.connectionString,
+    MERCADO_PAGO_ENABLED: env.MERCADO_PAGO_ENABLED,
+    MERCADO_PAGO_CLIENT_ID: env.MERCADO_PAGO_CLIENT_ID,
+    MERCADO_PAGO_CLIENT_SECRET: env.MERCADO_PAGO_CLIENT_SECRET,
+    MERCADO_PAGO_REDIRECT_URI: env.MERCADO_PAGO_REDIRECT_URI,
+    MERCADO_PAGO_WEBHOOK_SECRET: env.MERCADO_PAGO_WEBHOOK_SECRET,
+    MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: env.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY,
+  });
 }
 
 function database(env: OrderEventsEnv) {
@@ -294,9 +318,31 @@ export default {
       shouldRunOrderOutboxRetention(controller.scheduledTime);
     const webPushEnabled = env.WEB_PUSH_ENABLED === 'true';
     const merchantWebPushEnabled = env.MERCHANT_WEB_PUSH_ENABLED === 'true';
-    if (!relayEnabled && !retentionEnabled && !webPushEnabled && !merchantWebPushEnabled) return;
+    const mercadoPagoEnabled = env.MERCADO_PAGO_RECONCILIATION_ENABLED === 'true';
+    if (
+      !relayEnabled &&
+      !retentionEnabled &&
+      !webPushEnabled &&
+      !merchantWebPushEnabled &&
+      !mercadoPagoEnabled
+    )
+      return;
     const db = database(env);
     try {
+      if (mercadoPagoEnabled) {
+        configureMercadoPagoRuntime(env);
+        try {
+          const { webhooks, payments } = await withDatabaseClient(db, async () => ({
+            webhooks: await processPendingMercadoPagoWebhooks(20),
+            payments: await reconcilePendingMercadoPagoPayments({ limit: 25, concurrency: 3 }),
+          }));
+          console.info('[MP_RECONCILIATION_CYCLE_COMPLETED]', { webhooks, payments });
+        } catch (error) {
+          console.error('[MP_RECONCILIATION_CYCLE_FAILED]', {
+            code: error instanceof Error ? error.name : 'UNKNOWN',
+          });
+        }
+      }
       if (relayEnabled) {
         await relayPendingOrderOutboxEvents(db, env.ORDER_OUTBOX_QUEUE, env.ORDER_OUTBOX_DLQ);
       }

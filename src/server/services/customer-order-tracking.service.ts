@@ -61,6 +61,7 @@ function addMinutes(value: Date, minutes: number) {
 }
 
 function estimate(snapshot: TrackingSnapshot): CustomerOrderTrackingStateDTO['estimate'] {
+  if (snapshot.status === 'AWAITING_PAYMENT') return null;
   if (snapshot.status === 'DELIVERED' || snapshot.status === 'CANCELLED') return null;
   if (snapshot.status === 'READY') return null;
 

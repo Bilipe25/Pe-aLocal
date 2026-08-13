@@ -13,8 +13,9 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
     },
-    coupon: { update: vi.fn() },
+    coupon: { findUnique: vi.fn(), update: vi.fn() },
     couponUsage: { create: vi.fn() },
+    couponReservation: { create: vi.fn() },
     customer: { findFirst: vi.fn() },
     mercadoPagoPayment: { create: vi.fn() },
   };
@@ -165,7 +166,13 @@ describe('OrderRepository checkout v2', () => {
       payment: { id: 'payment-a' },
     });
     mocks.tx.coupon.update.mockResolvedValue({ id: 'coupon-a' });
+    mocks.tx.coupon.findUnique.mockResolvedValue({
+      maxUsages: 100,
+      usageCount: 0,
+      _count: { reservations: 0 },
+    });
     mocks.tx.couponUsage.create.mockResolvedValue({ id: 'usage-a' });
+    mocks.tx.couponReservation.create.mockResolvedValue({ id: 'reservation-a' });
     mocks.calculateCheckoutQuote.mockResolvedValue(quote);
     mocks.writeOrderCreatedAudit.mockResolvedValue('audit-a');
     mocks.appendOrderOutboxEvent.mockResolvedValue({ id: 'outbox-a' });

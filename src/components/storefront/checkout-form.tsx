@@ -571,6 +571,7 @@ export function CheckoutForm({
   const activeStoreId = useCartStore((state) => state.storeId);
   const setStore = useCartStore((state) => state.setStore);
   const clearCart = useCartStore((state) => state.clearCart);
+  const getCartSnapshot = useCartStore((state) => state.getSnapshot);
   const cartCouponCode = useCartStore(selectCartCouponCode);
   const setCartCouponCode = useCartStore((state) => state.setCouponCode);
   const rememberOrder = usePublicOrderHistoryStore((state) => state.rememberOrder);
@@ -1339,6 +1340,16 @@ export function CheckoutForm({
           createdAt: orderCreatedAt,
         };
         rememberOrder(publicOrderRecord);
+        if (result.data.onlinePayment && storage) {
+          try {
+            storage.setItem(
+              `online-order-cart:${result.data.publicToken}`,
+              JSON.stringify({ storeId, snapshot: getCartSnapshot() }),
+            );
+          } catch {
+            // O backup é uma conveniência local; o pedido confirmado não depende dele.
+          }
+        }
         clearCart();
         setOrderConfirmed({
           orderNumber: result.data.orderNumber,
