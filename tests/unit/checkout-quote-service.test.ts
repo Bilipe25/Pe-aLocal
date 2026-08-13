@@ -262,6 +262,7 @@ describe('cotação autoritativa do checkout', () => {
       maxDiscount: null,
       maxUsages: 100,
       usageCount: 2,
+      _count: { reservations: 0 },
       isActive: true,
       startsAt: null,
       expiresAt: null,

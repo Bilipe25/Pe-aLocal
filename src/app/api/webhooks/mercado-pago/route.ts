@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getMercadoPagoConfig } from '@/lib/mercado-pago/config';
 import { mercadoPagoWebhookSchema } from '@/lib/mercado-pago/schemas';
 import { validateMercadoPagoSignature } from '@/lib/mercado-pago/signature';
-import { processMercadoPagoWebhook } from '@/server/services/mercado-pago-webhook.service';
+import { enqueueMercadoPagoWebhook } from '@/server/services/mercado-pago-webhook.service';
 
 const MAX_WEBHOOK_BYTES = 64 * 1024;
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   if (!parsed.success || parsed.data.data.id !== dataId) return response(400);
 
   try {
-    await processMercadoPagoWebhook(parsed.data);
+    await enqueueMercadoPagoWebhook(parsed.data);
     return response(200);
   } catch (error) {
     console.error('[MP_WEBHOOK_FAILED]', {

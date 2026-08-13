@@ -27,6 +27,8 @@ MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=
 
 `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` deve ser uma chave aleatória de 32 bytes codificada em base64. Client secret, segredo do webhook, chave de criptografia e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
 
+As cinco credenciais `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
+
 ## OAuth em staging / sandbox
 
 O ambiente do OAuth é determinado no servidor por `APP_ENV`; não existe flag `NEXT_PUBLIC` nem Access Token global compartilhado:
@@ -90,9 +92,14 @@ Referências oficiais consultadas:
 - O checkout online cria localmente `Order=AWAITING_PAYMENT`, `Payment=PENDING` e `MercadoPagoPayment=PENDING`.
 - A chamada `POST /v1/orders` ocorre depois do commit, com valor calculado no servidor, `processing_mode=automatic`, Pix e uma idempotency key estável.
 - Nenhum `ORDER_CREATED` operacional é emitido antes do pagamento.
-- O webhook é validado por HMAC e o estado sempre é confirmado com `GET /v1/orders/{id}` usando a credencial da conta conectada.
+- O webhook é validado por HMAC, persistido de forma idempotente e recebe `200` sem aguardar chamadas externas. O Worker confirma o estado com `GET /v1/orders/{id}` usando a credencial da conta conectada.
 - Somente um pagamento integral e com valor exato promove o pedido para `PENDING`; essa transição grava históricos, auditoria e outbox na mesma transação.
 - Falhas ambíguas mantêm o pedido em “Gerando seu Pix”. Antes de repetir o `POST`, o backend pesquisa a `external_reference`; conflitos `402/409/423`, timeout, `429` e `5xx` nunca geram uma nova idempotency key.
+- O cron limita lote e concorrência, retoma criações ambíguas, consulta cobranças não finais, expira Pix vencidos e libera reservas de cupom.
+- Cupons de pedidos online ficam reservados por tempo limitado e só incrementam `usageCount` quando o pagamento vira `PAID`.
+- O ETA operacional nasce no instante da aprovação; enquanto o pedido estiver em `AWAITING_PAYMENT`, nenhuma promessa de entrega ou retirada é mostrada.
+- Transições são monotônicas. `PAID` não regride, `REFUNDED` exige `PAID`, e aprovação tardia após cancelamento abre um alerta crítico em vez de alterar silenciosamente o pedido.
+- Divergência de valor, status desconhecido, refund parcial e esgotamento de retentativas geram `PaymentProviderAlert` durável, sem payload bruto ou dados sensíveis.
 
 ## Operação e rollback
 

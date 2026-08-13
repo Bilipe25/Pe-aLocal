@@ -93,6 +93,13 @@ export function OnlinePaymentSettings({
   };
 
   const disconnect = () => {
+    if (
+      !window.confirm(
+        'Desconectar a conta Mercado Pago? Novos checkouts usarão os métodos manuais. Pagamentos já criados continuarão sendo conciliados.',
+      )
+    ) {
+      return;
+    }
     setError(null);
     startTransition(async () => {
       const result = await disconnectMercadoPagoAction(storeId, configurationVersion);
@@ -170,7 +177,7 @@ export function OnlinePaymentSettings({
                   <span className="text-text-secondary mt-1 block text-sm">
                     {option === 'MANUAL'
                       ? 'A loja confere e confirma o pagamento.'
-                      : 'Pix Mercado Pago com confirmação automática.'}
+                      : 'Pix Mercado Pago com confirmação automática. Se ficar indisponível, o checkout volta aos métodos manuais.'}
                   </span>
                 </span>
               </button>
@@ -203,10 +210,36 @@ export function OnlinePaymentSettings({
               ) : (
                 <Badge variant="secondary">Não conectada</Badge>
               )}
+              {connection?.status === 'ACTIVE' && !connection.liveMode ? (
+                <Badge variant="secondary">Ambiente de teste</Badge>
+              ) : null}
             </div>
             <p className="text-text-secondary mt-1 text-sm">
               O valor é recebido diretamente na conta conectada pela loja.
             </p>
+            {connection?.status === 'ACTIVE' ? (
+              <div className="mt-2 grid gap-1 text-sm" aria-label="Verificações da integração">
+                <span className="text-success flex items-center gap-1.5">
+                  <CheckCircle2 className="size-4" aria-hidden="true" /> Conta conectada
+                </span>
+                <span
+                  className={
+                    capability.canSelectOnline
+                      ? 'text-success flex items-center gap-1.5'
+                      : 'text-warning flex items-center gap-1.5'
+                  }
+                >
+                  {capability.canSelectOnline ? (
+                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                  ) : (
+                    <CircleAlert className="size-4" aria-hidden="true" />
+                  )}
+                  {capability.canSelectOnline
+                    ? 'Conta pronta para receber Pix'
+                    : 'Conta conectada, mas o Pix online ainda não está disponível'}
+                </span>
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {connection?.status === 'ACTIVE' ? (

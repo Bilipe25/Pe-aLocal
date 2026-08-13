@@ -344,6 +344,29 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             AND "code" = ${input.couponCode}
           FOR UPDATE
         `;
+        const lockedCoupon = await tx.coupon.findUnique({
+          where: { id: quote.couponId },
+          select: {
+            maxUsages: true,
+            usageCount: true,
+            _count: {
+              select: {
+                reservations: { where: { status: 'ACTIVE', expiresAt: { gt: now } } },
+              },
+            },
+          },
+        });
+        if (
+          !lockedCoupon ||
+          (lockedCoupon.maxUsages != null &&
+            lockedCoupon.usageCount + lockedCoupon._count.reservations >= lockedCoupon.maxUsages)
+        ) {
+          throw new CheckoutError(
+            'COUPON_INVALID',
+            'Este cupom acabou de atingir o limite de usos.',
+            409,
+          );
+        }
       }
 
       let address: CheckoutCustomerAddress | null = null;
@@ -411,8 +434,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           deliveryCity: address?.city ?? null,
           deliveryState: address?.state ?? null,
           deliveryReference: address?.reference || null,
-          promisedFulfillmentMinAt: new Date(quote.promisedFulfillmentMinAt),
-          promisedFulfillmentMaxAt: new Date(quote.promisedFulfillmentMaxAt),
+          promisedFulfillmentMinAt: onlinePayment ? null : new Date(quote.promisedFulfillmentMinAt),
+          promisedFulfillmentMaxAt: onlinePayment ? null : new Date(quote.promisedFulfillmentMaxAt),
+          operationalStartedAt: onlinePayment ? null : now,
           subtotal: quote.subtotal,
           deliveryFee: quote.deliveryFee,
           discount: quote.discount,
@@ -543,17 +567,28 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           : null;
 
       if (quote.couponId && quote.coupon) {
-        await tx.coupon.update({
-          where: { id: quote.couponId },
-          data: { usageCount: { increment: 1 } },
-        });
-        await tx.couponUsage.create({
-          data: {
-            couponId: quote.couponId,
-            orderId: order.id,
-            discount: quote.discount,
-          },
-        });
+        if (onlinePayment) {
+          await tx.couponReservation.create({
+            data: {
+              couponId: quote.couponId,
+              orderId: order.id,
+              discount: quote.discount,
+              expiresAt: new Date(now.getTime() + 35 * 60_000),
+            },
+          });
+        } else {
+          await tx.coupon.update({
+            where: { id: quote.couponId },
+            data: { usageCount: { increment: 1 } },
+          });
+          await tx.couponUsage.create({
+            data: {
+              couponId: quote.couponId,
+              orderId: order.id,
+              discount: quote.discount,
+            },
+          });
+        }
       }
 
       const auditLogId = await orderAudit.writeOrderCreatedAudit(tx, {

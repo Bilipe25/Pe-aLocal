@@ -7,6 +7,9 @@
   "keep_vars": true,
   "workers_dev": false,
   "preview_urls": false,
+  "alias": {
+    "server-only": "./workers/server-only.ts",
+  },
   "secrets": {
     "required": ["PUSHER_APP_ID", "PUSHER_KEY", "PUSHER_SECRET", "PUSHER_CLUSTER"],
   },
@@ -29,6 +32,8 @@
     "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
     "WEB_PUSH_ENABLED": "true",
     "MERCHANT_WEB_PUSH_ENABLED": "false",
+    "MERCADO_PAGO_RECONCILIATION_ENABLED": "false",
+    "MERCADO_PAGO_ENABLED": "false",
   },
   "triggers": {
     "crons": ["* * * * *"],
@@ -65,7 +70,17 @@
     "staging": {
       "name": "pedidolocal-order-events-staging",
       "secrets": {
-        "required": ["PUSHER_APP_ID", "PUSHER_KEY", "PUSHER_SECRET", "PUSHER_CLUSTER"],
+        "required": [
+          "PUSHER_APP_ID",
+          "PUSHER_KEY",
+          "PUSHER_SECRET",
+          "PUSHER_CLUSTER",
+          "MERCADO_PAGO_CLIENT_ID",
+          "MERCADO_PAGO_CLIENT_SECRET",
+          "MERCADO_PAGO_REDIRECT_URI",
+          "MERCADO_PAGO_WEBHOOK_SECRET",
+          "MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY",
+        ],
       },
       "vars": {
         "APP_ENV": "staging",
@@ -75,6 +90,8 @@
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
         "WEB_PUSH_ENABLED": "true",
         "MERCHANT_WEB_PUSH_ENABLED": "true",
+        "MERCADO_PAGO_RECONCILIATION_ENABLED": "true",
+        "MERCADO_PAGO_ENABLED": "true",
       },
       "triggers": {
         "crons": ["* * * * *"],
@@ -121,6 +138,8 @@
         "PUSHER_LEGACY_PUBLIC_CHANNELS": "false",
         "WEB_PUSH_ENABLED": "false",
         "MERCHANT_WEB_PUSH_ENABLED": "false",
+        "MERCADO_PAGO_RECONCILIATION_ENABLED": "false",
+        "MERCADO_PAGO_ENABLED": "false",
       },
       "triggers": {
         "crons": ["* * * * *"],

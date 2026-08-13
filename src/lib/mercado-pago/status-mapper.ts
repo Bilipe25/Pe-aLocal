@@ -11,6 +11,7 @@ export function mapMercadoPagoOrderStatus(
     case 'processing/in_process':
     case 'action_required/waiting_payment':
     case 'action_required/waiting_transfer':
+    case 'action_required/waiting_retry':
       return 'PENDING';
     case 'processed/accredited':
       return 'PAID';

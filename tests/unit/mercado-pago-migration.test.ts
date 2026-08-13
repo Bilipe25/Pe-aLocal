@@ -10,6 +10,10 @@ const migration = readFileSync(
   ),
   'utf8',
 );
+const integrityMigration = readFileSync(
+  join(process.cwd(), 'prisma/migrations/20260812203000_online_payment_integrity/migration.sql'),
+  'utf8',
+);
 
 describe('migration de pagamentos online', () => {
   it('é aditiva, transacional e preserva os defaults manuais', () => {
@@ -44,5 +48,26 @@ describe('migration de pagamentos online', () => {
 
   it('não persiste payload bruto ou QR base64', () => {
     expect(migration).not.toMatch(/rawJson|rawPayload|qrCodeBase64|qr_code_base64/iu);
+  });
+});
+
+describe('migration de integridade dos pagamentos online', () => {
+  it('cria reserva de cupom, inbox processável e alertas duráveis', () => {
+    expect(integrityMigration).toContain('CREATE TABLE "coupon_reservations"');
+    expect(integrityMigration).toContain('ADD COLUMN "providerObjectId"');
+    expect(integrityMigration).toContain('ADD COLUMN "attempts"');
+    expect(integrityMigration).toContain('CREATE TABLE "payment_provider_alerts"');
+    expect(integrityMigration).toContain('ADD COLUMN "operationalStartedAt"');
+  });
+
+  it('permanece aditiva e protege as novas tabelas internas', () => {
+    expect(integrityMigration).toContain('BEGIN;');
+    expect(integrityMigration).toContain('COMMIT;');
+    expect(integrityMigration).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/iu);
+    for (const table of ['coupon_reservations', 'payment_provider_alerts']) {
+      expect(integrityMigration).toContain(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
+      expect(integrityMigration).toContain(`REVOKE ALL ON TABLE "${table}" FROM anon`);
+      expect(integrityMigration).toContain(`REVOKE ALL ON TABLE "${table}" FROM authenticated`);
+    }
   });
 });

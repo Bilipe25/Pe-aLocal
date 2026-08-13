@@ -1,14 +1,18 @@
 'use client';
 
-import { Check, Copy, Loader2, QrCode } from 'lucide-react';
+import { Check, Copy, ExternalLink, Loader2, QrCode } from 'lucide-react';
+import Link from 'next/link';
 import encodeQR from 'qr';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import type { CartSnapshot } from '@/stores/cart-store';
+import { useCartStore } from '@/stores/cart-store';
 
 interface PixPresentation {
   creationStatus: 'PENDING' | 'CREATED' | 'RETRYABLE_ERROR' | 'FAILED';
   qrCode: string | null;
+  ticketUrl: string | null;
   expiresAt: string | null;
 }
 
@@ -59,12 +63,28 @@ export function OnlinePixPayment({
 }) {
   const [payment, setPayment] = useState(initialPayment);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
+  const rebuildCart = () => {
+    try {
+      const serialized = window.sessionStorage.getItem(`online-order-cart:${publicToken}`);
+      if (!serialized) return;
+      const backup = JSON.parse(serialized) as { storeId: string; snapshot: CartSnapshot };
+      const cart = useCartStore.getState();
+      cart.setStore(backup.storeId, storeSlug);
+      cart.restoreSnapshot(backup.snapshot, useCartStore.getState().revision);
+      window.location.assign(`/${encodeURIComponent(storeSlug)}/cart`);
+    } catch {
+      window.location.assign(`/${encodeURIComponent(storeSlug)}`);
+    }
+  };
+
   useEffect(() => {
-    if (payment.creationStatus === 'FAILED') return;
+    if (payment.creationStatus === 'FAILED' || payment.creationStatus === 'CREATED') return;
     const controller = new AbortController();
+    let timer: number | undefined;
     const synchronize = () => {
       void fetch(
         `/api/storefront/${encodeURIComponent(storeSlug)}/orders/${encodeURIComponent(publicToken)}/pix`,
@@ -83,11 +103,33 @@ export function OnlinePixPayment({
         })
         .catch(() => undefined);
     };
-    if (payment.creationStatus !== 'CREATED') synchronize();
-    const timer = window.setInterval(synchronize, 15_000);
+    const canSynchronize = () => document.visibilityState === 'visible' && navigator.onLine;
+    const schedule = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (!canSynchronize()) return;
+      timer = window.setTimeout(async () => {
+        synchronize();
+        schedule();
+      }, 15_000);
+    };
+    const resume = () => {
+      if (canSynchronize()) {
+        synchronize();
+        schedule();
+      } else if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+    resume();
+    window.addEventListener('online', resume);
+    window.addEventListener('offline', resume);
+    document.addEventListener('visibilitychange', resume);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('online', resume);
+      window.removeEventListener('offline', resume);
+      document.removeEventListener('visibilitychange', resume);
     };
   }, [payment.creationStatus, publicToken, storeSlug]);
 
@@ -99,9 +141,16 @@ export function OnlinePixPayment({
 
   const copyCode = async () => {
     if (!payment.qrCode) return;
-    await navigator.clipboard.writeText(payment.qrCode);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2_000);
+    setCopyError(false);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard-unavailable');
+      await navigator.clipboard.writeText(payment.qrCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
   };
 
   if (completed) return null;
@@ -124,11 +173,18 @@ export function OnlinePixPayment({
                 ? 'Não foi possível gerar a cobrança. Tente fazer um novo pedido.'
                 : 'Aguarde alguns instantes. Você não precisa criar outro pedido.'}
             </p>
+            {payment.creationStatus === 'FAILED' ? (
+              <Button type="button" variant="outline" className="mt-3" onClick={rebuildCart}>
+                Refazer este pedido
+              </Button>
+            ) : null}
           </div>
         </div>
       </section>
     );
   }
+
+  const expired = Boolean(payment.expiresAt && new Date(payment.expiresAt).getTime() <= now);
 
   return (
     <section className="storefront-tracking-card" aria-labelledby="online-pix-title">
@@ -144,10 +200,32 @@ export function OnlinePixPayment({
       <p className="text-text-secondary mt-3 text-center text-sm font-semibold">
         {remainingLabel(payment.expiresAt, now)}
       </p>
-      <Button type="button" className="mt-4 w-full gap-2" onClick={() => void copyCode()}>
+      <Button
+        type="button"
+        className="mt-4 w-full gap-2"
+        disabled={expired}
+        onClick={() => void copyCode()}
+      >
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         {copied ? 'Código copiado' : 'Copiar código Pix'}
       </Button>
+      {copyError ? (
+        <p className="text-error mt-2 text-center text-sm" role="alert">
+          Não foi possível copiar automaticamente. Tente abrir o Pix ou copie pelo seu dispositivo.
+        </p>
+      ) : null}
+      {!expired && payment.ticketUrl ? (
+        <Button asChild type="button" variant="outline" className="mt-2 w-full gap-2">
+          <a href={payment.ticketUrl} target="_blank" rel="noreferrer">
+            <ExternalLink className="h-4 w-4" aria-hidden="true" /> Abrir Pix
+          </a>
+        </Button>
+      ) : null}
+      {expired ? (
+        <Button asChild type="button" variant="outline" className="mt-2 w-full">
+          <Link href={`/${encodeURIComponent(storeSlug)}`}>Fazer novo pedido</Link>
+        </Button>
+      ) : null}
     </section>
   );
 }

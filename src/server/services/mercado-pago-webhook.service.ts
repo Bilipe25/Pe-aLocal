@@ -1,57 +1,38 @@
 import 'server-only';
 
-import { Prisma } from '@prisma/client';
-
 import { getMercadoPagoOrder, MercadoPagoApiError } from '@/lib/mercado-pago/client';
 import type { mercadoPagoWebhookSchema } from '@/lib/mercado-pago/schemas';
-import { triggerNewOrder, triggerPaymentUpdated } from '@/lib/pusher/server';
 import { getDb } from '@/server/database/client';
-import { dispatchCommittedOrderEvents } from './order-event-dispatch.service';
 import { getMercadoPagoAccessToken } from './mercado-pago-connection.service';
 import { reconcileMercadoPagoOrder } from './mercado-pago-payment.service';
+import { recordPaymentProviderAlert } from './payment-provider-alert.service';
 
 type MercadoPagoWebhook = ReturnType<typeof mercadoPagoWebhookSchema.parse>;
+const WEBHOOK_LEASE_MS = 2 * 60_000;
+const MAX_WEBHOOK_ATTEMPTS = 8;
 
-async function processDeauthorization(
-  event: MercadoPagoWebhook,
-): Promise<'processed' | 'duplicate'> {
-  const db = getDb();
-  const existing = await db.paymentProviderWebhookEvent.findUnique({
+export async function enqueueMercadoPagoWebhook(event: MercadoPagoWebhook) {
+  return getDb().paymentProviderWebhookEvent.upsert({
     where: {
-      provider_providerEventId: {
-        provider: 'MERCADO_PAGO',
-        providerEventId: event.id,
-      },
+      provider_providerEventId: { provider: 'MERCADO_PAGO', providerEventId: event.id },
     },
+    create: {
+      provider: 'MERCADO_PAGO',
+      providerEventId: event.id,
+      topic: event.type,
+      action: event.action,
+      providerUserId: event.user_id,
+      providerObjectId: event.data.id,
+    },
+    update: {},
     select: { id: true, processedAt: true },
   });
-  if (existing?.processedAt) return 'duplicate';
+}
 
-  let eventId = existing?.id;
-  if (!eventId) {
-    try {
-      const created = await db.paymentProviderWebhookEvent.create({
-        data: {
-          provider: 'MERCADO_PAGO',
-          providerEventId: event.id,
-          topic: event.type,
-          action: event.action,
-          providerUserId: event.user_id,
-        },
-        select: { id: true },
-      });
-      eventId = created.id;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return 'duplicate';
-      }
-      throw error;
-    }
-  }
-
-  await db.$transaction(async (tx) => {
+async function processDeauthorization(eventId: string, providerUserId: string) {
+  await getDb().$transaction(async (tx) => {
     await tx.storePaymentProviderConnection.updateMany({
-      where: { provider: 'MERCADO_PAGO', providerUserId: event.user_id },
+      where: { provider: 'MERCADO_PAGO', providerUserId },
       data: {
         status: 'REVOKED',
         accessTokenCiphertext: null,
@@ -65,17 +46,16 @@ async function processDeauthorization(
     });
     await tx.paymentProviderWebhookEvent.update({
       where: { id: eventId },
-      data: { processedAt: new Date() },
+      data: { processedAt: new Date(), processingStartedAt: null, lastErrorCode: null },
     });
   });
-  return 'processed';
 }
 
-async function synchronizeOrder(event: MercadoPagoWebhook) {
+async function synchronizeOrder(providerUserId: string, providerOrderId: string) {
   const connections = await getDb().storePaymentProviderConnection.findMany({
     where: {
       provider: 'MERCADO_PAGO',
-      providerUserId: event.user_id,
+      providerUserId,
       accessTokenCiphertext: { not: null },
       accessTokenIv: { not: null },
     },
@@ -90,41 +70,24 @@ async function synchronizeOrder(event: MercadoPagoWebhook) {
       });
       let providerOrder;
       try {
-        providerOrder = await getMercadoPagoOrder({
-          accessToken,
-          orderId: event.data.id,
-        });
+        providerOrder = await getMercadoPagoOrder({ accessToken, orderId: providerOrderId });
       } catch (error) {
         if (!(error instanceof MercadoPagoApiError) || error.status !== 401) throw error;
         accessToken = await getMercadoPagoAccessToken(connection.id, {
           allowReconciliation: true,
           forceRefresh: true,
         });
-        providerOrder = await getMercadoPagoOrder({
-          accessToken,
-          orderId: event.data.id,
-        });
+        providerOrder = await getMercadoPagoOrder({ accessToken, orderId: providerOrderId });
       }
       fetchedProviderOrder = true;
-      if (providerOrder.user_id !== event.user_id) continue;
+      if (providerOrder.user_id !== providerUserId) continue;
       const result = await reconcileMercadoPagoOrder(providerOrder);
       if (!result) continue;
-      if (result.eventIds.length) {
-        await dispatchCommittedOrderEvents({
-          eventIds: result.eventIds,
-          publishDirect: async () => {
-            await triggerPaymentUpdated(result.storeId, result.orderId, result.paymentStatus);
-            if (result.becameActionable) {
-              await triggerNewOrder(result.storeId, result.orderId, result.orderNumber);
-            }
-          },
-        });
-      }
       console.info('[MP_WEBHOOK_SYNCED]', {
         orderId: result.orderId,
         paymentStatus: result.paymentStatus,
       });
-      return 'processed' as const;
+      return;
     } catch (error) {
       console.warn('[MP_WEBHOOK_CANDIDATE_FAILED]', {
         connectionId: connection.id,
@@ -135,13 +98,88 @@ async function synchronizeOrder(event: MercadoPagoWebhook) {
   if (connections.length > 0 && !fetchedProviderOrder) {
     throw new Error('Nenhuma credencial candidata conseguiu consultar a ordem.');
   }
-  return 'ignored' as const;
 }
 
-export async function processMercadoPagoWebhook(event: MercadoPagoWebhook) {
-  if (event.type === 'mp-connect') {
-    if (event.action !== 'application.deauthorized') return 'ignored' as const;
-    return processDeauthorization(event);
+async function processClaimedWebhook(event: {
+  id: string;
+  topic: string;
+  action: string;
+  providerUserId: string | null;
+  providerObjectId: string | null;
+}) {
+  if (!event.providerUserId || !event.providerObjectId) throw new Error('INVALID_EVENT_SCOPE');
+  if (event.topic === 'mp-connect') {
+    if (event.action === 'application.deauthorized') {
+      await processDeauthorization(event.id, event.providerUserId);
+      return;
+    }
+  } else {
+    await synchronizeOrder(event.providerUserId, event.providerObjectId);
   }
-  return synchronizeOrder(event);
+  await getDb().paymentProviderWebhookEvent.update({
+    where: { id: event.id },
+    data: { processedAt: new Date(), processingStartedAt: null, lastErrorCode: null },
+  });
+}
+
+export async function processPendingMercadoPagoWebhooks(limit = 20) {
+  const db = getDb();
+  const now = new Date();
+  const staleLease = new Date(now.getTime() - WEBHOOK_LEASE_MS);
+  const candidates = await db.paymentProviderWebhookEvent.findMany({
+    where: {
+      provider: 'MERCADO_PAGO',
+      processedAt: null,
+      availableAt: { lte: now },
+      attempts: { lt: MAX_WEBHOOK_ATTEMPTS },
+      OR: [{ processingStartedAt: null }, { processingStartedAt: { lt: staleLease } }],
+    },
+    orderBy: [{ availableAt: 'asc' }, { createdAt: 'asc' }],
+    take: Math.min(Math.max(limit, 1), 50),
+    select: {
+      id: true,
+      topic: true,
+      action: true,
+      providerUserId: true,
+      providerObjectId: true,
+      attempts: true,
+    },
+  });
+  let processed = 0;
+  let failed = 0;
+  for (const event of candidates) {
+    const claimed = await db.paymentProviderWebhookEvent.updateMany({
+      where: {
+        id: event.id,
+        processedAt: null,
+        OR: [{ processingStartedAt: null }, { processingStartedAt: { lt: staleLease } }],
+      },
+      data: { processingStartedAt: now, attempts: { increment: 1 } },
+    });
+    if (claimed.count !== 1) continue;
+    try {
+      await processClaimedWebhook(event);
+      processed += 1;
+    } catch (error) {
+      failed += 1;
+      const attempts = event.attempts + 1;
+      const code =
+        error instanceof MercadoPagoApiError ? error.code.slice(0, 64) : 'PROCESSING_FAILED';
+      await db.paymentProviderWebhookEvent.update({
+        where: { id: event.id },
+        data: {
+          processingStartedAt: null,
+          lastErrorCode: code,
+          availableAt: new Date(Date.now() + Math.min(15 * 60_000, 15_000 * 2 ** attempts)),
+        },
+      });
+      if (attempts >= MAX_WEBHOOK_ATTEMPTS) {
+        await recordPaymentProviderAlert({
+          code: 'WEBHOOK_RETRIES_EXHAUSTED',
+          priority: 'CRITICAL',
+        });
+      }
+    }
+  }
+  return { selected: candidates.length, processed, failed };
 }
