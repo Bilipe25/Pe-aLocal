@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe('cliente Mercado Pago Orders', () => {
-  it('aceita a resposta documentada de criação sem user_id e currency', async () => {
+  it('envia somente o contrato documentado para criar um Pix', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(createResponse));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -64,7 +64,20 @@ describe('cliente Mercado Pago Orders', () => {
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(request.body))).toMatchObject({
+    expect(JSON.parse(String(request.body))).toEqual({
+      type: 'online',
+      total_amount: '12.34',
+      external_reference: 'pl_mp_opaque_reference',
+      processing_mode: 'automatic',
+      transactions: {
+        payments: [
+          {
+            amount: '12.34',
+            payment_method: { id: 'pix', type: 'bank_transfer' },
+            expiration_time: 'PT30M',
+          },
+        ],
+      },
       payer: { email: 'payer@example.test', first_name: 'APRO' },
     });
   });
@@ -161,5 +174,43 @@ describe('cliente Mercado Pago Orders', () => {
       validationIssues: [{ code: 'invalid_email_for_sandbox', path: 'payer.email' }],
     });
     expect(String(error)).not.toContain('cliente-real@exemplo.com');
+  });
+
+  it('prioriza a causa específica sobre o envelope unprocessable_content', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: 'unprocessable_content',
+            message: 'conteúdo bruto do provedor',
+            details: [
+              {
+                code: 'unsupported_properties',
+                field: 'currency',
+                message: 'propriedade currency não suportada',
+              },
+            ],
+          },
+          400,
+        ),
+      ),
+    );
+
+    const error = await createMercadoPagoPixOrder({
+      accessToken: 'APP_USR-access',
+      idempotencyKey: 'stable-idempotency-key',
+      totalAmount: '12.34',
+      externalReference: 'pl_mp_opaque_reference',
+      payerEmail: 'test_user_br@testuser.com',
+      expiration: 'PT30M',
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: 'unsupported_properties',
+      validationIssues: [{ code: 'unsupported_properties', path: 'currency' }],
+    });
+    expect(String(error)).not.toContain('conteúdo bruto do provedor');
+    expect(String(error)).not.toContain('currency não suportada');
   });
 });

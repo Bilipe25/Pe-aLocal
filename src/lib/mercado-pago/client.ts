@@ -28,13 +28,14 @@ const SAFE_PROVIDER_CODE = /^[A-Za-z0-9_.-]{1,64}$/u;
 const SAFE_PROVIDER_PATH = /^[A-Za-z0-9_.\[\]-]{1,160}$/u;
 
 function providerErrorMetadata(payload: unknown, status: number) {
-  const records: Record<string, unknown>[] = [];
+  const rootRecords: Record<string, unknown>[] = [];
+  const detailRecords: Record<string, unknown>[] = [];
   if (typeof payload === 'object' && payload !== null) {
-    records.push(payload as Record<string, unknown>);
+    rootRecords.push(payload as Record<string, unknown>);
     for (const key of ['errors', 'cause', 'details'] as const) {
       const entries = (payload as Record<string, unknown>)[key];
       if (Array.isArray(entries)) {
-        records.push(
+        detailRecords.push(
           ...entries.filter(
             (entry): entry is Record<string, unknown> =>
               typeof entry === 'object' && entry !== null,
@@ -44,10 +45,14 @@ function providerErrorMetadata(payload: unknown, status: number) {
     }
   }
 
-  const code = records
+  // A Orders API costuma envolver a causa específica (por exemplo,
+  // `unsupported_properties`) em um erro genérico como
+  // `unprocessable_content`. O código acionável dos detalhes deve vencer o
+  // envelope, sem persistirmos mensagens ou o payload bruto do provedor.
+  const code = [...detailRecords, ...rootRecords]
     .flatMap((record) => [record.code, record.error])
     .find((value): value is string => typeof value === 'string' && SAFE_PROVIDER_CODE.test(value));
-  const validationIssues = records
+  const validationIssues = detailRecords
     .flatMap((record) => {
       const issueCode =
         typeof record.code === 'string' && SAFE_PROVIDER_CODE.test(record.code)
@@ -188,7 +193,6 @@ export function createMercadoPagoPixOrder(input: {
     idempotencyKey: input.idempotencyKey,
     body: {
       type: 'online',
-      currency: 'BRL',
       total_amount: input.totalAmount,
       external_reference: input.externalReference,
       processing_mode: 'automatic',
