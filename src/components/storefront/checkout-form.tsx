@@ -49,6 +49,12 @@ import {
 } from '@/lib/checkout/checkout-draft';
 import { reportCheckoutAbandonment, reportCheckoutEvent } from '@/lib/checkout/telemetry';
 import {
+  MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS,
+  MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE,
+  MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE,
+  MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL,
+} from '@/lib/mercado-pago/sandbox';
+import {
   clearCheckoutIdempotency,
   resolveCheckoutIdempotency,
   type CheckoutIdempotencyRecord,
@@ -201,12 +207,12 @@ const checkoutFormSchema = object({
     if (
       onlinePixSelected &&
       data.onlineSandbox &&
-      !data.payerEmail.trim().toLowerCase().endsWith('@testuser.com')
+      data.payerEmail.trim().toLowerCase() !== MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL
     ) {
       ctx.addIssue({
         code: 'custom',
         path: ['payerEmail'],
-        message: 'No ambiente de teste, use um e-mail Mercado Pago terminado em @testuser.com.',
+        message: MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE,
         input: data.payerEmail,
       });
     }
@@ -676,7 +682,7 @@ export function CheckoutForm({
       paymentMethod: defaultPayment,
       onlinePayment,
       onlineSandbox,
-      payerEmail: '',
+      payerEmail: onlineSandbox ? MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL : '',
       cashWithoutChange: true,
       changeFor: '',
       couponCode: initialCouponCode,
@@ -1176,6 +1182,16 @@ export function CheckoutForm({
         : fieldsByStep[step];
     const valid = await trigger(baseFields, { shouldFocus: true });
     if (!valid) return;
+    if (
+      step === 'payment' &&
+      onlinePixSelected &&
+      onlineSandbox &&
+      effectiveQuote?.total !== MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS
+    ) {
+      setError('paymentMethod', { message: MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE });
+      setFocusRequest({ field: 'paymentMethod' });
+      return;
+    }
     if (step === 'identification') {
       await requestRecognition();
       return;
@@ -1243,6 +1259,17 @@ export function CheckoutForm({
           quoteError?.message ??
           'Aguarde a atualização dos valores antes de confirmar.',
       );
+      return;
+    }
+    if (
+      onlinePixSelected &&
+      onlineSandbox &&
+      effectiveQuote.total !== MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS
+    ) {
+      setError('paymentMethod', { message: MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE });
+      setSubmitError(MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE);
+      setStep('payment');
+      setFocusRequest({ field: 'paymentMethod' });
       return;
     }
 
@@ -2052,13 +2079,14 @@ export function CheckoutForm({
               {onlinePixSelected && (
                 <div className="border-tinta/10 rounded-xl border p-4">
                   <label htmlFor="payerEmail" className="text-tinta text-sm font-semibold">
-                    E-mail do comprador
+                    {onlineSandbox ? 'E-mail do teste Pix' : 'E-mail do comprador'}
                   </label>
                   <Input
                     id="payerEmail"
                     type="email"
                     autoComplete="email"
                     placeholder="voce@exemplo.com"
+                    readOnly={onlineSandbox}
                     className="border-tinta/15 bg-papel focus-visible:ring-pimenta mt-1"
                     aria-invalid={Boolean(errors.payerEmail)}
                     aria-describedby={errors.payerEmail ? 'payerEmail-error' : 'payerEmail-help'}
@@ -2066,10 +2094,44 @@ export function CheckoutForm({
                   />
                   <p id="payerEmail-help" className="text-text-muted mt-2 text-xs">
                     {onlineSandbox
-                      ? 'Ambiente de teste: use o e-mail de um comprador Mercado Pago terminado em @testuser.com.'
+                      ? 'Endereço predefinido pelo Mercado Pago para simular a aprovação.'
                       : 'Usado apenas para gerar esta cobrança. A confirmação é automática.'}
                   </p>
                   <FieldError id="payerEmail-error" message={errors.payerEmail?.message} />
+                  {onlineSandbox && (
+                    <div
+                      className="border-warning/40 bg-warning-light text-tinta mt-4 rounded-xl border p-3"
+                      role="note"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle
+                          className="text-warning mt-0.5 h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0 text-sm">
+                          <p className="font-semibold">Teste Pix do Mercado Pago</p>
+                          <p className="mt-1">
+                            O sandbox só gera o Pix quando o total do pedido é exatamente{' '}
+                            <strong>R$ 50,00</strong>.
+                          </p>
+                          {!effectiveQuote ? (
+                            <p className="mt-2">Atualizando o total do pedido…</p>
+                          ) : effectiveQuote.total !== MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS ? (
+                            <p className="mt-2">
+                              Este pedido está em{' '}
+                              <strong>{formatCurrency(effectiveQuote.total)}</strong>. Ajuste a
+                              sacola ou escolha dinheiro ou cartão no recebimento.
+                            </p>
+                          ) : (
+                            <p className="mt-2">
+                              Total atual: <strong>{formatCurrency(effectiveQuote.total)}</strong>.
+                              O pedido está pronto para o teste Pix.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2341,7 +2403,7 @@ export function CheckoutForm({
               type="button"
               onClick={() => void goForward()}
               disabled={recognitionPending}
-              className="storefront-primary-action w-full overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
+              className="storefront-primary-action w-full overflow-hidden px-3 text-sm text-ellipsis sm:px-4"
             >
               {step === 'identification' && recognitionPending ? (
                 <>
@@ -2359,7 +2421,7 @@ export function CheckoutForm({
               disabled={
                 isPending || quoteLoading || !effectiveQuote?.canCheckout || Boolean(changedQuote)
               }
-              className="storefront-primary-action w-full overflow-hidden px-3 text-[0.8125rem] text-ellipsis sm:px-4 sm:text-sm"
+              className="storefront-primary-action w-full overflow-hidden px-3 text-sm text-ellipsis sm:px-4"
             >
               {isPending ? (
                 <>

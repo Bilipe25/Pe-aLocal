@@ -223,8 +223,14 @@ describe('OrderRepository checkout v2', () => {
       payment: { id: 'payment-a' },
     });
     mocks.tx.mercadoPagoPayment.create.mockResolvedValue({ id: 'mp-a' });
+    mocks.calculateCheckoutQuote.mockResolvedValue({
+      ...quote,
+      subtotal: 5000,
+      total: 5000,
+      lines: [{ ...quote.lines[0], unitPrice: 5000, itemTotal: 5000 }],
+    });
 
-    const onlineInput = { ...input, payerEmail: 'cliente@testuser.com' };
+    const onlineInput = { ...input, payerEmail: 'test_user_br@testuser.com' };
     const result = await createOrder({ ...params, input: onlineInput });
 
     expect(result).toMatchObject({
@@ -250,8 +256,41 @@ describe('OrderRepository checkout v2', () => {
       }),
     );
     const encryptedEmail = mocks.tx.mercadoPagoPayment.create.mock.calls[0][0].data;
-    expect(encryptedEmail.payerEmailCiphertext).not.toContain('cliente@testuser.com');
+    expect(encryptedEmail.payerEmailCiphertext).not.toContain('test_user_br@testuser.com');
     expect(mocks.appendOrderOutboxEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejeita um total diferente de R$ 50,00 antes de criar pedido Pix no sandbox', async () => {
+    vi.stubEnv('MERCADO_PAGO_ENABLED', 'true');
+    vi.stubEnv('APP_ENV', 'staging');
+    mocks.tx.store.findUnique.mockResolvedValue({
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      address: { city: 'São Paulo', state: 'SP' },
+      settings: {
+        acceptsPix: false,
+        pixKeyType: null,
+        pixKey: null,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+        paymentMode: 'ONLINE',
+      },
+      entitlement: { onlinePaymentsEnabled: true },
+      paymentProviderConnections: [{ id: 'connection-a' }],
+    });
+
+    await expect(
+      createOrder({
+        ...params,
+        input: { ...input, payerEmail: 'test_user_br@testuser.com' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'CART_INVALID',
+      message: expect.stringContaining('total exato de R$ 50,00'),
+      details: [{ path: 'paymentMethod', code: 'invalid_amount_for_sandbox' }],
+    });
+    expect(mocks.tx.order.create).not.toHaveBeenCalled();
+    expect(mocks.tx.mercadoPagoPayment.create).not.toHaveBeenCalled();
   });
 
   it.each(['CASH', 'CARD_ON_DELIVERY'] as const)(

@@ -925,7 +925,7 @@ export async function ensureMercadoPagoPixCreated(
         totalAmount: centsToAmount(local.order.total),
         externalReference: local.externalReference,
         payerEmail,
-        payerFirstName: config.oauthEnvironment === 'sandbox' ? 'APRO' : undefined,
+        environment: config.oauthEnvironment,
         expiration: MERCADO_PAGO_PIX_EXPIRATION,
       });
       console.info('[MP_ORDER_CREATED]', {

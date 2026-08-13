@@ -111,7 +111,7 @@ describe('criação idempotente do Pix Mercado Pago', () => {
 
     expect(mocks.createOrder).toHaveBeenCalledOnce();
     expect(mocks.createOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ payerFirstName: 'APRO' }),
+      expect.objectContaining({ environment: 'sandbox' }),
     );
     expect(mocks.searchOrders).toHaveBeenCalledOnce();
     expect(mocks.db.mercadoPagoPayment.updateMany).toHaveBeenCalledWith(

@@ -794,7 +794,7 @@ describe('checkout público v2', () => {
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`));
   });
 
-  it('oferece Pix automático junto com dinheiro e cartão no recebimento', () => {
+  it('oferece Pix automático junto com dinheiro e cartão no recebimento', async () => {
     renderCheckout({
       initialStep: 'payment',
       paymentConfig: {
@@ -815,11 +815,39 @@ describe('checkout público v2', () => {
     expect(screen.getByRole('radio', { name: /Pix automático/ })).toBeChecked();
     expect(screen.getByRole('radio', { name: /Dinheiro/ })).toBeVisible();
     expect(screen.getByRole('radio', { name: /Cartão no recebimento/ })).toBeVisible();
-    expect(screen.getByRole('textbox', { name: 'E-mail do comprador' })).toBeVisible();
-    expect(screen.getByText(/terminado em @testuser\.com/)).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'E-mail do teste Pix' })).toHaveValue(
+      'test_user_br@testuser.com',
+    );
+    expect(screen.getByText(/só gera o Pix quando o total do pedido/i)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByRole('note')).toHaveTextContent('Este pedido está em R$ 25,00'),
+    );
 
     fireEvent.click(screen.getByRole('radio', { name: /Dinheiro/ }));
-    expect(screen.queryByRole('textbox', { name: 'E-mail do comprador' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'E-mail do teste Pix' })).not.toBeInTheDocument();
+  });
+
+  it('bloqueia o Pix de sandbox com total diferente de R$ 50,00 antes de criar o pedido', async () => {
+    renderCheckout({
+      initialStep: 'payment',
+      paymentConfig: {
+        methods: [
+          {
+            method: 'PIX',
+            processing: 'ONLINE',
+            provider: 'MERCADO_PAGO',
+            requiresEmail: true,
+            environment: 'SANDBOX',
+          },
+          { method: 'CASH', processing: 'MANUAL' },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('total exato de R$ 50,00');
+    expect(mocks.createOrderAction).not.toHaveBeenCalled();
   });
 
   it('preserva o carrinho e retorna ao pagamento quando o provedor recusa a criação do Pix', async () => {
@@ -830,6 +858,15 @@ describe('checkout público v2', () => {
         message: 'Não foi possível gerar o Pix. Escolha outra forma de pagamento.',
         details: [{ code: 'invalid_email_for_sandbox' }],
       },
+    });
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...quote,
+        subtotal: 4_500,
+        total: 5_000,
+        lines: [{ ...quote.lines[0], unitPrice: 4_500, itemTotal: 4_500 }],
+      }),
     });
     const { container } = renderCheckout({
       paymentConfig: {
@@ -856,9 +893,11 @@ describe('checkout público v2', () => {
     await screen.findByRole('heading', { name: 'Como quer receber?' });
     fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
     await screen.findByRole('heading', { name: 'Como prefere pagar?' });
-    fireEvent.change(screen.getByRole('textbox', { name: 'E-mail do comprador' }), {
-      target: { value: 'comprador@testuser.com' },
-    });
+    await waitFor(() =>
+      expect(screen.getByRole('note')).toHaveTextContent(
+        'Total atual: R$ 50,00. O pedido está pronto para o teste Pix.',
+      ),
+    );
     fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
     const confirm = await screen.findByRole('button', { name: /Confirmar/ });
     await waitFor(() => expect(confirm).toBeEnabled());
