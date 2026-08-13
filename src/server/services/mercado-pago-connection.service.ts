@@ -8,12 +8,13 @@ import { BusinessRuleError, ConflictError, NotFoundError } from '@/server/errors
 import { Permission } from '@/server/permissions';
 import {
   exchangeMercadoPagoAuthorizationCode,
+  getMercadoPagoSellerProfile,
   MercadoPagoApiError,
   refreshMercadoPagoToken,
 } from '@/lib/mercado-pago/client';
 import {
   assertMercadoPagoOrdersCompatibleAccessToken,
-  assertMercadoPagoOAuthEnvironment,
+  assertMercadoPagoSellerEnvironment,
   getMercadoPagoConfig,
   isMercadoPagoEnabled,
   MERCADO_PAGO_AUTH_ORIGIN,
@@ -34,19 +35,25 @@ const OAUTH_TTL_MS = 10 * 60 * 1000;
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const REFRESH_LEASE_MS = 30 * 1000;
 
-function environmentMismatchMessage(expectedEnvironment: 'sandbox' | 'production') {
-  return expectedEnvironment === 'sandbox'
-    ? 'Não foi possível concluir a conexão Mercado Pago no ambiente de teste.'
-    : 'Não foi possível concluir a conexão Mercado Pago no ambiente de produção.';
-}
-
 function logEnvironmentMismatch(input: {
   expectedEnvironment: 'sandbox' | 'production';
-  receivedLiveMode: boolean;
+  receivedTestUser: boolean;
   storeId: string;
   tenantId: string;
 }) {
   console.error('[MERCADO_PAGO_OAUTH_ENVIRONMENT_MISMATCH]', input);
+}
+
+function assertSellerMatchesToken(sellerId: string, tokenUserId: string) {
+  if (sellerId !== tokenUserId) {
+    throw new MercadoPagoApiError(
+      'Resposta inválida do Mercado Pago.',
+      502,
+      'INVALID_RESPONSE',
+      null,
+      [{ path: 'seller.id', code: 'custom' }],
+    );
+  }
 }
 
 export class MercadoPagoOAuthCompletionError extends Error {
@@ -269,23 +276,22 @@ export async function completeMercadoPagoOAuth(state: string, code: string) {
       code,
       codeVerifier: verifier,
     });
+    const seller = await getMercadoPagoSellerProfile({
+      accessToken: token.access_token,
+    });
+    assertSellerMatchesToken(seller.id, token.user_id);
     try {
-      assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
+      assertMercadoPagoSellerEnvironment(
+        seller.tags.includes('test_user'),
+        config.oauthEnvironment,
+      );
     } catch (error) {
       if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
         logEnvironmentMismatch({
           expectedEnvironment: error.expectedEnvironment,
-          receivedLiveMode: error.receivedLiveMode,
+          receivedTestUser: error.receivedTestUser,
           storeId: attempt.storeId,
           tenantId: attempt.tenantId,
-        });
-        await getDb().storePaymentProviderConnection.updateMany({
-          where: {
-            tenantId: attempt.tenantId,
-            storeId: attempt.storeId,
-            provider: 'MERCADO_PAGO',
-          },
-          data: { status: 'ERROR', lastErrorCode: error.code },
         });
         throw new MercadoPagoOAuthCompletionError('environment_mismatch', attempt.returnPath);
       }
@@ -569,24 +575,6 @@ export async function getMercadoPagoAccessToken(
   if (!connection || !connection.accessTokenCiphertext || !connection.accessTokenIv) {
     throw new BusinessRuleError('A conexão Mercado Pago precisa ser refeita.');
   }
-  try {
-    assertMercadoPagoOAuthEnvironment(connection.liveMode, config.oauthEnvironment);
-  } catch (error) {
-    if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
-      logEnvironmentMismatch({
-        expectedEnvironment: error.expectedEnvironment,
-        receivedLiveMode: error.receivedLiveMode,
-        storeId: connection.storeId,
-        tenantId: connection.tenantId,
-      });
-      await getDb().storePaymentProviderConnection.updateMany({
-        where: { id: connection.id },
-        data: { status: 'ERROR', lastErrorCode: error.code },
-      });
-      throw new BusinessRuleError(environmentMismatchMessage(error.expectedEnvironment));
-    }
-    throw error;
-  }
   const allowedStatuses: PaymentProviderConnectionStatus[] = options.allowReconciliation
     ? ['ACTIVE', 'DISCONNECTED', 'ERROR', 'REAUTH_REQUIRED']
     : ['ACTIVE'];
@@ -671,13 +659,20 @@ export async function getMercadoPagoAccessToken(
       refreshToken,
     });
     assertMercadoPagoOrdersCompatibleAccessToken(token.access_token);
-    assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment);
-    if (token.live_mode !== connection.liveMode) {
-      throw new MercadoPagoOAuthEnvironmentMismatchError(
-        connection.liveMode ? 'production' : 'sandbox',
-        token.live_mode,
+    const seller = await getMercadoPagoSellerProfile({
+      accessToken: token.access_token,
+    });
+    assertSellerMatchesToken(seller.id, token.user_id);
+    if (token.user_id !== connection.providerUserId) {
+      throw new MercadoPagoApiError(
+        'Resposta inválida do Mercado Pago.',
+        502,
+        'INVALID_RESPONSE',
+        null,
+        [{ path: 'user_id', code: 'custom' }],
       );
     }
+    assertMercadoPagoSellerEnvironment(seller.tags.includes('test_user'), config.oauthEnvironment);
     const [access, refresh] = await Promise.all([
       encryptCredential(
         token.access_token,
@@ -733,13 +728,14 @@ export async function getMercadoPagoAccessToken(
     if (error instanceof MercadoPagoOAuthEnvironmentMismatchError) {
       logEnvironmentMismatch({
         expectedEnvironment: error.expectedEnvironment,
-        receivedLiveMode: error.receivedLiveMode,
+        receivedTestUser: error.receivedTestUser,
         storeId: connection.storeId,
         tenantId: connection.tenantId,
       });
     }
     if (
       error instanceof MercadoPagoOrdersCredentialError ||
+      error instanceof MercadoPagoOAuthEnvironmentMismatchError ||
       isUnsupportedCredentialResponse(error) ||
       (error instanceof MercadoPagoApiError &&
         (error.status === 401 || error.code.toLowerCase() === 'invalid_grant'))

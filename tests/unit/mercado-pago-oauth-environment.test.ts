@@ -5,12 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   exchangeMercadoPagoAuthorizationCode,
+  getMercadoPagoSellerProfile,
   MercadoPagoApiError,
   refreshMercadoPagoToken,
 } from '@/lib/mercado-pago/client';
 import {
-  assertMercadoPagoOAuthEnvironment,
   assertMercadoPagoOrdersCompatibleAccessToken,
+  assertMercadoPagoSellerEnvironment,
   getMercadoPagoConfig,
   getMercadoPagoOAuthEnvironment,
   MercadoPagoOAuthEnvironmentMismatchError,
@@ -163,19 +164,40 @@ describe('ambiente e credencial do OAuth Mercado Pago', () => {
   });
 
   it.each([
-    ['sandbox', false],
-    ['production', true],
-  ] as const)('aceita live_mode compatível com %s', (environment, liveMode) => {
-    expect(() => assertMercadoPagoOAuthEnvironment(liveMode, environment)).not.toThrow();
+    ['sandbox', true],
+    ['production', false],
+  ] as const)('aceita o tipo de vendedor compatível com %s', (environment, isTestUser) => {
+    expect(() => assertMercadoPagoSellerEnvironment(isTestUser, environment)).not.toThrow();
   });
 
   it.each([
-    ['sandbox', true],
-    ['production', false],
-  ] as const)('rejeita live_mode incompatível com %s', (environment, liveMode) => {
-    expect(() => assertMercadoPagoOAuthEnvironment(liveMode, environment)).toThrow(
+    ['sandbox', false],
+    ['production', true],
+  ] as const)('rejeita o tipo de vendedor incompatível com %s', (environment, isTestUser) => {
+    expect(() => assertMercadoPagoSellerEnvironment(isTestUser, environment)).toThrow(
       MercadoPagoOAuthEnvironmentMismatchError,
     );
+  });
+
+  it('identifica vendedor de teste pela tag oficial sem depender de live_mode', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        id: 123,
+        nickname: 'TESTSELLER',
+        email: 'dado-que-nao-deve-ser-retornado@example.test',
+        tags: ['normal', 'test_user'],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const seller = await getMercadoPagoSellerProfile({
+      accessToken: tokenResponse.access_token,
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://api.mercadolibre.com/users/me');
+    expect(seller).toEqual({ id: '123', tags: ['normal', 'test_user'] });
+    expect(seller).not.toHaveProperty('email');
+    expect(seller).not.toHaveProperty('nickname');
   });
 
   it('não inclui secrets do request no erro do provedor', async () => {
@@ -219,7 +241,7 @@ describe('refresh do OAuth Mercado Pago', () => {
     });
 
     expect(requestBody(fetchMock)).not.toHaveProperty('test_token');
-    expect(() => assertMercadoPagoOAuthEnvironment(token.live_mode, environment)).not.toThrow();
+    expect(token.live_mode).toBe(liveMode);
   });
 
   it('mantém no serviço as guardas de state, scopes, ambiente e credencial Orders', () => {
@@ -232,10 +254,9 @@ describe('refresh do OAuth Mercado Pago', () => {
     expect(source).toContain('codeVerifierCiphertext: null, codeVerifierIv: null');
     expect(source).toContain("scopes.includes('read')");
     expect(source).toContain("scopes.includes('write')");
-    expect(source).toContain(
-      'assertMercadoPagoOAuthEnvironment(token.live_mode, config.oauthEnvironment)',
-    );
+    expect(source).toContain("seller.tags.includes('test_user')");
+    expect(source).toContain('assertMercadoPagoSellerEnvironment(');
     expect(source).toContain('assertMercadoPagoOrdersCompatibleAccessToken(token.access_token)');
-    expect(source).toContain('token.live_mode !== connection.liveMode');
+    expect(source).toContain('token.user_id !== connection.providerUserId');
   });
 });
