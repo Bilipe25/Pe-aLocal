@@ -179,6 +179,7 @@ export class CheckoutError extends DomainError {
       | 'DELIVERY_ZONE_REQUIRED'
       | 'SAVED_ADDRESS_UNAVAILABLE'
       | 'COUPON_INVALID'
+      | 'PAYMENT_CREATION_FAILED'
       | 'STORE_UNAVAILABLE',
     message: string,
     statusCode: 400 | 409 | 413 | 422 = 422,

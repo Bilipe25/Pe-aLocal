@@ -42,7 +42,7 @@ const statusLabel = {
 } as const;
 
 const connectionFeedbackMessage: Record<MercadoPagoConnectionFeedback, string> = {
-  connected: 'Conta Mercado Pago conectada com sucesso. Agora você pode ativar o modo Online.',
+  connected: 'Conta Mercado Pago conectada com sucesso. Agora você pode ativar o Pix automático.',
   error: 'Não foi possível conectar a conta. Inicie uma nova tentativa.',
   invalid_grant:
     'A autorização expirou ou não corresponde a esta integração. Inicie uma nova conexão.',
@@ -124,10 +124,10 @@ export function OnlinePaymentSettings({
         </span>
         <div>
           <h2 id="online-payment-heading" className="text-text-primary font-semibold">
-            Pagamento do checkout
+            Confirmação do Pix
           </h2>
           <p className="text-text-secondary mt-0.5 text-sm">
-            Escolha entre a confirmação manual atual e o Pix com confirmação automática.
+            Dinheiro e cartão no recebimento continuam disponíveis conforme a configuração da loja.
           </p>
         </div>
       </header>
@@ -147,7 +147,11 @@ export function OnlinePaymentSettings({
             <p className="font-medium">{connectionFeedbackMessage[connectionFeedback]}</p>
           </div>
         ) : null}
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modo de pagamento">
+        <div
+          className="grid gap-3 sm:grid-cols-2"
+          role="radiogroup"
+          aria-label="Confirmação do Pix"
+        >
           {(['MANUAL', 'ONLINE'] as const).map((option) => {
             const selected = mode === option;
             const disabled =
@@ -172,12 +176,12 @@ export function OnlinePaymentSettings({
                 </span>
                 <span>
                   <span className="text-text-primary block font-semibold">
-                    {option === 'MANUAL' ? 'Manual' : 'Online'}
+                    {option === 'MANUAL' ? 'Pix manual' : 'Pix automático'}
                   </span>
                   <span className="text-text-secondary mt-1 block text-sm">
                     {option === 'MANUAL'
-                      ? 'A loja confere e confirma o pagamento.'
-                      : 'Pix Mercado Pago com confirmação automática. Se ficar indisponível, o checkout volta aos métodos manuais.'}
+                      ? 'A loja exibe a própria chave e confere o pagamento.'
+                      : 'O Mercado Pago gera a cobrança e confirma o Pix automaticamente.'}
                   </span>
                 </span>
               </button>
@@ -193,8 +197,8 @@ export function OnlinePaymentSettings({
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <span>
               {capability.mode === 'ONLINE' && capability.effectiveMode === 'MANUAL'
-                ? 'O modo Online continua salvo, mas o checkout está usando o modo Manual até a conta ser reconectada.'
-                : 'Conecte uma conta Mercado Pago para habilitar e selecionar o modo Online.'}
+                ? 'O Pix automático continua salvo, mas o checkout usa o Pix manual até a conta ser reconectada.'
+                : 'Conecte uma conta Mercado Pago para habilitar o Pix automático.'}
             </span>
           </p>
         ) : null}

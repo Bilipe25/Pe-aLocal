@@ -464,7 +464,7 @@ async function getPurchaseStoreFromDb(slug: string) {
     store.entitlement?.onlinePaymentsEnabled === true &&
     paymentMode === 'ONLINE' &&
     store.paymentProviderConnections.length > 0;
-  const methods = publicSettings
+  const manualMethods = publicSettings
     ? [
         publicSettings.acceptsPix ? ('PIX' as const) : null,
         publicSettings.acceptsCash ? ('CASH' as const) : null,
@@ -480,14 +480,25 @@ async function getPurchaseStoreFromDb(slug: string) {
     timeZone: store.timeZone,
     logoUrl: store.logoUrl,
     settings: publicSettings,
-    paymentConfig: onlinePayment
-      ? ({
-          mode: 'ONLINE',
-          provider: 'MERCADO_PAGO',
-          method: 'PIX',
-          requiresEmail: true,
-        } as const)
-      : ({ mode: 'MANUAL', methods } as const),
+    paymentConfig: {
+      methods: onlinePayment
+        ? [
+            {
+              method: 'PIX' as const,
+              processing: 'ONLINE' as const,
+              provider: 'MERCADO_PAGO' as const,
+              requiresEmail: true as const,
+              environment:
+                process.env.APP_ENV === 'production'
+                  ? ('PRODUCTION' as const)
+                  : ('SANDBOX' as const),
+            },
+            ...manualMethods
+              .filter((method) => method !== 'PIX')
+              .map((method) => ({ method, processing: 'MANUAL' as const })),
+          ]
+        : manualMethods.map((method) => ({ method, processing: 'MANUAL' as const })),
+    },
     address: store.address,
     customization: {
       assets: {

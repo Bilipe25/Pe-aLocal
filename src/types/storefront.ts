@@ -10,17 +10,22 @@ export interface PublicStorefrontOptionDto {
   price: number;
 }
 
-export type PublicCheckoutPaymentConfig =
+export type PublicCheckoutPaymentMethod =
   | {
-      mode: 'MANUAL';
-      methods: Array<'PIX' | 'CASH' | 'CARD_ON_DELIVERY'>;
+      method: 'PIX';
+      processing: 'ONLINE';
+      provider: 'MERCADO_PAGO';
+      requiresEmail: true;
+      environment: 'SANDBOX' | 'PRODUCTION';
     }
   | {
-      mode: 'ONLINE';
-      provider: 'MERCADO_PAGO';
-      method: 'PIX';
-      requiresEmail: true;
+      method: 'PIX' | 'CASH' | 'CARD_ON_DELIVERY';
+      processing: 'MANUAL';
     };
+
+export interface PublicCheckoutPaymentConfig {
+  methods: PublicCheckoutPaymentMethod[];
+}
 
 /**
  * Snapshot ordenado da opção usado pela cotação e persistido no pedido.

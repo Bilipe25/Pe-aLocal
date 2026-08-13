@@ -102,6 +102,7 @@ const checkoutFormSchema = object({
   setAddressAsDefault: boolean(),
   paymentMethod: enumSchema(['PIX', 'CASH', 'CARD_ON_DELIVERY']),
   onlinePayment: boolean(),
+  onlineSandbox: boolean(),
   payerEmail: string().check(trim(), maxLength(254)),
   cashWithoutChange: boolean(),
   changeFor: string().check(maxLength(20)),
@@ -188,11 +189,24 @@ const checkoutFormSchema = object({
         input: data.changeFor,
       });
     }
-    if (data.onlinePayment && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(data.payerEmail.trim())) {
+    const onlinePixSelected = data.onlinePayment && data.paymentMethod === 'PIX';
+    if (onlinePixSelected && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(data.payerEmail.trim())) {
       ctx.addIssue({
         code: 'custom',
         path: ['payerEmail'],
         message: 'Informe um e-mail válido para gerar o Pix.',
+        input: data.payerEmail,
+      });
+    }
+    if (
+      onlinePixSelected &&
+      data.onlineSandbox &&
+      !data.payerEmail.trim().toLowerCase().endsWith('@testuser.com')
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payerEmail'],
+        message: 'No ambiente de teste, use um e-mail Mercado Pago terminado em @testuser.com.',
         input: data.payerEmail,
       });
     }
@@ -210,9 +224,6 @@ export interface CheckoutFormProps {
   minOrderValue: number;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
-  acceptsPix: boolean;
-  acceptsCash: boolean;
-  acceptsCardOnDelivery: boolean;
   paymentConfig: PublicCheckoutPaymentConfig;
   initialStep?: CheckoutStep;
   initialModality?: 'DELIVERY' | 'PICKUP';
@@ -553,9 +564,6 @@ export function CheckoutForm({
   storeSlug,
   deliveryEnabled,
   pickupEnabled,
-  acceptsPix,
-  acceptsCash,
-  acceptsCardOnDelivery,
   paymentConfig,
   deliveryZones = [],
   storeCity = '',
@@ -581,6 +589,7 @@ export function CheckoutForm({
   const [orderConfirmed, setOrderConfirmed] = useState<{
     orderNumber: number;
     token: string;
+    onlinePaymentState: 'READY' | 'PENDING' | null;
   } | null>(null);
   const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
@@ -621,14 +630,16 @@ export function CheckoutForm({
         : canDeliver
           ? 'DELIVERY'
           : 'PICKUP';
-  const onlinePayment = paymentConfig.mode === 'ONLINE';
-  const defaultPayment = onlinePayment
-    ? 'PIX'
-    : acceptsPix
-      ? 'PIX'
-      : acceptsCash
-        ? 'CASH'
-        : 'CARD_ON_DELIVERY';
+  const onlinePixMethod = paymentConfig.methods.find(
+    (method) => method.method === 'PIX' && method.processing === 'ONLINE',
+  );
+  const onlinePayment = Boolean(onlinePixMethod);
+  const onlineSandbox = onlinePixMethod?.environment === 'SANDBOX';
+  const availablePaymentMethods = useMemo(
+    () => paymentConfig.methods.map((method) => method.method),
+    [paymentConfig.methods],
+  );
+  const defaultPayment = availablePaymentMethods[0] ?? 'PIX';
 
   const {
     control,
@@ -664,6 +675,7 @@ export function CheckoutForm({
       setAddressAsDefault: false,
       paymentMethod: defaultPayment,
       onlinePayment,
+      onlineSandbox,
       payerEmail: '',
       cashWithoutChange: true,
       changeFor: '',
@@ -697,6 +709,7 @@ export function CheckoutForm({
     ],
   });
   const normalizedPostalCode = deliveryPostalCode.replace(/\D/g, '');
+  const onlinePixSelected = onlinePayment && paymentMethod === 'PIX';
   const quoteInput = useMemo<CheckoutQuoteInput | null>(() => {
     if (activeStoreId !== storeId || items.length === 0) return null;
     if (modality === 'DELIVERY' && !deliveryZoneId && !savedAddressReference) {
@@ -887,13 +900,9 @@ export function CheckoutForm({
           : draft.modality === 'PICKUP' && pickupEnabled
             ? 'PICKUP'
             : defaultModality,
-      paymentMethod: onlinePayment
-        ? 'PIX'
-        : (draft.paymentMethod === 'PIX' && acceptsPix) ||
-            (draft.paymentMethod === 'CASH' && acceptsCash) ||
-            (draft.paymentMethod === 'CARD_ON_DELIVERY' && acceptsCardOnDelivery)
-          ? draft.paymentMethod
-          : defaultPayment,
+      paymentMethod: availablePaymentMethods.includes(draft.paymentMethod)
+        ? draft.paymentMethod
+        : defaultPayment,
       deliveryZoneId:
         draft.deliveryZoneId && deliveryZones.some((zone) => zone.id === draft.deliveryZoneId)
           ? draft.deliveryZoneId
@@ -901,10 +910,8 @@ export function CheckoutForm({
       couponCode: initialCouponCode || cartCouponCode || '',
     }));
   }, [
-    acceptsCardOnDelivery,
-    acceptsCash,
-    acceptsPix,
     activeStoreId,
+    availablePaymentMethods,
     canDeliver,
     cartCouponCode,
     defaultModality,
@@ -1154,7 +1161,7 @@ export function CheckoutForm({
         'paymentMethod',
         'cashWithoutChange',
         'changeFor',
-        ...(onlinePayment ? (['payerEmail'] as FieldPath<CheckoutFormValues>[]) : []),
+        ...(onlinePixSelected ? (['payerEmail'] as FieldPath<CheckoutFormValues>[]) : []),
       ],
     };
     if (step === 'review') return;
@@ -1266,7 +1273,7 @@ export function CheckoutForm({
               ? validValues.setAddressAsDefault
               : false,
           paymentMethod: validValues.paymentMethod,
-          payerEmail: onlinePayment ? validValues.payerEmail.trim() : undefined,
+          payerEmail: onlinePixSelected ? validValues.payerEmail.trim() : undefined,
           changeFor,
           notes: validValues.notes,
           expectedQuoteFingerprint: effectiveQuote.quoteFingerprint,
@@ -1319,6 +1326,18 @@ export function CheckoutForm({
             setCouponReviewError(result.error.message);
             return;
           }
+          const payerEmailIssue = result.error.details?.some(
+            (detail) => detail.path === 'payerEmail',
+          );
+          if (payerEmailIssue || result.error.code === 'PAYMENT_CREATION_FAILED') {
+            idempotencyRef.current = null;
+            clearCheckoutIdempotency(storage, storageKey);
+            if (payerEmailIssue) setError('payerEmail', { message: result.error.message });
+            setSubmitError(result.error.message);
+            setStep('payment');
+            setFocusRequest({ field: payerEmailIssue ? 'payerEmail' : 'paymentMethod' });
+            return;
+          }
           setSubmitError(result.error.message);
           return;
         }
@@ -1354,6 +1373,7 @@ export function CheckoutForm({
         setOrderConfirmed({
           orderNumber: result.data.orderNumber,
           token: result.data.publicToken,
+          onlinePaymentState: result.data.onlinePaymentState,
         });
       } catch {
         setSubmitError('Não foi possível enviar seu pedido agora. Seus dados foram preservados.');
@@ -1391,10 +1411,15 @@ export function CheckoutForm({
     } else if (
       invalidFields.paymentMethod ||
       invalidFields.cashWithoutChange ||
-      invalidFields.changeFor
+      invalidFields.changeFor ||
+      invalidFields.payerEmail
     ) {
       targetStep = 'payment';
-      targetField = invalidFields.changeFor ? 'changeFor' : 'paymentMethod';
+      targetField = invalidFields.payerEmail
+        ? 'payerEmail'
+        : invalidFields.changeFor
+          ? 'changeFor'
+          : 'paymentMethod';
     } else if (invalidFields.saveCustomerData || invalidFields.setAddressAsDefault) {
       targetStep = 'review';
       targetField = invalidFields.setAddressAsDefault ? 'setAddressAsDefault' : 'saveCustomerData';
@@ -1942,7 +1967,7 @@ export function CheckoutForm({
                   </h1>
                   <p className="text-text-muted mt-1 text-sm">
                     {onlinePayment
-                      ? 'Pague por Pix e receba a confirmação automaticamente.'
+                      ? 'Escolha o Pix automático ou pague no recebimento.'
                       : 'O pagamento é combinado diretamente com o estabelecimento.'}
                   </p>
                 </div>
@@ -1955,88 +1980,79 @@ export function CheckoutForm({
                 aria-invalid={Boolean(errors.paymentMethod)}
                 aria-describedby={errors.paymentMethod ? 'paymentMethod-error' : undefined}
               >
-                {[
-                  onlinePayment || acceptsPix
-                    ? {
-                        value: 'PIX' as const,
-                        label: 'Pix',
-                        description: onlinePayment
-                          ? 'Confirmação automática pelo Mercado Pago'
-                          : 'Use a chave exibida após confirmar',
-                        Icon: QrCode,
-                        iconClass: 'text-cyan-700 bg-cyan-50',
-                      }
-                    : null,
-                  !onlinePayment && acceptsCash
-                    ? {
-                        value: 'CASH' as const,
-                        label: 'Dinheiro',
-                        description: 'Informe se precisa de troco',
-                        Icon: Banknote,
-                        iconClass: 'text-emerald-700 bg-emerald-50',
-                      }
-                    : null,
-                  !onlinePayment && acceptsCardOnDelivery
-                    ? {
-                        value: 'CARD_ON_DELIVERY' as const,
-                        label: 'Cartão no recebimento',
-                        description: 'Pague na maquininha ao receber',
-                        Icon: CreditCard,
-                        iconClass: 'text-amber-700 bg-amber-50',
-                      }
-                    : null,
-                ].flatMap((method) =>
-                  method
-                    ? [
-                        <label key={method.value} className="group relative block cursor-pointer">
-                          <input
-                            type="radio"
-                            value={method.value}
-                            className="peer sr-only"
-                            {...register('paymentMethod')}
-                          />
-                          <span
-                            className={cn(
-                              'border-tinta/15 bg-papel flex min-h-16 items-center gap-3 rounded-xl border p-3 transition-colors',
-                              'peer-focus-visible:ring-pimenta peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-                              paymentMethod === method.value &&
-                                'storefront-selection-control storefront-selection-row',
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                'flex h-10 w-10 items-center justify-center rounded-xl',
-                                method.iconClass,
-                              )}
-                            >
-                              <method.Icon className="h-5 w-5" aria-hidden="true" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="text-tinta block text-sm font-bold">
-                                {method.label}
-                              </span>
-                              <span className="text-text-muted mt-1 block text-sm">
-                                {method.description}
-                              </span>
-                            </span>
-                            {paymentMethod === method.value && (
-                              <Check
-                                className="storefront-action-text h-5 w-5"
-                                aria-hidden="true"
-                              />
-                            )}
+                {paymentConfig.methods.flatMap((configuredMethod) => {
+                  const method =
+                    configuredMethod.method === 'PIX'
+                      ? {
+                          value: 'PIX' as const,
+                          label:
+                            configuredMethod.processing === 'ONLINE' ? 'Pix automático' : 'Pix',
+                          description:
+                            configuredMethod.processing === 'ONLINE'
+                              ? 'Confirmação automática pelo Mercado Pago'
+                              : 'Use a chave exibida após confirmar',
+                          Icon: QrCode,
+                          iconClass: 'text-cyan-700 bg-cyan-50',
+                        }
+                      : configuredMethod.method === 'CASH'
+                        ? {
+                            value: 'CASH' as const,
+                            label: 'Dinheiro',
+                            description: 'Informe se precisa de troco',
+                            Icon: Banknote,
+                            iconClass: 'text-emerald-700 bg-emerald-50',
+                          }
+                        : {
+                            value: 'CARD_ON_DELIVERY' as const,
+                            label: 'Cartão no recebimento',
+                            description: 'Pague na maquininha ao receber',
+                            Icon: CreditCard,
+                            iconClass: 'text-amber-700 bg-amber-50',
+                          };
+                  return [
+                    <label key={method.value} className="group relative block cursor-pointer">
+                      <input
+                        type="radio"
+                        value={method.value}
+                        className="peer sr-only"
+                        {...register('paymentMethod')}
+                      />
+                      <span
+                        className={cn(
+                          'border-tinta/15 bg-papel flex min-h-16 items-center gap-3 rounded-xl border p-3 transition-colors',
+                          'peer-focus-visible:ring-pimenta peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+                          paymentMethod === method.value &&
+                            'storefront-selection-control storefront-selection-row',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-10 w-10 items-center justify-center rounded-xl',
+                            method.iconClass,
+                          )}
+                        >
+                          <method.Icon className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="text-tinta block text-sm font-bold">{method.label}</span>
+                          <span className="text-text-muted mt-1 block text-sm">
+                            {method.description}
                           </span>
-                        </label>,
-                      ]
-                    : [],
-                )}
+                        </span>
+                        {paymentMethod === method.value && (
+                          <Check className="storefront-action-text h-5 w-5" aria-hidden="true" />
+                        )}
+                      </span>
+                    </label>,
+                  ];
+                })}
               </div>
               <FieldError id="paymentMethod-error" message={errors.paymentMethod?.message} />
 
-              {onlinePayment && (
+              {onlinePixSelected && (
                 <div className="border-tinta/10 rounded-xl border p-4">
                   <label htmlFor="payerEmail" className="text-tinta text-sm font-semibold">
-                    E-mail para o Pix
+                    E-mail do comprador
                   </label>
                   <Input
                     id="payerEmail"
@@ -2049,7 +2065,9 @@ export function CheckoutForm({
                     {...register('payerEmail')}
                   />
                   <p id="payerEmail-help" className="text-text-muted mt-2 text-xs">
-                    Usado apenas para gerar esta cobrança. A confirmação é automática.
+                    {onlineSandbox
+                      ? 'Ambiente de teste: use o e-mail de um comprador Mercado Pago terminado em @testuser.com.'
+                      : 'Usado apenas para gerar esta cobrança. A confirmação é automática.'}
                   </p>
                   <FieldError id="payerEmail-error" message={errors.payerEmail?.message} />
                 </div>
@@ -2207,7 +2225,9 @@ export function CheckoutForm({
                     </p>
                     <p className="text-tinta mt-1 font-semibold">
                       {paymentMethod === 'PIX'
-                        ? 'Pix'
+                        ? onlinePixSelected
+                          ? 'Pix automático'
+                          : 'Pix'
                         : paymentMethod === 'CASH'
                           ? 'Dinheiro'
                           : 'Cartão no recebimento'}
@@ -2344,7 +2364,7 @@ export function CheckoutForm({
               {isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  Confirmando…
+                  {onlinePixSelected ? 'Gerando Pix…' : 'Enviando…'}
                 </>
               ) : (
                 `Confirmar · ${formatCurrency(effectiveQuote?.total ?? 0)}`
@@ -2382,7 +2402,13 @@ export function CheckoutForm({
             <circle className="check-circle" cx="18" cy="18" r="16" />
             <polyline className="check-mark" points="11,18 16,23 25,13" />
           </svg>
-          <p className="checkout-success-title">Pedido #{orderConfirmed.orderNumber} confirmado!</p>
+          <p className="checkout-success-title">
+            {orderConfirmed.onlinePaymentState === 'READY'
+              ? `Pix do pedido #${orderConfirmed.orderNumber} gerado!`
+              : orderConfirmed.onlinePaymentState === 'PENDING'
+                ? `Pedido #${orderConfirmed.orderNumber} criado. Gerando o Pix…`
+                : `Pedido #${orderConfirmed.orderNumber} enviado!`}
+          </p>
         </div>
       )}
     </form>

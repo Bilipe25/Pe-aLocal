@@ -1,7 +1,6 @@
 'use client';
 
 import { Check, Copy, ExternalLink, Loader2, QrCode } from 'lucide-react';
-import Link from 'next/link';
 import encodeQR from 'qr';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -70,7 +69,7 @@ export function OnlinePixPayment({
   const rebuildCart = () => {
     try {
       const serialized = window.sessionStorage.getItem(`online-order-cart:${publicToken}`);
-      if (!serialized) return;
+      if (!serialized) throw new Error('cart-backup-unavailable');
       const backup = JSON.parse(serialized) as { storeId: string; snapshot: CartSnapshot };
       const cart = useCartStore.getState();
       cart.setStore(backup.storeId, storeSlug);
@@ -82,7 +81,7 @@ export function OnlinePixPayment({
   };
 
   useEffect(() => {
-    if (payment.creationStatus === 'FAILED' || payment.creationStatus === 'CREATED') return;
+    if (payment.creationStatus === 'FAILED' || completed) return;
     const controller = new AbortController();
     let timer: number | undefined;
     const synchronize = () => {
@@ -131,7 +130,7 @@ export function OnlinePixPayment({
       window.removeEventListener('offline', resume);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [payment.creationStatus, publicToken, storeSlug]);
+  }, [completed, payment.creationStatus, publicToken, storeSlug]);
 
   useEffect(() => {
     if (!payment.expiresAt) return;
@@ -185,6 +184,7 @@ export function OnlinePixPayment({
   }
 
   const expired = Boolean(payment.expiresAt && new Date(payment.expiresAt).getTime() <= now);
+  const expirationLabel = remainingLabel(payment.expiresAt, now);
 
   return (
     <section className="storefront-tracking-card" aria-labelledby="online-pix-title">
@@ -197,8 +197,25 @@ export function OnlinePixPayment({
       <div className="mt-4 flex justify-center text-black">
         <PixQr value={payment.qrCode} />
       </div>
-      <p className="text-text-secondary mt-3 text-center text-sm font-semibold">
-        {remainingLabel(payment.expiresAt, now)}
+      {expirationLabel ? (
+        <p className="text-text-secondary mt-3 text-center text-sm font-semibold">
+          {expirationLabel}
+        </p>
+      ) : null}
+      <label htmlFor="pix-copy-code" className="text-tinta mt-4 block text-sm font-semibold">
+        Pix Copia e Cola
+      </label>
+      <textarea
+        id="pix-copy-code"
+        readOnly
+        rows={3}
+        value={payment.qrCode}
+        onFocus={(event) => event.currentTarget.select()}
+        className="border-tinta/15 bg-papel text-tinta mt-1 w-full resize-none rounded-xl border p-3 font-mono text-xs leading-relaxed break-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+        aria-describedby="pix-copy-help"
+      />
+      <p id="pix-copy-help" className="text-text-secondary mt-1.5 text-xs">
+        Se a cópia automática falhar, toque no código para selecioná-lo manualmente.
       </p>
       <Button
         type="button"
@@ -222,8 +239,8 @@ export function OnlinePixPayment({
         </Button>
       ) : null}
       {expired ? (
-        <Button asChild type="button" variant="outline" className="mt-2 w-full">
-          <Link href={`/${encodeURIComponent(storeSlug)}`}>Fazer novo pedido</Link>
+        <Button type="button" variant="outline" className="mt-2 w-full" onClick={rebuildCart}>
+          Refazer este pedido
         </Button>
       ) : null}
     </section>

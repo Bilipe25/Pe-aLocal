@@ -31,7 +31,7 @@ vi.mock('@/lib/mercado-pago/config', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/lib/mercado-pago/config')>();
   return {
     ...original,
-    getMercadoPagoConfig: () => ({ encryptionKey: 'test-key' }),
+    getMercadoPagoConfig: () => ({ encryptionKey: 'test-key', oauthEnvironment: 'sandbox' }),
   };
 });
 
@@ -110,6 +110,9 @@ describe('criação idempotente do Pix Mercado Pago', () => {
     await expect(ensureMercadoPagoPixCreated(localCreation.id)).resolves.toBeNull();
 
     expect(mocks.createOrder).toHaveBeenCalledOnce();
+    expect(mocks.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ payerFirstName: 'APRO' }),
+    );
     expect(mocks.searchOrders).toHaveBeenCalledOnce();
     expect(mocks.db.mercadoPagoPayment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -13,6 +13,8 @@ Uma nova cobrança online só é criada quando todas as condições abaixo forem
 
 Se uma condição falhar, o checkout volta ao modo manual sem apagar a preferência, a conexão nem o histórico. Desligar o kill switch ou o entitlement bloqueia novas conexões e cobranças, mas webhooks e reconciliação de cobranças existentes continuam funcionando.
 
+O modo `ONLINE` altera apenas o processamento do Pix. Dinheiro e cartão no recebimento continuam aparecendo no checkout quando estiverem habilitados nas formas aceitas da loja e seguem pelo fluxo manual. Quando o Pix automático está disponível, ele substitui o Pix manual para evitar duas opções com o mesmo nome.
+
 ## Variáveis
 
 ```dotenv
@@ -64,7 +66,8 @@ Use uma conta de teste do tipo vendedor para representar o estabelecimento. Ela 
 4. Como proprietário, clique em **Conectar Mercado Pago** e autentique a conta vendedor de teste.
 5. Confirme que o callback retorna ao staging e a conexão fica `ACTIVE`; `liveMode` é apenas metadado informativo e não define o sandbox.
 6. Selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
-7. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
+7. No checkout sandbox, use um comprador de teste com e-mail terminado em `@testuser.com`. A criação envia também `payer.first_name=APRO`, conforme o cenário de aprovação do Mercado Pago.
+8. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
 
 Nenhum pagamento real deve ser feito nesse smoke test.
 
@@ -95,6 +98,8 @@ Referências oficiais consultadas:
 - O webhook é validado por HMAC, persistido de forma idempotente e recebe `200` sem aguardar chamadas externas. O Worker confirma o estado com `GET /v1/orders/{id}` usando a credencial da conta conectada.
 - Somente um pagamento integral e com valor exato promove o pedido para `PENDING`; essa transição grava históricos, auditoria e outbox na mesma transação.
 - Falhas ambíguas mantêm o pedido em “Gerando seu Pix”. Antes de repetir o `POST`, o backend pesquisa a `external_reference`; conflitos `402/409/423`, timeout, `429` e `5xx` nunca geram uma nova idempotency key.
+- Uma recusa determinística na criação não é apresentada como pedido confirmado: o checkout preserva carrinho e dados, mostra uma mensagem acionável e permite trocar para dinheiro/cartão ou iniciar uma nova tentativa de Pix.
+- O tracking continua consultando enquanto o pagamento estiver pendente, mesmo depois de o QR Code ser criado. O Pix Copia e Cola também fica visível para seleção manual caso a API de clipboard não esteja disponível.
 - O cron limita lote e concorrência, retoma criações ambíguas, consulta cobranças não finais, expira Pix vencidos e libera reservas de cupom.
 - Cupons de pedidos online ficam reservados por tempo limitado e só incrementam `usageCount` quando o pagamento vira `PAID`.
 - O ETA operacional nasce no instante da aprovação; enquanto o pedido estiver em `AWAITING_PAYMENT`, nenhuma promessa de entrega ou retirada é mostrada.

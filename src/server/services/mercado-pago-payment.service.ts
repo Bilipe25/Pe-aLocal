@@ -30,6 +30,7 @@ export interface MercadoPagoSyncResult {
   paymentStatus: PaymentStatus;
   eventIds: string[];
   becameActionable: boolean;
+  failureCode?: string;
 }
 
 function centsToAmount(cents: number): string {
@@ -360,6 +361,14 @@ export async function reconcileMercadoPagoOrder(
     const nextPaymentStatus = decision.paymentStatus;
     const nextOrderStatus = decision.orderStatus;
     const reasonCode = decision.reasonCode;
+    const cancellationReasonCode =
+      nextOrderStatus === 'CANCELLED'
+        ? reasonCode === 'PROVIDER_EXPIRED'
+          ? ('PIX_EXPIRED' as const)
+          : reasonCode === 'PROVIDER_CANCELLED'
+            ? ('PROVIDER_CANCELLED' as const)
+            : ('PAYMENT_NOT_IDENTIFIED' as const)
+        : undefined;
 
     if (current.paymentStatus === nextPaymentStatus && current.status === nextOrderStatus) {
       return {
@@ -387,8 +396,7 @@ export async function reconcileMercadoPagoOrder(
         version: { increment: 1 },
         statusChangedAt: nextOrderStatus !== current.status ? now : undefined,
         cancelledAt: nextOrderStatus === 'CANCELLED' ? now : undefined,
-        cancellationReasonCode:
-          nextOrderStatus === 'CANCELLED' ? 'PAYMENT_NOT_IDENTIFIED' : undefined,
+        cancellationReasonCode,
         cancellationSource: nextOrderStatus === 'CANCELLED' ? 'WEBHOOK' : undefined,
         operationalStartedAt: nextPaymentStatus === 'PAID' ? now : undefined,
         promisedFulfillmentMinAt:
@@ -430,6 +438,7 @@ export async function reconcileMercadoPagoOrder(
           changedBy: 'system',
           actorNameSnapshot: 'Mercado Pago',
           source: 'WEBHOOK',
+          reasonCode: cancellationReasonCode,
           versionFrom: current.version,
           versionTo: nextVersion,
         },
@@ -741,6 +750,8 @@ async function failCreation(
     }
 
     const now = new Date();
+    const cancellationReasonCode =
+      errorCode === 'PROVIDER_EXPIRED' ? 'PIX_EXPIRED' : 'ONLINE_PAYMENT_CREATION_FAILED';
     const nextVersion = local.order.version + 1;
     const updated = await tx.order.updateMany({
       where: {
@@ -757,7 +768,7 @@ async function failCreation(
         version: { increment: 1 },
         statusChangedAt: now,
         cancelledAt: now,
-        cancellationReasonCode: 'PAYMENT_NOT_IDENTIFIED',
+        cancellationReasonCode,
         cancellationSource: 'SYSTEM',
       },
     });
@@ -787,6 +798,7 @@ async function failCreation(
         changedBy: 'system',
         actorNameSnapshot: 'Mercado Pago',
         source: 'SYSTEM',
+        reasonCode: cancellationReasonCode,
         versionFrom: local.order.version,
         versionTo: nextVersion,
       },
@@ -813,6 +825,18 @@ async function failCreation(
       previousStatus: 'PENDING',
       nextStatus: 'FAILED',
     });
+    await recordPaymentProviderAlert(
+      {
+        code: `ORDER_CREATE_${errorCode}`.slice(0, 64),
+        priority: 'HIGH',
+        tenantId: local.order.tenantId,
+        storeId: local.order.storeId,
+        orderId: local.order.id,
+        paymentId: local.payment.id,
+        mercadoPagoPaymentId: local.id,
+      },
+      tx,
+    );
     const event = await appendOrderOutboxEvent(tx, {
       tenantId: local.order.tenantId,
       storeId: local.order.storeId,
@@ -832,6 +856,7 @@ async function failCreation(
       paymentStatus: 'FAILED',
       eventIds: [event.id],
       becameActionable: false,
+      failureCode: errorCode,
     };
   });
 }
@@ -900,6 +925,7 @@ export async function ensureMercadoPagoPixCreated(
         totalAmount: centsToAmount(local.order.total),
         externalReference: local.externalReference,
         payerEmail,
+        payerFirstName: config.oauthEnvironment === 'sandbox' ? 'APRO' : undefined,
         expiration: MERCADO_PAGO_PIX_EXPIRATION,
       });
       console.info('[MP_ORDER_CREATED]', {

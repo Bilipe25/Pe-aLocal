@@ -24,6 +24,47 @@ export class MercadoPagoApiError extends Error {
   }
 }
 
+const SAFE_PROVIDER_CODE = /^[A-Za-z0-9_.-]{1,64}$/u;
+const SAFE_PROVIDER_PATH = /^[A-Za-z0-9_.\[\]-]{1,160}$/u;
+
+function providerErrorMetadata(payload: unknown, status: number) {
+  const records: Record<string, unknown>[] = [];
+  if (typeof payload === 'object' && payload !== null) {
+    records.push(payload as Record<string, unknown>);
+    for (const key of ['errors', 'cause', 'details'] as const) {
+      const entries = (payload as Record<string, unknown>)[key];
+      if (Array.isArray(entries)) {
+        records.push(
+          ...entries.filter(
+            (entry): entry is Record<string, unknown> =>
+              typeof entry === 'object' && entry !== null,
+          ),
+        );
+      }
+    }
+  }
+
+  const code = records
+    .flatMap((record) => [record.code, record.error])
+    .find((value): value is string => typeof value === 'string' && SAFE_PROVIDER_CODE.test(value));
+  const validationIssues = records
+    .flatMap((record) => {
+      const issueCode =
+        typeof record.code === 'string' && SAFE_PROVIDER_CODE.test(record.code)
+          ? record.code
+          : null;
+      const pathCandidate = record.path ?? record.field ?? record.property;
+      const path =
+        typeof pathCandidate === 'string' && SAFE_PROVIDER_PATH.test(pathCandidate)
+          ? pathCandidate
+          : null;
+      return issueCode && path ? [{ code: issueCode, path }] : [];
+    })
+    .slice(0, 8);
+
+  return { code: code ?? `HTTP_${status}`, validationIssues };
+}
+
 async function requestJson<T>(input: {
   path: string;
   method: 'GET' | 'POST';
@@ -51,20 +92,15 @@ async function requestJson<T>(input: {
     });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const code =
-        typeof payload === 'object' &&
-        payload &&
-        'code' in payload &&
-        typeof payload.code === 'string'
-          ? payload.code
-          : `HTTP_${response.status}`;
+      const metadata = providerErrorMetadata(payload, response.status);
       const retryAfterHeader = response.headers.get('retry-after');
       const retryAfter = retryAfterHeader === null ? Number.NaN : Number(retryAfterHeader);
       throw new MercadoPagoApiError(
         'O Mercado Pago recusou a operação.',
         response.status,
-        code.slice(0, 64),
+        metadata.code,
         Number.isFinite(retryAfter) ? retryAfter : null,
+        metadata.validationIssues,
       );
     }
     const parsed = input.schema.safeParse(payload);
@@ -142,6 +178,7 @@ export function createMercadoPagoPixOrder(input: {
   totalAmount: string;
   externalReference: string;
   payerEmail: string;
+  payerFirstName?: string;
   expiration: string;
 }) {
   return requestJson({
@@ -164,7 +201,10 @@ export function createMercadoPagoPixOrder(input: {
           },
         ],
       },
-      payer: { email: input.payerEmail },
+      payer: {
+        email: input.payerEmail,
+        ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
+      },
     },
     schema: mercadoPagoCreatedOrderSchema,
   });
