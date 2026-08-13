@@ -25,9 +25,9 @@ MERCADO_PAGO_WEBHOOK_SECRET=
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=
 ```
 
-`MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` deve ser uma chave aleatória de 32 bytes codificada em base64. Client secret, segredo do webhook, chave de criptografia e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
+`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_REDIRECT_URI` são configurações públicas e podem ser declaradas como `vars` do Worker. `MERCADO_PAGO_CLIENT_SECRET`, `MERCADO_PAGO_WEBHOOK_SECRET` e `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` são secrets; a chave de criptografia deve conter 32 bytes aleatórios codificados em base64. Secrets e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
 
-As cinco credenciais `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
+As cinco configurações `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. No staging, as duas configurações públicas ficam versionadas em `wrangler.order-events.jsonc`; os três secrets permanecem armazenados exclusivamente no Cloudflare. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
 
 ## OAuth em staging / sandbox
 
