@@ -51,6 +51,10 @@ const cancellationMessages: Record<OrderCancellationReasonCode, string> = {
   STORE_UNABLE_TO_FULFILL: 'A loja não conseguiu preparar este pedido e realizou o cancelamento.',
   ADDRESS_PROBLEM: 'A entrega não pôde ser concluída por um problema com o endereço.',
   PAYMENT_NOT_IDENTIFIED: 'O pagamento não foi identificado e o pedido foi cancelado.',
+  ONLINE_PAYMENT_CREATION_FAILED:
+    'Não foi possível gerar a cobrança Pix. Você pode refazer o pedido e escolher outra forma de pagamento.',
+  PIX_EXPIRED: 'O prazo para pagar o Pix terminou. Refazer o pedido gerará uma nova cobrança.',
+  PROVIDER_CANCELLED: 'A cobrança Pix foi cancelada pelo Mercado Pago.',
   DUPLICATE_ORDER: 'Este pedido foi identificado como duplicado e cancelado.',
   FRAUD_SUSPECTED: 'O pedido foi cancelado pela loja. Entre em contato se precisar de ajuda.',
   OTHER: 'O pedido foi cancelado pela loja. Entre em contato para mais informações.',
@@ -118,6 +122,7 @@ export function toCustomerOrderTrackingState(
           ? cancellationMessages[snapshot.cancellationReasonCode]
           : 'O pedido foi cancelado pela loja. Entre em contato para mais informações.'
         : null,
+    cancellationReasonCode: snapshot.cancellationReasonCode,
     totalCents: snapshot.total ?? null,
     itemsSummary,
     items: snapshot.items ?? null,

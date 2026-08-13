@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   createOrder: vi.fn(),
   dispatchCommittedOrderEvents: vi.fn(),
   triggerNewOrder: vi.fn(),
+  ensureMercadoPagoPixCreated: vi.fn(),
+  getMercadoPagoPaymentPresentation: vi.fn(),
   cookieSet: vi.fn(),
 }));
 
@@ -31,6 +33,10 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@/server/repositories/order.repository', () => ({ createOrder: mocks.createOrder }));
 vi.mock('@/server/services/order-event-dispatch.service', () => ({
   dispatchCommittedOrderEvents: mocks.dispatchCommittedOrderEvents,
+}));
+vi.mock('@/server/services/mercado-pago-payment.service', () => ({
+  ensureMercadoPagoPixCreated: mocks.ensureMercadoPagoPixCreated,
+  getMercadoPagoPaymentPresentation: mocks.getMercadoPagoPaymentPresentation,
 }));
 vi.mock('@/lib/pusher/server', () => ({
   triggerNewOrder: mocks.triggerNewOrder,
@@ -90,8 +96,12 @@ describe('checkout público v2', () => {
       created: true,
       outboxEventIds: ['outbox-a'],
       rememberDeviceExpiresAt: null,
+      mercadoPagoPaymentId: null,
+      onlinePayment: false,
     });
     mocks.dispatchCommittedOrderEvents.mockResolvedValue({ notificationPending: false });
+    mocks.ensureMercadoPagoPixCreated.mockResolvedValue(null);
+    mocks.getMercadoPagoPaymentPresentation.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -184,6 +194,8 @@ describe('checkout público v2', () => {
         publicToken: 'public-token',
         orderNumber: 10,
         paymentReportToken: 'payment-report-token',
+        onlinePayment: false,
+        onlinePaymentState: null,
       },
     });
     expect(mocks.createOrder).toHaveBeenCalledWith({
@@ -198,6 +210,47 @@ describe('checkout público v2', () => {
     expect(mocks.dispatchCommittedOrderEvents).toHaveBeenCalledWith({
       eventIds: ['outbox-a'],
       publishDirect: expect.any(Function),
+    });
+  });
+
+  it('não retorna sucesso quando o Mercado Pago recusa definitivamente a criação do Pix', async () => {
+    mocks.createOrder.mockResolvedValueOnce({
+      id: 'order-online',
+      storeId: 'store-a',
+      publicToken: 'public-token-online',
+      orderNumber: 11,
+      paymentReportToken: null,
+      created: true,
+      outboxEventIds: [],
+      rememberDeviceExpiresAt: null,
+      mercadoPagoPaymentId: 'mp-payment-a',
+      onlinePayment: true,
+    });
+    mocks.ensureMercadoPagoPixCreated.mockResolvedValueOnce({
+      orderId: 'order-online',
+      storeId: 'store-a',
+      orderNumber: 11,
+      paymentStatus: 'FAILED',
+      eventIds: [],
+      becameActionable: false,
+      failureCode: 'invalid_email_for_sandbox',
+    });
+    mocks.getMercadoPagoPaymentPresentation.mockResolvedValueOnce({
+      creationStatus: 'FAILED',
+      qrCode: null,
+    });
+
+    const result = await createOrderAction('loja-a', {
+      ...checkout,
+      payerEmail: 'comprador@testuser.com',
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: 'PAYMENT_CREATION_FAILED',
+        details: [{ path: 'payerEmail', code: 'invalid_email_for_sandbox' }],
+      },
     });
   });
 

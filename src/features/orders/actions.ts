@@ -22,7 +22,10 @@ import { createOrder } from '@/server/repositories/order.repository';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
-import { ensureMercadoPagoPixCreated } from '@/server/services/mercado-pago-payment.service';
+import {
+  ensureMercadoPagoPixCreated,
+  getMercadoPagoPaymentPresentation,
+} from '@/server/services/mercado-pago-payment.service';
 import { reportCustomerPixPayment } from '@/server/services/order-payment.service';
 import { getRecognitionCookieName } from '@/server/services/customer-recognition.service';
 import {
@@ -40,6 +43,7 @@ interface CreateOrderData {
   orderNumber: number;
   paymentReportToken: string | null;
   onlinePayment: boolean;
+  onlinePaymentState: 'READY' | 'PENDING' | null;
 }
 
 interface ReportPixPaymentData {
@@ -219,6 +223,7 @@ export async function createOrderAction(
       );
     }
 
+    let onlinePaymentState: CreateOrderData['onlinePaymentState'] = null;
     if (order.onlinePayment && order.mercadoPagoPaymentId) {
       const sync = await ensureMercadoPagoPixCreated(order.mercadoPagoPaymentId);
       if (sync?.eventIds.length) {
@@ -232,6 +237,25 @@ export async function createOrderAction(
           },
         });
       }
+      const presentation = await getMercadoPagoPaymentPresentation(order.id);
+      if (
+        sync?.paymentStatus === 'FAILED' ||
+        sync?.paymentStatus === 'CANCELLED' ||
+        presentation?.creationStatus === 'FAILED'
+      ) {
+        const sandboxEmailRejected = sync?.failureCode === 'invalid_email_for_sandbox';
+        throw new CheckoutError(
+          'PAYMENT_CREATION_FAILED',
+          sandboxEmailRejected
+            ? 'No ambiente de teste, use o e-mail de um comprador Mercado Pago terminado em @testuser.com.'
+            : 'Não foi possível gerar o Pix. Revise os dados ou escolha dinheiro ou cartão no recebimento.',
+          422,
+          sandboxEmailRejected
+            ? [{ path: 'payerEmail', code: 'invalid_email_for_sandbox' }]
+            : [{ code: sync?.failureCode ?? 'PROVIDER_CREATE_FAILED' }],
+        );
+      }
+      onlinePaymentState = presentation?.qrCode ? 'READY' : 'PENDING';
     } else if (order.created) {
       await dispatchCommittedOrderEvents({
         eventIds: order.outboxEventIds,
@@ -256,6 +280,7 @@ export async function createOrderAction(
       paymentReportToken:
         !order.onlinePayment && input.paymentMethod === 'PIX' ? order.paymentReportToken : null,
       onlinePayment: order.onlinePayment,
+      onlinePaymentState,
     });
   } catch (error) {
     console.warn('[CHECKOUT_ORDER_REJECTED]', {

@@ -26,6 +26,8 @@ import {
 import { cn } from '@/lib/utils';
 import type { CustomerOrderTrackingStateDTO } from '@/types/order-tracking';
 import { OrderPushSubscription } from '@/components/pwa/order-push-subscription';
+import type { CartSnapshot } from '@/stores/cart-store';
+import { useCartStore } from '@/stores/cart-store';
 
 const statusPresentation: Record<
   OrderStatus,
@@ -160,6 +162,23 @@ export function CustomerOrderTracking({
           ? 'Seu pedido está pronto para retirada.'
           : 'Seu pedido está pronto e aguarda a saída para entrega.'
         : presentation.description;
+  const canRebuildOnlineOrder =
+    state.cancellationReasonCode === 'ONLINE_PAYMENT_CREATION_FAILED' ||
+    state.cancellationReasonCode === 'PIX_EXPIRED' ||
+    state.cancellationReasonCode === 'PROVIDER_CANCELLED';
+  const rebuildOnlineOrder = () => {
+    try {
+      const serialized = window.sessionStorage.getItem(`online-order-cart:${publicToken}`);
+      if (!serialized) throw new Error('cart-backup-unavailable');
+      const backup = JSON.parse(serialized) as { storeId: string; snapshot: CartSnapshot };
+      const cart = useCartStore.getState();
+      cart.setStore(backup.storeId, storeSlug);
+      cart.restoreSnapshot(backup.snapshot, useCartStore.getState().revision);
+      window.location.assign(`/${encodeURIComponent(storeSlug)}/cart`);
+    } catch {
+      window.location.assign(`/${encodeURIComponent(storeSlug)}`);
+    }
+  };
 
   return (
     <section className="border-tinta/10 bg-papel rounded-2xl border p-4.5 shadow-sm sm:p-5">
@@ -200,6 +219,17 @@ export function CustomerOrderTracking({
           role="status"
         >
           {state.cancellationMessage}
+          {canRebuildOnlineOrder ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full"
+              onClick={rebuildOnlineOrder}
+            >
+              Refazer este pedido
+            </Button>
+          ) : null}
         </div>
       ) : (
         <ol className="mt-6 flex items-start" aria-label="Etapas do pedido">

@@ -133,10 +133,7 @@ function renderCheckout(
       minOrderValue={0}
       deliveryEnabled={false}
       pickupEnabled
-      acceptsPix
-      acceptsCash={false}
-      acceptsCardOnDelivery={false}
-      paymentConfig={{ mode: 'MANUAL', methods: ['PIX'] }}
+      paymentConfig={{ methods: [{ method: 'PIX', processing: 'MANUAL' }] }}
       deliveryZones={[
         {
           id: quote.deliveryZoneId!,
@@ -185,6 +182,7 @@ describe('checkout público v2', () => {
         publicToken: PUBLIC_TOKEN,
         orderNumber: 1,
         paymentReportToken: null,
+        onlinePaymentState: null,
       },
     });
     mocks.subscribeToCartStorage.mockReturnValue(mocks.storageCleanup);
@@ -780,7 +778,7 @@ describe('checkout público v2', () => {
     });
 
     // Espera a UI reagir ao sucesso (isso garante que a microtask queue foi resolvida)
-    expect(await screen.findByText(/Pedido #1 confirmado/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Pedido #1 enviado/i)).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeInTheDocument();
 
     expect(mocks.clearCart).toHaveBeenCalledOnce();
@@ -794,6 +792,83 @@ describe('checkout público v2', () => {
     expect(window.localStorage.getItem(`payment-report:${PUBLIC_TOKEN}`)).toBeNull();
 
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`));
+  });
+
+  it('oferece Pix automático junto com dinheiro e cartão no recebimento', () => {
+    renderCheckout({
+      initialStep: 'payment',
+      paymentConfig: {
+        methods: [
+          {
+            method: 'PIX',
+            processing: 'ONLINE',
+            provider: 'MERCADO_PAGO',
+            requiresEmail: true,
+            environment: 'SANDBOX',
+          },
+          { method: 'CASH', processing: 'MANUAL' },
+          { method: 'CARD_ON_DELIVERY', processing: 'MANUAL' },
+        ],
+      },
+    });
+
+    expect(screen.getByRole('radio', { name: /Pix automático/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Dinheiro/ })).toBeVisible();
+    expect(screen.getByRole('radio', { name: /Cartão no recebimento/ })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'E-mail do comprador' })).toBeVisible();
+    expect(screen.getByText(/terminado em @testuser\.com/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Dinheiro/ }));
+    expect(screen.queryByRole('textbox', { name: 'E-mail do comprador' })).not.toBeInTheDocument();
+  });
+
+  it('preserva o carrinho e retorna ao pagamento quando o provedor recusa a criação do Pix', async () => {
+    mocks.createOrderAction.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'PAYMENT_CREATION_FAILED',
+        message: 'Não foi possível gerar o Pix. Escolha outra forma de pagamento.',
+        details: [{ code: 'invalid_email_for_sandbox' }],
+      },
+    });
+    const { container } = renderCheckout({
+      paymentConfig: {
+        methods: [
+          {
+            method: 'PIX',
+            processing: 'ONLINE',
+            provider: 'MERCADO_PAGO',
+            requiresEmail: true,
+            environment: 'SANDBOX',
+          },
+          { method: 'CASH', processing: 'MANUAL' },
+        ],
+      },
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+      target: { value: 'Cliente Teste' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+      target: { value: '11999999999' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
+    await screen.findByRole('heading', { name: 'Como quer receber?' });
+    fireEvent.click(screen.getByRole('button', { name: /Continuar para pagamento/ }));
+    await screen.findByRole('heading', { name: 'Como prefere pagar?' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'E-mail do comprador' }), {
+      target: { value: 'comprador@testuser.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
+    const confirm = await screen.findByRole('button', { name: /Confirmar/ });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    expect(await screen.findByRole('heading', { name: 'Como prefere pagar?' })).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível gerar o Pix');
+    expect(mocks.clearCart).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(container.querySelector('form')).toBeInTheDocument();
   });
 
   it('assina a sincronização entre abas e remove o listener ao desmontar', () => {

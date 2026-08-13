@@ -224,7 +224,7 @@ describe('OrderRepository checkout v2', () => {
     });
     mocks.tx.mercadoPagoPayment.create.mockResolvedValue({ id: 'mp-a' });
 
-    const onlineInput = { ...input, payerEmail: 'cliente@exemplo.com' };
+    const onlineInput = { ...input, payerEmail: 'cliente@testuser.com' };
     const result = await createOrder({ ...params, input: onlineInput });
 
     expect(result).toMatchObject({
@@ -250,9 +250,49 @@ describe('OrderRepository checkout v2', () => {
       }),
     );
     const encryptedEmail = mocks.tx.mercadoPagoPayment.create.mock.calls[0][0].data;
-    expect(encryptedEmail.payerEmailCiphertext).not.toContain('cliente@exemplo.com');
+    expect(encryptedEmail.payerEmailCiphertext).not.toContain('cliente@testuser.com');
     expect(mocks.appendOrderOutboxEvent).not.toHaveBeenCalled();
   });
+
+  it.each(['CASH', 'CARD_ON_DELIVERY'] as const)(
+    'mantém %s no fluxo manual quando apenas o Pix usa o modo online',
+    async (paymentMethod) => {
+      vi.stubEnv('MERCADO_PAGO_ENABLED', 'true');
+      mocks.tx.store.findUnique.mockResolvedValue({
+        id: 'store-a',
+        tenantId: 'tenant-a',
+        address: { city: 'São Paulo', state: 'SP' },
+        settings: {
+          acceptsPix: true,
+          pixKeyType: 'EMAIL',
+          pixKey: 'financeiro@loja.test',
+          acceptsCash: true,
+          acceptsCardOnDelivery: true,
+          paymentMode: 'ONLINE',
+        },
+        entitlement: { onlinePaymentsEnabled: true },
+        paymentProviderConnections: [{ id: 'connection-a' }],
+      });
+
+      const manualInput = { ...input, paymentMethod };
+      const result = await createOrder({
+        storeSlug: params.storeSlug,
+        input: manualInput,
+      });
+
+      expect(result).toMatchObject({ onlinePayment: false, mercadoPagoPaymentId: null });
+      expect(mocks.tx.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PENDING',
+            payment: { create: expect.objectContaining({ provider: null }) },
+          }),
+        }),
+      );
+      expect(mocks.tx.mercadoPagoPayment.create).not.toHaveBeenCalled();
+      expect(mocks.appendOrderOutboxEvent).toHaveBeenCalledOnce();
+    },
+  );
 
   it('recalcula e grava pedido, auditoria e outbox na mesma transação serializável', async () => {
     vi.useFakeTimers();

@@ -1,4 +1,9 @@
-import type { OrderModality, OrderStatus, PaymentStatus } from '@prisma/client';
+import type {
+  OrderCancellationReasonCode,
+  OrderModality,
+  OrderStatus,
+  PaymentStatus,
+} from '@prisma/client';
 
 export interface CustomerOrderTrackingStateDTO {
   orderNumber: number;
@@ -14,6 +19,7 @@ export interface CustomerOrderTrackingStateDTO {
     maxAt: string;
   } | null;
   cancellationMessage: string | null;
+  cancellationReasonCode?: OrderCancellationReasonCode | null;
   itemsSummary?: string | null;
   totalCents?: number | null;
   items?: Array<{

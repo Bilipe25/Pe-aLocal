@@ -29,7 +29,7 @@ describe('OnlinePaymentSettings', () => {
       />,
     );
 
-    expect(screen.getByRole('radio', { name: /Online/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Pix automático/i })).toBeDisabled();
     expect(screen.getByText(/Conecte uma conta Mercado Pago para habilitar/i)).toBeVisible();
   });
 
@@ -55,8 +55,8 @@ describe('OnlinePaymentSettings', () => {
       />,
     );
 
-    expect(screen.getByText(/modo Online continua salvo/i)).toBeVisible();
-    expect(screen.getByText(/checkout está usando o modo Manual/i)).toBeVisible();
+    expect(screen.getByText(/Pix automático continua salvo/i)).toBeVisible();
+    expect(screen.getByText(/checkout usa o Pix manual/i)).toBeVisible();
   });
 
   it('mostra confirmação visível depois do callback OAuth', () => {

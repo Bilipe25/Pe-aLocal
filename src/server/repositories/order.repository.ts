@@ -3,7 +3,11 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 
 import { normalizePhone, validatePixKey } from '@/lib/brazil';
-import { getMercadoPagoConfig, isMercadoPagoEnabled } from '@/lib/mercado-pago/config';
+import {
+  getMercadoPagoConfig,
+  getMercadoPagoOAuthEnvironment,
+  isMercadoPagoEnabled,
+} from '@/lib/mercado-pago/config';
 import { credentialAad, encryptCredential } from '@/lib/mercado-pago/crypto';
 import type { CheckoutInput } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
@@ -280,18 +284,31 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
-      const onlinePayment = Boolean(
+      const onlinePaymentAvailable = Boolean(
         isMercadoPagoEnabled() &&
         store.entitlement?.onlinePaymentsEnabled &&
         settings.paymentMode === 'ONLINE' &&
         store.paymentProviderConnections[0],
       );
+      const onlinePayment = onlinePaymentAvailable && input.paymentMethod === 'PIX';
       if (onlinePayment) {
-        if (input.paymentMethod !== 'PIX' || !input.payerEmail) {
+        if (!input.payerEmail) {
           throw new CheckoutError(
             'CART_INVALID',
             'Informe um e-mail válido para gerar o Pix com confirmação automática.',
             422,
+            [{ path: 'payerEmail' }],
+          );
+        }
+        if (
+          getMercadoPagoOAuthEnvironment() === 'sandbox' &&
+          !input.payerEmail.toLowerCase().endsWith('@testuser.com')
+        ) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'No ambiente de teste, use o e-mail de um comprador Mercado Pago terminado em @testuser.com.',
+            422,
+            [{ path: 'payerEmail', code: 'invalid_email_for_sandbox' }],
           );
         }
       } else if (input.paymentMethod === 'PIX') {
@@ -518,6 +535,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             creationStatus: 'PENDING',
             externalReference: `pl_${mercadoPagoPaymentId}`,
             idempotencyKey: `pl_${mercadoPagoPaymentId}`,
+            expiresAt: new Date(now.getTime() + 30 * 60_000),
             payerEmailCiphertext: encryptedPayerEmail.ciphertext,
             payerEmailIv: encryptedPayerEmail.iv,
           },

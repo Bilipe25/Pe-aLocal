@@ -53,6 +53,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'payer@example.test',
+      payerFirstName: 'APRO',
       expiration: 'PT30M',
     });
 
@@ -62,6 +63,10 @@ describe('cliente Mercado Pago Orders', () => {
       total_amount: '12.34',
     });
     expect(fetchMock).toHaveBeenCalledOnce();
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      payer: { email: 'payer@example.test', first_name: 'APRO' },
+    });
   });
 
   it('consulta por external_reference com janela temporal codificada', async () => {
@@ -120,5 +125,41 @@ describe('cliente Mercado Pago Orders', () => {
 
     expect((error as MercadoPagoApiError).retryAfterSeconds).toBe(3);
     expect(String(error)).not.toContain('conteúdo privado');
+  });
+
+  it('extrai erro de validação aninhado sem expor a resposta bruta', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            errors: [
+              {
+                code: 'invalid_email_for_sandbox',
+                path: 'payer.email',
+                message: 'cliente-real@exemplo.com não é permitido',
+              },
+            ],
+          },
+          400,
+        ),
+      ),
+    );
+
+    const error = await createMercadoPagoPixOrder({
+      accessToken: 'APP_USR-access',
+      idempotencyKey: 'stable-idempotency-key',
+      totalAmount: '12.34',
+      externalReference: 'pl_mp_opaque_reference',
+      payerEmail: 'cliente-real@exemplo.com',
+      expiration: 'PT30M',
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MercadoPagoApiError);
+    expect(error).toMatchObject({
+      code: 'invalid_email_for_sandbox',
+      validationIssues: [{ code: 'invalid_email_for_sandbox', path: 'payer.email' }],
+    });
+    expect(String(error)).not.toContain('cliente-real@exemplo.com');
   });
 });
