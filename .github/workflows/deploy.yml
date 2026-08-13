@@ -38,11 +38,6 @@ jobs:
           PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
           PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
           PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
-          MERCADO_PAGO_CLIENT_ID: ${{ secrets.MERCADO_PAGO_CLIENT_ID }}
-          MERCADO_PAGO_CLIENT_SECRET: ${{ secrets.MERCADO_PAGO_CLIENT_SECRET }}
-          MERCADO_PAGO_REDIRECT_URI: ${{ secrets.MERCADO_PAGO_REDIRECT_URI }}
-          MERCADO_PAGO_WEBHOOK_SECRET: ${{ secrets.MERCADO_PAGO_WEBHOOK_SECRET }}
-          MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY }}
         run: |
           required=(
             NEXT_PUBLIC_SUPABASE_URL
@@ -58,15 +53,6 @@ jobs:
             PUSHER_SECRET
             PUSHER_CLUSTER
           )
-          if [[ "${{ inputs.environment }}" == "staging" ]]; then
-            required+=(
-              MERCADO_PAGO_CLIENT_ID
-              MERCADO_PAGO_CLIENT_SECRET
-              MERCADO_PAGO_REDIRECT_URI
-              MERCADO_PAGO_WEBHOOK_SECRET
-              MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY
-            )
-          fi
           missing=()
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
@@ -205,29 +191,9 @@ jobs:
               PUSHER_CLUSTER: $cluster
             }' \
             > "$secrets_file"
-          if [[ "${{ inputs.environment }}" == "staging" ]]; then
-            : "${MERCADO_PAGO_CLIENT_ID:?Missing MERCADO_PAGO_CLIENT_ID}"
-            : "${MERCADO_PAGO_CLIENT_SECRET:?Missing MERCADO_PAGO_CLIENT_SECRET}"
-            : "${MERCADO_PAGO_REDIRECT_URI:?Missing MERCADO_PAGO_REDIRECT_URI}"
-            : "${MERCADO_PAGO_WEBHOOK_SECRET:?Missing MERCADO_PAGO_WEBHOOK_SECRET}"
-            : "${MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY:?Missing MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY}"
-            updated_secrets_file="$(mktemp)"
-            jq \
-              --arg mp_client_id "$MERCADO_PAGO_CLIENT_ID" \
-              --arg mp_client_secret "$MERCADO_PAGO_CLIENT_SECRET" \
-              --arg mp_redirect_uri "$MERCADO_PAGO_REDIRECT_URI" \
-              --arg mp_webhook_secret "$MERCADO_PAGO_WEBHOOK_SECRET" \
-              --arg mp_encryption_key "$MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY" \
-              '. + {
-                MERCADO_PAGO_CLIENT_ID: $mp_client_id,
-                MERCADO_PAGO_CLIENT_SECRET: $mp_client_secret,
-                MERCADO_PAGO_REDIRECT_URI: $mp_redirect_uri,
-                MERCADO_PAGO_WEBHOOK_SECRET: $mp_webhook_secret,
-                MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: $mp_encryption_key
-              }' \
-              "$secrets_file" > "$updated_secrets_file"
-            mv "$updated_secrets_file" "$secrets_file"
-          fi
+          # Os secrets sensíveis do Mercado Pago permanecem no Cloudflare. O
+          # Wrangler valida `secrets.required` e preserva valores que não
+          # aparecem neste arquivo aditivo de Pusher.
           pnpm exec wrangler deploy --config wrangler.order-events.jsonc --env "${{ inputs.environment }}" --secrets-file "$secrets_file" --no-x-autoconfig
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -236,11 +202,6 @@ jobs:
           PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
           PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
           PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
-          MERCADO_PAGO_CLIENT_ID: ${{ secrets.MERCADO_PAGO_CLIENT_ID }}
-          MERCADO_PAGO_CLIENT_SECRET: ${{ secrets.MERCADO_PAGO_CLIENT_SECRET }}
-          MERCADO_PAGO_REDIRECT_URI: ${{ secrets.MERCADO_PAGO_REDIRECT_URI }}
-          MERCADO_PAGO_WEBHOOK_SECRET: ${{ secrets.MERCADO_PAGO_WEBHOOK_SECRET }}
-          MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY }}
       - run: pnpm exec opennextjs-cloudflare deploy --env "${{ inputs.environment }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
