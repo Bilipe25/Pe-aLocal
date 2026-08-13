@@ -26,9 +26,9 @@ export class MercadoPagoOAuthEnvironmentMismatchError extends Error {
 
   constructor(
     readonly expectedEnvironment: MercadoPagoOAuthEnvironment,
-    readonly receivedLiveMode: boolean,
+    readonly receivedTestUser: boolean,
   ) {
-    super('O ambiente da credencial Mercado Pago não corresponde ao ambiente configurado.');
+    super('O tipo de conta Mercado Pago não corresponde ao ambiente configurado.');
     this.name = 'MercadoPagoOAuthEnvironmentMismatchError';
   }
 }
@@ -44,6 +44,7 @@ export class MercadoPagoOrdersCredentialError extends Error {
 
 export const MERCADO_PAGO_API_ORIGIN = 'https://api.mercadopago.com';
 export const MERCADO_PAGO_AUTH_ORIGIN = 'https://auth.mercadopago.com';
+export const MERCADO_LIBRE_API_ORIGIN = 'https://api.mercadolibre.com';
 export const MERCADO_PAGO_PIX_EXPIRATION = 'PT30M';
 
 type MercadoPagoRuntimeEnv = Record<string, string | undefined>;
@@ -95,13 +96,13 @@ export function getMercadoPagoOAuthEnvironment(
   return appEnvironment.data === 'production' ? 'production' : 'sandbox';
 }
 
-export function assertMercadoPagoOAuthEnvironment(
-  liveMode: boolean,
+export function assertMercadoPagoSellerEnvironment(
+  isTestUser: boolean,
   expectedEnvironment: MercadoPagoOAuthEnvironment,
 ): void {
-  const expectedLiveMode = expectedEnvironment === 'production';
-  if (liveMode !== expectedLiveMode) {
-    throw new MercadoPagoOAuthEnvironmentMismatchError(expectedEnvironment, liveMode);
+  const expectedTestUser = expectedEnvironment === 'sandbox';
+  if (isTestUser !== expectedTestUser) {
+    throw new MercadoPagoOAuthEnvironmentMismatchError(expectedEnvironment, isTestUser);
   }
 }
 

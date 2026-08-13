@@ -2,12 +2,13 @@ import 'server-only';
 
 import type { z } from 'zod';
 
-import { MERCADO_PAGO_API_ORIGIN } from './config';
+import { MERCADO_LIBRE_API_ORIGIN, MERCADO_PAGO_API_ORIGIN } from './config';
 import {
   mercadoPagoCreatedOrderSchema,
   mercadoPagoOAuthTokenSchema,
   mercadoPagoOrderSchema,
   mercadoPagoOrderSearchSchema,
+  mercadoPagoSellerProfileSchema,
 } from './schemas';
 
 export class MercadoPagoApiError extends Error {
@@ -31,11 +32,12 @@ async function requestJson<T>(input: {
   body?: unknown;
   schema: z.ZodType<T>;
   timeoutMs?: number;
+  origin?: typeof MERCADO_PAGO_API_ORIGIN | typeof MERCADO_LIBRE_API_ORIGIN;
 }): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 8_000);
   try {
-    const response = await fetch(`${MERCADO_PAGO_API_ORIGIN}${input.path}`, {
+    const response = await fetch(`${input.origin ?? MERCADO_PAGO_API_ORIGIN}${input.path}`, {
       method: input.method,
       signal: controller.signal,
       cache: 'no-store',
@@ -82,6 +84,16 @@ async function requestJson<T>(input: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export function getMercadoPagoSellerProfile(input: { accessToken: string }) {
+  return requestJson({
+    origin: MERCADO_LIBRE_API_ORIGIN,
+    path: '/users/me',
+    method: 'GET',
+    accessToken: input.accessToken,
+    schema: mercadoPagoSellerProfileSchema,
+  });
 }
 
 export function exchangeMercadoPagoAuthorizationCode(input: {

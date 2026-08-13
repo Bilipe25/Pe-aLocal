@@ -97,6 +97,11 @@ export const mercadoPagoOrderSearchSchema = z.object({
   data: z.array(mercadoPagoOrderSchema).default([]),
 });
 
+export const mercadoPagoSellerProfileSchema = z.object({
+  id: stringId,
+  tags: z.array(z.string()).default([]),
+});
+
 export const mercadoPagoWebhookSchema = z
   .object({
     id: stringId,
