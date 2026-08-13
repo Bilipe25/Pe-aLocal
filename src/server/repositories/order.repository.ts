@@ -9,6 +9,12 @@ import {
   isMercadoPagoEnabled,
 } from '@/lib/mercado-pago/config';
 import { credentialAad, encryptCredential } from '@/lib/mercado-pago/crypto';
+import {
+  MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS,
+  MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE,
+  MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE,
+  MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL,
+} from '@/lib/mercado-pago/sandbox';
 import type { CheckoutInput } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import {
@@ -300,16 +306,17 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             [{ path: 'payerEmail' }],
           );
         }
-        if (
-          getMercadoPagoOAuthEnvironment() === 'sandbox' &&
-          !input.payerEmail.toLowerCase().endsWith('@testuser.com')
-        ) {
-          throw new CheckoutError(
-            'CART_INVALID',
-            'No ambiente de teste, use o e-mail de um comprador Mercado Pago terminado em @testuser.com.',
-            422,
-            [{ path: 'payerEmail', code: 'invalid_email_for_sandbox' }],
-          );
+        if (getMercadoPagoOAuthEnvironment() === 'sandbox') {
+          if (input.payerEmail.trim().toLowerCase() !== MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL) {
+            throw new CheckoutError('CART_INVALID', MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE, 422, [
+              { path: 'payerEmail', code: 'invalid_email_for_sandbox' },
+            ]);
+          }
+          if (quote.total !== MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS) {
+            throw new CheckoutError('CART_INVALID', MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE, 422, [
+              { path: 'paymentMethod', code: 'invalid_amount_for_sandbox' },
+            ]);
+          }
         }
       } else if (input.paymentMethod === 'PIX') {
         if (

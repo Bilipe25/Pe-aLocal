@@ -183,9 +183,10 @@ export function createMercadoPagoPixOrder(input: {
   totalAmount: string;
   externalReference: string;
   payerEmail: string;
-  payerFirstName?: string;
+  environment: 'sandbox' | 'production';
   expiration: string;
 }) {
+  const sandbox = input.environment === 'sandbox';
   return requestJson({
     path: '/v1/orders',
     method: 'POST',
@@ -195,19 +196,22 @@ export function createMercadoPagoPixOrder(input: {
       type: 'online',
       total_amount: input.totalAmount,
       external_reference: input.externalReference,
-      processing_mode: 'automatic',
+      // A compra de teste Pix da Orders API possui um payload predefinido.
+      // No sandbox, o provedor aplica `automatic` e rejeita propriedades que
+      // não fazem parte desse cenário. Produção segue o contrato Pix normal.
+      ...(sandbox ? {} : { processing_mode: 'automatic' }),
       transactions: {
         payments: [
           {
             amount: input.totalAmount,
             payment_method: { id: 'pix', type: 'bank_transfer' },
-            expiration_time: input.expiration,
+            ...(sandbox ? {} : { expiration_time: input.expiration }),
           },
         ],
       },
       payer: {
         email: input.payerEmail,
-        ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
+        ...(sandbox ? { first_name: 'APRO' } : {}),
       },
     },
     schema: mercadoPagoCreatedOrderSchema,

@@ -66,7 +66,7 @@ Use uma conta de teste do tipo vendedor para representar o estabelecimento. Ela 
 4. Como proprietário, clique em **Conectar Mercado Pago** e autentique a conta vendedor de teste.
 5. Confirme que o callback retorna ao staging e a conexão fica `ACTIVE`; `liveMode` é apenas metadado informativo e não define o sandbox.
 6. Selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
-7. No checkout sandbox, use um comprador de teste com e-mail terminado em `@testuser.com`. A criação envia também `payer.first_name=APRO`, conforme o cenário de aprovação do Mercado Pago.
+7. No checkout sandbox, a Orders API aceita somente o cenário Pix predefinido pelo Mercado Pago: total exato de `R$ 50,00`, `payer.email=test_user_br@testuser.com` e `payer.first_name=APRO`. O checkout valida esses valores antes de criar o pedido e omite `processing_mode`/`expiration_time` da chamada de teste, conforme o payload oficial. Em produção, o valor e o e-mail reais são usados normalmente, com `processing_mode=automatic` e expiração de 30 minutos.
 8. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
 
 Nenhum pagamento real deve ser feito nesse smoke test.

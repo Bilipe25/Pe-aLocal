@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe('cliente Mercado Pago Orders', () => {
-  it('envia somente o contrato documentado para criar um Pix', async () => {
+  it('envia o contrato Pix de produção com processamento e expiração', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(createResponse));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -53,7 +53,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'payer@example.test',
-      payerFirstName: 'APRO',
+      environment: 'production',
       expiration: 'PT30M',
     });
 
@@ -78,7 +78,45 @@ describe('cliente Mercado Pago Orders', () => {
           },
         ],
       },
-      payer: { email: 'payer@example.test', first_name: 'APRO' },
+      payer: { email: 'payer@example.test' },
+    });
+  });
+
+  it('envia exatamente o cenário predefinido para o Pix de sandbox', async () => {
+    const sandboxResponse = {
+      ...createResponse,
+      total_amount: '50.00',
+      transactions: {
+        payments: [{ ...createResponse.transactions.payments[0], amount: '50.00' }],
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sandboxResponse));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createMercadoPagoPixOrder({
+      accessToken: 'APP_USR-access',
+      idempotencyKey: 'stable-sandbox-key',
+      totalAmount: '50.00',
+      externalReference: 'pl_mp_sandbox_reference',
+      payerEmail: 'test_user_br@testuser.com',
+      environment: 'sandbox',
+      expiration: 'PT30M',
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      type: 'online',
+      total_amount: '50.00',
+      external_reference: 'pl_mp_sandbox_reference',
+      transactions: {
+        payments: [
+          {
+            amount: '50.00',
+            payment_method: { id: 'pix', type: 'bank_transfer' },
+          },
+        ],
+      },
+      payer: { email: 'test_user_br@testuser.com', first_name: 'APRO' },
     });
   });
 
@@ -110,6 +148,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'payer@example.test',
+      environment: 'production',
       expiration: 'PT30M',
     }).catch((caught: unknown) => caught);
 
@@ -133,6 +172,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'payer@example.test',
+      environment: 'production',
       expiration: 'PT30M',
     }).catch((caught: unknown) => caught);
 
@@ -165,6 +205,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'cliente-real@exemplo.com',
+      environment: 'production',
       expiration: 'PT30M',
     }).catch((caught: unknown) => caught);
 
@@ -203,6 +244,7 @@ describe('cliente Mercado Pago Orders', () => {
       totalAmount: '12.34',
       externalReference: 'pl_mp_opaque_reference',
       payerEmail: 'test_user_br@testuser.com',
+      environment: 'production',
       expiration: 'PT30M',
     }).catch((caught: unknown) => caught);
 

@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 
 import type { EffectiveStoreAvailabilityState } from '@/features/stores/availability';
 import { normalizePhone } from '@/lib/brazil';
+import { MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE } from '@/lib/mercado-pago/sandbox';
 import { triggerNewOrder, triggerPaymentUpdated } from '@/lib/pusher/server';
 import { checkoutSchema } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
@@ -247,7 +248,7 @@ export async function createOrderAction(
         throw new CheckoutError(
           'PAYMENT_CREATION_FAILED',
           sandboxEmailRejected
-            ? 'No ambiente de teste, use o e-mail de um comprador Mercado Pago terminado em @testuser.com.'
+            ? MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE
             : 'Não foi possível gerar o Pix. Revise os dados ou escolha dinheiro ou cartão no recebimento.',
           422,
           sandboxEmailRejected
