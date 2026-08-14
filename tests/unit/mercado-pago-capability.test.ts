@@ -72,14 +72,15 @@ describe('diagnóstico operacional Mercado Pago', () => {
     MERCADO_PAGO_REDIRECT_URI: 'https://example.test/oauth/callback',
     MERCADO_PAGO_WEBHOOK_SECRET: 'webhook-secret',
     MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: 'encryption-key',
+    MERCADO_PAGO_TEST_ACCESS_TOKEN: 'APP_USR-test-access-token',
   };
 
   it('expõe somente prontidão, contagem e ambiente seguros', () => {
     expect(getMercadoPagoOperationalReadiness(completeEnv)).toEqual({
       rolloutEnabled: true,
       configurationReady: true,
-      configuredBindings: 5,
-      requiredBindings: 5,
+      configuredBindings: 6,
+      requiredBindings: 6,
       environment: 'sandbox',
     });
   });
@@ -90,8 +91,22 @@ describe('diagnóstico operacional Mercado Pago', () => {
       MERCADO_PAGO_CLIENT_SECRET: undefined,
     });
 
-    expect(readiness).toMatchObject({ configurationReady: false, configuredBindings: 4 });
+    expect(readiness).toMatchObject({ configurationReady: false, configuredBindings: 5 });
     expect(JSON.stringify(readiness)).not.toContain('client-secret');
+  });
+
+  it('considera o staging indisponível sem o Access Token de teste da aplicação', () => {
+    const readiness = getMercadoPagoOperationalReadiness({
+      ...completeEnv,
+      MERCADO_PAGO_TEST_ACCESS_TOKEN: undefined,
+    });
+
+    expect(readiness).toMatchObject({
+      configurationReady: false,
+      configuredBindings: 5,
+      requiredBindings: 6,
+      environment: 'sandbox',
+    });
   });
 });
 

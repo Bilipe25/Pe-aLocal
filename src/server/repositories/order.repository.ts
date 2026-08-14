@@ -7,6 +7,7 @@ import {
   getMercadoPagoConfig,
   getMercadoPagoOAuthEnvironment,
   isMercadoPagoEnabled,
+  isMercadoPagoOrdersCredentialReady,
 } from '@/lib/mercado-pago/config';
 import { credentialAad, encryptCredential } from '@/lib/mercado-pago/crypto';
 import {
@@ -292,6 +293,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
       const onlinePaymentAvailable = Boolean(
         isMercadoPagoEnabled() &&
+        isMercadoPagoOrdersCredentialReady() &&
         store.entitlement?.onlinePaymentsEnabled &&
         settings.paymentMode === 'ONLINE' &&
         store.paymentProviderConnections[0],

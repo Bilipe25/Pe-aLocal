@@ -1,9 +1,11 @@
 import 'server-only';
 
 import { getMercadoPagoOrder, MercadoPagoApiError } from '@/lib/mercado-pago/client';
+import { getMercadoPagoOAuthEnvironment } from '@/lib/mercado-pago/config';
 import type { mercadoPagoWebhookSchema } from '@/lib/mercado-pago/schemas';
 import { getDb } from '@/server/database/client';
 import { getMercadoPagoAccessToken } from './mercado-pago-connection.service';
+import { getMercadoPagoOrdersCredential } from './mercado-pago-orders-credential.service';
 import { reconcileMercadoPagoOrder } from './mercado-pago-payment.service';
 import { recordPaymentProviderAlert } from './payment-provider-alert.service';
 
@@ -52,6 +54,51 @@ async function processDeauthorization(eventId: string, providerUserId: string) {
 }
 
 async function synchronizeOrder(providerUserId: string, providerOrderId: string) {
+  if (getMercadoPagoOAuthEnvironment() === 'sandbox') {
+    const localPayment = await getDb().mercadoPagoPayment.findFirst({
+      where: { providerOrderId },
+      select: { connectionId: true },
+    });
+    if (!localPayment) throw new Error('SANDBOX_ORDER_NOT_LINKED');
+    let credential = await getMercadoPagoOrdersCredential(localPayment.connectionId, {
+      allowReconciliation: true,
+    });
+    if (credential.expectedProviderUserId !== providerUserId) {
+      throw new Error('INVALID_SANDBOX_PROVIDER_USER');
+    }
+    let providerOrder;
+    try {
+      providerOrder = await getMercadoPagoOrder({
+        accessToken: credential.accessToken,
+        orderId: providerOrderId,
+      });
+    } catch (error) {
+      if (!(error instanceof MercadoPagoApiError) || error.status !== 401) throw error;
+      credential = await getMercadoPagoOrdersCredential(localPayment.connectionId, {
+        allowReconciliation: true,
+        forceRefresh: true,
+      });
+      providerOrder = await getMercadoPagoOrder({
+        accessToken: credential.accessToken,
+        orderId: providerOrderId,
+      });
+    }
+    if (providerOrder.user_id !== credential.expectedProviderUserId) {
+      throw new Error('INVALID_SANDBOX_ORDER_SCOPE');
+    }
+    const result = await reconcileMercadoPagoOrder(
+      providerOrder,
+      credential.expectedProviderUserId,
+    );
+    if (result) {
+      console.info('[MP_WEBHOOK_SYNCED]', {
+        orderId: result.orderId,
+        paymentStatus: result.paymentStatus,
+      });
+    }
+    return;
+  }
+
   const connections = await getDb().storePaymentProviderConnection.findMany({
     where: {
       provider: 'MERCADO_PAGO',

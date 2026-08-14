@@ -25,15 +25,16 @@ MERCADO_PAGO_CLIENT_SECRET=
 MERCADO_PAGO_REDIRECT_URI=https://SEU_HOST/api/integrations/mercado-pago/oauth/callback
 MERCADO_PAGO_WEBHOOK_SECRET=
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=
+MERCADO_PAGO_TEST_ACCESS_TOKEN=
 ```
 
-`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_REDIRECT_URI` são configurações públicas e podem ser declaradas como `vars` do Worker. `MERCADO_PAGO_CLIENT_SECRET`, `MERCADO_PAGO_WEBHOOK_SECRET` e `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` são secrets; a chave de criptografia deve conter 32 bytes aleatórios codificados em base64. Secrets e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
+`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_REDIRECT_URI` são configurações públicas e podem ser declaradas como `vars` do Worker. `MERCADO_PAGO_CLIENT_SECRET`, `MERCADO_PAGO_WEBHOOK_SECRET`, `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` e `MERCADO_PAGO_TEST_ACCESS_TOKEN` são secrets; a chave de criptografia deve conter 32 bytes aleatórios codificados em base64. O Access Token de teste existe somente em desenvolvimento/staging. Secrets e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
 
-As cinco configurações `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. No staging, as duas configurações públicas ficam versionadas em `wrangler.order-events.jsonc`; os três secrets permanecem armazenados exclusivamente no Cloudflare. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
+As configurações `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. No staging, as configurações públicas ficam versionadas em `wrangler.order-events.jsonc`; os secrets permanecem armazenados exclusivamente no Cloudflare. O Access Token de teste deve ser configurado tanto no Worker principal quanto no auxiliar. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
 
 ## OAuth em staging / sandbox
 
-O ambiente do OAuth é determinado no servidor por `APP_ENV`; não existe flag `NEXT_PUBLIC` nem Access Token global compartilhado:
+O ambiente do OAuth é determinado no servidor por `APP_ENV`; não existe flag `NEXT_PUBLIC`:
 
 - `APP_ENV=development` ou `APP_ENV=staging`: a conta autorizadora deve ser um usuário Vendedor de teste, identificado pela tag oficial `test_user`;
 - `APP_ENV=production`: a conta autorizadora deve ser real e não pode possuir a tag `test_user`.
@@ -42,7 +43,7 @@ A troca OAuth nunca envia `test_token`: a Orders API não aceita credenciais `TE
 
 O refresh segue o contrato oficial apenas com `client_id`, `client_secret`, `grant_type=refresh_token` e `refresh_token`; ele não envia `test_token`. Antes da rotação atômica, o backend revalida a compatibilidade `APP_USR-`, a identidade do vendedor e a tag `test_user` conforme `APP_ENV`. Uma conexão antiga com credencial `TEST-` é marcada como `REAUTH_REQUIRED` e precisa ser reconectada.
 
-`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_CLIENT_SECRET` continuam sendo as credenciais da aplicação OAuth. Não os substitua por Public Key, Access Token de teste, User ID ou credenciais de uma conta de teste. O PedidoLocal sempre recebe via OAuth um token próprio do vendedor que autorizou a aplicação.
+`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_CLIENT_SECRET` continuam sendo as credenciais da aplicação OAuth e não devem ser substituídos por Public Key, Access Token ou User ID. Em produção, o PedidoLocal sempre cobra usando o token próprio do vendedor que autorizou a aplicação. No staging, somente a criação e a consulta das cobranças simuladas usam o `MERCADO_PAGO_TEST_ACCESS_TOKEN` da aplicação; a conexão OAuth da loja continua existindo para validar o fluxo de configuração sem movimentar dinheiro real.
 
 ### Configuração conceitual de staging
 
@@ -54,9 +55,10 @@ MERCADO_PAGO_CLIENT_SECRET=<secret-configurado-fora-do-repositório>
 MERCADO_PAGO_REDIRECT_URI=https://pedidolocal-staging.gabriellion97.workers.dev/api/integrations/mercado-pago/oauth/callback
 MERCADO_PAGO_WEBHOOK_SECRET=<segredo-do-webhook-de-teste>
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=<chave-base64-de-32-bytes>
+MERCADO_PAGO_TEST_ACCESS_TOKEN=<access-token-de-teste-da-aplicação>
 ```
 
-Use uma conta de teste do tipo vendedor para representar o estabelecimento. Ela deve autorizar a aplicação PedidoLocal na tela OAuth. Não configure um `MERCADO_PAGO_TEST_ACCESS_TOKEN` global. O segredo de webhook de staging deve ser o segredo de teste, separado do segredo produtivo.
+Use uma conta de teste do tipo vendedor para representar o estabelecimento na autorização OAuth. Para criar e consultar o Pix simulado, configure o Access Token de teste exibido em **Suas integrações → Testes → Credenciais de teste** como `MERCADO_PAGO_TEST_ACCESS_TOKEN` nos dois Workers de staging. Nunca reutilize esse token em produção. O segredo de webhook de staging deve ser o segredo de teste, separado do segredo produtivo.
 
 ### Smoke test de staging
 
@@ -65,7 +67,7 @@ Use uma conta de teste do tipo vendedor para representar o estabelecimento. Ela 
 3. Habilite `onlinePaymentsEnabled` apenas para a loja de teste.
 4. Como proprietário, clique em **Conectar Mercado Pago** e autentique a conta vendedor de teste.
 5. Confirme que o callback retorna ao staging e a conexão fica `ACTIVE`; `liveMode` é apenas metadado informativo e não define o sandbox.
-6. Selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
+6. Confirme que o Worker principal e o `order-events` possuem `MERCADO_PAGO_TEST_ACCESS_TOKEN`, selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
 7. No checkout sandbox, a Orders API aceita somente o cenário Pix predefinido pelo Mercado Pago: total exato de `R$ 50,00`, `payer.email=test_user_br@testuser.com` e `payer.first_name=APRO`. O checkout valida esses valores antes de criar o pedido e omite `processing_mode`/`expiration_time` da chamada de teste, conforme o payload oficial. Em produção, o valor e o e-mail reais são usados normalmente, com `processing_mode=automatic` e expiração de 30 minutos.
 8. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
 

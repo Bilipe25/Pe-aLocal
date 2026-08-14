@@ -20,6 +20,8 @@ MERCADO_PAGO_CLIENT_SECRET=""
 MERCADO_PAGO_REDIRECT_URI="http://localhost:8787/api/integrations/mercado-pago/oauth/callback"
 MERCADO_PAGO_WEBHOOK_SECRET=""
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=""
+# Somente desenvolvimento/staging. Nunca configure este token no Worker de produção.
+MERCADO_PAGO_TEST_ACCESS_TOKEN=""
 WEB_PUSH_ENABLED="false"
 MERCHANT_WEB_PUSH_ENABLED="false"
 WEB_PUSH_VAPID_PUBLIC_KEY=""

@@ -5,7 +5,10 @@ import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
 import { storeAssetUrl } from '@/features/assets/urls';
-import { isMercadoPagoEnabled } from '@/lib/mercado-pago/config';
+import {
+  isMercadoPagoEnabled,
+  isMercadoPagoOrdersCredentialReady,
+} from '@/lib/mercado-pago/config';
 import type { RankedCartRecommendation } from '@/features/storefront/cart-recommendations';
 import { CACHE_TAGS } from '@/server/cache';
 import { getDb } from '@/server/database/client';
@@ -461,6 +464,7 @@ async function getPurchaseStoreFromDb(slug: string) {
     : null;
   const onlinePayment =
     isMercadoPagoEnabled() &&
+    isMercadoPagoOrdersCredentialReady() &&
     store.entitlement?.onlinePaymentsEnabled === true &&
     paymentMode === 'ONLINE' &&
     store.paymentProviderConnections.length > 0;
