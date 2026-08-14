@@ -78,6 +78,7 @@
           "MERCADO_PAGO_CLIENT_SECRET",
           "MERCADO_PAGO_WEBHOOK_SECRET",
           "MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY",
+          "MERCADO_PAGO_TEST_ACCESS_TOKEN",
         ],
       },
       "vars": {

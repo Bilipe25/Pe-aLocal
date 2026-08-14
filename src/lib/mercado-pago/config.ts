@@ -9,6 +9,7 @@ const configSchema = z.object({
   MERCADO_PAGO_REDIRECT_URI: z.string().url(),
   MERCADO_PAGO_WEBHOOK_SECRET: z.string().trim().min(1),
   MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: z.string().trim().min(1),
+  MERCADO_PAGO_TEST_ACCESS_TOKEN: z.string().trim().min(1).optional(),
 });
 
 const requiredConfigurationKeys = [
@@ -18,6 +19,7 @@ const requiredConfigurationKeys = [
   'MERCADO_PAGO_WEBHOOK_SECRET',
   'MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY',
 ] as const;
+const sandboxRequiredConfigurationKeys = ['MERCADO_PAGO_TEST_ACCESS_TOKEN'] as const;
 
 export type MercadoPagoOAuthEnvironment = 'sandbox' | 'production';
 
@@ -53,6 +55,18 @@ export function isMercadoPagoEnabled(env: MercadoPagoRuntimeEnv = process.env): 
   return String(env.MERCADO_PAGO_ENABLED) === 'true';
 }
 
+export function isMercadoPagoOrdersCredentialReady(
+  env: MercadoPagoRuntimeEnv = process.env,
+): boolean {
+  const parsedEnvironment = z.enum(['development', 'staging', 'production']).safeParse(env.APP_ENV);
+  if (!parsedEnvironment.success) return false;
+  const environment = parsedEnvironment.data === 'production' ? 'production' : 'sandbox';
+  return (
+    environment === 'production' ||
+    String(env.MERCADO_PAGO_TEST_ACCESS_TOKEN).startsWith('APP_USR-')
+  );
+}
+
 export interface MercadoPagoOperationalReadiness {
   rolloutEnabled: boolean;
   configurationReady: boolean;
@@ -68,16 +82,27 @@ export interface MercadoPagoOperationalReadiness {
 export function getMercadoPagoOperationalReadiness(
   env: MercadoPagoRuntimeEnv = process.env,
 ): MercadoPagoOperationalReadiness {
-  const configuredBindings = requiredConfigurationKeys.filter(
+  const parsedEnvironment = z.enum(['development', 'staging', 'production']).safeParse(env.APP_ENV);
+  const requiredKeys = [
+    ...requiredConfigurationKeys,
+    ...(parsedEnvironment.success && parsedEnvironment.data !== 'production'
+      ? sandboxRequiredConfigurationKeys
+      : []),
+  ];
+  const configuredBindings = requiredKeys.filter(
     (key) => typeof env[key] === 'string' && env[key]?.trim().length,
   ).length;
-  const parsedEnvironment = z.enum(['development', 'staging', 'production']).safeParse(env.APP_ENV);
+  const baseConfigurationReady = configSchema.safeParse(env).success;
 
   return {
     rolloutEnabled: isMercadoPagoEnabled(env),
-    configurationReady: configSchema.safeParse(env).success,
+    configurationReady:
+      baseConfigurationReady &&
+      (parsedEnvironment.success && parsedEnvironment.data !== 'production'
+        ? isMercadoPagoOrdersCredentialReady(env)
+        : true),
     configuredBindings,
-    requiredBindings: requiredConfigurationKeys.length,
+    requiredBindings: requiredKeys.length,
     environment: parsedEnvironment.success
       ? parsedEnvironment.data === 'production'
         ? 'production'
@@ -123,6 +148,20 @@ export function getMercadoPagoConfig(env: MercadoPagoRuntimeEnv = process.env) {
     redirectUri: parsed.data.MERCADO_PAGO_REDIRECT_URI,
     webhookSecret: parsed.data.MERCADO_PAGO_WEBHOOK_SECRET,
     encryptionKey: parsed.data.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY,
+    testAccessToken: parsed.data.MERCADO_PAGO_TEST_ACCESS_TOKEN,
     oauthEnvironment: getMercadoPagoOAuthEnvironment(parsed.data),
   };
+}
+
+export function getMercadoPagoTestAccessToken(env: MercadoPagoRuntimeEnv = process.env): string {
+  const config = getMercadoPagoConfig(env);
+  if (config.oauthEnvironment !== 'sandbox') {
+    throw new Error('A credencial de teste do Mercado Pago não pode ser usada em produção.');
+  }
+  if (!config.testAccessToken?.startsWith('APP_USR-')) {
+    throw new Error(
+      'O Access Token de teste da aplicação Mercado Pago não está configurado no staging.',
+    );
+  }
+  return config.testAccessToken;
 }

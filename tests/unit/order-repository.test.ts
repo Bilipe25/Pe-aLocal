@@ -199,6 +199,7 @@ describe('OrderRepository checkout v2', () => {
     );
     vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', 'webhook-secret');
     vi.stubEnv('MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY', btoa('\0'.repeat(32)));
+    vi.stubEnv('MERCADO_PAGO_TEST_ACCESS_TOKEN', 'APP_USR-test-access-token');
     mocks.tx.store.findUnique.mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',
@@ -263,6 +264,7 @@ describe('OrderRepository checkout v2', () => {
   it('rejeita um total diferente de R$ 50,00 antes de criar pedido Pix no sandbox', async () => {
     vi.stubEnv('MERCADO_PAGO_ENABLED', 'true');
     vi.stubEnv('APP_ENV', 'staging');
+    vi.stubEnv('MERCADO_PAGO_TEST_ACCESS_TOKEN', 'APP_USR-test-access-token');
     mocks.tx.store.findUnique.mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',

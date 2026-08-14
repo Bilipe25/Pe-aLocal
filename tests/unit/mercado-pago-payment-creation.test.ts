@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getOrder: vi.fn(),
   searchOrders: vi.fn(),
   decryptCredential: vi.fn(),
-  getAccessToken: vi.fn(),
+  getOrdersCredential: vi.fn(),
   markReauthRequired: vi.fn(),
   db: {
     mercadoPagoPayment: {
@@ -43,8 +43,11 @@ vi.mock('@/lib/mercado-pago/crypto', () => ({
 vi.mock('@/server/database/client', () => ({ getDb: () => mocks.db }));
 
 vi.mock('@/server/services/mercado-pago-connection.service', () => ({
-  getMercadoPagoAccessToken: mocks.getAccessToken,
   markMercadoPagoReauthRequired: mocks.markReauthRequired,
+}));
+
+vi.mock('@/server/services/mercado-pago-orders-credential.service', () => ({
+  getMercadoPagoOrdersCredential: mocks.getOrdersCredential,
 }));
 
 import { MercadoPagoApiError } from '@/lib/mercado-pago/client';
@@ -94,7 +97,11 @@ const canonicalOrder = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getAccessToken.mockResolvedValue('APP_USR-access');
+  mocks.getOrdersCredential.mockResolvedValue({
+    accessToken: 'APP_USR-access',
+    expectedProviderUserId: '321',
+    source: 'APPLICATION_TEST',
+  });
   mocks.decryptCredential.mockResolvedValue('payer@example.test');
   mocks.db.mercadoPagoPayment.updateMany.mockResolvedValue({ count: 1 });
 });
