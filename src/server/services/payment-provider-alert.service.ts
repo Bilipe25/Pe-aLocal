@@ -16,6 +16,12 @@ export interface PaymentProviderAlertInput {
   mercadoPagoPaymentId?: string | null;
 }
 
+export interface RecoveredPaymentProviderAlertInput {
+  tenantId: string;
+  storeId: string;
+  recoveredAt?: Date;
+}
+
 function sanitizeCode(code: string) {
   return (
     code
@@ -57,5 +63,23 @@ export async function recordPaymentProviderAlert(
       lastOccurredAt: now,
       resolvedAt: null,
     },
+  });
+}
+
+export async function resolveRecoveredPaymentProviderCreationAlerts(
+  input: RecoveredPaymentProviderAlertInput,
+  client: AlertClient = getDb(),
+) {
+  const recoveredAt = input.recoveredAt ?? new Date();
+  return client.paymentProviderAlert.updateMany({
+    where: {
+      provider: 'MERCADO_PAGO',
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      status: 'OPEN',
+      code: { startsWith: 'ORDER_CREATE_' },
+      lastOccurredAt: { lte: recoveredAt },
+    },
+    data: { status: 'RESOLVED', resolvedAt: recoveredAt },
   });
 }

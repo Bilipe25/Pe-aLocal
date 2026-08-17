@@ -51,7 +51,10 @@ vi.mock('@/server/services/mercado-pago-orders-credential.service', () => ({
 }));
 
 import { MercadoPagoApiError } from '@/lib/mercado-pago/client';
-import { ensureMercadoPagoPixCreated } from '@/server/services/mercado-pago-payment.service';
+import {
+  ensureMercadoPagoPixCreated,
+  reconcileMercadoPagoOrder,
+} from '@/server/services/mercado-pago-payment.service';
 
 const localCreation = {
   id: 'mp-local-1',
@@ -157,6 +160,7 @@ describe('criação idempotente do Pix Mercado Pago', () => {
     const tx = {
       order: { findFirst: vi.fn().mockResolvedValue(currentOrder) },
       mercadoPagoPayment: { update: vi.fn().mockResolvedValue(retryableLocal) },
+      paymentProviderAlert: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     };
     mocks.db.$transaction.mockImplementation(async (callback: (client: typeof tx) => unknown) =>
       callback(tx),
@@ -170,5 +174,113 @@ describe('criação idempotente do Pix Mercado Pago', () => {
 
     expect(mocks.searchOrders).toHaveBeenCalledOnce();
     expect(mocks.createOrder).not.toHaveBeenCalled();
+    expect(tx.paymentProviderAlert.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'OPEN',
+          code: { startsWith: 'ORDER_CREATE_' },
+        }),
+      }),
+    );
+  });
+
+  it('marca reconciliação como SYSTEM e reserva ORDER_CREATED ao pedido acionável', async () => {
+    const local = {
+      ...localCreation,
+      order: {
+        id: localCreation.orderId,
+        tenantId: localCreation.tenantId,
+        storeId: localCreation.storeId,
+        orderNumber: 47,
+        total: 1234,
+        status: 'AWAITING_PAYMENT',
+        paymentStatus: 'PENDING',
+        version: 0,
+      },
+      payment: { id: 'payment-1', status: 'PENDING', amount: 1234, provider: 'MERCADO_PAGO' },
+    };
+    const currentOrder = {
+      ...local.order,
+      payment: local.payment,
+      couponReservation: null,
+      store: {
+        settings: { estimatedTimeMinMinutes: 20, estimatedTimeMaxMinutes: 40 },
+      },
+    };
+    mocks.db.mercadoPagoPayment.findUnique.mockResolvedValue(local);
+    const tx = {
+      order: {
+        findFirst: vi.fn().mockResolvedValue(currentOrder),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      mercadoPagoPayment: { update: vi.fn().mockResolvedValue(local) },
+      paymentProviderAlert: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      paymentStatusHistory: { create: vi.fn().mockResolvedValue({ id: 'payment-history-1' }) },
+      orderStatusHistory: { create: vi.fn().mockResolvedValue({ id: 'order-history-1' }) },
+      payment: { update: vi.fn().mockResolvedValue(local.payment) },
+      auditLog: {
+        create: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'provider-audit-1' })
+          .mockResolvedValueOnce({ id: 'order-audit-1' }),
+      },
+      orderOutboxEvent: {
+        create: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'payment-event-1' })
+          .mockResolvedValueOnce({ id: 'order-event-1' }),
+      },
+    };
+    mocks.db.$transaction.mockImplementation(async (callback: (client: typeof tx) => unknown) =>
+      callback(tx),
+    );
+
+    await expect(
+      reconcileMercadoPagoOrder(
+        {
+          ...canonicalOrder,
+          currency: 'BRL',
+          status: 'processed',
+          status_detail: 'accredited',
+          total_paid_amount: '12.34',
+          transactions: {
+            payments: [
+              {
+                ...canonicalOrder.transactions.payments[0],
+                status: 'processed',
+                status_detail: 'accredited',
+                paid_amount: '12.34',
+              },
+            ],
+          },
+        },
+        '321',
+        'RECONCILIATION',
+      ),
+    ).resolves.toMatchObject({
+      paymentStatus: 'PAID',
+      becameActionable: true,
+      eventIds: ['payment-event-1', 'order-event-1'],
+    });
+
+    expect(tx.paymentStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ source: 'SYSTEM' }) }),
+    );
+    expect(tx.orderStatusHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ source: 'SYSTEM' }) }),
+    );
+    expect(tx.auditLog.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'ORDER_CREATED',
+          metadata: expect.objectContaining({
+            source: 'RECONCILIATION',
+            lifecycle: 'BECAME_ACTIONABLE_AFTER_PAYMENT',
+          }),
+        }),
+      }),
+    );
+    expect(tx.orderOutboxEvent.create).toHaveBeenCalledTimes(2);
   });
 });

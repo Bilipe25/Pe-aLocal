@@ -98,4 +98,36 @@ describe('OnlinePaymentSettings', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('apenas uma conta Mercado Pago de teste');
     expect(screen.getByRole('alert')).toHaveTextContent('usuário de teste do tipo Vendedor');
   });
+
+  it('diferencia conexão ativa de cobranças operacionais com falha', () => {
+    render(
+      <OnlinePaymentSettings
+        storeId="store-1"
+        expectedConfigurationVersion={5}
+        readOnly={false}
+        connectionFeedback={null}
+        capability={{
+          mode: 'ONLINE',
+          effectiveMode: 'ONLINE',
+          canSelectOnline: true,
+          connection: {
+            status: 'ACTIVE',
+            liveMode: false,
+            connectedAt: new Date(),
+            refreshedAt: null,
+            reauthRequiredAt: null,
+          },
+          paymentHealth: {
+            status: 'DEGRADED',
+            failedCharges: 2,
+            lastFailureAt: new Date(),
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Cobranças com falha')).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('2 cobranças recentes falharam');
+    expect(screen.getByRole('alert')).toHaveTextContent('use o Pix manual');
+  });
 });

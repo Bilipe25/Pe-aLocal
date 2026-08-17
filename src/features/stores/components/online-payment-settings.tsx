@@ -30,6 +30,11 @@ interface OnlinePaymentSettingsProps {
       refreshedAt: Date | null;
       reauthRequiredAt: Date | null;
     } | null;
+    paymentHealth?: {
+      status: 'DEGRADED';
+      failedCharges: number;
+      lastFailureAt: Date;
+    } | null;
   };
 }
 
@@ -76,6 +81,8 @@ export function OnlinePaymentSettings({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const connection = capability.connection;
+  const paymentDegraded =
+    connection?.status === 'ACTIVE' && capability.paymentHealth?.status === 'DEGRADED';
 
   const changeMode = (nextMode: 'MANUAL' | 'ONLINE') => {
     if (nextMode === mode) return;
@@ -217,6 +224,7 @@ export function OnlinePaymentSettings({
               {connection?.status === 'ACTIVE' && !connection.liveMode ? (
                 <Badge variant="secondary">Ambiente de teste</Badge>
               ) : null}
+              {paymentDegraded ? <Badge variant="warning">Cobranças com falha</Badge> : null}
             </div>
             <p className="text-text-secondary mt-1 text-sm">
               O valor é recebido diretamente na conta conectada pela loja.
@@ -228,20 +236,37 @@ export function OnlinePaymentSettings({
                 </span>
                 <span
                   className={
-                    capability.canSelectOnline
+                    capability.canSelectOnline && !paymentDegraded
                       ? 'text-success flex items-center gap-1.5'
                       : 'text-warning flex items-center gap-1.5'
                   }
                 >
-                  {capability.canSelectOnline ? (
+                  {capability.canSelectOnline && !paymentDegraded ? (
                     <CheckCircle2 className="size-4" aria-hidden="true" />
                   ) : (
                     <CircleAlert className="size-4" aria-hidden="true" />
                   )}
-                  {capability.canSelectOnline
-                    ? 'Conta pronta para receber Pix'
-                    : 'Conta conectada, mas o Pix online ainda não está disponível'}
+                  {paymentDegraded
+                    ? 'Conta conectada, mas as cobranças recentes estão falhando'
+                    : capability.canSelectOnline
+                      ? 'Conta pronta para receber Pix'
+                      : 'Conta conectada, mas o Pix online ainda não está disponível'}
                 </span>
+              </div>
+            ) : null}
+            {paymentDegraded && capability.paymentHealth ? (
+              <div
+                role="alert"
+                className="bg-warning-light text-warning mt-3 flex max-w-2xl items-start gap-2 rounded-lg px-3 py-2 text-sm"
+              >
+                <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <p>
+                  {capability.paymentHealth.failedCharges === 1
+                    ? 'Uma cobrança recente falhou.'
+                    : `${capability.paymentHealth.failedCharges} cobranças recentes falharam.`}{' '}
+                  Faça um Pix de teste com dados válidos. Se continuar, use o Pix manual e acione o
+                  suporte.
+                </p>
               </div>
             ) : null}
           </div>

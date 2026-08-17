@@ -87,8 +87,9 @@ Referências oficiais consultadas:
 ## Configuração no Mercado Pago
 
 - Redirect URI canônica: `/api/integrations/mercado-pago/oauth/callback`.
-- Webhook único: `/api/webhooks/mercado-pago`.
-- Tópicos: `orders` e `mp-connect`.
+- Webhook único: `/api/webhooks/mercado-pago`. Em staging, configure a URL completa `https://pedidolocal-staging.gabriellion97.workers.dev/api/webhooks/mercado-pago`.
+- Evento obrigatório: **Order (Mercado Pago)**, cujo payload usa `type=order`. A notificação opcional de vinculação continua usando `mp-connect`.
+- O contrato estrito aceita os campos oficiais de Orders, incluindo `application_id`, e rejeita campos desconhecidos ou qualquer assinatura inválida.
 - OAuth: PKCE S256, state de uso único e scopes `offline_access read write`.
 - Hosts externos fixos: `auth.mercadopago.com`, `api.mercadopago.com` e `api.mercadolibre.com` apenas para validar a tag pública do vendedor.
 
@@ -97,7 +98,9 @@ Referências oficiais consultadas:
 - O checkout online cria localmente `Order=AWAITING_PAYMENT`, `Payment=PENDING` e `MercadoPagoPayment=PENDING`.
 - A chamada `POST /v1/orders` ocorre depois do commit, com valor calculado no servidor, `processing_mode=automatic`, Pix e uma idempotency key estável.
 - Nenhum `ORDER_CREATED` operacional é emitido antes do pagamento.
+- A persistência inicial aguardando Pix usa auditoria `CREATE`; `ORDER_CREATED` fica reservado ao instante em que a confirmação torna o pedido acionável e evita sinal prematuro na Central.
 - O webhook é validado por HMAC, persistido de forma idempotente e recebe `200` sem aguardar chamadas externas. O Worker confirma o estado com `GET /v1/orders/{id}` usando a credencial da conta conectada.
+- Históricos originados por uma notificação usam `source=WEBHOOK`; consultas iniciadas pelo tracking ou pelo reconciliador periódico usam `source=SYSTEM` e auditoria `source=RECONCILIATION`.
 - Somente um pagamento integral e com valor exato promove o pedido para `PENDING`; essa transição grava históricos, auditoria e outbox na mesma transação.
 - Falhas ambíguas mantêm o pedido em “Gerando seu Pix”. Antes de repetir o `POST`, o backend pesquisa a `external_reference`; conflitos `402/409/423`, timeout, `429` e `5xx` nunca geram uma nova idempotency key.
 - Uma recusa determinística na criação não é apresentada como pedido confirmado: o checkout preserva carrinho e dados, mostra uma mensagem acionável e permite trocar para dinheiro/cartão ou iniciar uma nova tentativa de Pix.
@@ -107,6 +110,7 @@ Referências oficiais consultadas:
 - O ETA operacional nasce no instante da aprovação; enquanto o pedido estiver em `AWAITING_PAYMENT`, nenhuma promessa de entrega ou retirada é mostrada.
 - Transições são monotônicas. `PAID` não regride, `REFUNDED` exige `PAID`, e aprovação tardia após cancelamento abre um alerta crítico em vez de alterar silenciosamente o pedido.
 - Divergência de valor, status desconhecido, refund parcial e esgotamento de retentativas geram `PaymentProviderAlert` durável, sem payload bruto ou dados sensíveis.
+- Alertas de falha na criação são resolvidos quando uma consulta autenticada comprova que a loja voltou a criar cobranças. Enquanto existirem falhas posteriores ao último sucesso, a configuração mostra separadamente “conta conectada” e “cobranças com falha”.
 
 ## Operação e rollback
 
