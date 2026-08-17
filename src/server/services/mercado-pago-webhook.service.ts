@@ -89,6 +89,7 @@ async function synchronizeOrder(providerUserId: string, providerOrderId: string)
     const result = await reconcileMercadoPagoOrder(
       providerOrder,
       credential.expectedProviderUserId,
+      'WEBHOOK',
     );
     if (result) {
       console.info('[MP_WEBHOOK_SYNCED]', {
@@ -128,7 +129,7 @@ async function synchronizeOrder(providerUserId: string, providerOrderId: string)
       }
       fetchedProviderOrder = true;
       if (providerOrder.user_id !== providerUserId) continue;
-      const result = await reconcileMercadoPagoOrder(providerOrder);
+      const result = await reconcileMercadoPagoOrder(providerOrder, undefined, 'WEBHOOK');
       if (!result) continue;
       console.info('[MP_WEBHOOK_SYNCED]', {
         orderId: result.orderId,

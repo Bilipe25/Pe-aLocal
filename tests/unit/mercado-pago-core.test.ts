@@ -82,12 +82,20 @@ describe('Mercado Pago core', () => {
     const webhook = {
       id: 42,
       live_mode: false,
-      type: 'orders',
-      action: 'order.updated',
+      type: 'order',
+      action: 'order.action_required',
       user_id: 10,
+      application_id: 76506430185983,
+      api_version: 'v1',
+      date_created: '2026-08-17T22:37:39.000Z',
       data: { id: 'order-1' },
     };
-    expect(mercadoPagoWebhookSchema.safeParse(webhook).success).toBe(true);
+    expect(mercadoPagoWebhookSchema.parse(webhook)).toMatchObject({
+      id: '42',
+      type: 'order',
+      user_id: '10',
+      application_id: '76506430185983',
+    });
     expect(mercadoPagoWebhookSchema.safeParse({ ...webhook, token: 'não permitido' }).success).toBe(
       false,
     );

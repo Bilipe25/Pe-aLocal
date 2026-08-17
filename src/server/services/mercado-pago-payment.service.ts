@@ -17,7 +17,10 @@ import { getDb } from '@/server/database/client';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/server/errors';
 import { appendOrderOutboxEvent } from './order-outbox.service';
 import { appendPaymentStatusHistory } from './order-payment-history.service';
-import { recordPaymentProviderAlert } from './payment-provider-alert.service';
+import {
+  recordPaymentProviderAlert,
+  resolveRecoveredPaymentProviderCreationAlerts,
+} from './payment-provider-alert.service';
 import { markMercadoPagoReauthRequired } from './mercado-pago-connection.service';
 import {
   getMercadoPagoOrdersCredential,
@@ -33,6 +36,8 @@ export interface MercadoPagoSyncResult {
   becameActionable: boolean;
   failureCode?: string;
 }
+
+export type MercadoPagoSyncSource = 'WEBHOOK' | 'RECONCILIATION';
 
 function centsToAmount(cents: number): string {
   return `${Math.trunc(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
@@ -110,6 +115,7 @@ async function writeProviderAudit(
     orderId: string;
     previousStatus: string;
     nextStatus: string;
+    source?: MercadoPagoSyncSource;
   },
 ) {
   return tx.auditLog.create({
@@ -122,7 +128,7 @@ async function writeProviderAudit(
       entityId: input.entityId,
       metadata: {
         orderId: input.orderId,
-        source: 'WEBHOOK',
+        source: input.source ?? 'RECONCILIATION',
         previousStatus: input.previousStatus,
         nextStatus: input.nextStatus,
       },
@@ -134,6 +140,7 @@ async function writeProviderAudit(
 export async function reconcileMercadoPagoOrder(
   providerOrder: MercadoPagoOrder,
   expectedProviderUserId?: string,
+  syncSource: MercadoPagoSyncSource = 'RECONCILIATION',
 ): Promise<MercadoPagoSyncResult | null> {
   const local = await getDb().mercadoPagoPayment.findUnique({
     where: { externalReference: providerOrder.external_reference },
@@ -250,6 +257,7 @@ export async function reconcileMercadoPagoOrder(
     return null;
   }
   const now = new Date();
+  const historySource = syncSource === 'WEBHOOK' ? ('WEBHOOK' as const) : ('SYSTEM' as const);
 
   return getDb().$transaction(async (tx) => {
     const current = await tx.order.findFirst({
@@ -295,6 +303,10 @@ export async function reconcileMercadoPagoOrder(
         lastSyncedAt: now,
       },
     });
+    await resolveRecoveredPaymentProviderCreationAlerts(
+      { tenantId: current.tenantId, storeId: current.storeId, recoveredAt: now },
+      tx,
+    );
 
     if (mapped === 'PENDING' || mapped === 'REVIEW') {
       if (mapped === 'REVIEW') {
@@ -402,7 +414,7 @@ export async function reconcileMercadoPagoOrder(
         statusChangedAt: nextOrderStatus !== current.status ? now : undefined,
         cancelledAt: nextOrderStatus === 'CANCELLED' ? now : undefined,
         cancellationReasonCode,
-        cancellationSource: nextOrderStatus === 'CANCELLED' ? 'WEBHOOK' : undefined,
+        cancellationSource: nextOrderStatus === 'CANCELLED' ? historySource : undefined,
         operationalStartedAt: nextPaymentStatus === 'PAID' ? now : undefined,
         promisedFulfillmentMinAt:
           nextPaymentStatus === 'PAID' && current.store.settings
@@ -426,7 +438,7 @@ export async function reconcileMercadoPagoOrder(
       toStatus: nextPaymentStatus,
       changedById: null,
       actorNameSnapshot: 'Mercado Pago',
-      source: 'WEBHOOK',
+      source: historySource,
       reasonCode,
       note: 'Estado confirmado por consulta autenticada ao provedor.',
       orderVersionFrom: current.version,
@@ -442,7 +454,7 @@ export async function reconcileMercadoPagoOrder(
           note: 'Estado atualizado após confirmação do pagamento online.',
           changedBy: 'system',
           actorNameSnapshot: 'Mercado Pago',
-          source: 'WEBHOOK',
+          source: historySource,
           reasonCode: cancellationReasonCode,
           versionFrom: current.version,
           versionTo: nextVersion,
@@ -499,6 +511,7 @@ export async function reconcileMercadoPagoOrder(
       orderId: current.id,
       previousStatus: current.paymentStatus,
       nextStatus: nextPaymentStatus,
+      source: syncSource,
     });
     const eventIds: string[] = [];
     const paymentEvent = await appendOrderOutboxEvent(tx, {
@@ -524,7 +537,12 @@ export async function reconcileMercadoPagoOrder(
           action: 'ORDER_CREATED',
           entity: 'Order',
           entityId: current.id,
-          metadata: { source: 'WEBHOOK', previousStatus: current.status, nextStatus: 'PENDING' },
+          metadata: {
+            source: syncSource,
+            lifecycle: 'BECAME_ACTIONABLE_AFTER_PAYMENT',
+            previousStatus: current.status,
+            nextStatus: 'PENDING',
+          },
         },
         select: { id: true },
       });

@@ -114,11 +114,15 @@ export async function writeOrderCreatedAudit(
       tenantId: data.tenantId,
       storeId: data.storeId,
       userId: null,
-      action: 'ORDER_CREATED',
+      action: data.status === 'AWAITING_PAYMENT' ? 'CREATE' : 'ORDER_CREATED',
       entity: 'Order',
       entityId: data.orderId,
       metadata: {
         source: 'CUSTOMER',
+        lifecycle:
+          data.status === 'AWAITING_PAYMENT'
+            ? 'AWAITING_PROVIDER_PAYMENT'
+            : 'ACTIONABLE_ORDER_CREATED',
         orderNumber: data.orderNumber,
         previousStatus: null,
         nextStatus: data.status ?? 'PENDING',

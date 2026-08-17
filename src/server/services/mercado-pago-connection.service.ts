@@ -149,6 +149,46 @@ export function resolveMercadoPagoCapability(
   } as const;
 }
 
+async function getMercadoPagoPaymentHealth(tenantId: string, storeId: string) {
+  const db = getDb();
+  const latestSuccessfulPayment = await db.mercadoPagoPayment.findFirst({
+    where: {
+      tenantId,
+      storeId,
+      creationStatus: 'CREATED',
+      providerOrderId: { not: null },
+    },
+    orderBy: [{ lastSyncedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+    select: { lastSyncedAt: true, createdAt: true },
+  });
+  const recoveredAt =
+    latestSuccessfulPayment?.lastSyncedAt ?? latestSuccessfulPayment?.createdAt ?? null;
+  const failureWhere = {
+    provider: 'MERCADO_PAGO' as const,
+    tenantId,
+    storeId,
+    status: 'OPEN' as const,
+    code: { startsWith: 'ORDER_CREATE_' },
+    ...(recoveredAt ? { lastOccurredAt: { gt: recoveredAt } } : {}),
+  };
+  const [failedCharges, latestFailure] = await Promise.all([
+    db.paymentProviderAlert.count({ where: failureWhere }),
+    db.paymentProviderAlert.findFirst({
+      where: failureWhere,
+      orderBy: { lastOccurredAt: 'desc' },
+      select: { lastOccurredAt: true },
+    }),
+  ]);
+
+  return failedCharges > 0 && latestFailure
+    ? {
+        status: 'DEGRADED' as const,
+        failedCharges,
+        lastFailureAt: latestFailure.lastOccurredAt,
+      }
+    : null;
+}
+
 export async function getMercadoPagoCapability(storeId: string) {
   const { session } = await requireTenantStoreAccess(storeId, Permission.VIEW_PAYMENT_SETTINGS);
   const store = await getDb().store.findFirst({
@@ -170,7 +210,10 @@ export async function getMercadoPagoCapability(storeId: string) {
     },
   });
   if (!store) throw new NotFoundError('Loja');
-  return resolveMercadoPagoCapability(store, isMercadoPagoEnabled());
+  const capability = resolveMercadoPagoCapability(store, isMercadoPagoEnabled());
+  if (!capability) return null;
+  const paymentHealth = await getMercadoPagoPaymentHealth(session.tenantId, storeId);
+  return { ...capability, paymentHealth };
 }
 
 export async function startMercadoPagoOAuth(storeId: string) {
