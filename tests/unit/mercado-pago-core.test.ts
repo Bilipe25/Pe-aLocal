@@ -115,7 +115,7 @@ describe('store feature definitions', () => {
     expect(isStoreFeatureAvailable(flags, 'onlinePayments')).toBe(true);
     expect(isStoreFeatureAvailable(flags, 'operationalSla')).toBe(true);
     expect(isStoreFeatureAvailable(flags, 'kds')).toBe(true);
-    expect(isStoreFeatureAvailable(flags, 'advancedReports')).toBe(false);
+    expect(isStoreFeatureAvailable(flags, 'advancedReports')).toBe(true);
     expect(STORE_FEATURE_DEFINITIONS.orderPrinting.implementationStatus).toBe('COMING_SOON');
   });
 });

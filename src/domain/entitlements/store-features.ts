@@ -25,7 +25,7 @@ export const STORE_FEATURE_DEFINITIONS = {
     label: 'Relatórios avançados',
     description: 'Indicadores comerciais e operacionais aprofundados.',
     entitlementField: 'advancedReportsEnabled',
-    implementationStatus: 'COMING_SOON',
+    implementationStatus: 'AVAILABLE',
   },
   orderPrinting: {
     key: 'orderPrinting',
