@@ -90,6 +90,7 @@ describe('consulta dedicada do KDS', () => {
     expect(result.lanes.MAKING.items[0].stageAlertThresholdMinutes).toBe(30);
     expect(result.lanes.READY.items[0].stageAlertThresholdMinutes).toBe(15);
     expect(result.total).toBe(3);
+    expect(result.estimatedTimeMaxMinutes).toBe(30);
   });
 
   it('mantém contagens reais e sinaliza backlog limitado', async () => {

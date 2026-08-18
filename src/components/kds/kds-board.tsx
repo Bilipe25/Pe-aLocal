@@ -28,7 +28,12 @@ import {
 import { toast } from 'sonner';
 
 import { KdsOrderCard } from '@/components/kds/kds-order-card';
-import { KDS_LANES, getKdsElapsedSeconds, getKdsUrgency } from '@/domain/orders/kds';
+import {
+  KDS_LANES,
+  applyConfirmedKdsTransition,
+  getKdsElapsedSeconds,
+  getKdsUrgency,
+} from '@/domain/orders/kds';
 import {
   markOrderReadyAction,
   startOrderPreparationAction,
@@ -140,6 +145,18 @@ export function KdsBoard({
     ]);
   }
 
+  function applyServerTransition(input: {
+    orderId: string;
+    status: string;
+    version: number;
+    statusChangedAt: string;
+  }) {
+    queryClient.setQueryData<KdsSnapshotDTO>(
+      kdsQueryKeys.snapshot(storeId, authorizationScope),
+      (current) => (current ? applyConfirmedKdsTransition(current, input) : current),
+    );
+  }
+
   async function undo(orderId: string, expectedVersion: number) {
     const result = await undoLastOrderTransitionAction({ orderId, expectedVersion });
     if (!result.success) {
@@ -151,7 +168,8 @@ export function KdsBoard({
       await refreshAll(orderId);
       return;
     }
-    await refreshAll(orderId);
+    applyServerTransition(result.data);
+    void refreshAll(orderId);
     toast.success('Alteração desfeita.');
   }
 
@@ -178,7 +196,8 @@ export function KdsBoard({
         await refreshAll(order.id);
         return;
       }
-      await refreshAll(order.id);
+      applyServerTransition(result.data);
+      void refreshAll(order.id);
       if (result.data.notificationPending) {
         toast.warning('Pedido atualizado. A sincronização em tempo real está sendo repetida.');
       }

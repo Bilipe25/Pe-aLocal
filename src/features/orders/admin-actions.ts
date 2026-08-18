@@ -18,7 +18,7 @@ import * as workflowService from '@/server/services/order-workflow.service';
 import * as paymentService from '@/server/services/order-payment.service';
 import type {
   OrderMutationContext,
-  OrderMutationResult,
+  OrderStatusMutationResult,
 } from '@/server/services/order-mutation.types';
 import type { z } from 'zod';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
@@ -34,6 +34,10 @@ export interface OrderActionData {
   paymentStatus: PaymentStatus;
   version: number;
   notificationPending: boolean;
+}
+
+export interface OrderStatusActionData extends OrderActionData {
+  statusChangedAt: string;
 }
 
 export interface InternalOrderNoteActionData extends OrderActionData {
@@ -103,26 +107,32 @@ async function runStatusAction(
   operation: (
     context: OrderMutationContext,
     input: OrderVersionInput,
-  ) => Promise<OrderMutationResult>,
-): Promise<ActionResult<OrderActionData>> {
+  ) => Promise<OrderStatusMutationResult>,
+): Promise<ActionResult<OrderStatusActionData>> {
   try {
     const input = parseActionInput(orderVersionInputSchema, rawInput);
     const context = await requireActiveStoreContext(permission);
     const result = await operation(mutationContext(context), input);
     const notificationPending = await publishMutation(result, true);
-    return actionSuccess({ ...result, notificationPending });
+    return actionSuccess({
+      ...result,
+      statusChangedAt: result.statusChangedAt.toISOString(),
+      notificationPending,
+    });
   } catch (error) {
     return actionError(error);
   }
 }
 
-export async function acceptOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+export async function acceptOrderAction(
+  input: unknown,
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(input, Permission.ACCEPT_ORDERS, workflowService.acceptOrder);
 }
 
 export async function startOrderPreparationAction(
   input: unknown,
-): Promise<ActionResult<OrderActionData>> {
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(
     input,
     Permission.UPDATE_ORDER_STATUS,
@@ -130,25 +140,37 @@ export async function startOrderPreparationAction(
   );
 }
 
-export async function markOrderReadyAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+export async function markOrderReadyAction(
+  input: unknown,
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.markOrderReady);
 }
 
-export async function dispatchOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+export async function dispatchOrderAction(
+  input: unknown,
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(input, Permission.UPDATE_ORDER_STATUS, workflowService.dispatchOrder);
 }
 
-export async function completeOrderAction(input: unknown): Promise<ActionResult<OrderActionData>> {
+export async function completeOrderAction(
+  input: unknown,
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(input, Permission.COMPLETE_ORDERS, workflowService.completeOrder);
 }
 
-export async function cancelOrderAction(rawInput: unknown): Promise<ActionResult<OrderActionData>> {
+export async function cancelOrderAction(
+  rawInput: unknown,
+): Promise<ActionResult<OrderStatusActionData>> {
   try {
     const input: CancelOrderInput = parseActionInput(cancelOrderInputSchema, rawInput);
     const context = await requireActiveStoreContext(Permission.CANCEL_ORDERS);
     const result = await workflowService.cancelOrder(mutationContext(context), input);
     const notificationPending = await publishMutation(result, true);
-    return actionSuccess({ ...result, notificationPending });
+    return actionSuccess({
+      ...result,
+      statusChangedAt: result.statusChangedAt.toISOString(),
+      notificationPending,
+    });
   } catch (error) {
     return actionError(error);
   }
@@ -156,7 +178,7 @@ export async function cancelOrderAction(rawInput: unknown): Promise<ActionResult
 
 export async function undoLastOrderTransitionAction(
   input: unknown,
-): Promise<ActionResult<OrderActionData>> {
+): Promise<ActionResult<OrderStatusActionData>> {
   return runStatusAction(
     input,
     Permission.UPDATE_ORDER_STATUS,

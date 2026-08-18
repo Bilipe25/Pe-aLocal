@@ -153,6 +153,7 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
     lanes,
     total,
     truncated: total > rows.length,
+    estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes,
     updatedAt: new Date().toISOString(),
   };
 }

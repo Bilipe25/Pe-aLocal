@@ -165,6 +165,10 @@ escopo tenant/loja, DTO sem PII, entitlement, chamadas às mesmas actions da Cen
 conflito stale, invalidação realtime, movimentação e remoção de cards sem refresh e som sem falso
 positivo no carregamento inicial.
 
+A movimentação local possui uma regressão específica: a action retorna o `statusChangedAt` da
+transação e o KDS atualiza o cache somente depois do sucesso confirmado, antes da reconciliação em
+segundo plano. Assim, falha ou conflito não movem o card, enquanto sucesso não depende do refetch.
+
 O E2E `dashboard-kds.spec.ts` verifica layout desktop/mobile e, quando a loja descartável possui o
 entitlement, a rota autenticada. A mutação real exige `E2E_ALLOW_MUTATIONS=true`; sem credenciais,
 entitlement ou pedidos compatíveis, o cenário é ignorado com justificativa explícita. A prova

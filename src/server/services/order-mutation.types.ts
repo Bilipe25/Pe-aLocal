@@ -18,3 +18,7 @@ export interface OrderMutationResult {
   paymentUpdated: boolean;
   outboxEventIds: string[];
 }
+
+export interface OrderStatusMutationResult extends OrderMutationResult {
+  statusChangedAt: Date;
+}

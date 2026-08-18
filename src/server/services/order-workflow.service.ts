@@ -26,9 +26,13 @@ import {
 import * as orderAudit from './order-audit.service';
 import { appendOrderOutboxEvent } from './order-outbox.service';
 import { appendPaymentStatusHistory } from './order-payment-history.service';
-import type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
+import type { OrderMutationContext, OrderStatusMutationResult } from './order-mutation.types';
 
-export type { OrderMutationContext, OrderMutationResult } from './order-mutation.types';
+export type {
+  OrderMutationContext,
+  OrderMutationResult,
+  OrderStatusMutationResult,
+} from './order-mutation.types';
 
 const ORDER_CONFLICT_MESSAGE =
   'Este pedido foi alterado por outra pessoa. Atualize a central antes de continuar.';
@@ -208,7 +212,7 @@ async function transitionOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
   targetStatus: OrderStatus,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return getDb().$transaction(async (tx) => {
     const order = await getOrderSnapshot(tx, context, input.orderId);
     assertExpectedVersion(order, input.expectedVersion);
@@ -350,6 +354,7 @@ async function transitionOrder(
       status: targetStatus,
       paymentStatus: nextPaymentStatus,
       version: input.expectedVersion + 1,
+      statusChangedAt: changedAt,
       paymentUpdated: confirmPaymentOnCompletion,
       outboxEventIds,
     };
@@ -359,42 +364,42 @@ async function transitionOrder(
 export function acceptOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return transitionOrder(context, input, 'CONFIRMED');
 }
 
 export function startOrderPreparation(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return transitionOrder(context, input, 'PREPARING');
 }
 
 export function markOrderReady(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return transitionOrder(context, input, 'READY');
 }
 
 export function dispatchOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return transitionOrder(context, input, 'OUT_FOR_DELIVERY');
 }
 
 export function completeOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return transitionOrder(context, input, 'DELIVERED');
 }
 
 export async function cancelOrder(
   context: OrderMutationContext,
   input: CancelOrderInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return getDb().$transaction(async (tx) => {
     const order = await getOrderSnapshot(tx, context, input.orderId);
     assertExpectedVersion(order, input.expectedVersion);
@@ -537,6 +542,7 @@ export async function cancelOrder(
       status: 'CANCELLED',
       paymentStatus: nextPaymentStatus,
       version: input.expectedVersion + 1,
+      statusChangedAt: changedAt,
       paymentUpdated: cancelPayment,
       outboxEventIds,
     };
@@ -571,7 +577,7 @@ function revertedTimestampData(status: OrderStatus): Prisma.OrderUpdateManyMutat
 export async function undoLastOrderTransition(
   context: OrderMutationContext,
   input: OrderVersionInput,
-): Promise<OrderMutationResult> {
+): Promise<OrderStatusMutationResult> {
   return getDb().$transaction(async (tx) => {
     const order = await getOrderSnapshot(tx, context, input.orderId);
     assertExpectedVersion(order, input.expectedVersion);
@@ -657,6 +663,7 @@ export async function undoLastOrderTransition(
       status: previousStatus,
       paymentStatus: order.paymentStatus,
       version: input.expectedVersion + 1,
+      statusChangedAt: changedAt,
       paymentUpdated: false,
       outboxEventIds: [orderEvent.id],
     };

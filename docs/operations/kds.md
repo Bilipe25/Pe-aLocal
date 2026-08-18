@@ -34,8 +34,10 @@ tablets recebem o mesmo evento e invalidam suas próprias consultas; nenhuma sup
 diretamente com outra. Se o Pusher estiver indisponível, o KDS mantém polling de 20 segundos; com
 realtime conectado, faz uma reconciliação de segurança a cada 60 segundos.
 
-Após uma mutação local, o KDS espera a resposta do servidor e revalida os caches do KDS, quadro,
-fila, métricas e detalhe. Não há mudança otimista de status. Em conflito, mostra: “Este pedido já
+Após uma mutação local, o KDS espera a confirmação do servidor e aplica imediatamente ao próprio
+cache o `status`, a `version` e o `statusChangedAt` persistidos. O card muda de coluna sem depender
+do próximo refetch; quadro, fila, métricas e detalhe são reconciliados em segundo plano. Isso não é
+uma mudança otimista: falhas e conflitos nunca movem o card. Em conflito, mostra: “Este pedido já
 foi atualizado em outro dispositivo.”
 
 ## Operação e limites
