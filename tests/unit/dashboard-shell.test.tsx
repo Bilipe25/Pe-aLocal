@@ -107,6 +107,58 @@ describe('shell operacional do painel do tenant', () => {
     expect(screen.queryByRole('link', { name: 'Relatórios' })).not.toBeInTheDocument();
   });
 
+  it('expõe a Cozinha somente quando a loja possui o entitlement', () => {
+    const { rerender } = render(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+      >
+        <p>Painel</p>
+      </DashboardShell>,
+    );
+    expect(screen.queryByRole('link', { name: 'Cozinha' })).not.toBeInTheDocument();
+
+    rerender(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+        canViewKds
+      >
+        <p>Painel</p>
+      </DashboardShell>,
+    );
+    expect(screen.getAllByRole('link', { name: 'Cozinha' })).toHaveLength(1);
+  });
+
+  it('remove o chrome administrativo dentro da estação da cozinha', () => {
+    mocks.pathname = '/dashboard/kds';
+    const { container } = render(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+        canViewKds
+      >
+        <p>Tela operacional do KDS</p>
+      </DashboardShell>,
+    );
+
+    expect(container.querySelector('.kds-dashboard-shell')).toBeInTheDocument();
+    expect(container.querySelector('aside')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir menu do painel' })).not.toBeInTheDocument();
+  });
+
   it('mantem a Central em fluxo natural com a sidebar fixa', () => {
     const { container, rerender } = renderShell();
     expect(container.querySelector('main')).not.toHaveClass('max-w-7xl');

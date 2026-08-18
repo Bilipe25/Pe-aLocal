@@ -115,6 +115,793 @@ body {
 
 /*
  * =============================================================================
+ * KDS — pass-through operacional da cozinha
+ * =============================================================================
+ */
+
+.kds-dashboard-shell {
+  background: #f6f1eb;
+}
+
+.kds-workspace {
+  --kds-focus-on-dark: #9bd9ff;
+  --kds-focus-on-light: #174d6d;
+  --kds-success-foreground: #24553a;
+  --kds-warning-foreground: #7a4100;
+  display: flex;
+  min-width: 20rem;
+  height: 100dvh;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f6f1eb;
+  color: var(--color-tinta);
+}
+
+.kds-topbar {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  min-height: 4.5rem;
+  grid-template-columns: minmax(13rem, 0.8fr) minmax(16rem, 1.15fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid #463a31;
+  background: var(--color-tinta);
+  color: var(--color-papel);
+}
+
+.kds-brand {
+  display: flex;
+  min-width: 0;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.kds-brand:focus-visible,
+.kds-topbar button:focus-visible {
+  outline: 3px solid var(--kds-focus-on-dark);
+  outline-offset: 3px;
+}
+
+.kds-mobile-tabs button:focus-visible,
+.kds-system-banner button:focus-visible {
+  outline: 3px solid var(--kds-focus-on-light);
+  outline-offset: 3px;
+}
+
+.kds-ticket-action:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px white;
+}
+
+.kds-brand img {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  object-fit: contain;
+}
+
+.kds-brand > span {
+  display: grid;
+  min-width: 0;
+}
+
+.kds-brand strong {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.kds-brand > span > span {
+  margin-top: 0.1875rem;
+  color: #c8bdb4;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kds-store-name {
+  min-width: 0;
+  overflow: hidden;
+  color: white;
+  font-size: 0.9375rem;
+  font-weight: 750;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kds-store-name span {
+  margin-right: 0.4rem;
+  color: #bcb0a7;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.kds-global-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.kds-connection,
+.kds-icon-action {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid #5b4b40;
+  border-radius: 0.6875rem;
+  background: #30261f;
+  color: var(--color-papel);
+}
+
+.kds-connection {
+  padding-inline: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.kds-connection > span {
+  width: 0.5625rem;
+  height: 0.5625rem;
+  flex: none;
+  border-radius: 9999px;
+}
+
+.kds-connection > span[data-tone='success'] {
+  background: #72c891;
+  box-shadow: 0 0 0 3px rgb(114 200 145 / 14%);
+}
+
+.kds-connection > span[data-tone='warning'] {
+  background: #f0b34a;
+}
+
+.kds-connection > span[data-tone='info'] {
+  background: #78b6d8;
+}
+
+.kds-icon-action {
+  min-width: 2.75rem;
+  padding-inline: 0.6875rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.kds-icon-action:hover:not(:disabled) {
+  background: #3b2f27;
+}
+
+.kds-icon-action:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.kds-icon-action svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.kds-mobile-tabs {
+  display: none;
+}
+
+.kds-system-banner {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #d8b46f;
+  background: var(--color-warning-light);
+  color: #694006;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.kds-system-banner > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+}
+
+.kds-system-banner > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.kds-system-banner button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding-inline: 0.75rem;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.kds-system-banner button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.kds-system-banner-error {
+  border-color: #d79088;
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+.kds-board {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.kds-lane {
+  --kds-lane-color: #8b7041;
+  --kds-lane-soft: #f6ecd8;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 4rem minmax(0, 1fr);
+  border-inline: 1px solid var(--color-border);
+  background: rgb(255 253 249 / 70%);
+}
+
+.kds-lane[data-lane='MAKING'] {
+  --kds-lane-color: var(--color-azulejo);
+  --kds-lane-soft: var(--color-info-light);
+}
+
+.kds-lane[data-lane='READY'] {
+  --kds-lane-color: var(--color-erva);
+  --kds-lane-soft: var(--color-success-light);
+}
+
+.kds-lane-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--kds-lane-soft);
+  box-shadow: inset 0 3px 0 var(--kds-lane-color);
+}
+
+.kds-lane-header > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.kds-lane-header > div > svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  color: var(--kds-lane-color);
+}
+
+.kds-lane-header h2 {
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-weight: 780;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.kds-lane-header p {
+  margin-top: 0.125rem;
+  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+}
+
+.kds-lane-header > strong {
+  min-width: 2rem;
+  border: 1px solid color-mix(in srgb, var(--kds-lane-color), white 58%);
+  border-radius: 0.5rem;
+  padding: 0.3125rem 0.5rem;
+  background: rgb(255 255 255 / 65%);
+  color: var(--kds-lane-color);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.kds-lane-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+  scrollbar-color: #bfb5ab transparent;
+  scrollbar-width: thin;
+}
+
+.kds-ticket-list {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+
+.kds-ticket {
+  overflow: hidden;
+  border: 1px solid #bfb5ab;
+  border-radius: 0.875rem;
+  background: white;
+}
+
+.kds-ticket-warning {
+  border-color: #d4a65c;
+}
+
+.kds-ticket-critical {
+  border-color: #d0675c;
+}
+
+.kds-ticket-content {
+  padding: 0.875rem 0.9375rem 0;
+}
+
+.kds-ticket-meta,
+.kds-ticket-heading,
+.kds-service-mode,
+.kds-urgency-label,
+.kds-ticket-item,
+.kds-order-note,
+.kds-item-note,
+.kds-ready-footer {
+  display: flex;
+  align-items: center;
+}
+
+.kds-ticket-meta {
+  min-height: 1.25rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.kds-service-mode,
+.kds-urgency-label {
+  gap: 0.375rem;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.kds-service-mode svg,
+.kds-urgency-label svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.kds-urgency-label {
+  color: var(--kds-warning-foreground);
+  text-align: right;
+}
+
+.kds-ticket-critical .kds-urgency-label {
+  color: var(--color-error);
+}
+
+.kds-ticket-heading {
+  justify-content: space-between;
+  gap: 0.875rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.kds-ticket-heading h3 {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: clamp(1.75rem, 2.45vw, 2.375rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.kds-ticket-timer {
+  flex: none;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: clamp(1.3125rem, 1.8vw, 1.75rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.kds-ticket-timer[data-urgency='warning'] {
+  color: var(--kds-warning-foreground);
+}
+
+.kds-ticket-timer[data-urgency='critical'] {
+  color: var(--color-error);
+}
+
+.kds-ticket-items {
+  display: grid;
+  gap: 0.625rem;
+  padding-block: 0.8125rem;
+  list-style: none;
+}
+
+.kds-ticket-item {
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.kds-item-quantity {
+  flex: 0 0 1.75rem;
+  font-family: var(--font-mono);
+  font-size: 1.0625rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.kds-item-copy {
+  min-width: 0;
+}
+
+.kds-item-name {
+  font-size: 1rem;
+  font-weight: 780;
+  line-height: 1.35;
+}
+
+.kds-item-options {
+  margin-top: 0.1875rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.kds-item-note {
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  color: #744806;
+  font-size: 0.875rem;
+  font-weight: 720;
+  line-height: 1.4;
+}
+
+.kds-item-note svg {
+  width: 0.9375rem;
+  height: 0.9375rem;
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+.kds-order-note {
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 0.8125rem;
+  padding: 0.625rem 0.6875rem;
+  border: 1px solid #e6c98e;
+  border-radius: 0.375rem;
+  background: var(--color-warning-light);
+  color: #5e3b09;
+  font-size: 0.875rem;
+  font-weight: 690;
+  line-height: 1.4;
+}
+
+.kds-order-note svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  flex: none;
+  margin-top: 0.0625rem;
+}
+
+.kds-ticket-action {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 0.8125rem 0.8125rem;
+  background: #c43b08;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 820;
+}
+
+.kds-ticket-action:hover:not(:disabled) {
+  background: #a83206;
+}
+
+.kds-ticket-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.kds-ticket-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.kds-ticket-action svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.kds-ready-footer {
+  min-height: 3.5rem;
+  gap: 0.5625rem;
+  padding-inline: 1.0625rem;
+  border-top: 1px solid #cde0d2;
+  background: var(--color-success-light);
+  color: var(--kds-success-foreground);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.kds-ready-footer svg {
+  width: 1.1875rem;
+  height: 1.1875rem;
+}
+
+.kds-empty-state {
+  display: grid;
+  min-height: 14rem;
+  place-content: center;
+  justify-items: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.kds-empty-state svg {
+  width: 2rem;
+  height: 2rem;
+  color: var(--kds-lane-color);
+}
+
+.kds-empty-state h3 {
+  margin-top: 0.75rem;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.kds-empty-state p {
+  max-width: 30ch;
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 70rem) {
+  .kds-topbar {
+    grid-template-columns: auto 1fr auto;
+    gap: 0.875rem;
+    padding-inline: 0.875rem;
+  }
+
+  .kds-brand > span > span,
+  .kds-store-name > span,
+  .kds-icon-action > span {
+    display: none;
+  }
+
+  .kds-store-name {
+    text-align: left;
+  }
+
+  .kds-board {
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
+
+  .kds-lane-header,
+  .kds-lane-scroll {
+    padding-inline: 0.625rem;
+  }
+
+  .kds-ticket-content {
+    padding-inline: 0.75rem;
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .kds-workspace {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .kds-topbar {
+    grid-template-areas:
+      'brand actions'
+      'store actions';
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 5.75rem;
+    gap: 0.125rem 0.625rem;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .kds-brand {
+    grid-area: brand;
+  }
+
+  .kds-brand img {
+    display: none;
+  }
+
+  .kds-brand strong {
+    font-size: 1rem;
+  }
+
+  .kds-store-name {
+    grid-area: store;
+    color: #d9d0c9;
+    font-size: 0.75rem;
+  }
+
+  .kds-global-actions {
+    grid-area: actions;
+  }
+
+  .kds-connection,
+  .kds-icon-action {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0;
+  }
+
+  .kds-connection strong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .kds-fullscreen-action {
+    display: none;
+  }
+
+  .kds-mobile-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: grid;
+    min-height: 3.625rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-papel);
+  }
+
+  .kds-mobile-tabs button {
+    min-width: 0;
+    min-height: 3.625rem;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 800;
+  }
+
+  .kds-mobile-tabs button[aria-selected='true'] {
+    border-bottom-color: #c43b08;
+    color: var(--color-text-primary);
+  }
+
+  .kds-mobile-tabs button > span,
+  .kds-mobile-tabs button > small {
+    display: block;
+  }
+
+  .kds-mobile-tabs small {
+    min-height: 0.875rem;
+    margin-top: 0.125rem;
+    color: var(--color-text-secondary);
+    font-size: 0.625rem;
+    font-weight: 850;
+  }
+
+  .kds-mobile-tabs button[data-has-alerts='true'] small {
+    color: var(--color-error);
+  }
+
+  .kds-mobile-tabs button:last-child[data-has-alerts='true'] small {
+    color: var(--kds-warning-foreground);
+  }
+
+  .kds-system-banner {
+    flex-wrap: wrap;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .kds-system-banner button {
+    width: 100%;
+    min-height: 2.75rem;
+    justify-content: center;
+  }
+
+  .kds-board {
+    display: block;
+    min-height: calc(100dvh - 9.375rem);
+    padding: 0;
+  }
+
+  .kds-lane {
+    display: none;
+    min-height: calc(100dvh - 9.375rem);
+    border: 0;
+  }
+
+  .kds-lane-mobile-active {
+    display: grid;
+  }
+
+  .kds-lane-header {
+    position: static;
+    padding-inline: 0.875rem;
+  }
+
+  .kds-lane-scroll {
+    overflow: visible;
+    padding: 0.75rem;
+  }
+
+  .kds-ticket-list {
+    max-width: 35rem;
+    margin-inline: auto;
+  }
+
+  .kds-ticket-heading h3 {
+    font-size: 2.125rem;
+  }
+
+  .kds-ticket-timer {
+    font-size: 1.5625rem;
+  }
+
+  .kds-ticket-action {
+    min-height: 3.625rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-workspace *,
+  .kds-workspace *::before,
+  .kds-workspace *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/*
+ * =============================================================================
  * Central de Pedidos — estação operacional desktop
  * =============================================================================
  */

@@ -111,9 +111,10 @@ describe('store feature definitions', () => {
     orderPrintingEnabled: true,
   };
 
-  it('expõe somente pagamento online como disponível', () => {
+  it('expõe somente recursos realmente implementados como disponíveis', () => {
     expect(isStoreFeatureAvailable(flags, 'onlinePayments')).toBe(true);
-    expect(isStoreFeatureAvailable(flags, 'kds')).toBe(false);
+    expect(isStoreFeatureAvailable(flags, 'operationalSla')).toBe(true);
+    expect(isStoreFeatureAvailable(flags, 'kds')).toBe(true);
     expect(isStoreFeatureAvailable(flags, 'advancedReports')).toBe(false);
     expect(STORE_FEATURE_DEFINITIONS.orderPrinting.implementationStatus).toBe('COMING_SOON');
   });
