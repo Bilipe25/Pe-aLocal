@@ -176,9 +176,9 @@ function OrderFilterFields({
           <Switch
             checked={Boolean(filters.delayedOnly)}
             onCheckedChange={(checked) => onUpdate({ delayedOnly: checked || undefined })}
-            aria-label="Mostrar somente pedidos atrasados"
+            aria-label="Mostrar somente pedidos que precisam de atenção"
           />
-          <span>Somente atrasados</span>
+          <span>Somente com atenção</span>
         </label>
       )}
 

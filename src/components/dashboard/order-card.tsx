@@ -24,8 +24,10 @@ import { formatCurrency } from '@/lib/utils';
 import type {
   OrderBoardItemDTO,
   OrderOperationalAlertDTO,
+  OrderOperationalSlaConfigDTO,
   OrderQueueItemDTO,
 } from '@/types/order-query';
+import { OrderSlaIndicator } from './order-sla-indicator';
 
 export const statusMap: Record<OrderStatus, { label: string; color: string; icon: LucideIcon }> = {
   PENDING: { label: 'Novo', color: 'bg-warning-light text-warning', icon: Clock },
@@ -71,9 +73,9 @@ export interface OrderCardProps {
   timeZone?: string;
   /** A real status-transition control supplied by the board. */
   footer?: ReactNode;
+  operationalSla?: OrderOperationalSlaConfigDTO;
 }
 
-const ACCEPTANCE_ALERT_MINUTES = 3;
 const CONFIRMED_ALERT_MINUTES = 5;
 const READY_PICKUP_ALERT_MINUTES = 15;
 const READY_DISPATCH_ALERT_MINUTES = 5;
@@ -135,15 +137,6 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
   switch (order.status) {
     case 'PENDING':
     case 'AWAITING_PAYMENT':
-      if (stageElapsed >= (configuredStageThreshold ?? ACCEPTANCE_ALERT_MINUTES)) {
-        const threshold = configuredStageThreshold ?? ACCEPTANCE_ALERT_MINUTES;
-        operationalAlert = liveAlert(
-          'ACCEPTANCE_OVERDUE',
-          formatSlaAlertLabel('Aceite', stageElapsed, threshold),
-          stageElapsed,
-          threshold,
-        );
-      }
       break;
     case 'CONFIRMED':
       if (stageElapsed >= (configuredStageThreshold ?? CONFIRMED_ALERT_MINUTES)) {
@@ -310,7 +303,14 @@ function LivePromisedFulfillment({ order, timeZone }: { order: OrderCardData; ti
   );
 }
 
-export function OrderCard({ order, onClick, selected = false, timeZone, footer }: OrderCardProps) {
+export function OrderCard({
+  order,
+  onClick,
+  selected = false,
+  timeZone,
+  footer,
+  operationalSla,
+}: OrderCardProps) {
   const statusInfo = statusMap[order.status as OrderStatus];
   const paymentInfo = paymentStatusMap[order.paymentStatus as PaymentStatus];
   const StatusIcon = statusInfo.icon;
@@ -322,6 +322,7 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
   return (
     <article
       aria-labelledby={`order-card-title-${order.id}`}
+      data-selected={selected ? 'true' : 'false'}
       className={`order-card-operational bg-surface group w-full rounded-xl border p-3 shadow-sm transition-[border-color,box-shadow,transform] duration-150 motion-reduce:transition-none ${
         selected
           ? 'border-brand-500 ring-brand-500/20 ring-2'
@@ -339,7 +340,15 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
             >
               #{order.orderNumber}
             </h3>
-            <LiveElapsedStageTime order={order} />
+            {order.status === 'PENDING' ? (
+              <OrderSlaIndicator
+                config={operationalSla}
+                statusChangedAt={order.statusChangedAt}
+                fallbackElapsedMinutes={order.stageElapsedMinutes}
+              />
+            ) : (
+              <LiveElapsedStageTime order={order} />
+            )}
           </div>
           <div className="order-card-customer-row mt-1 flex min-w-0 items-center gap-2">
             <p className="text-text-primary line-clamp-2 min-w-0 text-sm leading-snug font-semibold break-words">
@@ -404,6 +413,14 @@ export function OrderCard({ order, onClick, selected = false, timeZone, footer }
       ) : null}
 
       <LivePrimaryAlert order={order} />
+      {order.status === 'PENDING' ? (
+        <OrderSlaIndicator
+          config={operationalSla}
+          statusChangedAt={order.statusChangedAt}
+          fallbackElapsedMinutes={order.stageElapsedMinutes}
+          variant="alert"
+        />
+      ) : null}
 
       <dl className="order-card-meta border-border mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-sm">
         <div className="order-card-meta-modality min-w-0">

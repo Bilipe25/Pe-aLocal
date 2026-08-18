@@ -7,14 +7,13 @@ import {
   type WebPushSenderConfig,
 } from '@/server/services/web-push-sender';
 import { revokeWebPushSubscription } from '@/server/services/web-push-revocation.service';
+import {
+  getWebPushRetryDelaySeconds,
+  WEB_PUSH_DELIVERY_LEASE_MS,
+  WEB_PUSH_MAX_DELIVERY_ATTEMPTS,
+  WEB_PUSH_MAX_RETRY_DELAY_SECONDS,
+} from '@/server/services/web-push-delivery-policy';
 import { resolveWebPushStoreIdentity } from '@/server/services/web-push-store-identity.service';
-
-const MAX_ATTEMPTS = 5;
-const CLAIM_TIMEOUT_MS = 2 * 60 * 1_000;
-
-function retryDelaySeconds(attempt: number) {
-  return Math.min(300, 5 * 2 ** Math.max(0, attempt - 1));
-}
 
 async function skipDelivery(
   db: PrismaClient,
@@ -41,9 +40,12 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
     where: {
       id: deliveryId,
       status: { in: ['PENDING', 'PROCESSING'] },
-      attempts: { lt: MAX_ATTEMPTS },
+      attempts: { lt: WEB_PUSH_MAX_DELIVERY_ATTEMPTS },
       availableAt: { lte: now },
-      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(now.getTime() - CLAIM_TIMEOUT_MS) } }],
+      OR: [
+        { lockedAt: null },
+        { lockedAt: { lt: new Date(now.getTime() - WEB_PUSH_DELIVERY_LEASE_MS) } },
+      ],
     },
     data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: now, lockToken },
     select: {
@@ -65,7 +67,10 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
     where: {
       id: claim.orderPushSubscriptionId,
       disabledAt: null,
-      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(now.getTime() - CLAIM_TIMEOUT_MS) } }],
+      OR: [
+        { lockedAt: null },
+        { lockedAt: { lt: new Date(now.getTime() - WEB_PUSH_DELIVERY_LEASE_MS) } },
+      ],
     },
     data: { lockedAt: now, lockToken },
   });
@@ -214,10 +219,10 @@ async function processDelivery(db: PrismaClient, config: WebPushSenderConfig, de
       );
       return 'revoked' as const;
     }
-    const exhausted = !failure.transient || claim.attempts >= MAX_ATTEMPTS;
+    const exhausted = !failure.transient || claim.attempts >= WEB_PUSH_MAX_DELIVERY_ATTEMPTS;
     const retrySeconds = Math.min(
-      300,
-      failure.retryAfterSeconds ?? retryDelaySeconds(claim.attempts),
+      WEB_PUSH_MAX_RETRY_DELAY_SECONDS,
+      failure.retryAfterSeconds ?? getWebPushRetryDelaySeconds(claim.attempts),
     );
     await db.$transaction([
       db.webPushDelivery.updateMany({
@@ -254,9 +259,12 @@ export async function processPendingWebPushDeliveries(
   const candidates = await db.webPushDelivery.findMany({
     where: {
       status: { in: ['PENDING', 'PROCESSING'] },
-      attempts: { lt: MAX_ATTEMPTS },
+      attempts: { lt: WEB_PUSH_MAX_DELIVERY_ATTEMPTS },
       availableAt: { lte: new Date() },
-      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(Date.now() - CLAIM_TIMEOUT_MS) } }],
+      OR: [
+        { lockedAt: null },
+        { lockedAt: { lt: new Date(Date.now() - WEB_PUSH_DELIVERY_LEASE_MS) } },
+      ],
     },
     orderBy: [{ availableAt: 'asc' }, { aggregateVersion: 'desc' }, { id: 'asc' }],
     take: batchSize,
@@ -280,9 +288,12 @@ export async function processWebPushDeliveriesForEvent(
     where: {
       orderOutboxEventId,
       status: { in: ['PENDING', 'PROCESSING'] },
-      attempts: { lt: MAX_ATTEMPTS },
+      attempts: { lt: WEB_PUSH_MAX_DELIVERY_ATTEMPTS },
       availableAt: { lte: new Date() },
-      OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(Date.now() - CLAIM_TIMEOUT_MS) } }],
+      OR: [
+        { lockedAt: null },
+        { lockedAt: { lt: new Date(Date.now() - WEB_PUSH_DELIVERY_LEASE_MS) } },
+      ],
     },
     orderBy: [{ aggregateVersion: 'desc' }, { id: 'asc' }],
     take: batchSize,

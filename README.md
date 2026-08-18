@@ -152,6 +152,10 @@ Monólito modular full-stack com Next.js. Veja `docs/architecture.md` para detal
 
 A plataforma e cada loja possuem manifest instalável. O Service Worker oferece fallback offline seguro, não armazena HTML/API/pedidos e recebe Push do consumidor e, por opt-in separado, alertas operacionais da Central. Consulte [`docs/pwa.md`](docs/pwa.md) e [`docs/web-push.md`](docs/web-push.md).
 
+## SLA operacional
+
+Lojas habilitadas podem destacar pedidos `PENDING` sem aceite aos 2 minutos e reforçá-los aos 4 minutos. O relógio usa a entrada atual em `PENDING`, não gera alertas retroativos e reutiliza o cron e o Merchant Push existentes. Consulte [`docs/operations/operational-sla.md`](docs/operations/operational-sla.md).
+
 ## Multi-tenancy
 
 Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja `docs/multi-tenancy.md`.

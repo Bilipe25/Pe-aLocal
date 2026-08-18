@@ -149,3 +149,11 @@ A auditoria com axe bloqueia violações WCAG 2 A/AA de impacto `critical` ou
 `serious` na home, login, cardápio e editor. Além do axe, os testes verificam overflow horizontal em
 mobile e alvos tocáveis mínimos em áreas operacionais. As credenciais nunca devem ser versionadas,
 impressas ou reutilizadas de produção.
+
+## SLA operacional
+
+Os testes dedicados cobrem limites 1:59/2:00/3:59/4:00, elegibilidade pós-ativação, migration
+aditiva, idempotência de alert+dispositivo, stale antes do envio, contrato compatível do Merchant
+Push, preservação do badge no Service Worker e política compartilhada de retry. Os alvos principais
+são `tests/unit/order-operational-sla*.test.ts`, `merchant-web-push-notification.test.ts`,
+`merchant-pwa-service-worker.test.ts` e `order-card-operational.test.tsx`.

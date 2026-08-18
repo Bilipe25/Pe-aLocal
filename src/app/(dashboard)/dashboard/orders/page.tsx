@@ -22,6 +22,8 @@ export default async function OrdersPage() {
     userId: context.session.userId,
     tenantRole: context.session.tenantRole,
     estimatedTimeMaxMinutes: context.store.settings?.estimatedTimeMaxMinutes ?? 50,
+    operationalSlaEnabled: context.store.entitlement?.operationalSlaEnabled ?? false,
+    operationalSlaEnabledAt: context.store.entitlement?.operationalSlaEnabledAt ?? null,
   };
   const { notificationBaseline, initialBoard } = await getOrderBoardBootstrap(queryContext, {
     localDate: initialLocalDate,

@@ -14,3 +14,5 @@ O tenant é derivado da sessão em rotas privadas e de recursos públicos já re
 No Web Push, a inscrição é global por origem+navegador, mas cada vínculo com pedido carrega tenant/loja/pedido e possui FK composta. O endpoint nunca determina tenant. Projeções e deliveries copiam o escopo exclusivamente do `OrderOutboxEvent` persistido.
 
 Para operadores, `StoreStaffPushSubscription` usa FKs compostas para membership e loja. Usuário, membership, tenant, loja, permissões e inscrição são revalidados antes de cada envio. Uma inscrição física pode acompanhar várias lojas do mesmo usuário, mas somente um usuário administrativo fica ativo por dispositivo; trocar o usuário desabilita os vínculos administrativos anteriores sem tocar nos vínculos do consumidor.
+
+Alerts e deliveries do SLA copiam tenant, loja e pedido do candidato persistido e usam FKs compostas. Antes do envio, o Worker exige que o alert, o pedido, o entitlement e a associação administrativa continuem no mesmo escopo. Uma associação de outra loja ou tenant nunca participa do fan-out.

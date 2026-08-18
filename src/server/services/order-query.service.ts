@@ -12,6 +12,10 @@ import {
   getOrderStageAlertThresholdMinutes,
 } from '@/domain/orders/order-operations';
 import {
+  ORDER_OPERATIONAL_SLA_CRITICAL_MINUTES,
+  ORDER_OPERATIONAL_SLA_WARNING_MINUTES,
+} from '@/domain/orders/operational-sla';
+import {
   canTransitionOrder,
   getNextOperationalAction,
   getOrderWorkflowLabel,
@@ -47,6 +51,7 @@ import type {
   OrderNotificationSignalsDTO,
   OrderQueueFilters,
   OrderQueuePageDTO,
+  OrderOperationalSlaConfigDTO,
 } from '@/types/order-query';
 
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -89,6 +94,7 @@ const ORDER_BOARD_ITEM_SELECT = {
   total: true,
   createdAt: true,
   statusChangedAt: true,
+  operationalStartedAt: true,
   acceptedAt: true,
   preparingAt: true,
   readyAt: true,
@@ -116,6 +122,7 @@ export interface OrderBoardBootstrapDTO {
 export interface OrderBoardTemporalSummaryDTO {
   delayedCount: number;
   asOf: string;
+  operationalSla: OrderOperationalSlaConfigDTO;
 }
 
 export interface OrderQueryContext {
@@ -125,6 +132,25 @@ export interface OrderQueryContext {
   userId: string;
   tenantRole: TenantRole;
   estimatedTimeMaxMinutes?: number;
+  operationalSlaEnabled?: boolean;
+  operationalSlaEnabledAt?: Date | null;
+}
+
+function operationalSlaConfig(context: OrderQueryContext): OrderOperationalSlaConfigDTO {
+  const enabled = Boolean(context.operationalSlaEnabled && context.operationalSlaEnabledAt);
+  return {
+    enabled,
+    enabledAt: enabled ? (context.operationalSlaEnabledAt?.toISOString() ?? null) : null,
+    warningMinutes: ORDER_OPERATIONAL_SLA_WARNING_MINUTES,
+    criticalMinutes: ORDER_OPERATIONAL_SLA_CRITICAL_MINUTES,
+  };
+}
+
+function operationalSlaDomainConfig(context: OrderQueryContext) {
+  return {
+    enabled: Boolean(context.operationalSlaEnabled && context.operationalSlaEnabledAt),
+    enabledAt: context.operationalSlaEnabledAt ?? null,
+  };
 }
 
 function orderIdFromAudit(entry: {
@@ -439,7 +465,8 @@ function orderBoardWhere(
   options: { lane: OrderBoardLaneKey; cursor?: string; now?: Date },
 ): Prisma.OrderWhereInput {
   const prioritizeOldest = options.lane !== 'FINISHED';
-  const timestampField = options.lane === 'FINISHED' ? 'statusChangedAt' : 'createdAt';
+  const timestampField =
+    options.lane === 'FINISHED' || options.lane === 'NEW' ? 'statusChangedAt' : 'createdAt';
   const and: Prisma.OrderWhereInput[] = [];
 
   if (options.lane === 'FINISHED') {
@@ -506,7 +533,17 @@ function operationalDelayCondition(context: OrderQueryContext, now: Date): Prism
 
   return {
     OR: [
-      { status: 'PENDING', createdAt: { lte: minutesAgo(3) } },
+      ...(context.operationalSlaEnabled && context.operationalSlaEnabledAt
+        ? [
+            {
+              status: 'PENDING' as const,
+              statusChangedAt: {
+                gte: context.operationalSlaEnabledAt,
+                lte: minutesAgo(ORDER_OPERATIONAL_SLA_WARNING_MINUTES),
+              },
+            },
+          ]
+        : []),
       {
         status: 'CONFIRMED',
         OR: [
@@ -557,6 +594,7 @@ function operationalDelayCondition(context: OrderQueryContext, now: Date): Prism
 function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoardItemDTO {
   const operational = getOrderOperationalSnapshot({
     ...order,
+    operationalSla: operationalSlaDomainConfig(context),
     estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
   });
   return {
@@ -610,7 +648,9 @@ async function findOrderBoardLaneItems(
   const rows = await database.order.findMany({
     where: orderBoardWhere(context, filters, statuses, { lane, cursor, now }),
     orderBy: prioritizeOldest
-      ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      ? lane === 'NEW'
+        ? [{ statusChangedAt: 'asc' }, { id: 'asc' }]
+        : [{ createdAt: 'asc' }, { id: 'asc' }]
       : [{ statusChangedAt: 'desc' }, { id: 'desc' }],
     take: pageSize + 1,
     select: ORDER_BOARD_ITEM_SELECT,
@@ -619,7 +659,7 @@ async function findOrderBoardLaneItems(
   const page = hasNextPage ? rows.slice(0, pageSize) : rows;
   const last = page.at(-1);
   const cursorTimestamp = last
-    ? lane === 'FINISHED'
+    ? lane === 'FINISHED' || lane === 'NEW'
       ? last.statusChangedAt
       : last.createdAt
     : null;
@@ -740,6 +780,7 @@ async function loadOrderBoardSnapshot(
         delayed ?? activeLaneGroups.reduce((total, group) => total + group._count._all, 0),
     },
     lanes,
+    operationalSla: operationalSlaConfig(context),
   };
 }
 
@@ -779,7 +820,11 @@ export async function getOrderBoardTemporalSummary(
       const delayedCount = await tx.order.count({
         where: delayedOperationalWhere(context, filters, asOf),
       });
-      return { delayedCount, asOf: asOf.toISOString() };
+      return {
+        delayedCount,
+        asOf: asOf.toISOString(),
+        operationalSla: operationalSlaConfig(context),
+      };
     }, ORDER_READ_TRANSACTION_OPTIONS),
   );
 }
@@ -871,6 +916,7 @@ export async function getOrderQueue(
           total: true,
           createdAt: true,
           statusChangedAt: true,
+          operationalStartedAt: true,
           acceptedAt: true,
           preparingAt: true,
           readyAt: true,
@@ -909,6 +955,7 @@ export async function getOrderQueue(
       items: page.map((order) => {
         const operational = getOrderOperationalSnapshot({
           ...order,
+          operationalSla: operationalSlaDomainConfig(context),
           estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
         });
         return {
@@ -1048,6 +1095,7 @@ export async function getOrderDetails(
         version: true,
         createdAt: true,
         statusChangedAt: true,
+        operationalStartedAt: true,
         acceptedAt: true,
         preparingAt: true,
         readyAt: true,
@@ -1125,6 +1173,7 @@ export async function getOrderDetails(
     const latestHistory = order.statusHistory[0] ?? null;
     const operational = getOrderOperationalSnapshot({
       ...order,
+      operationalSla: operationalSlaDomainConfig(context),
       estimatedTimeMaxMinutes: context.estimatedTimeMaxMinutes ?? 50,
     });
     const paymentHistory = capabilities.canViewHistory
@@ -1255,6 +1304,7 @@ export async function getOrderDetails(
         alerts: operational.alerts,
         durations: operational.durations,
       },
+      operationalSla: operationalSlaConfig(context),
       allowedActions: allowedActions(context, order, latestHistory),
     };
   });
@@ -1355,7 +1405,7 @@ export async function getDailyOrderMetrics(
         : Promise.resolve([]),
       getDb().$queryRaw<DurationMetricsRow[]>`
         SELECT
-          AVG(EXTRACT(EPOCH FROM ("acceptedAt" - "createdAt")) / 60.0)::double precision AS "averageAcceptanceMinutes",
+          AVG(EXTRACT(EPOCH FROM ("acceptedAt" - COALESCE("operationalStartedAt", "createdAt"))) / 60.0)::double precision AS "averageAcceptanceMinutes",
           AVG(EXTRACT(EPOCH FROM ("readyAt" - "preparingAt")) / 60.0)::double precision AS "averagePreparationMinutes"
         FROM "orders"
         WHERE "tenantId" = ${context.tenantId}

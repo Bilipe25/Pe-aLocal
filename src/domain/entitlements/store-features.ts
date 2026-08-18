@@ -9,9 +9,9 @@ export const STORE_FEATURE_DEFINITIONS = {
   operationalSla: {
     key: 'operationalSla',
     label: 'Pedido não atendido / SLA operacional',
-    description: 'Alertas e acompanhamento de pedidos fora do prazo operacional.',
+    description: 'Destaca e reforça pedidos que estão demorando para ser aceitos.',
     entitlementField: 'operationalSlaEnabled',
-    implementationStatus: 'COMING_SOON',
+    implementationStatus: 'AVAILABLE',
   },
   kds: {
     key: 'kds',

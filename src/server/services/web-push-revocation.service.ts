@@ -53,6 +53,20 @@ export async function revokeWebPushSubscription(
         lastError: 'push_subscription_revoked',
       },
     });
+    await tx.orderOperationalSlaDelivery.updateMany({
+      where: {
+        webPushSubscriptionId: subscriptionId,
+        status: { in: ['PENDING', 'PROCESSING'] },
+      },
+      data: {
+        status: 'REVOKED',
+        failedAt: now,
+        lockedAt: null,
+        lockToken: null,
+        lastStatusCode: statusCode,
+        lastError: 'push_subscription_revoked',
+      },
+    });
   });
 }
 

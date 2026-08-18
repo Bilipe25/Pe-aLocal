@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   domainCount: vi.fn(),
   customizationFind: vi.fn(),
   auditCreate: vi.fn(),
+  slaDeliveryUpdate: vi.fn(),
+  slaAlertUpdate: vi.fn(),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -59,6 +61,7 @@ const current = {
   tenantId: 'tenant-1',
   storeId: 'store-1',
   ...input,
+  operationalSlaEnabledAt: null,
   allowedLayoutTemplates: [...input.allowedLayoutTemplates],
   allowedVisualPresets: [...input.allowedVisualPresets],
   createdAt: new Date(),
@@ -82,6 +85,7 @@ describe('StoreEntitlementService', () => {
     mocks.customizationFind.mockResolvedValue(null);
     mocks.auditCreate.mockResolvedValue({ id: 'audit-1' });
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ now: new Date('2026-08-17T12:00:00.000Z') }]),
       storeEntitlement: {
         findUniqueOrThrow: mocks.entitlementFind,
         update: mocks.entitlementUpdate,
@@ -91,6 +95,8 @@ describe('StoreEntitlementService', () => {
       storeDomain: { count: mocks.domainCount },
       storeCustomization: { findUnique: mocks.customizationFind },
       auditLog: { create: mocks.auditCreate },
+      orderOperationalSlaDelivery: { updateMany: mocks.slaDeliveryUpdate },
+      orderOperationalSlaAlert: { updateMany: mocks.slaAlertUpdate },
     };
     mocks.getDb.mockReturnValue({
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
@@ -107,7 +113,7 @@ describe('StoreEntitlementService', () => {
     );
     expect(mocks.entitlementUpdate).toHaveBeenCalledWith({
       where: { storeId: 'store-1' },
-      data: input,
+      data: { ...input, operationalSlaEnabledAt: null },
       select: { id: true },
     });
     expect(mocks.auditCreate).toHaveBeenCalledWith({
@@ -117,6 +123,67 @@ describe('StoreEntitlementService', () => {
         storeId: 'store-1',
       }),
     });
+  });
+
+  it('grava o relógio do banco somente na primeira ativação', async () => {
+    await updateStoreEntitlement('tenant-1', 'store-1', {
+      ...input,
+      operationalSlaEnabled: true,
+    });
+
+    expect(mocks.entitlementUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          operationalSlaEnabled: true,
+          operationalSlaEnabledAt: new Date('2026-08-17T12:00:00.000Z'),
+        }),
+      }),
+    );
+  });
+
+  it('preserva a ativação existente em true para true', async () => {
+    const enabledAt = new Date('2026-08-17T10:00:00.000Z');
+    mocks.entitlementFind.mockResolvedValue({
+      ...current,
+      operationalSlaEnabled: true,
+      operationalSlaEnabledAt: enabledAt,
+    });
+
+    await updateStoreEntitlement('tenant-1', 'store-1', {
+      ...input,
+      operationalSlaEnabled: true,
+    });
+
+    expect(mocks.entitlementUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ operationalSlaEnabledAt: enabledAt }),
+      }),
+    );
+  });
+
+  it('limpa a ativação e encerra deliveries pendentes ao desabilitar', async () => {
+    mocks.entitlementFind.mockResolvedValue({
+      ...current,
+      operationalSlaEnabled: true,
+      operationalSlaEnabledAt: new Date('2026-08-17T10:00:00.000Z'),
+    });
+
+    await updateStoreEntitlement('tenant-1', 'store-1', input);
+
+    expect(mocks.entitlementUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ operationalSlaEnabledAt: null }),
+      }),
+    );
+    expect(mocks.slaDeliveryUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'SKIPPED',
+          lastError: 'operational_sla_disabled',
+        }),
+      }),
+    );
+    expect(mocks.slaAlertUpdate).toHaveBeenCalled();
   });
 
   it('não reduz o limite abaixo do uso atual', async () => {

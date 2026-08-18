@@ -57,7 +57,7 @@ describe('controles do board operacional', () => {
     expect(screen.getByLabelText('12 pedidos em preparo')).toHaveTextContent('12');
     expect(screen.getByLabelText('6 pedidos prontos')).toHaveTextContent('6');
     expect(screen.getByLabelText('5 pedidos em entrega')).toHaveTextContent('5');
-    expect(screen.getByLabelText('3 pedidos atrasados')).toHaveTextContent('3');
+    expect(screen.getByLabelText('3 pedidos com atenção')).toHaveTextContent('3');
     expect(screen.queryByRole('button', { name: /Novos/ })).not.toBeInTheDocument();
   });
 
@@ -92,7 +92,11 @@ describe('controles do board operacional', () => {
     expect(screen.getByText('Filtros avançados')).toBeInTheDocument();
     expect(screen.getByLabelText('1 filtro ativo')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Novos' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('switch', { name: 'Mostrar somente pedidos atrasados' }));
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Mostrar somente pedidos que precisam de atenção',
+      }),
+    );
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ delayedOnly: undefined }));
   });
 

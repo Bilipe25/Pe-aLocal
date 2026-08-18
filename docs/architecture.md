@@ -87,3 +87,5 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 - Infraestrutura própria de WebSockets (o realtime usa Pusher)
 - Filas adicionais além do pipeline de eventos de pedidos
 - App mobile nativo
+
+O SLA de aceite reutiliza o cron do Worker de eventos. Alerts temporais e deliveries possuem ledgers próprios, sem fabricar `OrderOutboxEvent`; `Order.statusChangedAt` identifica o ciclo e o entitlement fornece o watermark de ativação. Veja [`operations/operational-sla.md`](operations/operational-sla.md).

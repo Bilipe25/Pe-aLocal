@@ -105,11 +105,41 @@ export async function updateStoreEntitlement(
     if (published) assertCustomizationEntitlement(published, parsed.data);
     if (draft) assertCustomizationEntitlement(draft, parsed.data);
 
+    const [databaseClock] = await tx.$queryRaw<{ now: Date }[]>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP AS "now"`,
+    );
+    const operationalSlaEnabledAt = parsed.data.operationalSlaEnabled
+      ? current.operationalSlaEnabled
+        ? current.operationalSlaEnabledAt
+        : (databaseClock?.now ?? new Date())
+      : null;
+
     const updated = await tx.storeEntitlement.update({
       where: { storeId },
-      data: parsed.data,
+      data: { ...parsed.data, operationalSlaEnabledAt },
       select: entitlementSelect,
     });
+    if (current.operationalSlaEnabled && !parsed.data.operationalSlaEnabled) {
+      const disabledAt = databaseClock?.now ?? new Date();
+      await tx.orderOperationalSlaDelivery.updateMany({
+        where: {
+          tenantId,
+          storeId,
+          status: { in: ['PENDING', 'PROCESSING'] },
+        },
+        data: {
+          status: 'SKIPPED',
+          failedAt: disabledAt,
+          lockedAt: null,
+          lockToken: null,
+          lastError: 'operational_sla_disabled',
+        },
+      });
+      await tx.orderOperationalSlaAlert.updateMany({
+        where: { tenantId, storeId, resolvedAt: null },
+        data: { resolvedAt: disabledAt },
+      });
+    }
     await tx.auditLog.create({
       data: {
         tenantId,
@@ -131,11 +161,15 @@ export async function updateStoreEntitlement(
             scheduledBannersEnabled: current.scheduledBannersEnabled,
             onlinePaymentsEnabled: current.onlinePaymentsEnabled,
             operationalSlaEnabled: current.operationalSlaEnabled,
+            operationalSlaEnabledAt: current.operationalSlaEnabledAt?.toISOString() ?? null,
             kdsEnabled: current.kdsEnabled,
             advancedReportsEnabled: current.advancedReportsEnabled,
             orderPrintingEnabled: current.orderPrintingEnabled,
           },
-          next: parsed.data,
+          next: {
+            ...parsed.data,
+            operationalSlaEnabledAt: operationalSlaEnabledAt?.toISOString() ?? null,
+          },
         },
       },
     });

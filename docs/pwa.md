@@ -70,3 +70,5 @@ pnpm test:workerd
 ```
 
 O gate definitivo usa Linux e Node.js 22. O teste E2E de controle offline é executado em `next start` ou workerd, pois o registro é intencionalmente desativado em `next dev`.
+
+O cache próprio está em `pedidolocal-shell-v4`. A versão `v4` reconhece `reminderStage` e não limpa o badge administrativo ao clicar em reminders do SLA; o clique de um Push inicial continua com o comportamento anterior. Essa mudança não amplia a allowlist nem a política de CacheStorage.

@@ -1,5 +1,6 @@
 import type { OrderModality, OrderStatus, PaymentMethod, PaymentStatus } from '@/types';
 import { formatSlaAlertLabel } from './order-time';
+import { getOrderOperationalSlaStage, type OrderOperationalSlaConfig } from './operational-sla';
 
 export type OrderOperationalAlertCode =
   | 'ACCEPTANCE_OVERDUE'
@@ -29,6 +30,8 @@ export interface OrderOperationalInput {
   deliveredAt: Date | null;
   cancelledAt: Date | null;
   statusChangedAt: Date;
+  operationalStartedAt?: Date | null;
+  operationalSla?: OrderOperationalSlaConfig;
   estimatedTimeMaxMinutes: number;
 }
 
@@ -40,7 +43,6 @@ export interface OrderStageDurations {
   totalMinutes: number;
 }
 
-const ACCEPTANCE_ALERT_MINUTES = 3;
 const CONFIRMED_ALERT_MINUTES = 5;
 const READY_PICKUP_ALERT_MINUTES = 15;
 const READY_DISPATCH_ALERT_MINUTES = 5;
@@ -52,7 +54,7 @@ export function getOrderStageAlertThresholdMinutes(
   switch (input.status) {
     case 'PENDING':
     case 'AWAITING_PAYMENT':
-      return ACCEPTANCE_ALERT_MINUTES;
+      return null;
     case 'CONFIRMED':
       return CONFIRMED_ALERT_MINUTES;
     case 'PREPARING':
@@ -77,8 +79,9 @@ function minutesBetween(start: Date | null, end: Date | null) {
 function currentStage(input: OrderOperationalInput) {
   switch (input.status) {
     case 'PENDING':
+      return { label: 'Aguardando aceite', startedAt: input.statusChangedAt };
     case 'AWAITING_PAYMENT':
-      return { label: 'Aguardando aceite', startedAt: input.createdAt };
+      return { label: 'Aguardando pagamento', startedAt: input.createdAt };
     case 'CONFIRMED':
       return { label: 'Aguardando preparo', startedAt: input.acceptedAt ?? input.statusChangedAt };
     case 'PREPARING':
@@ -103,15 +106,28 @@ function operationalAlert(
 ): OrderOperationalAlert | null {
   const critical = (threshold: number) => elapsedMinutes >= threshold * 2;
   switch (input.status) {
-    case 'PENDING':
+    case 'PENDING': {
+      if (!input.operationalSla) return null;
+      const stage = getOrderOperationalSlaStage(
+        {
+          status: input.status,
+          statusChangedAt: input.statusChangedAt,
+          config: input.operationalSla,
+        },
+        new Date(input.statusChangedAt.getTime() + elapsedMinutes * 60_000),
+      );
+      if (stage !== 'WARNING' && stage !== 'CRITICAL') return null;
+      return {
+        code: 'ACCEPTANCE_OVERDUE',
+        label:
+          stage === 'CRITICAL'
+            ? `Atenção: ${elapsedMinutes} min sem aceite`
+            : `Precisa de atenção · ${elapsedMinutes} min sem aceite`,
+        severity: stage === 'CRITICAL' ? 'critical' : 'warning',
+      };
+    }
     case 'AWAITING_PAYMENT':
-      return elapsedMinutes >= ACCEPTANCE_ALERT_MINUTES
-        ? {
-            code: 'ACCEPTANCE_OVERDUE',
-            label: formatSlaAlertLabel('Aceite', elapsedMinutes, ACCEPTANCE_ALERT_MINUTES),
-            severity: critical(ACCEPTANCE_ALERT_MINUTES) ? 'critical' : 'warning',
-          }
-        : null;
+      return null;
     case 'CONFIRMED':
       return elapsedMinutes >= CONFIRMED_ALERT_MINUTES
         ? {
@@ -201,7 +217,7 @@ export function getOrderOperationalSnapshot(input: OrderOperationalInput, now = 
     alerts,
     durations: {
       acceptanceMinutes: minutesBetween(
-        input.createdAt,
+        input.operationalStartedAt ?? input.createdAt,
         input.acceptedAt ?? (input.status === 'PENDING' ? now : null),
       ),
       preparationMinutes: minutesBetween(

@@ -95,6 +95,7 @@
 - [x] PWA instalável com manifest global/white-label e fallback offline seguro
 - [x] Web Push transacional opt-in para acompanhamento do consumidor
 - [x] Web Push operacional opt-in para novos pedidos na Central
+- [x] SLA operacional opt-in de aceite com estados normal, atenção e crítico
 - [ ] Deploy na Vercel
 
 ---

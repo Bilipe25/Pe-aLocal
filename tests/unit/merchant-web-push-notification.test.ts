@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildMerchantNewOrderNotification,
+  buildMerchantOperationalSlaNotification,
   buildMerchantTestNotification,
 } from '@/lib/web-push/merchant-notification';
 
@@ -50,5 +51,41 @@ describe('payload Merchant Web Push', () => {
     const result = buildMerchantTestNotification(input.origin);
     expect(result.payload.pedidolocal.type).toBe('test');
     expect(result.payload.pedidolocal).not.toHaveProperty('pendingActionableCount');
+  });
+
+  it.each([
+    ['WARNING', 'Pedido #184 aguardando', false],
+    ['CRITICAL', 'Atenção ao pedido #184', true],
+  ] as const)('mantém o contrato legado no reminder %s', async (stage, title, persistent) => {
+    const result = await buildMerchantOperationalSlaNotification({
+      alertId: input.eventId,
+      orderId: input.orderId,
+      orderNumber: input.orderNumber,
+      orderVersion: input.orderVersion,
+      storeId: input.storeId,
+      storeName: input.storeName,
+      origin: input.origin,
+      includeStoreName: false,
+      pendingActionableCount: 1,
+      iconAssetId: null,
+      reminderStage: stage,
+      elapsedMinutes: stage === 'CRITICAL' ? 4 : 2,
+    });
+
+    expect(result.payload.notification).toMatchObject({
+      title,
+      renotify: true,
+      requireInteraction: persistent,
+    });
+    expect(result.payload.pedidolocal).toMatchObject({
+      audience: 'merchant',
+      type: 'new-order',
+      reminderStage: stage,
+      pendingActionableCount: 1,
+    });
+    expect(result.payload.notification.tag).toBe(
+      (await buildMerchantNewOrderNotification(input)).payload.notification.tag,
+    );
+    expect(JSON.stringify(result.payload)).not.toMatch(/customer|phone|address|payment/i);
   });
 });

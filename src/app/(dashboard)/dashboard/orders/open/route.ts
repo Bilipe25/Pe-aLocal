@@ -5,6 +5,7 @@ import { requireTenantStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import {
   errorToResponse,
+  AuthenticationError,
   AuthorizationError,
   NotFoundError,
   ValidationError,
@@ -42,6 +43,12 @@ export async function GET(request: Request) {
     response.headers.set('Cache-Control', 'private, no-store, max-age=0');
     return response;
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      const url = new URL(request.url);
+      const destination = new URL('/login', request.url);
+      destination.searchParams.set('redirect', `${url.pathname}${url.search}`);
+      return NextResponse.redirect(destination, 303);
+    }
     return errorToResponse(error);
   }
 }

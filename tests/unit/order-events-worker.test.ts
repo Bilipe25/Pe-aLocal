@@ -7,6 +7,10 @@ const mocks = vi.hoisted(() => ({
   processOrderOutboxMessage: vi.fn(),
   relayPendingOrderOutboxEvents: vi.fn(),
   purgeProcessedOrderOutboxEvents: vi.fn(),
+  purgeResolvedOrderOperationalSlaAlerts: vi.fn(),
+  reconcileOrderOperationalSlaAlerts: vi.fn(),
+  resolveInactiveOrderOperationalSlaAlerts: vi.fn(),
+  processPendingOrderOperationalSlaDeliveries: vi.fn(),
   projectWebPushDispatch: vi.fn(),
   reconcileWebPushDispatches: vi.fn(),
   processPendingWebPushDeliveries: vi.fn(),
@@ -32,6 +36,14 @@ vi.mock('@/server/services/order-outbox-processor', () => ({
 }));
 vi.mock('@/server/services/order-outbox-retention', () => ({
   purgeProcessedOrderOutboxEvents: mocks.purgeProcessedOrderOutboxEvents,
+}));
+vi.mock('@/server/services/order-operational-sla-alert.service', () => ({
+  purgeResolvedOrderOperationalSlaAlerts: mocks.purgeResolvedOrderOperationalSlaAlerts,
+  reconcileOrderOperationalSlaAlerts: mocks.reconcileOrderOperationalSlaAlerts,
+  resolveInactiveOrderOperationalSlaAlerts: mocks.resolveInactiveOrderOperationalSlaAlerts,
+}));
+vi.mock('@/server/services/order-operational-sla-delivery.service', () => ({
+  processPendingOrderOperationalSlaDeliveries: mocks.processPendingOrderOperationalSlaDeliveries,
 }));
 vi.mock('@/server/services/web-push-dispatch.service', () => ({
   projectWebPushDispatch: mocks.projectWebPushDispatch,
@@ -112,6 +124,21 @@ describe('order events worker', () => {
     mocks.purgeProcessedOrderOutboxEvents.mockResolvedValue({
       deleted: 0,
       retentionDays: 30,
+    });
+    mocks.purgeResolvedOrderOperationalSlaAlerts.mockResolvedValue({
+      deleted: 0,
+      retentionDays: 30,
+    });
+    mocks.reconcileOrderOperationalSlaAlerts.mockResolvedValue({
+      candidates: 0,
+      created: 0,
+      deliveries: 0,
+      durationMs: 1,
+    });
+    mocks.resolveInactiveOrderOperationalSlaAlerts.mockResolvedValue({ resolved: 0 });
+    mocks.processPendingOrderOperationalSlaDeliveries.mockResolvedValue({
+      candidates: 0,
+      outcomes: {},
     });
     mocks.projectWebPushDispatch.mockResolvedValue({ projected: true, deliveries: 1 });
     mocks.processWebPushDeliveriesForEvent.mockResolvedValue({
@@ -322,13 +349,15 @@ describe('order events worker', () => {
     expect(mocks.disconnect).toHaveBeenCalledOnce();
   });
 
-  it('não abre conexão de retenção fora da janela horária', async () => {
+  it('fora da retenção executa apenas o ciclo temporal do SLA', async () => {
     const env = environment();
     env.ORDER_OUTBOX_RETENTION_ENABLED = 'true';
 
     await worker.scheduled({ scheduledTime: Date.UTC(2026, 6, 31, 9, 18) } as never, env as never);
 
-    expect(mocks.createDatabaseClient).not.toHaveBeenCalled();
+    expect(mocks.createDatabaseClient).toHaveBeenCalledOnce();
     expect(mocks.purgeProcessedOrderOutboxEvents).not.toHaveBeenCalled();
+    expect(mocks.resolveInactiveOrderOperationalSlaAlerts).toHaveBeenCalledOnce();
+    expect(mocks.reconcileOrderOperationalSlaAlerts).toHaveBeenCalledOnce();
   });
 });

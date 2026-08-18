@@ -29,6 +29,13 @@ export interface OrderBoardFilters {
   delayedOnly?: boolean;
 }
 
+export interface OrderOperationalSlaConfigDTO {
+  enabled: boolean;
+  enabledAt: string | null;
+  warningMinutes: number;
+  criticalMinutes: number;
+}
+
 export interface OrderBoardItemPreviewDTO {
   id: string;
   productName: string;
@@ -83,6 +90,7 @@ export interface OrderBoardSummaryDTO {
 export interface OrderBoardSnapshotDTO {
   summary: OrderBoardSummaryDTO;
   lanes: Record<OrderBoardLaneKey, OrderBoardLaneDTO>;
+  operationalSla: OrderOperationalSlaConfigDTO;
 }
 
 export interface OrderOperationalAlertDTO {
@@ -262,6 +270,7 @@ export interface OrderDetailsDTO {
       totalMinutes: number;
     };
   };
+  operationalSla: OrderOperationalSlaConfigDTO;
   allowedActions: OrderAllowedActionsDTO;
 }
 

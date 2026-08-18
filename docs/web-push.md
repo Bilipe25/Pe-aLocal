@@ -78,4 +78,8 @@ Para rollback do consumidor, desligue `WEB_PUSH_ENABLED`. Para rollback operacio
 - iOS/iPadOS exige instalação na Tela de Início.
 - Badge é progressivo e varia por plataforma.
 - A allowlist de hosts Push deve ser revisada ao adotar novos navegadores/provedores.
-- Lembretes, campanhas, marketing, ações de aceitar/cancelar e preferências avançadas não fazem parte desta fase.
+- Campanhas, marketing, ações de aceitar/cancelar pelo Push e preferências avançadas não fazem parte desta fase.
+
+## Reminders do SLA operacional
+
+O SLA de aceite reutiliza a inscrição administrativa, o deep link, o topic e a tag do Push inicial. O contrato mantém `audience: merchant` e `type: new-order`, adicionando `reminderStage: WARNING | CRITICAL`. `WARNING` usa `requireInteraction=false`; `CRITICAL`, `true`. Ambos usam `renotify=true`, TTL curto e a contagem atual de pedidos `PENDING`, sem PII. Detecção, revalidação, retry e rollback estão em [`operations/operational-sla.md`](operations/operational-sla.md).
