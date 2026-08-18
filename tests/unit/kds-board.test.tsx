@@ -36,6 +36,11 @@ vi.mock('next/image', () => ({
 
 vi.mock('@/hooks/use-kds-orders', () => ({
   kdsQueryKeys: {
+    snapshot: (storeId: string, authorizationScope: string) => [
+      'kds-orders',
+      storeId,
+      authorizationScope,
+    ],
     store: (storeId: string) => ['kds-orders', storeId],
   },
   useKdsOrders: () => ({
@@ -111,6 +116,7 @@ function snapshot(items: KdsOrderDTO[]): KdsSnapshotDTO {
     },
     total: items.length,
     truncated: false,
+    estimatedTimeMaxMinutes: 30,
     updatedAt: '2026-08-18T12:04:00.000Z',
   };
 }
@@ -139,13 +145,33 @@ describe('Tela da cozinha', () => {
     mocks.snapshot = snapshot([order('CONFIRMED'), order('PREPARING'), order('READY')]);
     mocks.startPreparation.mockResolvedValue({
       success: true,
-      data: { version: 8, notificationPending: false },
+      data: {
+        orderId: 'order-CONFIRMED',
+        status: 'PREPARING',
+        version: 8,
+        statusChangedAt: '2026-08-18T12:05:00.000Z',
+        notificationPending: false,
+      },
     });
     mocks.markReady.mockResolvedValue({
       success: true,
-      data: { version: 8, notificationPending: false },
+      data: {
+        orderId: 'order-PREPARING',
+        status: 'READY',
+        version: 8,
+        statusChangedAt: '2026-08-18T12:05:00.000Z',
+        notificationPending: false,
+      },
     });
-    mocks.undo.mockResolvedValue({ success: true, data: { version: 9 } });
+    mocks.undo.mockResolvedValue({
+      success: true,
+      data: {
+        orderId: 'order-PREPARING',
+        status: 'CONFIRMED',
+        version: 9,
+        statusChangedAt: '2026-08-18T12:06:00.000Z',
+      },
+    });
   });
 
   it('renderiza somente as três etapas oficiais e todos os detalhes de preparo', () => {
@@ -161,7 +187,9 @@ describe('Tela da cozinha', () => {
   });
 
   it('usa as transições oficiais com a versão esperada', async () => {
-    renderBoard();
+    const { queryClient } = renderBoard();
+    const setQueryData = vi.spyOn(queryClient, 'setQueryData');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
 
     fireEvent.click(screen.getByRole('button', { name: /^Iniciar preparo/ }));
     await waitFor(() =>
@@ -169,6 +197,13 @@ describe('Tela da cozinha', () => {
         orderId: 'order-CONFIRMED',
         expectedVersion: 7,
       }),
+    );
+    expect(setQueryData).toHaveBeenCalledWith(
+      ['kds-orders', 'store-a', 'user-a:OWNER'],
+      expect.any(Function),
+    );
+    expect(setQueryData.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidate.mock.invocationCallOrder[0],
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^Marcar como pronto/ }));
@@ -185,7 +220,8 @@ describe('Tela da cozinha', () => {
       success: false,
       error: { code: 'CONFLICT', message: 'mensagem interna' },
     });
-    renderBoard();
+    const { queryClient } = renderBoard();
+    const setQueryData = vi.spyOn(queryClient, 'setQueryData');
 
     fireEvent.click(screen.getByRole('button', { name: /^Marcar como pronto/ }));
 
@@ -195,6 +231,7 @@ describe('Tela da cozinha', () => {
       ),
     );
     expect(mocks.markReady).toHaveBeenCalledOnce();
+    expect(setQueryData).not.toHaveBeenCalled();
   });
 
   it('invalida o snapshot ao receber atualização da Central ou de outro KDS', () => {

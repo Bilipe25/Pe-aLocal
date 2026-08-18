@@ -40,5 +40,6 @@ export interface KdsSnapshotDTO {
   lanes: Record<KdsLaneKey, KdsLaneDTO>;
   total: number;
   truncated: boolean;
+  estimatedTimeMaxMinutes: number;
   updatedAt: string;
 }

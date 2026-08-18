@@ -68,6 +68,7 @@ const mutationResult = {
   status: 'CONFIRMED' as const,
   paymentStatus: 'PENDING' as const,
   version: 3,
+  statusChangedAt: new Date('2026-08-18T12:05:00.000Z'),
   paymentUpdated: false,
   outboxEventIds: ['outbox-a'],
 };
@@ -128,6 +129,10 @@ describe('ações administrativas de pedidos', () => {
     const result = await acceptOrderAction(input);
 
     expect(result.success).toBe(true);
+    expect(result).toMatchObject({
+      success: true,
+      data: { statusChangedAt: '2026-08-18T12:05:00.000Z' },
+    });
     expect(mocks.requireActiveStoreContext).toHaveBeenCalledWith(Permission.ACCEPT_ORDERS);
     expect(mocks.acceptOrder).toHaveBeenCalledWith(
       expect.objectContaining({
