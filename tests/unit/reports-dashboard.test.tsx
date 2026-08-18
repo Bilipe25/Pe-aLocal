@@ -4,20 +4,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReportsDashboard } from '@/features/reports/components/reports-dashboard';
 import type { AdvancedReportsDTO } from '@/types/reports';
 
-const mocks = vi.hoisted(() => ({
-  getAdvancedReportsAction: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ getAdvancedReportsAction: vi.fn() }));
 
 vi.mock('@/features/reports/actions', () => ({
   getAdvancedReportsAction: mocks.getAdvancedReportsAction,
 }));
+
+const noBase = {
+  direction: 'NO_BASE',
+  changePercent: null,
+  label: 'Sem base anterior',
+} as const;
+const stableDuration = {
+  direction: 'STABLE',
+  changeSeconds: 0,
+  changePercent: 0,
+  label: 'Sem mudança relevante',
+} as const;
 
 function reportData(overrides: Partial<AdvancedReportsDTO> = {}): AdvancedReportsDTO {
   return {
     period: {
       preset: 'LAST_7_DAYS',
       label: '12–18 de ago de 2026',
-      comparisonLabel: '05–11 de ago de 2026',
+      comparisonLabel: 'Mesmo intervalo imediatamente anterior',
       startLocalDate: '2026-08-12',
       endLocalDate: '2026-08-18',
       timeZone: 'America/Fortaleza',
@@ -34,20 +44,30 @@ function reportData(overrides: Partial<AdvancedReportsDTO> = {}): AdvancedReport
         completedValue: {
           direction: 'UP',
           changePercent: 12,
-          label: '12% acima do período anterior',
+          label: '12% acima do intervalo anterior',
         },
         operationalOrders: {
           direction: 'UP',
           changePercent: 8,
-          label: '8% acima do período anterior',
+          label: '8% acima do intervalo anterior',
         },
-        averageTicket: { direction: 'STABLE', changePercent: 0, label: 'Sem mudança relevante' },
+        averageTicket: {
+          direction: 'STABLE',
+          changePercent: 0,
+          label: 'Sem mudança relevante',
+        },
         cancelledOrders: {
           direction: 'DOWN',
           changePercent: -2,
-          label: '2% abaixo do período anterior',
+          label: '2% abaixo do intervalo anterior',
         },
       },
+    },
+    trend: {
+      direction: 'GROWING',
+      label: 'Tendência de crescimento',
+      description: '8% acima do intervalo anterior. Histórico, não previsão.',
+      sampleSize: 186,
     },
     series: [
       {
@@ -72,54 +92,141 @@ function reportData(overrides: Partial<AdvancedReportsDTO> = {}): AdvancedReport
         completedValueCents: 191300,
       },
     ],
-    products: [
-      { productId: 'product-a', name: 'X-Bacon da Casa', quantity: 74 },
-      { productId: 'product-b', name: 'Batata crocante', quantity: 58 },
-    ],
-    peakHour: { hour: 19, label: '19h–20h', orderCount: 42, sharePercent: 22.6 },
+    products: {
+      top: [
+        { productId: 'product-a', name: 'X-Bacon da Casa', quantity: 74 },
+        { productId: 'product-b', name: 'Batata crocante', quantity: 58 },
+      ],
+      movements: [
+        {
+          productId: 'product-a',
+          name: 'X-Bacon da Casa',
+          currentQuantity: 74,
+          previousQuantity: 50,
+          direction: 'UP',
+          changePercent: 48,
+          label: '+48%',
+        },
+      ],
+    },
+    hours: {
+      peak: {
+        startHour: 19,
+        endHour: 21,
+        label: '19h–21h',
+        orderCount: 42,
+        sharePercent: 22.6,
+      },
+      quiet: {
+        startHour: 15,
+        endHour: 17,
+        label: '15h–17h',
+        orderCount: 8,
+        sharePercent: 4.3,
+      },
+      strongestWeekday: null,
+    },
     operation: {
       averageAcceptanceSeconds: 132,
       acceptanceSampleSize: 168,
+      acceptanceComparison: stableDuration,
       averagePreparationSeconds: 1074,
       preparationSampleSize: 151,
-      attentionAlertsCount: 9,
+      preparationComparison: {
+        direction: 'SLOWER',
+        changeSeconds: 174,
+        changePercent: 19.3,
+        label: '2 min 54 s mais lento',
+      },
+      bottleneck: {
+        stage: 'PREPARATION',
+        title: 'O principal aumento aconteceu no preparo.',
+        description: 'Entre 19h–21h, a média chegou a 20 min.',
+        currentAverageSeconds: 1074,
+        previousAverageSeconds: 900,
+        changeSeconds: 174,
+        peakWindow: { label: '19h–21h', averageSeconds: 1200, sampleSize: 38 },
+      },
+      sla: { attentionOrders: 9, criticalOrders: 3, comparison: noBase },
     },
     modalities: [
-      { modality: 'DELIVERY', label: 'Entrega', orderCount: 121, sharePercent: 65.1 },
-      { modality: 'PICKUP', label: 'Retirada', orderCount: 65, sharePercent: 34.9 },
+      {
+        modality: 'DELIVERY',
+        label: 'Entrega',
+        orderCount: 121,
+        sharePercent: 65.1,
+        completedPaidOrders: 110,
+        averageTicketCents: 5182,
+        cancelledOrders: 5,
+        cancelledRatePercent: 4.1,
+      },
+      {
+        modality: 'PICKUP',
+        label: 'Retirada',
+        orderCount: 65,
+        sharePercent: 34.9,
+        completedPaidOrders: 62,
+        averageTicketCents: 4388,
+        cancelledOrders: 2,
+        cancelledRatePercent: 3.1,
+      },
     ],
     insights: [
-      { id: 'PEAK_HOUR', text: '19h–20h foi o horário mais forte, com 42 pedidos.' },
-      { id: 'TOP_PRODUCT', text: 'X-Bacon da Casa liderou as saídas, com 74 unidades.' },
+      {
+        id: 'PREPARATION_BOTTLENECK',
+        category: 'OPERATION',
+        priority: 100,
+        tone: 'ATTENTION',
+        title: 'Preparo pede atenção',
+        description: 'Ficou 2 min 54 s mais lento.',
+        evidence: {
+          metric: 'AVERAGE_PREPARATION_SECONDS',
+          current: 1074,
+          previous: 900,
+          changePercent: 19.3,
+          unit: 'SECONDS',
+        },
+        sampleSize: 38,
+      },
+      {
+        id: 'PRODUCT_GROWTH',
+        category: 'PRODUCT',
+        priority: 60,
+        tone: 'POSITIVE',
+        title: 'Produto em alta',
+        description: 'X-Bacon da Casa vendeu 74 unidades.',
+        evidence: {
+          metric: 'PRODUCT_QUANTITY',
+          current: 74,
+          previous: 50,
+          changePercent: 48,
+          unit: 'UNITS',
+        },
+        sampleSize: 124,
+      },
     ],
-    insightsMinimumSample: 5,
-    hasEnoughDataForInsights: true,
+    intelligenceState: 'READY',
     ...overrides,
   };
 }
 
-describe('interface dos relatórios avançados', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+describe('interface dos relatórios avançados V2', () => {
+  beforeEach(() => vi.clearAllMocks());
 
   it('apresenta a hierarquia aprovada, números coerentes e alternativa tabular ao gráfico', () => {
     render(<ReportsDashboard initialData={reportData()} />);
 
-    expect(
-      screen.getByRole('heading', { name: 'Entenda sua loja sem complicação' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'O que mudou na sua loja' })).toBeInTheDocument();
     expect(screen.getByText('R$ 8.420,50')).toBeInTheDocument();
     expect(screen.getByText('R$ 48,96')).toBeInTheDocument();
-    expect(screen.getByText('3,8% dos pedidos operacionais')).toBeInTheDocument();
+    expect(screen.getByText('3,8% dos pedidos')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Destaques do período' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Movimento no período' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('table', { name: 'Pedidos e valor concluído por intervalo' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('X-Bacon da Casa')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tendência e produtos' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Pedidos por intervalo' })).toBeInTheDocument();
+    expect(screen.getAllByText('X-Bacon da Casa').length).toBeGreaterThan(0);
     expect(screen.getByText('2min 12s')).toBeInTheDocument();
     expect(screen.getByText('17min 54s')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Comparação por modalidade' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveClass('min-h-11');
   });
 
@@ -134,10 +241,7 @@ describe('interface dos relatórios avançados', () => {
         timeZone: 'America/Fortaleza',
         granularity: 'HOUR',
       },
-      summary: {
-        ...reportData().summary,
-        operationalOrders: 24,
-      },
+      summary: { ...reportData().summary, operationalOrders: 24 },
     });
     mocks.getAdvancedReportsAction.mockResolvedValue({ success: true, data: today });
     render(<ReportsDashboard initialData={reportData()} />);
@@ -147,11 +251,11 @@ describe('interface dos relatórios avançados', () => {
     await waitFor(() =>
       expect(mocks.getAdvancedReportsAction).toHaveBeenCalledWith({ preset: 'TODAY' }),
     );
-    await waitFor(() => expect(screen.getByText('Hoje, até 12:34')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Hoje, até 12:34/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('mostra vazio, amostra insuficiente e erro sem expor estruturas incompletas', async () => {
+  it('mostra vazio e erro sem expor estruturas incompletas', async () => {
     const empty = reportData({
       summary: {
         ...reportData().summary,
@@ -163,7 +267,7 @@ describe('interface dos relatórios avançados', () => {
         cancelledRatePercent: 0,
       },
       insights: [],
-      hasEnoughDataForInsights: false,
+      intelligenceState: 'INSUFFICIENT',
     });
     mocks.getAdvancedReportsAction.mockResolvedValue({
       success: false,
@@ -172,9 +276,9 @@ describe('interface dos relatórios avançados', () => {
     render(<ReportsDashboard initialData={empty} />);
 
     expect(
-      screen.getByRole('heading', { name: 'Nenhum pedido neste período' }),
+      screen.getByRole('heading', { name: 'Ainda estamos conhecendo sua operação' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Movimento no período' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Tendência e produtos' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '30 dias' }));
     await waitFor(() =>
@@ -186,12 +290,37 @@ describe('interface dos relatórios avançados', () => {
   it('explica por que não há destaques quando a amostra é insuficiente', () => {
     render(
       <ReportsDashboard
-        initialData={reportData({ insights: [], hasEnoughDataForInsights: false })}
+        initialData={reportData({
+          insights: [],
+          intelligenceState: 'INSUFFICIENT',
+          trend: {
+            direction: 'INSUFFICIENT',
+            label: 'Sem tendência comparável',
+            description: 'Ainda não há base suficiente para comparar.',
+            sampleSize: 3,
+          },
+        })}
       />,
     );
 
-    expect(
-      screen.getByText(/São necessários pelo menos 5 pedidos operacionais/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Ainda não há dados suficientes para comparar/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Operação' })).toBeInTheDocument();
+    expect(screen.getByText('Sem tendência comparável')).toBeInTheDocument();
+    expect(screen.getAllByText('X-Bacon da Casa').length).toBeGreaterThan(0);
+  });
+
+  it('mantém duração anômala visível em horas legíveis', () => {
+    render(
+      <ReportsDashboard
+        initialData={reportData({
+          operation: {
+            ...reportData().operation,
+            averageAcceptanceSeconds: 40309,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('11h 11min 49s')).toBeInTheDocument();
   });
 });

@@ -102,16 +102,22 @@ export function resolveReportPeriod(
 
   if (input.preset === 'CUSTOM') {
     previousStart = getStoreDayRangeUtc(previousStartLocalDate, timeZone).start;
+  } else {
+    const elapsed = Math.max(0, currentEnd.getTime() - currentStart.getTime());
+    previousStart = new Date(previousEnd.getTime() - elapsed);
   }
 
   return {
     preset: input.preset,
     label: formatPeriodLabel(startLocalDate, endLocalDate),
-    comparisonLabel: formatPeriodLabel(previousStartLocalDate, addLocalDays(startLocalDate, -1)),
+    comparisonLabel:
+      input.preset === 'CUSTOM'
+        ? formatPeriodLabel(previousStartLocalDate, addLocalDays(startLocalDate, -1))
+        : 'Mesmo intervalo imediatamente anterior',
     startLocalDate,
     endLocalDate,
     durationDays,
-    granularity: durationDays === 1 ? 'HOUR' : durationDays <= 31 ? 'DAY' : 'WEEK',
+    granularity: durationDays === 1 ? 'HOUR' : durationDays <= 14 ? 'DAY' : 'WEEK',
     current: { start: currentStart, end: currentEnd },
     previous: { start: previousStart, end: previousEnd },
   };
