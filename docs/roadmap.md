@@ -71,6 +71,8 @@
 - [x] Confirmação manual de pagamento Pix/Dinheiro
 - [x] Filtros por Data/Status
 - [x] Dashboard com métricas do dia
+- [x] Tela da cozinha (KDS) sincronizada com a Central pela mesma entidade `Order`
+- [x] Concorrência multi-dispositivo com CAS e reconciliação realtime/polling
 
 ## Fase 7 — Qualidade e Deploy
 

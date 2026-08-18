@@ -16,3 +16,7 @@ No Web Push, a inscrição é global por origem+navegador, mas cada vínculo com
 Para operadores, `StoreStaffPushSubscription` usa FKs compostas para membership e loja. Usuário, membership, tenant, loja, permissões e inscrição são revalidados antes de cada envio. Uma inscrição física pode acompanhar várias lojas do mesmo usuário, mas somente um usuário administrativo fica ativo por dispositivo; trocar o usuário desabilita os vínculos administrativos anteriores sem tocar nos vínculos do consumidor.
 
 Alerts e deliveries do SLA copiam tenant, loja e pedido do candidato persistido e usam FKs compostas. Antes do envio, o Worker exige que o alert, o pedido, o entitlement e a associação administrativa continuem no mesmo escopo. Uma associação de outra loja ou tenant nunca participa do fan-out.
+
+O snapshot do KDS deriva tenant e loja da sessão e da loja ativa, exige entitlement e permissões,
+e filtra ambos os campos em todas as consultas. Seu DTO exclui cliente, contato, endereço e
+pagamento. A autorização do canal realtime continua vinculada à mesma loja ativa.
