@@ -95,3 +95,9 @@ pnpm db:studio     # Abrir Prisma Studio
 pnpm db:validate   # Validar schema
 pnpm db:push       # Push schema sem migration (dev)
 ```
+
+## SLA operacional
+
+`StoreEntitlement.operationalSlaEnabledAt` é o watermark que impede alertas retroativos. `OrderOperationalSlaAlert` persiste no máximo um `WARNING` e um `CRITICAL` por `(orderId, actionableAt)`; `OrderOperationalSlaDelivery` registra uma entrega por alert+inscrição e reutiliza `WebPushDeliveryStatus`. FKs compostas preservam tenant/loja/pedido, deliveries são removidas por cascade e ambas as tabelas têm RLS e acesso direto revogado.
+
+A migration é aditiva e não altera pedidos. Linhas que já estavam habilitadas recebem `CURRENT_TIMESTAMP` durante a migration.

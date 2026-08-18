@@ -27,14 +27,41 @@ function input(overrides: Partial<OrderOperationalInput> = {}): OrderOperational
 }
 
 describe('tempo e alertas operacionais do pedido', () => {
-  it('alerta pedido sem aceite após três minutos', () => {
-    const snapshot = getOrderOperationalSnapshot(input(), new Date('2026-07-22T12:04:00.000Z'));
+  it('alerta pedido elegível sem aceite após dois minutos', () => {
+    const snapshot = getOrderOperationalSnapshot(
+      input({
+        operationalSla: {
+          enabled: true,
+          enabledAt: new Date('2026-07-22T11:59:00.000Z'),
+        },
+      }),
+      new Date('2026-07-22T12:03:00.000Z'),
+    );
 
     expect(snapshot.stageLabel).toBe('Aguardando aceite');
-    expect(snapshot.elapsedMinutes).toBe(4);
+    expect(snapshot.elapsedMinutes).toBe(3);
     expect(snapshot.alerts).toContainEqual(
       expect.objectContaining({ code: 'ACCEPTANCE_OVERDUE', severity: 'warning' }),
     );
+  });
+
+  it('não aplica alerta de aceite antes da ativação nem enquanto aguarda pagamento', () => {
+    const config = {
+      enabled: true,
+      enabledAt: new Date('2026-07-22T12:01:00.000Z'),
+    };
+    const beforeActivation = getOrderOperationalSnapshot(
+      input({ operationalSla: config }),
+      new Date('2026-07-22T12:10:00.000Z'),
+    );
+    const awaitingPayment = getOrderOperationalSnapshot(
+      input({ status: 'AWAITING_PAYMENT', operationalSla: config }),
+      new Date('2026-07-22T12:10:00.000Z'),
+    );
+
+    expect(beforeActivation.alerts).toEqual([]);
+    expect(awaitingPayment.stageLabel).toBe('Aguardando pagamento');
+    expect(awaitingPayment.alerts).toEqual([]);
   });
 
   it('usa a estimativa máxima da loja para alertar preparo atrasado', () => {

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AuthenticationError } from '@/server/errors';
+
 const mocks = vi.hoisted(() => ({
   requireTenantStoreAccess: vi.fn(),
   findOrder: vi.fn(),
@@ -58,5 +60,20 @@ describe('deep link de pedido operacional', () => {
     );
     expect(response.status).toBe(404);
     expect(mocks.rememberActiveStore).not.toHaveBeenCalled();
+  });
+
+  it('preserva o destino completo ao pedir autenticaÃ§Ã£o', async () => {
+    mocks.requireTenantStoreAccess.mockRejectedValue(new AuthenticationError());
+
+    const response = await GET(
+      new Request(
+        `https://pedidolocal.test/dashboard/orders/open?store=${storeId}&order=${orderId}`,
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(
+      `https://pedidolocal.test/login?redirect=${encodeURIComponent(`/dashboard/orders/open?store=${storeId}&order=${orderId}`)}`,
+    );
   });
 });

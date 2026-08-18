@@ -91,4 +91,41 @@ describe('Merchant Push no Service Worker', () => {
     expect(workerNavigator.setAppBadge).not.toHaveBeenCalled();
     expect(workerNavigator.clearAppBadge).not.toHaveBeenCalled();
   });
+
+  it('preserva o badge ao clicar em um reminder Merchant', async () => {
+    const { handlers, registration, workerNavigator } = worker();
+    const pushWaitUntil = vi.fn();
+    handlers.get('push')?.({
+      data: {
+        json: () => ({
+          notification: {
+            title: 'Atenção ao pedido #184',
+            body: 'Este pedido está há 4 min sem aceite.',
+            tag: 'merchant-order-hash',
+          },
+          pedidolocal: {
+            schemaVersion: 1,
+            audience: 'merchant',
+            type: 'new-order',
+            reminderStage: 'CRITICAL',
+            relativeUrl:
+              '/dashboard/orders/open?store=00000000-0000-4000-8000-000000000001&order=00000000-0000-4000-8000-000000000002',
+            pendingActionableCount: 1,
+          },
+        }),
+      },
+      waitUntil: pushWaitUntil,
+    });
+    await pushWaitUntil.mock.calls[0][0];
+    const options = registration.showNotification.mock.calls[0][1];
+    const clickWaitUntil = vi.fn();
+    handlers.get('notificationclick')?.({
+      notification: { close: vi.fn(), data: options.data },
+      waitUntil: clickWaitUntil,
+    });
+    await clickWaitUntil.mock.calls[0][0];
+
+    expect(workerNavigator.setAppBadge).toHaveBeenCalledWith(1);
+    expect(workerNavigator.clearAppBadge).not.toHaveBeenCalled();
+  });
 });

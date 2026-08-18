@@ -104,6 +104,12 @@ const details = {
       totalMinutes: 63,
     },
   },
+  operationalSla: {
+    enabled: false,
+    enabledAt: null,
+    warningMinutes: 2,
+    criticalMinutes: 4,
+  },
   allowedActions: {
     accept: false,
     startPreparation: false,

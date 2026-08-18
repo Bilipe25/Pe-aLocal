@@ -33,6 +33,13 @@ const order: OrderCardData = {
   promisedFulfillmentMaxAt: '2026-07-31T12:45:00.000Z',
 };
 
+const operationalSla = {
+  enabled: true,
+  enabledAt: '2026-07-31T11:59:00.000Z',
+  warningMinutes: 2,
+  criticalMinutes: 4,
+};
+
 describe('OrderCard operacional', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -48,6 +55,7 @@ describe('OrderCard operacional', () => {
     render(
       <OrderCard
         order={order}
+        operationalSla={operationalSla}
         onClick={onClick}
         footer={<button type="button">Aceitar pedido</button>}
       />,
@@ -60,7 +68,7 @@ describe('OrderCard operacional', () => {
     expect(screen.queryByText('Sobremesa')).not.toBeInTheDocument();
     expect(screen.getByText('+ mais itens no pedido')).toBeInTheDocument();
     expect(screen.getByText('Sem cebola')).toBeInTheDocument();
-    expect(screen.getByText('há 17 min')).toBeInTheDocument();
+    expect(screen.getByText('17:00')).toBeInTheDocument();
     expect(screen.getByText(/^Previsão \d/)).toBeInTheDocument();
 
     const detailTrigger = screen.getByRole('button', { name: 'Abrir pedido 1042' });
@@ -103,27 +111,29 @@ describe('OrderCard operacional', () => {
     expect(screen.queryByRole('list', { name: 'Prévia dos itens' })).not.toBeInTheDocument();
   });
 
-  it('amadurece alerta temporal no próprio card sem refetch do board', () => {
+  it('amadurece o SLA no próprio card em cadência de segundo sem refetch do board', () => {
     render(
       <OrderCard
         order={{
           ...order,
           paymentMethod: 'CASH',
           status: 'PENDING',
-          createdAt: '2026-07-31T12:15:00.000Z',
-          stageStartedAt: '2026-07-31T12:15:00.000Z',
-          stageElapsedMinutes: 2,
+          createdAt: '2026-07-31T12:15:01.000Z',
+          statusChangedAt: '2026-07-31T12:15:01.000Z',
+          stageStartedAt: '2026-07-31T12:15:01.000Z',
+          stageElapsedMinutes: 1,
           stageAlerts: [],
           hasOperationalAlert: false,
         }}
+        operationalSla={operationalSla}
         onClick={vi.fn()}
       />,
     );
 
-    expect(screen.queryByText(/Sem aceite há/)).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.queryByText(/Precisa de atenção/)).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1_000));
 
-    expect(screen.getByText('Aceite atingiu o limite de 3 min')).toBeInTheDocument();
+    expect(screen.getByText('Precisa de atenção · 2:00 sem aceite')).toBeInTheDocument();
     expect(screen.getByRole('article')).toHaveClass('order-card-operational');
   });
 
@@ -157,14 +167,16 @@ describe('OrderCard operacional', () => {
           ...order,
           customerDisplayName,
           paymentMethod: 'CASH',
+          statusChangedAt: '2026-07-28T13:07:00.000Z',
           stageStartedAt: '2026-07-28T13:07:00.000Z',
           stageElapsedMinutes: 4_270,
         }}
+        operationalSla={{ ...operationalSla, enabledAt: '2026-07-28T13:00:00.000Z' }}
         onClick={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('há 2 dias e 23 horas')).toBeInTheDocument();
+    expect(screen.getByText('4270:00')).toBeInTheDocument();
     expect(screen.getByText(customerDisplayName)).toHaveClass('line-clamp-2', 'break-words');
   });
 

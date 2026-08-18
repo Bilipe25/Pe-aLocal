@@ -6,11 +6,11 @@ test.describe('experiência pública', () => {
 
     await expect(page).toHaveTitle(/PedidoLocal/);
     await expect(
-      page.getByRole('heading', { level: 1, name: /Sua lanchonete online/ }),
+      page.getByRole('heading', { level: 1, name: /Seu negócio local online/ }),
     ).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
 
-    const loginLink = page.getByRole('link', { name: 'Entrar' });
+    const loginLink = page.getByRole('link', { name: 'Entrar no painel' }).first();
     await expect(loginLink).toHaveAttribute('href', '/login');
     await loginLink.click();
     if (!/\/login$/.test(page.url())) await page.goto('/login');

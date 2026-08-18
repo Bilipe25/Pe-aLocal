@@ -328,7 +328,16 @@ describe('OrderQueryService', () => {
       modality: 'DELIVERY',
     });
 
-    expect(result).toEqual({ delayedCount: 4, asOf: '2026-07-21T12:00:00.000Z' });
+    expect(result).toEqual({
+      delayedCount: 4,
+      asOf: '2026-07-21T12:00:00.000Z',
+      operationalSla: {
+        enabled: false,
+        enabledAt: null,
+        warningMinutes: 2,
+        criticalMinutes: 4,
+      },
+    });
     expect(mocks.orderCount).toHaveBeenCalledTimes(1);
     expect(mocks.orderFindMany).not.toHaveBeenCalled();
     expect(mocks.orderGroupBy).not.toHaveBeenCalled();
