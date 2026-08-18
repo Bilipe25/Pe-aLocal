@@ -31,6 +31,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 import type { OrderStatus } from '@prisma/client';
 import type { OrderDetailsDTO, OrderHistoryItemDTO } from '@/types/order-query';
 import { paymentStatusMap, statusMap } from './order-card';
+import { OrderSlaIndicator } from './order-sla-indicator';
 import { StatusActions } from './status-actions';
 import { InternalOrderNotes } from './internal-order-notes';
 
@@ -263,6 +264,9 @@ function OrderDetails({
   const currentStatus = statusMap[order.status];
   const CurrentStatusIcon = currentStatus.icon;
   const paymentInfo = paymentStatusMap[order.payment.status];
+  const operationalAlerts = order.operational.alerts.filter(
+    (alert) => alert.code !== 'ACCEPTANCE_OVERDUE',
+  );
   const stageStartedAtMs = new Date(order.operational.stageStartedAt).getTime();
   const snapshotNow = Number.isFinite(stageStartedAtMs)
     ? stageStartedAtMs + order.operational.elapsedMinutes * 60_000
@@ -343,9 +347,18 @@ function OrderDetails({
         data-order-print-scroll
       >
         <div className="space-y-4">
-          {order.operational.alerts.length > 0 ? (
+          {order.status === 'PENDING' ? (
+            <OrderSlaIndicator
+              config={order.operationalSla}
+              statusChangedAt={order.statusChangedAt}
+              fallbackElapsedMinutes={order.operational.elapsedMinutes}
+              variant="detail"
+            />
+          ) : null}
+
+          {operationalAlerts.length > 0 ? (
             <section className="space-y-2" aria-label="Alertas operacionais do pedido">
-              {order.operational.alerts.map((alert) => (
+              {operationalAlerts.map((alert) => (
                 <div
                   key={alert.code}
                   className={cn(

@@ -578,6 +578,12 @@ export function OrdersPanel({
       boardQuery.data.summary.readyCount +
       boardQuery.data.summary.deliveryCount
     : 0;
+  const operationalSla =
+    temporalSummaryQuery.data &&
+    boardQuery.data &&
+    temporalSummaryQuery.dataUpdatedAt > boardQuery.dataUpdatedAt
+      ? temporalSummaryQuery.data.operationalSla
+      : boardQuery.data?.operationalSla;
   const boardOrderCount = boardQuery.data
     ? historyMode
       ? boardQuery.data.lanes.FINISHED.total
@@ -786,6 +792,7 @@ export function OrdersPanel({
                               <OrderCard
                                 key={order.id}
                                 order={order}
+                                operationalSla={operationalSla}
                                 timeZone={timeZone}
                                 onClick={() => setSelectedOrderId(order.id)}
                                 selected={selectedOrderId === order.id}

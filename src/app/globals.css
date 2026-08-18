@@ -748,6 +748,15 @@ body {
   border-color: color-mix(in srgb, var(--color-error) 60%, var(--color-border));
 }
 
+.order-card-operational[data-selected='false']:has([data-order-sla-stage='warning']) {
+  border-color: color-mix(in srgb, var(--color-warning) 68%, var(--color-border));
+}
+
+.order-card-operational[data-selected='false']:has([data-order-sla-stage='critical']) {
+  border-color: color-mix(in srgb, var(--color-error) 82%, var(--color-border));
+  box-shadow: 0 0.25rem 0.875rem color-mix(in srgb, var(--color-error) 12%, transparent);
+}
+
 /* Evita layout e pintura de lotes paginados fora da viewport sem remover o card da a11y tree. */
 .order-card-operational {
   content-visibility: auto;

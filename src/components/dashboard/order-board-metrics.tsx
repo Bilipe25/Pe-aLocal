@@ -56,9 +56,9 @@ const METRICS: MetricDefinition[] = [
   },
   {
     key: 'delayedCount',
-    label: 'Atrasados',
-    singularLabel: 'atrasado',
-    pluralLabel: 'atrasados',
+    label: 'Precisam de atenção',
+    singularLabel: 'com atenção',
+    pluralLabel: 'com atenção',
     icon: ClockAlert,
     tone: 'bg-error-light text-error',
   },

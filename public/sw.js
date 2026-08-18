@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'pedidolocal-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -130,6 +130,7 @@ self.addEventListener('push', (event) => {
           relativeUrl: parsed.privateData.relativeUrl,
           audience: parsed.audience,
           type: parsed.privateData.type,
+          reminderStage: parsed.privateData.reminderStage,
           badgeMode: parsed.privateData.badgeMode,
         },
       }
@@ -169,6 +170,7 @@ self.addEventListener('notificationclick', (event) => {
       if (
         audience === 'merchant' &&
         event.notification.data?.type === 'new-order' &&
+        !event.notification.data?.reminderStage &&
         typeof self.navigator?.clearAppBadge === 'function'
       ) {
         await self.navigator.clearAppBadge().catch(() => undefined);
