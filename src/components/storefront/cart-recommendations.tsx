@@ -2,7 +2,7 @@
 
 import { Check, LoaderCircle, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ProductImage } from '@/components/storefront/product-image';
@@ -178,7 +178,7 @@ export function CartRecommendations({ storeSlug, storeOpen }: CartRecommendation
     return () => observer.disconnect();
   }, [state.status, storeSlug, visibleRecommendations]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pending = restoreInteractionRef.current;
     if (!pending || selectedRecommendation) return;
 
