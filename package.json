@@ -16,6 +16,7 @@
     "test:workerd": "playwright test --config=playwright.workerd.config.ts",
     "perf:orders:load": "node tools/order-load-check.mjs",
     "perf:orders:queries": "node tools/order-query-benchmark.mjs",
+    "perf:reports:queries": "node tools/reports-query-benchmark.mjs",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",

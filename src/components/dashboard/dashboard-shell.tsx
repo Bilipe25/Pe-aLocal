@@ -14,6 +14,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   CalendarDays,
   Bell,
+  ChartNoAxesCombined,
   ChefHat,
   ChevronDown,
   Clock3,
@@ -54,6 +55,7 @@ interface DashboardShellProps {
   initialNowIso: string;
   canViewCoupons?: boolean;
   canViewKds?: boolean;
+  canViewReports?: boolean;
   merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
 
@@ -101,6 +103,7 @@ function Navigation({
   activeStoreId,
   canViewCoupons = false,
   canViewKds = false,
+  canViewReports = false,
   appearance = 'light',
   onNavigate,
 }: {
@@ -108,6 +111,7 @@ function Navigation({
   activeStoreId: string | null;
   canViewCoupons: boolean;
   canViewKds: boolean;
+  canViewReports: boolean;
   appearance?: 'light' | 'dark';
   onNavigate?: () => void;
 }) {
@@ -140,6 +144,12 @@ function Navigation({
       label: 'Cupons',
       icon: TicketPercent,
       hidden: !canViewCoupons,
+    },
+    {
+      href: activeStoreId ? '/dashboard/reports' : fallbackHref,
+      label: 'Relatórios',
+      icon: ChartNoAxesCombined,
+      hidden: !canViewReports,
     },
     { href: activeStoreId ? '/dashboard/delivery' : fallbackHref, label: 'Entrega', icon: Truck },
     {
@@ -436,6 +446,7 @@ export function DashboardShell({
   initialNowIso,
   canViewCoupons = false,
   canViewKds = false,
+  canViewReports = false,
   merchantPush,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -488,6 +499,7 @@ export function DashboardShell({
             activeStoreId={activeStore?.id ?? null}
             canViewCoupons={canViewCoupons}
             canViewKds={canViewKds}
+            canViewReports={canViewReports}
             appearance="dark"
           />
         </div>
@@ -708,6 +720,7 @@ export function DashboardShell({
                       activeStoreId={activeStore?.id ?? null}
                       canViewCoupons={canViewCoupons}
                       canViewKds={canViewKds}
+                      canViewReports={canViewReports}
                       onNavigate={() => setMenuOpen(false)}
                     />
                     {merchantPush && (

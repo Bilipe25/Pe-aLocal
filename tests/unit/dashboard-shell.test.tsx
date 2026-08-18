@@ -138,6 +138,37 @@ describe('shell operacional do painel do tenant', () => {
     expect(screen.getAllByRole('link', { name: 'Cozinha' })).toHaveLength(1);
   });
 
+  it('expõe Relatórios somente quando acesso avançado já foi autorizado', () => {
+    const { rerender } = render(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+      >
+        <p>Painel</p>
+      </DashboardShell>,
+    );
+    expect(screen.queryByRole('link', { name: 'Relatórios' })).not.toBeInTheDocument();
+
+    rerender(
+      <DashboardShell
+        userName="Rafael Lima"
+        tenantRole="OWNER"
+        stores={[store]}
+        activeStore={store}
+        activeStoreTimeZone="America/Fortaleza"
+        initialNowIso="2026-07-31T14:30:00.000Z"
+        canViewReports
+      >
+        <p>Painel</p>
+      </DashboardShell>,
+    );
+    expect(screen.getAllByRole('link', { name: 'Relatórios' })).toHaveLength(1);
+  });
+
   it('remove o chrome administrativo dentro da estação da cozinha', () => {
     mocks.pathname = '/dashboard/kds';
     const { container } = render(
