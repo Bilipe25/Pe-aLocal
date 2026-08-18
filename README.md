@@ -156,6 +156,12 @@ A plataforma e cada loja possuem manifest instalável. O Service Worker oferece 
 
 Lojas habilitadas podem destacar pedidos `PENDING` sem aceite aos 2 minutos e reforçá-los aos 4 minutos. O relógio usa a entrada atual em `PENDING`, não gera alertas retroativos e reutiliza o cron e o Merchant Push existentes. Consulte [`docs/operations/operational-sla.md`](docs/operations/operational-sla.md).
 
+## Tela da cozinha
+
+Lojas habilitadas contam com um KDS em `/dashboard/kds`, sincronizado em tempo real com a Central
+por meio da mesma entidade `Order`. O KDS reutiliza as transições oficiais, o controle de versão e
+o outbox existentes; não possui estados próprios. Consulte [`docs/operations/kds.md`](docs/operations/kds.md).
+
 ## Multi-tenancy
 
 Cada estabelecimento é um tenant isolado. Dados nunca vazam entre tenants. Veja `docs/multi-tenancy.md`.

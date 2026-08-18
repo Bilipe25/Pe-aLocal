@@ -263,6 +263,7 @@ export async function findStoreScopeById(id: string, tenantId: string) {
       },
       entitlement: {
         select: {
+          kdsEnabled: true,
           operationalSlaEnabled: true,
           operationalSlaEnabledAt: true,
         },

@@ -47,15 +47,15 @@ tests/
 
 ## Matriz atual
 
-| Camada      | Escopo atual                                                                  |
-| ----------- | ----------------------------------------------------------------------------- |
+| Camada      | Escopo atual                                                                   |
+| ----------- | ------------------------------------------------------------------------------ |
 | Unitários   | autenticação, tenants, sessão, permissões, disponibilidade, settings e schemas |
-| Integração  | `/api/health`, login, logout, sessão atual e contratos de actions             |
-| E2E público | home, login, cardápio, carrinho, checkout, acompanhamento e assets            |
-| E2E admin   | SUPER_ADMIN, OWNER, personalização, painel operacional e status de pedidos    |
-| A11y        | axe WCAG 2 A/AA em home, login, cardápio, admin e dashboard                   |
-| Cloudflare  | `cf:build`, `cf:typegen` e smoke `test:workerd` contra preview OpenNext       |
-| Navegadores | Chromium desktop e emulação mobile Pixel 5                                    |
+| Integração  | `/api/health`, login, logout, sessão atual e contratos de actions              |
+| E2E público | home, login, cardápio, carrinho, checkout, acompanhamento e assets             |
+| E2E admin   | SUPER_ADMIN, OWNER, personalização, painel operacional e status de pedidos     |
+| A11y        | axe WCAG 2 A/AA em home, login, cardápio, admin e dashboard                    |
+| Cloudflare  | `cf:build`, `cf:typegen` e smoke `test:workerd` contra preview OpenNext        |
+| Navegadores | Chromium desktop e emulação mobile Pixel 5                                     |
 
 ## Regras para novos testes
 
@@ -157,3 +157,15 @@ aditiva, idempotência de alert+dispositivo, stale antes do envio, contrato comp
 Push, preservação do badge no Service Worker e política compartilhada de retry. Os alvos principais
 são `tests/unit/order-operational-sla*.test.ts`, `merchant-web-push-notification.test.ts`,
 `merchant-pwa-service-worker.test.ts` e `order-card-operational.test.tsx`.
+
+## Tela da cozinha
+
+Os testes unitários do KDS cobrem o mapeamento das três etapas oficiais, thresholds, ordenação,
+escopo tenant/loja, DTO sem PII, entitlement, chamadas às mesmas actions da Central, `version`/CAS,
+conflito stale, invalidação realtime, movimentação e remoção de cards sem refresh e som sem falso
+positivo no carregamento inicial.
+
+O E2E `dashboard-kds.spec.ts` verifica layout desktop/mobile e, quando a loja descartável possui o
+entitlement, a rota autenticada. A mutação real exige `E2E_ALLOW_MUTATIONS=true`; sem credenciais,
+entitlement ou pedidos compatíveis, o cenário é ignorado com justificativa explícita. A prova
+bidirecional completa deve fazer parte do smoke de staging descrito em `operations/kds.md`.

@@ -16,9 +16,9 @@ export const STORE_FEATURE_DEFINITIONS = {
   kds: {
     key: 'kds',
     label: 'KDS / Tela da cozinha',
-    description: 'Tela dedicada ao preparo e à expedição dos pedidos.',
+    description: 'Organiza o preparo da cozinha em tempo real, do aceite ao pedido pronto.',
     entitlementField: 'kdsEnabled',
-    implementationStatus: 'COMING_SOON',
+    implementationStatus: 'AVAILABLE',
   },
   advancedReports: {
     key: 'advancedReports',

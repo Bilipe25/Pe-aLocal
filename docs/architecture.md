@@ -89,3 +89,8 @@ O Next.js é responsável por todas as camadas: páginas públicas, painel admin
 - App mobile nativo
 
 O SLA de aceite reutiliza o cron do Worker de eventos. Alerts temporais e deliveries possuem ledgers próprios, sem fabricar `OrderOutboxEvent`; `Order.statusChangedAt` identifica o ciclo e o entitlement fornece o watermark de ativação. Veja [`operations/operational-sla.md`](operations/operational-sla.md).
+
+O KDS é uma projeção autenticada de `Order` para `CONFIRMED`, `PREPARING` e `READY`. Central e KDS
+chamam as mesmas actions e services de transição, com o mesmo CAS por `version`; o evento privado
+`order-updated` apenas solicita que cada superfície releia o servidor. Não existe comunicação
+direta Central ↔ KDS nem estado de cozinha paralelo. Veja [`operations/kds.md`](operations/kds.md).

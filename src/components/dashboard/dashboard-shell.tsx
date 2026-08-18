@@ -14,6 +14,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   CalendarDays,
   Bell,
+  ChefHat,
   ChevronDown,
   Clock3,
   LayoutDashboard,
@@ -52,6 +53,7 @@ interface DashboardShellProps {
   activeStoreTimeZone: string | null;
   initialNowIso: string;
   canViewCoupons?: boolean;
+  canViewKds?: boolean;
   merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
 
@@ -98,12 +100,14 @@ function Navigation({
   pathname,
   activeStoreId,
   canViewCoupons = false,
+  canViewKds = false,
   appearance = 'light',
   onNavigate,
 }: {
   pathname: string;
   activeStoreId: string | null;
   canViewCoupons: boolean;
+  canViewKds: boolean;
   appearance?: 'light' | 'dark';
   onNavigate?: () => void;
 }) {
@@ -119,6 +123,12 @@ function Navigation({
       href: activeStoreId ? '/dashboard/orders' : fallbackHref,
       label: 'Central de pedidos',
       icon: ShoppingBag,
+    },
+    {
+      href: activeStoreId ? '/dashboard/kds' : fallbackHref,
+      label: 'Cozinha',
+      icon: ChefHat,
+      hidden: !canViewKds,
     },
     {
       href: activeStoreId ? '/dashboard/catalog' : fallbackHref,
@@ -425,6 +435,7 @@ export function DashboardShell({
   activeStoreTimeZone,
   initialNowIso,
   canViewCoupons = false,
+  canViewKds = false,
   merchantPush,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -432,6 +443,7 @@ export function DashboardShell({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const isOrdersWorkspace = pathname.startsWith('/dashboard/orders');
+  const isKdsWorkspace = pathname.startsWith('/dashboard/kds');
   const operations = useDashboardOperations();
   const trimmedSearch = operations.search.trim();
   const hasActiveSearch = /^#?\d+$/.test(trimmedSearch) || trimmedSearch.length >= 2;
@@ -462,7 +474,9 @@ export function DashboardShell({
     degraded: 'bg-warning',
   }[operations.realtimeState];
 
-  const shell = (
+  const shell = isKdsWorkspace ? (
+    <div className="kds-dashboard-shell min-h-dvh">{children}</div>
+  ) : (
     <div className="dashboard-shell bg-surface-secondary min-h-dvh xl:grid xl:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="bg-tinta sticky top-0 hidden h-dvh border-r border-white/8 p-4 xl:flex xl:flex-col">
         <div className="px-1 py-1">
@@ -473,6 +487,7 @@ export function DashboardShell({
             pathname={pathname}
             activeStoreId={activeStore?.id ?? null}
             canViewCoupons={canViewCoupons}
+            canViewKds={canViewKds}
             appearance="dark"
           />
         </div>
@@ -692,6 +707,7 @@ export function DashboardShell({
                       pathname={pathname}
                       activeStoreId={activeStore?.id ?? null}
                       canViewCoupons={canViewCoupons}
+                      canViewKds={canViewKds}
                       onNavigate={() => setMenuOpen(false)}
                     />
                     {merchantPush && (
