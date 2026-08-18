@@ -174,6 +174,11 @@ enum WebPushDeliveryStatus {
   SKIPPED
 }
 
+enum OrderOperationalSlaStage {
+  WARNING
+  CRITICAL
+}
+
 enum OrderCancellationReasonCode {
   CUSTOMER_REQUEST
   PRODUCT_UNAVAILABLE
@@ -398,31 +403,33 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members                     TenantMember[]
-  stores                      Store[]
-  categories                  Category[]
-  products                    Product[]
-  deliveryZones               DeliveryZone[]
-  deliveryPostalRanges        DeliveryZonePostalRange[]
-  customers                   Customer[]
-  deviceRecognitions          CustomerDeviceRecognition[]
-  recognitionThrottles        CustomerRecognitionThrottle[]
-  orders                      Order[]
-  coupons                     Coupon[]
-  auditLogs                   AuditLog[]
-  orderOutboxEvents           OrderOutboxEvent[]
-  paymentStatusHistory        PaymentStatusHistory[]
-  slugRedirects               StoreSlugRedirect[]
-  scheduleExceptions          StoreScheduleException[]
-  orderPushSubscriptions      OrderPushSubscription[]
-  webPushDispatches           WebPushDispatch[]
-  webPushDeliveries           WebPushDelivery[]
-  storeStaffPushSubscriptions StoreStaffPushSubscription[]
-  storeWebPushDispatches      StoreWebPushDispatch[]
-  storeWebPushDeliveries      StoreWebPushDelivery[]
-  paymentProviderConnections  StorePaymentProviderConnection[]
-  paymentOAuthAttempts        PaymentProviderOAuthAttempt[]
-  mercadoPagoPayments         MercadoPagoPayment[]
+  members                       TenantMember[]
+  stores                        Store[]
+  categories                    Category[]
+  products                      Product[]
+  deliveryZones                 DeliveryZone[]
+  deliveryPostalRanges          DeliveryZonePostalRange[]
+  customers                     Customer[]
+  deviceRecognitions            CustomerDeviceRecognition[]
+  recognitionThrottles          CustomerRecognitionThrottle[]
+  orders                        Order[]
+  coupons                       Coupon[]
+  auditLogs                     AuditLog[]
+  orderOutboxEvents             OrderOutboxEvent[]
+  paymentStatusHistory          PaymentStatusHistory[]
+  slugRedirects                 StoreSlugRedirect[]
+  scheduleExceptions            StoreScheduleException[]
+  orderPushSubscriptions        OrderPushSubscription[]
+  webPushDispatches             WebPushDispatch[]
+  webPushDeliveries             WebPushDelivery[]
+  storeStaffPushSubscriptions   StoreStaffPushSubscription[]
+  storeWebPushDispatches        StoreWebPushDispatch[]
+  storeWebPushDeliveries        StoreWebPushDelivery[]
+  orderOperationalSlaAlerts     OrderOperationalSlaAlert[]
+  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
+  paymentProviderConnections    StorePaymentProviderConnection[]
+  paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments           MercadoPagoPayment[]
 
   @@map("tenants")
 }
@@ -471,39 +478,41 @@ model Store {
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   settings StoreSettings?
 
-  address                      StoreAddress?
-  openingHours                 OpeningHour[]
-  scheduleExceptions           StoreScheduleException[]
-  categories                   Category[]
-  products                     Product[]
-  deliveryZones                DeliveryZone[]
-  deliveryPostalRanges         DeliveryZonePostalRange[]
-  customerAddressUses          CustomerAddressStoreUse[]
-  recognitionSessions          CheckoutRecognitionSession[]
-  recognitionAddressReferences CheckoutRecognitionAddressReference[]
-  deviceRecognitions           CustomerDeviceRecognition[]
-  recognitionThrottles         CustomerRecognitionThrottle[]
-  coupons                      Coupon[]
-  orders                       Order[]
-  orderCounter                 StoreOrderCounter?
-  customization                StoreCustomization?
-  auditLogs                    AuditLog[]
-  orderOutboxEvents            OrderOutboxEvent[]
-  paymentStatusHistory         PaymentStatusHistory[]
-  assets                       StoreAsset[]
-  banners                      StoreBanner[]
-  domains                      StoreDomain[]
-  entitlement                  StoreEntitlement?
-  slugRedirects                StoreSlugRedirect[]
-  orderPushSubscriptions       OrderPushSubscription[]
-  webPushDispatches            WebPushDispatch[]
-  webPushDeliveries            WebPushDelivery[]
-  storeStaffPushSubscriptions  StoreStaffPushSubscription[]
-  storeWebPushDispatches       StoreWebPushDispatch[]
-  storeWebPushDeliveries       StoreWebPushDelivery[]
-  paymentProviderConnections   StorePaymentProviderConnection[]
-  paymentOAuthAttempts         PaymentProviderOAuthAttempt[]
-  mercadoPagoPayments          MercadoPagoPayment[]
+  address                       StoreAddress?
+  openingHours                  OpeningHour[]
+  scheduleExceptions            StoreScheduleException[]
+  categories                    Category[]
+  products                      Product[]
+  deliveryZones                 DeliveryZone[]
+  deliveryPostalRanges          DeliveryZonePostalRange[]
+  customerAddressUses           CustomerAddressStoreUse[]
+  recognitionSessions           CheckoutRecognitionSession[]
+  recognitionAddressReferences  CheckoutRecognitionAddressReference[]
+  deviceRecognitions            CustomerDeviceRecognition[]
+  recognitionThrottles          CustomerRecognitionThrottle[]
+  coupons                       Coupon[]
+  orders                        Order[]
+  orderCounter                  StoreOrderCounter?
+  customization                 StoreCustomization?
+  auditLogs                     AuditLog[]
+  orderOutboxEvents             OrderOutboxEvent[]
+  paymentStatusHistory          PaymentStatusHistory[]
+  assets                        StoreAsset[]
+  banners                       StoreBanner[]
+  domains                       StoreDomain[]
+  entitlement                   StoreEntitlement?
+  slugRedirects                 StoreSlugRedirect[]
+  orderPushSubscriptions        OrderPushSubscription[]
+  webPushDispatches             WebPushDispatch[]
+  webPushDeliveries             WebPushDelivery[]
+  storeStaffPushSubscriptions   StoreStaffPushSubscription[]
+  storeWebPushDispatches        StoreWebPushDispatch[]
+  storeWebPushDeliveries        StoreWebPushDelivery[]
+  orderOperationalSlaAlerts     OrderOperationalSlaAlert[]
+  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
+  paymentProviderConnections    StorePaymentProviderConnection[]
+  paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments           MercadoPagoPayment[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -712,25 +721,26 @@ model StoreDomain {
 }
 
 model StoreEntitlement {
-  id                             String   @id @default(uuid())
+  id                             String    @id @default(uuid())
   tenantId                       String
-  storeId                        String   @unique
-  maxAssetCount                  Int      @default(25)
-  maxAssetStorageBytes           Int      @default(52428800)
-  maxBanners                     Int      @default(5)
-  allowedLayoutTemplates         String[] @default(["CLASSIC_LIST", "MODERN_GRID", "EDITORIAL_HERO"])
-  allowedVisualPresets           String[] @default(["CLASSIC", "MODERN", "MINIMALIST", "BURGER", "PIZZA", "ACAI_DESSERT", "EXECUTIVE_RESTAURANT", "DARK_PREMIUM"])
-  advancedTypographyEnabled      Boolean  @default(true)
-  customDomainEnabled            Boolean  @default(false)
-  platformBrandingRemovalEnabled Boolean  @default(false)
-  scheduledBannersEnabled        Boolean  @default(false)
-  onlinePaymentsEnabled          Boolean  @default(false)
-  operationalSlaEnabled          Boolean  @default(false)
-  kdsEnabled                     Boolean  @default(false)
-  advancedReportsEnabled         Boolean  @default(false)
-  orderPrintingEnabled           Boolean  @default(false)
-  createdAt                      DateTime @default(now())
-  updatedAt                      DateTime @updatedAt
+  storeId                        String    @unique
+  maxAssetCount                  Int       @default(25)
+  maxAssetStorageBytes           Int       @default(52428800)
+  maxBanners                     Int       @default(5)
+  allowedLayoutTemplates         String[]  @default(["CLASSIC_LIST", "MODERN_GRID", "EDITORIAL_HERO"])
+  allowedVisualPresets           String[]  @default(["CLASSIC", "MODERN", "MINIMALIST", "BURGER", "PIZZA", "ACAI_DESSERT", "EXECUTIVE_RESTAURANT", "DARK_PREMIUM"])
+  advancedTypographyEnabled      Boolean   @default(true)
+  customDomainEnabled            Boolean   @default(false)
+  platformBrandingRemovalEnabled Boolean   @default(false)
+  scheduledBannersEnabled        Boolean   @default(false)
+  onlinePaymentsEnabled          Boolean   @default(false)
+  operationalSlaEnabled          Boolean   @default(false)
+  operationalSlaEnabledAt        DateTime?
+  kdsEnabled                     Boolean   @default(false)
+  advancedReportsEnabled         Boolean   @default(false)
+  orderPrintingEnabled           Boolean   @default(false)
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
 
   store Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
@@ -1256,20 +1266,22 @@ model Order {
   customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
-  items                  OrderItem[]
-  statusHistory          OrderStatusHistory[]
-  internalNotes          OrderInternalNote[]
-  payment                Payment?
-  outboxEvents           OrderOutboxEvent[]
-  paymentHistory         PaymentStatusHistory[]
-  couponUsages           CouponUsage[]
-  couponReservation      CouponReservation?
-  pushSubscriptions      OrderPushSubscription[]
-  webPushDispatches      WebPushDispatch[]
-  webPushDeliveries      WebPushDelivery[]
-  storeWebPushDispatches StoreWebPushDispatch[]
-  storeWebPushDeliveries StoreWebPushDelivery[]
-  mercadoPagoPayment     MercadoPagoPayment?
+  items                         OrderItem[]
+  statusHistory                 OrderStatusHistory[]
+  internalNotes                 OrderInternalNote[]
+  payment                       Payment?
+  outboxEvents                  OrderOutboxEvent[]
+  paymentHistory                PaymentStatusHistory[]
+  couponUsages                  CouponUsage[]
+  couponReservation             CouponReservation?
+  pushSubscriptions             OrderPushSubscription[]
+  webPushDispatches             WebPushDispatch[]
+  webPushDeliveries             WebPushDelivery[]
+  storeWebPushDispatches        StoreWebPushDispatch[]
+  storeWebPushDeliveries        StoreWebPushDelivery[]
+  operationalSlaAlerts          OrderOperationalSlaAlert[]
+  mercadoPagoPayment            MercadoPagoPayment?
+  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -1657,10 +1669,11 @@ model WebPushSubscription {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  orders                  OrderPushSubscription[]
-  deliveries              WebPushDelivery[]
-  storeStaffSubscriptions StoreStaffPushSubscription[]
-  storeDeliveries         StoreWebPushDelivery[]
+  orders                   OrderPushSubscription[]
+  deliveries               WebPushDelivery[]
+  storeStaffSubscriptions  StoreStaffPushSubscription[]
+  storeDeliveries          StoreWebPushDelivery[]
+  operationalSlaDeliveries OrderOperationalSlaDelivery[]
 
   @@index([revokedAt, lastSeenAt])
   @@index([revokedAt, expirationTime])
@@ -1776,11 +1789,12 @@ model StoreStaffPushSubscription {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store        Store                  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  membership   TenantMember           @relation(fields: [tenantId, userId], references: [tenantId, userId], onDelete: Cascade)
-  subscription WebPushSubscription    @relation(fields: [webPushSubscriptionId], references: [id], onDelete: Cascade)
-  deliveries   StoreWebPushDelivery[]
+  tenant                   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store                    Store                         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  membership               TenantMember                  @relation(fields: [tenantId, userId], references: [tenantId, userId], onDelete: Cascade)
+  subscription             WebPushSubscription           @relation(fields: [webPushSubscriptionId], references: [id], onDelete: Cascade)
+  deliveries               StoreWebPushDelivery[]
+  operationalSlaDeliveries OrderOperationalSlaDelivery[]
 
   @@unique([storeId, userId, webPushSubscriptionId])
   @@unique([id, tenantId, storeId])
@@ -1854,6 +1868,65 @@ model StoreWebPushDelivery {
   @@index([storeStaffPushSubscriptionId, aggregateVersion])
   @@index([webPushSubscriptionId, status])
   @@map("store_web_push_deliveries")
+}
+
+model OrderOperationalSlaAlert {
+  id           String                   @id @default(uuid()) @db.Uuid
+  tenantId     String
+  storeId      String
+  orderId      String
+  actionableAt DateTime
+  stage        OrderOperationalSlaStage
+  triggeredAt  DateTime                 @default(now())
+  resolvedAt   DateTime?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  tenant     Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store      Store                         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order      Order                         @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  deliveries OrderOperationalSlaDelivery[]
+
+  @@unique([orderId, actionableAt, stage])
+  @@unique([id, tenantId, storeId, orderId])
+  @@index([tenantId, storeId, orderId, actionableAt])
+  @@index([resolvedAt, triggeredAt])
+  @@map("order_operational_sla_alerts")
+}
+
+model OrderOperationalSlaDelivery {
+  id                           String                @id @default(uuid()) @db.Uuid
+  tenantId                     String
+  storeId                      String
+  orderId                      String
+  slaAlertId                   String                @db.Uuid
+  storeStaffPushSubscriptionId String
+  webPushSubscriptionId        String
+  status                       WebPushDeliveryStatus @default(PENDING)
+  attempts                     Int                   @default(0)
+  availableAt                  DateTime              @default(now())
+  lockedAt                     DateTime?
+  lockToken                    String?               @db.Uuid
+  sentAt                       DateTime?
+  failedAt                     DateTime?
+  lastStatusCode               Int?
+  lastError                    String?               @db.VarChar(1000)
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order             Order                      @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  alert             OrderOperationalSlaAlert   @relation(fields: [slaAlertId, tenantId, storeId, orderId], references: [id, tenantId, storeId, orderId], onDelete: Cascade)
+  staffSubscription StoreStaffPushSubscription @relation(fields: [storeStaffPushSubscriptionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  subscription      WebPushSubscription        @relation(fields: [webPushSubscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([slaAlertId, webPushSubscriptionId])
+  @@index([status, availableAt, createdAt])
+  @@index([slaAlertId, status])
+  @@index([storeStaffPushSubscriptionId, status])
+  @@index([webPushSubscriptionId, status])
+  @@map("order_operational_sla_deliveries")
 }
 
 // =============================================================================

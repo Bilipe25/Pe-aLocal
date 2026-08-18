@@ -15,6 +15,7 @@ export const DEFAULT_STORE_ENTITLEMENT = {
   scheduledBannersEnabled: false,
   onlinePaymentsEnabled: false,
   operationalSlaEnabled: false,
+  operationalSlaEnabledAt: null,
   kdsEnabled: false,
   advancedReportsEnabled: false,
   orderPrintingEnabled: false,
@@ -35,6 +36,7 @@ export const entitlementSelect = {
   scheduledBannersEnabled: true,
   onlinePaymentsEnabled: true,
   operationalSlaEnabled: true,
+  operationalSlaEnabledAt: true,
   kdsEnabled: true,
   advancedReportsEnabled: true,
   orderPrintingEnabled: true,
@@ -65,6 +67,7 @@ export async function lockStoreEntitlement(
       scheduledBannersEnabled: boolean;
       onlinePaymentsEnabled: boolean;
       operationalSlaEnabled: boolean;
+      operationalSlaEnabledAt: Date | null;
       kdsEnabled: boolean;
       advancedReportsEnabled: boolean;
       orderPrintingEnabled: boolean;
@@ -78,6 +81,7 @@ export async function lockStoreEntitlement(
       "scheduledBannersEnabled",
       "onlinePaymentsEnabled",
       "operationalSlaEnabled",
+      "operationalSlaEnabledAt",
       "kdsEnabled",
       "advancedReportsEnabled",
       "orderPrintingEnabled"

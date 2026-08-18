@@ -11,6 +11,12 @@ import {
 } from '../../src/server/services/order-outbox-processor';
 import { purgeProcessedOrderOutboxEvents } from '../../src/server/services/order-outbox-retention';
 import {
+  purgeResolvedOrderOperationalSlaAlerts,
+  reconcileOrderOperationalSlaAlerts,
+  resolveInactiveOrderOperationalSlaAlerts,
+} from '../../src/server/services/order-operational-sla-alert.service';
+import { processPendingOrderOperationalSlaDeliveries } from '../../src/server/services/order-operational-sla-delivery.service';
+import {
   projectStoreWebPushDispatch,
   reconcileStoreWebPushDispatches,
 } from '../../src/server/services/store-web-push-dispatch.service';
@@ -321,14 +327,6 @@ export default {
     const webPushEnabled = env.WEB_PUSH_ENABLED === 'true';
     const merchantWebPushEnabled = env.MERCHANT_WEB_PUSH_ENABLED === 'true';
     const mercadoPagoEnabled = env.MERCADO_PAGO_RECONCILIATION_ENABLED === 'true';
-    if (
-      !relayEnabled &&
-      !retentionEnabled &&
-      !webPushEnabled &&
-      !merchantWebPushEnabled &&
-      !mercadoPagoEnabled
-    )
-      return;
     const db = database(env);
     try {
       if (mercadoPagoEnabled) {
@@ -348,16 +346,46 @@ export default {
       if (relayEnabled) {
         await relayPendingOrderOutboxEvents(db, env.ORDER_OUTBOX_QUEUE, env.ORDER_OUTBOX_DLQ);
       }
+      try {
+        const result = await resolveInactiveOrderOperationalSlaAlerts(db);
+        if (result.resolved > 0) console.info('[OPERATIONAL_SLA_RESOLUTION_COMPLETED]', result);
+      } catch (error) {
+        console.error('[OPERATIONAL_SLA_RESOLUTION_FAILED]', {
+          error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+        });
+      }
+      try {
+        const result = await reconcileOrderOperationalSlaAlerts(db);
+        console.info('[OPERATIONAL_SLA_DETECTION_COMPLETED]', result);
+      } catch (error) {
+        console.error('[OPERATIONAL_SLA_DETECTION_FAILED]', {
+          error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+        });
+      }
       if (retentionEnabled) {
-        const retentionStartedAt = Date.now();
-        const result = await purgeProcessedOrderOutboxEvents(db, {
-          retentionDays: retentionDays(env),
-        });
-        console.info('[ORDER_OUTBOX_RETENTION_COMPLETED]', {
-          deleted: result.deleted,
-          retentionDays: result.retentionDays,
-          durationMs: Date.now() - retentionStartedAt,
-        });
+        try {
+          const retentionStartedAt = Date.now();
+          const result = await purgeProcessedOrderOutboxEvents(db, {
+            retentionDays: retentionDays(env),
+          });
+          console.info('[ORDER_OUTBOX_RETENTION_COMPLETED]', {
+            deleted: result.deleted,
+            retentionDays: result.retentionDays,
+            durationMs: Date.now() - retentionStartedAt,
+          });
+        } catch (error) {
+          console.error('[ORDER_OUTBOX_RETENTION_FAILED]', {
+            error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+          });
+        }
+        try {
+          const result = await purgeResolvedOrderOperationalSlaAlerts(db, retentionDays(env));
+          console.info('[OPERATIONAL_SLA_RETENTION_COMPLETED]', result);
+        } catch (error) {
+          console.error('[OPERATIONAL_SLA_RETENTION_FAILED]', {
+            error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+          });
+        }
       }
       if (webPushEnabled) {
         const config = readWebPushSenderConfig(env);
@@ -389,6 +417,14 @@ export default {
             });
           } catch (error) {
             console.error('[MERCHANT_WEB_PUSH_CYCLE_FAILED]', {
+              error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+            });
+          }
+          try {
+            const slaDelivery = await processPendingOrderOperationalSlaDeliveries(db, config);
+            console.info('[OPERATIONAL_SLA_PUSH_CYCLE_COMPLETED]', slaDelivery);
+          } catch (error) {
+            console.error('[OPERATIONAL_SLA_PUSH_CYCLE_FAILED]', {
               error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
             });
           }

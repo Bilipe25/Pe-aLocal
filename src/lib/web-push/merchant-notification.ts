@@ -20,6 +20,21 @@ export interface MerchantNewOrderNotificationInput {
   iconAssetId: string | null;
 }
 
+export interface MerchantOperationalSlaNotificationInput {
+  alertId: string;
+  orderId: string;
+  orderNumber: number;
+  orderVersion: number;
+  storeId: string;
+  storeName: string;
+  origin: string;
+  includeStoreName: boolean;
+  pendingActionableCount: number;
+  iconAssetId: string | null;
+  reminderStage: 'WARNING' | 'CRITICAL';
+  elapsedMinutes: number;
+}
+
 function itemLabel(count: number) {
   return `${count} ${count === 1 ? 'item' : 'itens'}`;
 }
@@ -63,6 +78,59 @@ export async function buildMerchantNewOrderNotification(input: MerchantNewOrderN
         audience: 'merchant',
         type: 'new-order',
         eventId: input.eventId,
+        orderVersion: input.orderVersion,
+        relativeUrl,
+        tag,
+        pendingActionableCount: Math.max(0, input.pendingActionableCount),
+      },
+    },
+  } as const;
+}
+
+export async function buildMerchantOperationalSlaNotification(
+  input: MerchantOperationalSlaNotificationInput,
+) {
+  const query = new URLSearchParams({ store: input.storeId, order: input.orderId });
+  const relativeUrl = `/dashboard/orders/open?${query.toString()}`;
+  const topic = await sha256Topic(`merchant:${input.orderId}`);
+  const tag = `merchant-order-${topic}`;
+  const baseBody =
+    input.reminderStage === 'CRITICAL'
+      ? 'Este pedido está há 4 min sem aceite.'
+      : 'Este pedido ainda não foi aceito. Abra para conferir.';
+  const body = input.includeStoreName ? `${input.storeName} • ${baseBody}` : baseBody;
+  const icon = new URL(
+    input.iconAssetId
+      ? storePwaIconUrl(input.iconAssetId, 'any-192')
+      : '/pwa/pedidolocal-icon-v1-192.png',
+    input.origin,
+  ).toString();
+
+  return {
+    topic,
+    payload: {
+      web_push: 8030,
+      notification: {
+        title:
+          input.reminderStage === 'CRITICAL'
+            ? `Atenção ao pedido #${input.orderNumber}`
+            : `Pedido #${input.orderNumber} aguardando`,
+        body,
+        navigate: new URL(relativeUrl, input.origin).toString(),
+        icon,
+        tag,
+        lang: 'pt-BR',
+        dir: 'ltr',
+        renotify: true,
+        requireInteraction: input.reminderStage === 'CRITICAL',
+        actions: [{ action: 'open-order', title: 'Abrir pedido' }],
+      },
+      pedidolocal: {
+        schemaVersion: 1,
+        audience: 'merchant',
+        type: 'new-order',
+        reminderStage: input.reminderStage,
+        eventId: input.alertId,
         orderVersion: input.orderVersion,
         relativeUrl,
         tag,
