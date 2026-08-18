@@ -7,7 +7,7 @@ import { getAdvancedReports } from '@/server/services/reports.service';
 
 export const metadata = {
   title: 'Relatórios — PedidoLocal',
-  description: 'Resumo avançado do movimento, produtos e operação da loja.',
+  description: 'Entenda o que mudou no movimento, nos produtos e na operação da loja.',
 };
 
 export default async function ReportsPage() {
@@ -20,6 +20,6 @@ export default async function ReportsPage() {
     throw error;
   }
 
-  const initialData = await getAdvancedReports(reportsContext, { preset: 'LAST_7_DAYS' });
+  const initialData = await getAdvancedReports(reportsContext, { preset: 'LAST_30_DAYS' });
   return <ReportsDashboard initialData={initialData} />;
 }

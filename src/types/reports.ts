@@ -14,6 +14,48 @@ export interface ReportMetricComparison {
   label: string;
 }
 
+export interface ReportDurationComparison {
+  direction: 'FASTER' | 'SLOWER' | 'STABLE' | 'NO_BASE';
+  changeSeconds: number | null;
+  changePercent: number | null;
+  label: string;
+}
+
+export type ReportProductMovementDirection = 'UP' | 'DOWN' | 'NEW';
+
+export type AdvancedReportInsightCategory =
+  'COMMERCIAL' | 'PRODUCT' | 'OPERATION' | 'CUSTOMER' | 'MODALITY';
+
+export interface AdvancedReportInsight {
+  id:
+    | 'PREPARATION_BOTTLENECK'
+    | 'ACCEPTANCE_CHANGE'
+    | 'COMMERCIAL_CHANGE'
+    | 'PRODUCT_GROWTH'
+    | 'PRODUCT_DECLINE'
+    | 'MODALITY_MIX'
+    | 'PEAK_HOUR';
+  category: AdvancedReportInsightCategory;
+  priority: number;
+  tone: 'POSITIVE' | 'ATTENTION' | 'NEUTRAL';
+  title: string;
+  description: string;
+  evidence: {
+    metric:
+      | 'OPERATIONAL_ORDERS'
+      | 'PRODUCT_QUANTITY'
+      | 'AVERAGE_ACCEPTANCE_SECONDS'
+      | 'AVERAGE_PREPARATION_SECONDS'
+      | 'MODALITY_SHARE'
+      | 'PEAK_HOUR_ORDERS';
+    current: number;
+    previous: number | null;
+    changePercent: number | null;
+    unit: 'ORDERS' | 'UNITS' | 'SECONDS' | 'PERCENT';
+  };
+  sampleSize: number;
+}
+
 export interface AdvancedReportsDTO {
   period: {
     preset: ReportPeriodPreset;
@@ -38,6 +80,12 @@ export interface AdvancedReportsDTO {
       cancelledOrders: ReportMetricComparison;
     };
   };
+  trend: {
+    direction: 'GROWING' | 'DECLINING' | 'STABLE' | 'INSUFFICIENT';
+    label: string;
+    description: string;
+    sampleSize: number;
+  };
   series: Array<{
     key: string;
     label: string;
@@ -45,34 +93,80 @@ export interface AdvancedReportsDTO {
     orderCount: number;
     completedValueCents: number;
   }>;
-  products: Array<{
-    productId: string;
-    name: string;
-    quantity: number;
-  }>;
-  peakHour: {
-    hour: number;
-    label: string;
-    orderCount: number;
-    sharePercent: number;
-  } | null;
+  products: {
+    top: Array<{
+      productId: string;
+      name: string;
+      quantity: number;
+    }>;
+    movements: Array<{
+      productId: string;
+      name: string;
+      currentQuantity: number;
+      previousQuantity: number;
+      direction: ReportProductMovementDirection;
+      changePercent: number | null;
+      label: string;
+    }>;
+  };
+  hours: {
+    peak: {
+      startHour: number;
+      endHour: number;
+      label: string;
+      orderCount: number;
+      sharePercent: number;
+    } | null;
+    quiet: {
+      startHour: number;
+      endHour: number;
+      label: string;
+      orderCount: number;
+      sharePercent: number;
+    } | null;
+    strongestWeekday: {
+      weekday: number;
+      label: string;
+      orderCount: number;
+      sharePercent: number;
+    } | null;
+  };
   operation: {
     averageAcceptanceSeconds: number | null;
     acceptanceSampleSize: number;
+    acceptanceComparison: ReportDurationComparison;
     averagePreparationSeconds: number | null;
     preparationSampleSize: number;
-    attentionAlertsCount: number | null;
+    preparationComparison: ReportDurationComparison;
+    bottleneck: {
+      stage: 'ACCEPTANCE' | 'PREPARATION';
+      title: string;
+      description: string;
+      currentAverageSeconds: number;
+      previousAverageSeconds: number;
+      changeSeconds: number;
+      peakWindow: {
+        label: string;
+        averageSeconds: number;
+        sampleSize: number;
+      } | null;
+    } | null;
+    sla: {
+      attentionOrders: number;
+      criticalOrders: number;
+      comparison: ReportMetricComparison;
+    } | null;
   };
   modalities: Array<{
     modality: 'DELIVERY' | 'PICKUP';
     label: string;
     orderCount: number;
     sharePercent: number;
+    completedPaidOrders: number;
+    averageTicketCents: number;
+    cancelledOrders: number;
+    cancelledRatePercent: number;
   }>;
-  insights: Array<{
-    id: 'PEAK_HOUR' | 'TOP_PRODUCT' | 'ACCEPTANCE_CHANGE';
-    text: string;
-  }>;
-  insightsMinimumSample: number;
-  hasEnoughDataForInsights: boolean;
+  insights: AdvancedReportInsight[];
+  intelligenceState: 'READY' | 'INSUFFICIENT';
 }

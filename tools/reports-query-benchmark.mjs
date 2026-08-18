@@ -109,18 +109,26 @@ const QUERIES = [
     timeZone: true,
   },
   {
-    name: 'reports-top-products',
+    name: 'reports-product-trends',
     text: `
-      SELECT items."productId", SUM(items."quantity")::integer AS "quantity"
-      FROM "order_items" AS items
-      INNER JOIN "orders" AS orders ON orders."id" = items."orderId"
-      WHERE orders."tenantId" = $1 AND orders."storeId" = $2
-        AND orders."operationalStartedAt" >= $3 AND orders."operationalStartedAt" < $4
-        AND orders."status" = 'DELIVERED' AND orders."paymentStatus" = 'PAID'
-      GROUP BY items."productId"
-      ORDER BY SUM(items."quantity") DESC, items."productId" ASC
-      LIMIT 5
+      WITH scoped_items AS (
+        SELECT items."productId", items."quantity"
+        FROM "order_items" AS items
+        INNER JOIN "orders" AS orders ON orders."id" = items."orderId"
+        WHERE orders."tenantId" = $1 AND orders."storeId" = $2
+          AND (
+            (orders."operationalStartedAt" >= $3 AND orders."operationalStartedAt" < $4)
+            OR (orders."operationalStartedAt" >= $5 AND orders."operationalStartedAt" < $6)
+          )
+          AND orders."status" = 'DELIVERED' AND orders."paymentStatus" = 'PAID'
+      )
+      SELECT "productId", SUM("quantity")::integer AS "quantity"
+      FROM scoped_items
+      GROUP BY "productId"
+      ORDER BY SUM("quantity") DESC, "productId" ASC
+      LIMIT 25
     `,
+    previous: true,
   },
   {
     name: 'reports-durations',
@@ -139,16 +147,68 @@ const QUERIES = [
     `,
   },
   {
-    name: 'reports-peak-hour',
+    name: 'reports-hour-distribution',
     text: `
       SELECT EXTRACT(HOUR FROM "operationalStartedAt" AT TIME ZONE $5)::integer AS "hour",
         COUNT(*)::integer AS "orderCount"
       FROM "orders"
       WHERE "tenantId" = $1 AND "storeId" = $2
         AND "operationalStartedAt" >= $3 AND "operationalStartedAt" < $4
-      GROUP BY 1 ORDER BY "orderCount" DESC, "hour" ASC LIMIT 1
+      GROUP BY 1 ORDER BY "hour" ASC
     `,
     timeZone: true,
+  },
+  {
+    name: 'reports-durations-by-hour',
+    text: `
+      SELECT
+        EXTRACT(HOUR FROM "operationalStartedAt" AT TIME ZONE $5)::integer AS "hour",
+        AVG(EXTRACT(EPOCH FROM ("acceptedAt" - "operationalStartedAt"))) FILTER (
+          WHERE "acceptedAt" IS NOT NULL AND "acceptedAt" >= "operationalStartedAt"
+        ) AS "averageAcceptanceSeconds",
+        AVG(EXTRACT(EPOCH FROM ("readyAt" - "preparingAt"))) FILTER (
+          WHERE "readyAt" IS NOT NULL AND "preparingAt" IS NOT NULL
+            AND "readyAt" >= "preparingAt"
+        ) AS "averagePreparationSeconds"
+      FROM "orders"
+      WHERE "tenantId" = $1 AND "storeId" = $2
+        AND "operationalStartedAt" >= $3 AND "operationalStartedAt" < $4
+      GROUP BY 1 ORDER BY "hour" ASC
+    `,
+    timeZone: true,
+  },
+  {
+    name: 'reports-modalities',
+    text: `
+      SELECT "modality", COUNT(*)::integer AS "orderCount",
+        COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::integer AS "cancelledOrders",
+        COUNT(*) FILTER (
+          WHERE "status" = 'DELIVERED' AND "paymentStatus" = 'PAID'
+        )::integer AS "completedPaidOrders",
+        COALESCE(SUM("total") FILTER (
+          WHERE "status" = 'DELIVERED' AND "paymentStatus" = 'PAID'
+        ), 0)::bigint AS "completedValueCents"
+      FROM "orders"
+      WHERE "tenantId" = $1 AND "storeId" = $2
+        AND "operationalStartedAt" >= $3 AND "operationalStartedAt" < $4
+      GROUP BY "modality" ORDER BY "modality" ASC
+    `,
+  },
+  {
+    name: 'reports-sla-orders',
+    text: `
+      SELECT COUNT(DISTINCT alerts."orderId")::integer AS "attentionOrders",
+        COUNT(DISTINCT alerts."orderId") FILTER (
+          WHERE alerts."stage" = 'CRITICAL'
+        )::integer AS "criticalOrders"
+      FROM "order_operational_sla_alerts" AS alerts
+      INNER JOIN "orders" AS orders
+        ON orders."id" = alerts."orderId"
+        AND orders."tenantId" = alerts."tenantId"
+        AND orders."storeId" = alerts."storeId"
+      WHERE alerts."tenantId" = $1 AND alerts."storeId" = $2
+        AND orders."operationalStartedAt" >= $3 AND orders."operationalStartedAt" < $4
+    `,
   },
 ];
 
@@ -192,6 +252,8 @@ async function main() {
 
     const end = new Date();
     const start = new Date(end.getTime() - days * 86_400_000);
+    const previousEnd = start;
+    const previousStart = new Date(previousEnd.getTime() - (end.getTime() - start.getTime()));
     const reports = [];
     for (const query of QUERIES) {
       const databaseExecutions = [];
@@ -201,7 +263,9 @@ async function main() {
       for (let sample = 0; sample < samples; sample += 1) {
         const parameters = query.timeZone
           ? [store.tenantId, store.id, start, end, store.timeZone]
-          : [store.tenantId, store.id, start, end];
+          : query.previous
+            ? [store.tenantId, store.id, start, end, previousStart, previousEnd]
+            : [store.tenantId, store.id, start, end];
         const startedAt = performance.now();
         const result = await client.query(
           `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.text}`,

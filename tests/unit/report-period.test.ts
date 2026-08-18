@@ -30,10 +30,26 @@ describe('períodos dos relatórios avançados', () => {
     expect(period.startLocalDate).toBe('2026-08-12');
     expect(period.endLocalDate).toBe('2026-08-18');
     expect(period.current.end.toISOString()).toBe('2026-08-18T15:34:00.000Z');
-    expect(period.previous.start.toISOString()).toBe('2026-08-05T03:00:00.000Z');
+    expect(period.previous.start.toISOString()).toBe('2026-08-05T14:26:00.000Z');
     expect(period.previous.end.toISOString()).toBe('2026-08-12T03:00:00.000Z');
+    expect(period.comparisonLabel).toBe('Mesmo intervalo imediatamente anterior');
     expect(period.durationDays).toBe(7);
     expect(period.granularity).toBe('DAY');
+  });
+
+  it('resume trinta dias em semanas sem alterar a duração comparada', () => {
+    const period = resolveReportPeriod(
+      { preset: 'LAST_30_DAYS' },
+      'America/Fortaleza',
+      new Date('2026-08-18T15:34:00.000Z'),
+    );
+
+    expect(period.durationDays).toBe(30);
+    expect(period.granularity).toBe('WEEK');
+    expect(period.previous.end.toISOString()).toBe(period.current.start.toISOString());
+    expect(period.previous.end.getTime() - period.previous.start.getTime()).toBe(
+      period.current.end.getTime() - period.current.start.getTime(),
+    );
   });
 
   it('aceita no máximo 365 dias personalizados e rejeita datas invertidas', () => {

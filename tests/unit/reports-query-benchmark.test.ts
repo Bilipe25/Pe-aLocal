@@ -14,12 +14,16 @@ describe('reports query benchmark safety', () => {
     expect(benchmark).toContain('EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)');
   });
 
-  it('cobre as agregações de V1 e separa execução do banco do round-trip', () => {
+  it('cobre as agregações críticas de V2 e separa execução do banco do round-trip', () => {
     expect(benchmark).toContain("name: 'reports-summary'");
     expect(benchmark).toContain("name: 'reports-weekly-series'");
-    expect(benchmark).toContain("name: 'reports-top-products'");
+    expect(benchmark).toContain("name: 'reports-product-trends'");
     expect(benchmark).toContain("name: 'reports-durations'");
-    expect(benchmark).toContain("name: 'reports-peak-hour'");
+    expect(benchmark).toContain("name: 'reports-hour-distribution'");
+    expect(benchmark).toContain("name: 'reports-durations-by-hour'");
+    expect(benchmark).toContain("name: 'reports-modalities'");
+    expect(benchmark).toContain("name: 'reports-sla-orders'");
+    expect(benchmark).toContain('COUNT(DISTINCT alerts."orderId")');
     expect(benchmark).toContain('databaseExecutionMs');
     expect(benchmark).toContain('clientRoundTripMs');
     expect(benchmark).toContain('sequentialScans');

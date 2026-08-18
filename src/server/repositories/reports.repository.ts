@@ -78,47 +78,75 @@ export async function getReportsSeries(
       AND "storeId" = ${scope.storeId}
       AND "operationalStartedAt" >= ${scope.start}
       AND "operationalStartedAt" < ${scope.end}
-    GROUP BY ${bucket}
-    ORDER BY ${bucket} ASC
+    GROUP BY 1
+    ORDER BY 1 ASC
   `);
 }
 
-interface ProductRow {
+export interface ProductTrendRow {
   productId: string;
   name: string;
-  quantity: number;
+  currentQuantity: number;
+  previousQuantity: number;
 }
 
-export async function getReportsTopProducts(scope: ReportsQueryScope, limit = 5) {
-  return getDb().$queryRaw<ProductRow[]>(Prisma.sql`
-    SELECT
-      items."productId" AS "productId",
-      (ARRAY_AGG(
-        items."productName"
-        ORDER BY orders."operationalStartedAt" DESC, items."id" DESC
-      ))[1] AS "name",
-      SUM(items."quantity")::integer AS "quantity"
-    FROM "order_items" AS items
-    INNER JOIN "orders" AS orders ON orders."id" = items."orderId"
-    WHERE orders."tenantId" = ${scope.tenantId}
-      AND orders."storeId" = ${scope.storeId}
-      AND orders."operationalStartedAt" >= ${scope.start}
-      AND orders."operationalStartedAt" < ${scope.end}
-      AND orders."status" = 'DELIVERED'
-      AND orders."paymentStatus" = 'PAID'
-    GROUP BY items."productId"
-    ORDER BY SUM(items."quantity") DESC, items."productId" ASC
+export async function getReportsProductTrends(
+  current: ReportsQueryScope,
+  previous: ReportsQueryScope,
+  limit = 25,
+) {
+  return getDb().$queryRaw<ProductTrendRow[]>(Prisma.sql`
+    WITH scoped_items AS (
+      SELECT
+        items."productId" AS "productId",
+        items."productName" AS "productName",
+        items."quantity" AS "quantity",
+        orders."operationalStartedAt" AS "operationalStartedAt",
+        CASE
+          WHEN orders."operationalStartedAt" >= ${current.start}
+            AND orders."operationalStartedAt" < ${current.end}
+          THEN 'current'
+          ELSE 'previous'
+        END AS "period"
+      FROM "order_items" AS items
+      INNER JOIN "orders" AS orders ON orders."id" = items."orderId"
+      WHERE orders."tenantId" = ${current.tenantId}
+        AND orders."storeId" = ${current.storeId}
+        AND (
+          (orders."operationalStartedAt" >= ${current.start}
+            AND orders."operationalStartedAt" < ${current.end})
+          OR
+          (orders."operationalStartedAt" >= ${previous.start}
+            AND orders."operationalStartedAt" < ${previous.end})
+        )
+        AND orders."status" = 'DELIVERED'
+        AND orders."paymentStatus" = 'PAID'
+    ), aggregated AS (
+      SELECT
+        "productId",
+        (ARRAY_AGG(
+          "productName"
+          ORDER BY ("period" = 'current') DESC, "operationalStartedAt" DESC
+        ))[1] AS "name",
+        COALESCE(SUM("quantity") FILTER (WHERE "period" = 'current'), 0)::integer AS "currentQuantity",
+        COALESCE(SUM("quantity") FILTER (WHERE "period" = 'previous'), 0)::integer AS "previousQuantity"
+      FROM scoped_items
+      GROUP BY "productId"
+    )
+    SELECT "productId", "name", "currentQuantity", "previousQuantity"
+    FROM aggregated
+    ORDER BY GREATEST("currentQuantity", "previousQuantity") DESC, "productId" ASC
     LIMIT ${limit}
   `);
 }
 
-interface PeakHourRow {
+export interface HourDistributionRow {
   hour: number;
   orderCount: number;
 }
 
-export async function getReportsPeakHour(scope: ReportsQueryScope) {
-  const rows = await getDb().$queryRaw<PeakHourRow[]>(Prisma.sql`
+export async function getReportsHourDistribution(scope: ReportsQueryScope) {
+  return getDb().$queryRaw<HourDistributionRow[]>(Prisma.sql`
     SELECT
       EXTRACT(HOUR FROM "operationalStartedAt" AT TIME ZONE ${scope.timeZone})::integer AS "hour",
       COUNT(*)::integer AS "orderCount"
@@ -128,13 +156,31 @@ export async function getReportsPeakHour(scope: ReportsQueryScope) {
       AND "operationalStartedAt" >= ${scope.start}
       AND "operationalStartedAt" < ${scope.end}
     GROUP BY 1
-    ORDER BY "orderCount" DESC, "hour" ASC
-    LIMIT 1
+    ORDER BY "hour" ASC
   `);
-  return rows[0] ?? null;
 }
 
-interface DurationRow {
+export interface WeekdayDistributionRow {
+  weekday: number;
+  orderCount: number;
+}
+
+export async function getReportsWeekdayDistribution(scope: ReportsQueryScope) {
+  return getDb().$queryRaw<WeekdayDistributionRow[]>(Prisma.sql`
+    SELECT
+      EXTRACT(DOW FROM "operationalStartedAt" AT TIME ZONE ${scope.timeZone})::integer AS "weekday",
+      COUNT(*)::integer AS "orderCount"
+    FROM "orders"
+    WHERE "tenantId" = ${scope.tenantId}
+      AND "storeId" = ${scope.storeId}
+      AND "operationalStartedAt" >= ${scope.start}
+      AND "operationalStartedAt" < ${scope.end}
+    GROUP BY 1
+    ORDER BY "orderCount" DESC, "weekday" ASC
+  `);
+}
+
+export interface DurationRow {
   averageAcceptanceSeconds: number | null;
   acceptanceSampleSize: number;
   averagePreparationSeconds: number | null;
@@ -178,26 +224,93 @@ export async function getReportsDurations(scope: ReportsQueryScope) {
   );
 }
 
-export async function getReportsModalities(scope: ReportsQueryScope) {
-  return getDb().order.groupBy({
-    by: ['modality'],
-    where: {
-      tenantId: scope.tenantId,
-      storeId: scope.storeId,
-      operationalStartedAt: { gte: scope.start, lt: scope.end },
-    },
-    _count: { _all: true },
-  });
+export interface HourDurationRow extends DurationRow {
+  hour: number;
 }
 
-export async function countReportsAttentionAlerts(scope: ReportsQueryScope) {
-  return getDb().orderOperationalSlaAlert.count({
-    where: {
-      tenantId: scope.tenantId,
-      storeId: scope.storeId,
-      order: {
-        operationalStartedAt: { gte: scope.start, lt: scope.end },
-      },
-    },
-  });
+export async function getReportsDurationsByHour(scope: ReportsQueryScope) {
+  return getDb().$queryRaw<HourDurationRow[]>(Prisma.sql`
+    SELECT
+      EXTRACT(HOUR FROM "operationalStartedAt" AT TIME ZONE ${scope.timeZone})::integer AS "hour",
+      AVG(EXTRACT(EPOCH FROM ("acceptedAt" - "operationalStartedAt"))) FILTER (
+        WHERE "acceptedAt" IS NOT NULL
+          AND "acceptedAt" >= "operationalStartedAt"
+      )::double precision AS "averageAcceptanceSeconds",
+      COUNT(*) FILTER (
+        WHERE "acceptedAt" IS NOT NULL
+          AND "acceptedAt" >= "operationalStartedAt"
+      )::integer AS "acceptanceSampleSize",
+      AVG(EXTRACT(EPOCH FROM ("readyAt" - "preparingAt"))) FILTER (
+        WHERE "readyAt" IS NOT NULL
+          AND "preparingAt" IS NOT NULL
+          AND "readyAt" >= "preparingAt"
+      )::double precision AS "averagePreparationSeconds",
+      COUNT(*) FILTER (
+        WHERE "readyAt" IS NOT NULL
+          AND "preparingAt" IS NOT NULL
+          AND "readyAt" >= "preparingAt"
+      )::integer AS "preparationSampleSize"
+    FROM "orders"
+    WHERE "tenantId" = ${scope.tenantId}
+      AND "storeId" = ${scope.storeId}
+      AND "operationalStartedAt" >= ${scope.start}
+      AND "operationalStartedAt" < ${scope.end}
+    GROUP BY 1
+    ORDER BY "hour" ASC
+  `);
+}
+
+export interface ModalityRow {
+  modality: 'DELIVERY' | 'PICKUP';
+  orderCount: number;
+  cancelledOrders: number;
+  completedPaidOrders: number;
+  completedValueCents: bigint | number;
+}
+
+export async function getReportsModalities(scope: ReportsQueryScope) {
+  return getDb().$queryRaw<ModalityRow[]>(Prisma.sql`
+    SELECT
+      "modality",
+      COUNT(*)::integer AS "orderCount",
+      COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::integer AS "cancelledOrders",
+      COUNT(*) FILTER (
+        WHERE "status" = 'DELIVERED' AND "paymentStatus" = 'PAID'
+      )::integer AS "completedPaidOrders",
+      COALESCE(SUM("total") FILTER (
+        WHERE "status" = 'DELIVERED' AND "paymentStatus" = 'PAID'
+      ), 0)::bigint AS "completedValueCents"
+    FROM "orders"
+    WHERE "tenantId" = ${scope.tenantId}
+      AND "storeId" = ${scope.storeId}
+      AND "operationalStartedAt" >= ${scope.start}
+      AND "operationalStartedAt" < ${scope.end}
+    GROUP BY "modality"
+    ORDER BY "modality" ASC
+  `);
+}
+
+export interface SlaCountsRow {
+  attentionOrders: number;
+  criticalOrders: number;
+}
+
+export async function getReportsSlaCounts(scope: ReportsQueryScope) {
+  const rows = await getDb().$queryRaw<SlaCountsRow[]>(Prisma.sql`
+    SELECT
+      COUNT(DISTINCT alerts."orderId")::integer AS "attentionOrders",
+      COUNT(DISTINCT alerts."orderId") FILTER (
+        WHERE alerts."stage" = 'CRITICAL'
+      )::integer AS "criticalOrders"
+    FROM "order_operational_sla_alerts" AS alerts
+    INNER JOIN "orders" AS orders
+      ON orders."id" = alerts."orderId"
+      AND orders."tenantId" = alerts."tenantId"
+      AND orders."storeId" = alerts."storeId"
+    WHERE alerts."tenantId" = ${scope.tenantId}
+      AND alerts."storeId" = ${scope.storeId}
+      AND orders."operationalStartedAt" >= ${scope.start}
+      AND orders."operationalStartedAt" < ${scope.end}
+  `);
+  return rows[0] ?? { attentionOrders: 0, criticalOrders: 0 };
 }
