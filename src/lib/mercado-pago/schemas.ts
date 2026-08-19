@@ -117,6 +117,43 @@ export const mercadoPagoWebhookSchema = z
   .strict();
 
 /**
+ * Algumas notificações reais de Orders são entregues sem `id` no nível raiz
+ * e incluem a representação resumida da order dentro de `data`. O status do
+ * corpo continua sem autoridade: apenas o ID é normalizado e a order é
+ * consultada novamente no backend antes de qualquer transição local.
+ */
+export const mercadoPagoExpandedOrderWebhookSchema = z
+  .object({
+    action: z.string().regex(/^order\./u),
+    api_version: z.string().optional(),
+    application_id: stringId,
+    id: stringId.optional(),
+    data: z
+      .object({
+        currency_id: z.string().min(1),
+        external_reference: z.string().min(1),
+        id: stringId,
+        status: z.string().min(1),
+        status_detail: z.string().min(1),
+        total_amount: z.union([z.string(), z.number()]),
+        total_paid_amount: z.union([z.string(), z.number()]),
+        transactions: z
+          .object({
+            payments: z.array(z.unknown()).min(1),
+          })
+          .strict(),
+        type: z.string().min(1),
+        version: z.union([z.string(), z.number()]),
+      })
+      .strict(),
+    date_created: z.string().min(1),
+    live_mode: z.boolean(),
+    type: z.literal('order'),
+    user_id: stringId,
+  })
+  .strict();
+
+/**
  * O botão "Testar URL" do painel envia uma sondagem assinada com uma order
  * fictícia expandida, sem o identificador do evento no nível raiz. Essa
  * sondagem comprova apenas conectividade e não pode entrar na reconciliação.

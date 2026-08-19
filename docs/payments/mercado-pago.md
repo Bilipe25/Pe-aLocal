@@ -25,10 +25,11 @@ MERCADO_PAGO_CLIENT_SECRET=
 MERCADO_PAGO_REDIRECT_URI=https://SEU_HOST/api/integrations/mercado-pago/oauth/callback
 MERCADO_PAGO_WEBHOOK_SECRET=
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=
+MERCADO_PAGO_TEST_APPLICATION_ID=
 MERCADO_PAGO_TEST_ACCESS_TOKEN=
 ```
 
-`MERCADO_PAGO_CLIENT_ID` e `MERCADO_PAGO_REDIRECT_URI` são configurações públicas e podem ser declaradas como `vars` do Worker. `MERCADO_PAGO_CLIENT_SECRET`, `MERCADO_PAGO_WEBHOOK_SECRET`, `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` e `MERCADO_PAGO_TEST_ACCESS_TOKEN` são secrets; a chave de criptografia deve conter 32 bytes aleatórios codificados em base64. O Access Token de teste existe somente em desenvolvimento/staging. Secrets e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
+`MERCADO_PAGO_CLIENT_ID`, `MERCADO_PAGO_TEST_APPLICATION_ID` e `MERCADO_PAGO_REDIRECT_URI` são configurações públicas e podem ser declaradas como `vars` do Worker. `MERCADO_PAGO_TEST_APPLICATION_ID` corresponde ao **N.º da aplicação** mostrado em **Testes → Credenciais de teste**; ele não substitui o Client ID principal. `MERCADO_PAGO_CLIENT_SECRET`, `MERCADO_PAGO_WEBHOOK_SECRET`, `MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY` e `MERCADO_PAGO_TEST_ACCESS_TOKEN` são secrets; a chave de criptografia deve conter 32 bytes aleatórios codificados em base64. O ID e o Access Token de teste existem somente em desenvolvimento/staging. Secrets e tokens nunca devem ser gravados no repositório, logs ou respostas públicas.
 
 As configurações `MERCADO_PAGO_*`, além de `APP_ENV`, também precisam existir no Worker auxiliar `order-events`, porque ele processa a inbox de webhooks, renova tokens e executa a reconciliação periódica. No staging, as configurações públicas ficam versionadas em `wrangler.order-events.jsonc`; os secrets permanecem armazenados exclusivamente no Cloudflare. O Access Token de teste deve ser configurado tanto no Worker principal quanto no auxiliar. Nesse Worker, use `MERCADO_PAGO_RECONCILIATION_ENABLED=true` somente no ambiente preparado. O kill switch de novas cobranças continua independente da reconciliação.
 
@@ -55,10 +56,11 @@ MERCADO_PAGO_CLIENT_SECRET=<secret-configurado-fora-do-repositório>
 MERCADO_PAGO_REDIRECT_URI=https://pedidolocal-staging.gabriellion97.workers.dev/api/integrations/mercado-pago/oauth/callback
 MERCADO_PAGO_WEBHOOK_SECRET=<segredo-do-webhook-de-teste>
 MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY=<chave-base64-de-32-bytes>
+MERCADO_PAGO_TEST_APPLICATION_ID=<número-da-aplicação-em-credenciais-de-teste>
 MERCADO_PAGO_TEST_ACCESS_TOKEN=<access-token-de-teste-da-aplicação>
 ```
 
-Use uma conta de teste do tipo vendedor para representar o estabelecimento na autorização OAuth. Para criar e consultar o Pix simulado, configure o Access Token de teste exibido em **Suas integrações → Testes → Credenciais de teste** como `MERCADO_PAGO_TEST_ACCESS_TOKEN` nos dois Workers de staging. Nunca reutilize esse token em produção. O segredo de webhook de staging deve ser o segredo de teste, separado do segredo produtivo.
+Use uma conta de teste do tipo vendedor para representar o estabelecimento na autorização OAuth. Para criar e consultar o Pix simulado, configure o **N.º da aplicação** e o Access Token exibidos em **Suas integrações → Testes → Credenciais de teste** como `MERCADO_PAGO_TEST_APPLICATION_ID` e `MERCADO_PAGO_TEST_ACCESS_TOKEN` nos dois Workers de staging. Nunca reutilize esses valores em produção. O segredo de webhook de staging deve ser o segredo de teste, separado do segredo produtivo.
 
 ### Smoke test de staging
 
@@ -67,7 +69,7 @@ Use uma conta de teste do tipo vendedor para representar o estabelecimento na au
 3. Habilite `onlinePaymentsEnabled` apenas para a loja de teste.
 4. Como proprietário, clique em **Conectar Mercado Pago** e autentique a conta vendedor de teste.
 5. Confirme que o callback retorna ao staging e a conexão fica `ACTIVE`; `liveMode` é apenas metadado informativo e não define o sandbox.
-6. Confirme que o Worker principal e o `order-events` possuem `MERCADO_PAGO_TEST_ACCESS_TOKEN`, selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
+6. Confirme que o Worker principal e o `order-events` possuem `MERCADO_PAGO_TEST_APPLICATION_ID` e `MERCADO_PAGO_TEST_ACCESS_TOKEN`, selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
 7. No checkout sandbox, a Orders API aceita somente o cenário Pix predefinido pelo Mercado Pago: total exato de `R$ 50,00`, `payer.email=test_user_br@testuser.com` e `payer.first_name=APRO`. O checkout valida esses valores antes de criar o pedido. Tanto no sandbox quanto em produção, a chamada envia `processing_mode=automatic` e `transactions.payments[].expiration_time=PT30M`, conforme o contrato atual da Orders API. Em produção, o valor e o e-mail reais são usados normalmente.
 8. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
 
@@ -91,7 +93,8 @@ Referências oficiais consultadas:
 - Evento obrigatório: **Order (Mercado Pago)**, cujo payload usa `type=order`. A notificação opcional de vinculação continua usando `mp-connect`.
 - Em staging, salve a URL na aba **Modo de teste** e confirme que a configuração da aplicação contém os tópicos `order` e `mp-connect`. A aba de produção é independente e deve permanecer sem URL até o rollout produtivo.
 - O valor de `MERCADO_PAGO_WEBHOOK_SECRET` do Worker principal deve ser exatamente o segredo exibido para o modo de teste da aplicação. O Worker auxiliar também precisa do mesmo secret para manter uma configuração operacional coerente, embora a validação HMAC aconteça no Worker principal.
-- O contrato estrito aceita os campos oficiais de Orders, incluindo `application_id`, e rejeita campos desconhecidos ou qualquer assinatura inválida.
+- Uma assinatura inválida gera apenas o evento sanitizado `MP_WEBHOOK_INVALID_SIGNATURE`, com um dos motivos `MISSING_INPUT`, `INVALID_FORMAT`, `EXPIRED_TIMESTAMP` ou `HMAC_MISMATCH`. Nenhum cabeçalho, assinatura ou secret é registrado. Se uma nova entrega retornar `401` com `HMAC_MISMATCH`, revise o secret do **Modo de teste** no Worker principal.
+- O contrato estrito aceita tanto a notificação compacta quanto a variante oficial com a order expandida em `data`, rejeitando campos desconhecidos ou qualquer assinatura inválida. A variante expandida é reduzida a identificadores seguros; seu status nunca é usado como fonte de verdade. Em staging, o `application_id` de uma notificação real deve coincidir com `MERCADO_PAGO_TEST_APPLICATION_ID`; em produção, deve coincidir com `MERCADO_PAGO_CLIENT_ID`. A sondagem assinada do painel usa o Client ID principal e é aceita sem enfileirar a order fictícia.
 - OAuth: PKCE S256, state de uso único e scopes `offline_access read write`.
 - Hosts externos fixos: `auth.mercadopago.com`, `api.mercadopago.com` e `api.mercadolibre.com` apenas para validar a tag pública do vendedor.
 
