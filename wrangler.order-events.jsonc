@@ -91,7 +91,7 @@
         "MERCHANT_WEB_PUSH_ENABLED": "true",
         "MERCADO_PAGO_RECONCILIATION_ENABLED": "true",
         "MERCADO_PAGO_ENABLED": "true",
-        "MERCADO_PAGO_CLIENT_ID": "326204361535128",
+        "MERCADO_PAGO_CLIENT_ID": "32620436153512",
         "MERCADO_PAGO_REDIRECT_URI": "https://pedidolocal-staging.gabriellion97.workers.dev/api/integrations/mercado-pago/oauth/callback",
       },
       "triggers": {

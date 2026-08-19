@@ -63,6 +63,10 @@ export async function POST(request: Request) {
     return response(200);
   }
   if (parsed.data.data.id !== dataId) return response(400);
+  if (parsed.data.application_id !== config.clientId) {
+    console.warn('[MP_WEBHOOK_APPLICATION_MISMATCH]');
+    return response(400);
+  }
 
   try {
     await enqueueMercadoPagoWebhook(parsed.data);

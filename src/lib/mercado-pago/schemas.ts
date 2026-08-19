@@ -109,7 +109,7 @@ export const mercadoPagoWebhookSchema = z
     type: z.enum(['orders', 'order', 'mp-connect']),
     action: z.string(),
     user_id: stringId,
-    application_id: stringId.optional(),
+    application_id: stringId,
     api_version: z.string().optional(),
     date_created: z.string().optional(),
     data: z.object({ id: stringId }).strict(),

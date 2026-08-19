@@ -23,7 +23,7 @@ import { POST } from '@/app/api/webhooks/mercado-pago/route';
 const officialPayload = {
   action: 'order.action_required',
   api_version: 'v1',
-  application_id: '76506430185983',
+  application_id: '32620436153512',
   date_created: '2026-08-17T22:37:39.000Z',
   id: '123456',
   live_mode: false,
@@ -95,10 +95,17 @@ describe('webhook Mercado Pago Orders', () => {
         id: '123456',
         type: 'order',
         user_id: '2025701502',
-        application_id: '76506430185983',
+        application_id: '32620436153512',
         data: { id: officialPayload.data.id },
       }),
     );
+  });
+
+  it('rejeita uma notificacao real assinada para outra aplicacao', async () => {
+    const response = await POST(request({ ...officialPayload, application_id: 'outra-aplicacao' }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.enqueueWebhook).not.toHaveBeenCalled();
   });
 
   it('continua rejeitando campos desconhecidos mesmo com assinatura válida', async () => {
