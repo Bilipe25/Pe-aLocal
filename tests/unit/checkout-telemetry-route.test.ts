@@ -117,6 +117,20 @@ describe('POST checkout/events', () => {
     expect(JSON.stringify(logged)).not.toMatch(/phone|address|postal|token|customer/i);
   });
 
+  it('registra Pix criado como conversão distinta do checkout concluído', async () => {
+    const info = vi.mocked(console.info);
+
+    const response = await POST(request({ event: 'pix_created', step: 'review' }), context);
+
+    expect(response.status).toBe(204);
+    const logged = JSON.parse(info.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(logged).toMatchObject({
+      event: 'checkout_funnel_event',
+      funnelEvent: 'pix_created',
+      step: 'review',
+    });
+  });
+
   it('registra eventos de recomendação somente com o ID público do produto', async () => {
     const info = vi.mocked(console.info);
     const productId = '00000000-0000-0000-0002-000000000002';

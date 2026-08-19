@@ -60,6 +60,30 @@ const cancellationMessages: Record<OrderCancellationReasonCode, string> = {
   OTHER: 'O pedido foi cancelado pela loja. Entre em contato para mais informações.',
 };
 
+const publicPaymentStatusLabels: Record<PaymentStatus, string> = {
+  PENDING: 'Pagamento pendente',
+  CUSTOMER_REPORTED_PAID: 'Pagamento informado',
+  PAID: 'Pagamento confirmado',
+  FAILED: 'Pagamento não identificado',
+  CANCELLED: 'Pagamento cancelado',
+  REFUNDED: 'Pagamento reembolsado',
+};
+
+export function getPublicPaymentStatusLabel(input: {
+  paymentStatus: PaymentStatus;
+  provider: string | null;
+  cancellationReasonCode: OrderCancellationReasonCode | null;
+}) {
+  if (input.provider === 'MERCADO_PAGO' && input.paymentStatus === 'FAILED') {
+    if (input.cancellationReasonCode === 'ONLINE_PAYMENT_CREATION_FAILED') {
+      return 'Falha ao gerar o Pix';
+    }
+    if (input.cancellationReasonCode === 'PIX_EXPIRED') return 'Pix expirado';
+    if (input.cancellationReasonCode === 'PROVIDER_CANCELLED') return 'Pix cancelado';
+  }
+  return publicPaymentStatusLabels[input.paymentStatus];
+}
+
 function addMinutes(value: Date, minutes: number) {
   return new Date(value.getTime() + Math.max(0, minutes) * 60_000);
 }

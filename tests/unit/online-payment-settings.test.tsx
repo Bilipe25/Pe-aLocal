@@ -14,6 +14,7 @@ const baseCapability = {
   mode: 'MANUAL' as const,
   effectiveMode: 'MANUAL' as const,
   canSelectOnline: false,
+  environment: 'sandbox' as const,
   connection: null,
 };
 
@@ -44,6 +45,7 @@ describe('OnlinePaymentSettings', () => {
           mode: 'ONLINE',
           effectiveMode: 'MANUAL',
           canSelectOnline: false,
+          environment: 'sandbox',
           connection: {
             status: 'REAUTH_REQUIRED',
             liveMode: false,
@@ -70,6 +72,7 @@ describe('OnlinePaymentSettings', () => {
           mode: 'MANUAL',
           effectiveMode: 'MANUAL',
           canSelectOnline: true,
+          environment: 'sandbox',
           connection: {
             status: 'ACTIVE',
             liveMode: false,
@@ -110,6 +113,7 @@ describe('OnlinePaymentSettings', () => {
           mode: 'ONLINE',
           effectiveMode: 'ONLINE',
           canSelectOnline: true,
+          environment: 'sandbox',
           connection: {
             status: 'ACTIVE',
             liveMode: false,
@@ -129,5 +133,32 @@ describe('OnlinePaymentSettings', () => {
     expect(screen.getByText('Cobranças com falha')).toBeVisible();
     expect(screen.getByRole('alert')).toHaveTextContent('2 cobranças recentes falharam');
     expect(screen.getByRole('alert')).toHaveTextContent('use o Pix manual');
+  });
+
+  it('usa o APP_ENV para identificar staging mesmo quando a conexão informa live mode', () => {
+    render(
+      <OnlinePaymentSettings
+        storeId="store-1"
+        expectedConfigurationVersion={6}
+        readOnly={false}
+        connectionFeedback={null}
+        capability={{
+          mode: 'ONLINE',
+          effectiveMode: 'ONLINE',
+          canSelectOnline: true,
+          environment: 'sandbox',
+          connection: {
+            status: 'ACTIVE',
+            liveMode: true,
+            connectedAt: new Date(),
+            refreshedAt: null,
+            reauthRequiredAt: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Ambiente de teste')).toBeVisible();
+    expect(screen.queryByText('Ambiente de produção')).not.toBeInTheDocument();
   });
 });

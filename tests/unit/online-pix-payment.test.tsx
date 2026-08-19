@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OnlinePixPayment } from '@/components/storefront/online-pix-payment';
 
+const mocks = vi.hoisted(() => ({ reportCheckoutConversionEvent: vi.fn() }));
+
+vi.mock('@/lib/checkout/telemetry', () => ({
+  reportCheckoutConversionEvent: mocks.reportCheckoutConversionEvent,
+}));
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -27,6 +33,7 @@ describe('OnlinePixPayment', () => {
       <OnlinePixPayment
         storeSlug="loja-teste"
         publicToken="public-token"
+        timeZone="America/Sao_Paulo"
         initialPayment={{
           creationStatus: 'CREATED',
           qrCode: '00020101021226890014br.gov.bcb.pix',
@@ -39,6 +46,17 @@ describe('OnlinePixPayment', () => {
     expect(screen.getByRole('img', { name: 'QR Code Pix' })).toBeVisible();
     expect(screen.getByRole('textbox', { name: 'Pix Copia e Cola' })).toHaveValue(
       '00020101021226890014br.gov.bcb.pix',
+    );
+    expect(screen.getByText(/Válido até 13\/08 às 00:00/)).toBeVisible();
+    expect(mocks.reportCheckoutConversionEvent).toHaveBeenCalledWith(
+      'loja-teste',
+      'public-token',
+      'checkout_completed',
+    );
+    expect(mocks.reportCheckoutConversionEvent).toHaveBeenCalledWith(
+      'loja-teste',
+      'public-token',
+      'pix_created',
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(fetchMock).toHaveBeenCalledWith(

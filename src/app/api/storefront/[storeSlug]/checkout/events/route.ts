@@ -17,6 +17,7 @@ const checkoutTelemetrySchema = z
       'checkout_abandoned',
       'checkout_quote_changed',
       'checkout_completed',
+      'pix_created',
       'recommendation_viewed',
       'recommendation_clicked',
       'recommendation_added',

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { getMercadoPagoConfig } from '@/lib/mercado-pago/config';
-import { mercadoPagoWebhookSchema } from '@/lib/mercado-pago/schemas';
+import {
+  mercadoPagoWebhookSchema,
+  mercadoPagoWebhookUrlValidationProbeSchema,
+} from '@/lib/mercado-pago/schemas';
 import { validateMercadoPagoSignature } from '@/lib/mercado-pago/signature';
 import { enqueueMercadoPagoWebhook } from '@/server/services/mercado-pago-webhook.service';
 
@@ -46,7 +49,20 @@ export async function POST(request: Request) {
     return response(400);
   }
   const parsed = mercadoPagoWebhookSchema.safeParse(payload);
-  if (!parsed.success || parsed.data.data.id !== dataId) return response(400);
+  if (!parsed.success) {
+    const validationProbe = mercadoPagoWebhookUrlValidationProbeSchema.safeParse(payload);
+    if (
+      !validationProbe.success ||
+      validationProbe.data.application_id !== config.clientId ||
+      validationProbe.data.data.id !== dataId
+    ) {
+      return response(400);
+    }
+
+    console.info('[MP_WEBHOOK_URL_VALIDATION_ACCEPTED]');
+    return response(200);
+  }
+  if (parsed.data.data.id !== dataId) return response(400);
 
   try {
     await enqueueMercadoPagoWebhook(parsed.data);

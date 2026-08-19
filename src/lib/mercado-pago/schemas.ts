@@ -116,5 +116,38 @@ export const mercadoPagoWebhookSchema = z
   })
   .strict();
 
+/**
+ * O botão "Testar URL" do painel envia uma sondagem assinada com uma order
+ * fictícia expandida, sem o identificador do evento no nível raiz. Essa
+ * sondagem comprova apenas conectividade e não pode entrar na reconciliação.
+ */
+export const mercadoPagoWebhookUrlValidationProbeSchema = z
+  .object({
+    action: z.string().regex(/^order\./u),
+    api_version: z.string().optional(),
+    application_id: stringId,
+    data: z
+      .object({
+        external_reference: z.string().min(1),
+        id: stringId,
+        status: z.string().min(1),
+        status_detail: z.string().min(1),
+        total_paid_amount: z.union([z.string(), z.number()]),
+        transactions: z
+          .object({
+            payments: z.array(z.unknown()).min(1),
+          })
+          .strict(),
+        type: z.string().min(1),
+        version: z.union([z.string(), z.number()]),
+      })
+      .strict(),
+    date_created: z.string().optional(),
+    live_mode: z.boolean(),
+    type: z.literal('order'),
+    user_id: stringId,
+  })
+  .strict();
+
 export type MercadoPagoCreatedOrder = z.infer<typeof mercadoPagoCreatedOrderSchema>;
 export type MercadoPagoOrder = z.infer<typeof mercadoPagoOrderSchema>;

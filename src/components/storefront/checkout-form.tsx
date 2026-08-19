@@ -47,7 +47,11 @@ import {
   readCheckoutDraft,
   writeCheckoutDraft,
 } from '@/lib/checkout/checkout-draft';
-import { reportCheckoutAbandonment, reportCheckoutEvent } from '@/lib/checkout/telemetry';
+import {
+  reportCheckoutAbandonment,
+  reportCheckoutConversionEvent,
+  reportCheckoutEvent,
+} from '@/lib/checkout/telemetry';
 import {
   MERCADO_PAGO_SANDBOX_PIX_AMOUNT_CENTS,
   MERCADO_PAGO_SANDBOX_PIX_AMOUNT_MESSAGE,
@@ -1371,7 +1375,12 @@ export function CheckoutForm({
 
         completedRef.current = true;
         recognitionSessionActiveRef.current = false;
-        reportCheckoutEvent(storeSlug, { event: 'checkout_completed', step: 'review' });
+        if (!result.data.onlinePayment) {
+          reportCheckoutEvent(storeSlug, { event: 'checkout_completed', step: 'review' });
+        } else if (result.data.onlinePaymentState === 'READY') {
+          reportCheckoutConversionEvent(storeSlug, result.data.publicToken, 'checkout_completed');
+          reportCheckoutConversionEvent(storeSlug, result.data.publicToken, 'pix_created');
+        }
         idempotencyRef.current = null;
         clearCheckoutIdempotency(storage, storageKey);
         clearCheckoutDraft(storage, storeId);
