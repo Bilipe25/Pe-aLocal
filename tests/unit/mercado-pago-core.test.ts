@@ -9,8 +9,14 @@ import {
   decryptCredential,
   encryptCredential,
 } from '@/lib/mercado-pago/crypto';
-import { mercadoPagoWebhookSchema } from '@/lib/mercado-pago/schemas';
-import { validateMercadoPagoSignature } from '@/lib/mercado-pago/signature';
+import {
+  mercadoPagoExpandedOrderWebhookSchema,
+  mercadoPagoWebhookSchema,
+} from '@/lib/mercado-pago/schemas';
+import {
+  validateMercadoPagoSignature,
+  verifyMercadoPagoSignature,
+} from '@/lib/mercado-pago/signature';
 import { mapMercadoPagoOrderStatus } from '@/lib/mercado-pago/status-mapper';
 
 function base64(bytes: Uint8Array) {
@@ -70,6 +76,24 @@ describe('Mercado Pago core', () => {
         now: now + 301_000,
       }),
     ).resolves.toBe(false);
+    await expect(
+      verifyMercadoPagoSignature({
+        signature,
+        requestId,
+        dataId,
+        secret,
+        now: now + 301_000,
+      }),
+    ).resolves.toEqual({ valid: false, reason: 'EXPIRED_TIMESTAMP' });
+    await expect(
+      verifyMercadoPagoSignature({
+        signature,
+        requestId,
+        dataId,
+        secret: 'outro-segredo',
+        now,
+      }),
+    ).resolves.toEqual({ valid: false, reason: 'HMAC_MISMATCH' });
   });
 
   it('mantém status desconhecido em revisão e nunca o promove a pago', () => {
@@ -99,6 +123,36 @@ describe('Mercado Pago core', () => {
     expect(mercadoPagoWebhookSchema.safeParse({ ...webhook, token: 'não permitido' }).success).toBe(
       false,
     );
+  });
+
+  it('aceita estritamente a variante expandida de uma notificação Orders', () => {
+    const webhook = {
+      action: 'order.processed',
+      api_version: 'v1',
+      application_id: 'test-application-id',
+      data: {
+        currency_id: 'BRL',
+        external_reference: 'opaque-reference',
+        id: 'ORDTST01ABC',
+        status: 'processed',
+        status_detail: 'accredited',
+        total_amount: '50.00',
+        total_paid_amount: '50.00',
+        transactions: { payments: [{}] },
+        type: 'online',
+        version: 2,
+      },
+      date_created: '2026-08-19T14:51:04.521013205Z',
+      live_mode: false,
+      type: 'order',
+      user_id: '3610124436',
+    };
+
+    expect(mercadoPagoExpandedOrderWebhookSchema.safeParse(webhook).success).toBe(true);
+    expect(
+      mercadoPagoExpandedOrderWebhookSchema.safeParse({ ...webhook, access_token: 'forjado' })
+        .success,
+    ).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ const configSchema = z.object({
   MERCADO_PAGO_REDIRECT_URI: z.string().url(),
   MERCADO_PAGO_WEBHOOK_SECRET: z.string().trim().min(1),
   MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: z.string().trim().min(1),
+  MERCADO_PAGO_TEST_APPLICATION_ID: z.string().trim().min(1).optional(),
   MERCADO_PAGO_TEST_ACCESS_TOKEN: z.string().trim().min(1).optional(),
 });
 
@@ -19,7 +20,10 @@ const requiredConfigurationKeys = [
   'MERCADO_PAGO_WEBHOOK_SECRET',
   'MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY',
 ] as const;
-const sandboxRequiredConfigurationKeys = ['MERCADO_PAGO_TEST_ACCESS_TOKEN'] as const;
+const sandboxRequiredConfigurationKeys = [
+  'MERCADO_PAGO_TEST_APPLICATION_ID',
+  'MERCADO_PAGO_TEST_ACCESS_TOKEN',
+] as const;
 
 export type MercadoPagoOAuthEnvironment = 'sandbox' | 'production';
 
@@ -63,7 +67,8 @@ export function isMercadoPagoOrdersCredentialReady(
   const environment = parsedEnvironment.data === 'production' ? 'production' : 'sandbox';
   return (
     environment === 'production' ||
-    String(env.MERCADO_PAGO_TEST_ACCESS_TOKEN).startsWith('APP_USR-')
+    (Boolean(env.MERCADO_PAGO_TEST_APPLICATION_ID?.trim()) &&
+      String(env.MERCADO_PAGO_TEST_ACCESS_TOKEN).startsWith('APP_USR-'))
   );
 }
 
@@ -148,9 +153,22 @@ export function getMercadoPagoConfig(env: MercadoPagoRuntimeEnv = process.env) {
     redirectUri: parsed.data.MERCADO_PAGO_REDIRECT_URI,
     webhookSecret: parsed.data.MERCADO_PAGO_WEBHOOK_SECRET,
     encryptionKey: parsed.data.MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY,
+    testApplicationId: parsed.data.MERCADO_PAGO_TEST_APPLICATION_ID,
     testAccessToken: parsed.data.MERCADO_PAGO_TEST_ACCESS_TOKEN,
     oauthEnvironment: getMercadoPagoOAuthEnvironment(parsed.data),
   };
+}
+
+export function getMercadoPagoWebhookApplicationId(
+  config: ReturnType<typeof getMercadoPagoConfig> = getMercadoPagoConfig(),
+): string {
+  if (config.oauthEnvironment === 'production') return config.clientId;
+  if (!config.testApplicationId) {
+    throw new Error(
+      'O número da aplicação de teste do Mercado Pago não está configurado neste ambiente.',
+    );
+  }
+  return config.testApplicationId;
 }
 
 export function getMercadoPagoTestAccessToken(env: MercadoPagoRuntimeEnv = process.env): string {

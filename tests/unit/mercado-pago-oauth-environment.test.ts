@@ -14,6 +14,7 @@ import {
   assertMercadoPagoSellerEnvironment,
   getMercadoPagoConfig,
   getMercadoPagoOAuthEnvironment,
+  getMercadoPagoWebhookApplicationId,
   MercadoPagoOAuthEnvironmentMismatchError,
   MercadoPagoOrdersCredentialError,
 } from '@/lib/mercado-pago/config';
@@ -38,6 +39,7 @@ function configEnv(
     MERCADO_PAGO_REDIRECT_URI: 'https://example.test/oauth/callback',
     MERCADO_PAGO_WEBHOOK_SECRET: 'webhook-secret',
     MERCADO_PAGO_CREDENTIAL_ENCRYPTION_KEY: 'encryption-key',
+    MERCADO_PAGO_TEST_APPLICATION_ID: 'test-application-id',
   };
 }
 
@@ -70,6 +72,24 @@ describe('ambiente e credencial do OAuth Mercado Pago', () => {
   it('falha fechado quando APP_ENV está ausente', () => {
     expect(() => getMercadoPagoOAuthEnvironment({})).toThrow(
       'O ambiente OAuth do Mercado Pago não está configurado.',
+    );
+  });
+
+  it('separa o application_id de webhook entre sandbox e produção', () => {
+    expect(getMercadoPagoWebhookApplicationId(getMercadoPagoConfig(configEnv('staging')))).toBe(
+      'test-application-id',
+    );
+    expect(getMercadoPagoWebhookApplicationId(getMercadoPagoConfig(configEnv('production')))).toBe(
+      'client-id',
+    );
+  });
+
+  it('falha fechado no sandbox sem o N.º da aplicação de teste', () => {
+    const env = configEnv('staging');
+    env.MERCADO_PAGO_TEST_APPLICATION_ID = undefined;
+
+    expect(() => getMercadoPagoWebhookApplicationId(getMercadoPagoConfig(env))).toThrow(
+      'número da aplicação de teste',
     );
   });
 
