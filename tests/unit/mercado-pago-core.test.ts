@@ -55,18 +55,29 @@ describe('Mercado Pago core', () => {
     ).rejects.toBeDefined();
   });
 
-  it('valida assinatura e rejeita timestamp vencido', async () => {
+  it('valida assinatura preservando o case do Order ID e rejeita timestamp vencido', async () => {
     const secret = 'webhook-secret';
     const requestId = 'request-1';
     const dataId = 'ORDER-123';
     const now = Date.now();
     const ts = String(Math.floor(now / 1_000));
-    const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
     const signature = `ts=${ts},v1=${await hmacHex(secret, manifest)}`;
+    const lowerCaseManifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+    const lowerCaseSignature = `ts=${ts},v1=${await hmacHex(secret, lowerCaseManifest)}`;
 
     await expect(
       validateMercadoPagoSignature({ signature, requestId, dataId, secret, now }),
     ).resolves.toBe(true);
+    await expect(
+      verifyMercadoPagoSignature({
+        signature: lowerCaseSignature,
+        requestId,
+        dataId,
+        secret,
+        now,
+      }),
+    ).resolves.toEqual({ valid: false, reason: 'HMAC_MISMATCH' });
     await expect(
       validateMercadoPagoSignature({
         signature,

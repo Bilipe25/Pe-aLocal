@@ -55,7 +55,10 @@ export async function verifyMercadoPagoSignature(
     return { valid: false, reason: 'EXPIRED_TIMESTAMP' };
   }
 
-  const manifest = `id:${input.dataId.toLowerCase()};request-id:${input.requestId};ts:${parts.ts};`;
+  // The Orders webhook signs the resource ID with its original casing.
+  // Numeric IDs used by the simulator hide this distinction, while real
+  // Orders IDs are alphanumeric and normally arrive in uppercase.
+  const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${parts.ts};`;
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(input.secret),
