@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/mercado-pago/config', () => ({
-  getMercadoPagoConfig: () => ({ webhookSecret: 'webhook-secret' }),
+  getMercadoPagoConfig: () => ({
+    clientId: '32620436153512',
+    webhookSecret: 'webhook-secret',
+  }),
 }));
 vi.mock('@/lib/mercado-pago/signature', () => ({
   validateMercadoPagoSignature: mocks.validateSignature,
@@ -29,9 +32,41 @@ const officialPayload = {
   data: { id: 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3' },
 };
 
-function request(payload: unknown) {
+const urlValidationProbePayload = {
+  action: 'order.processed',
+  api_version: 'v1',
+  application_id: '32620436153512',
+  data: {
+    external_reference: 'ext_ref_1234',
+    id: '123456',
+    status: 'processed',
+    status_detail: 'accredited',
+    total_paid_amount: 100000,
+    transactions: {
+      payments: [
+        {
+          amount: 100000,
+          id: 'PAY01K7S9596QBWZRTY02NF',
+          paid_amount: 100000,
+          payment_method: { id: 'visa', installments: 1, type: 'credit_card' },
+          reference: { id: 1234567891 },
+          status: 'processed',
+          status_detail: 'accredited',
+        },
+      ],
+    },
+    type: 'point',
+    version: 3,
+  },
+  date_created: '2021-11-01T02:02:02-04:00',
+  live_mode: true,
+  type: 'order',
+  user_id: 184030921,
+};
+
+function request(payload: unknown, dataId = officialPayload.data.id) {
   return new Request(
-    `https://pedidolocal.test/api/webhooks/mercado-pago?data.id=${officialPayload.data.id}&type=order`,
+    `https://pedidolocal.test/api/webhooks/mercado-pago?data.id=${dataId}&type=order`,
     {
       method: 'POST',
       headers: {
@@ -68,6 +103,23 @@ describe('webhook Mercado Pago Orders', () => {
 
   it('continua rejeitando campos desconhecidos mesmo com assinatura válida', async () => {
     const response = await POST(request({ ...officialPayload, access_token: 'não permitido' }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.enqueueWebhook).not.toHaveBeenCalled();
+  });
+
+  it('aceita a sondagem assinada do painel sem enfileirar a order fictícia', async () => {
+    const response = await POST(request(urlValidationProbePayload, '123456'));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: true });
+    expect(mocks.enqueueWebhook).not.toHaveBeenCalled();
+  });
+
+  it('rejeita a sondagem de outra aplicação', async () => {
+    const response = await POST(
+      request({ ...urlValidationProbePayload, application_id: 'outra-aplicacao' }, '123456'),
+    );
 
     expect(response.status).toBe(400);
     expect(mocks.enqueueWebhook).not.toHaveBeenCalled();
