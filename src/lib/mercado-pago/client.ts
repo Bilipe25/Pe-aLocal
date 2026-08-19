@@ -196,16 +196,13 @@ export function createMercadoPagoPixOrder(input: {
       type: 'online',
       total_amount: input.totalAmount,
       external_reference: input.externalReference,
-      // A compra de teste Pix da Orders API possui um payload predefinido.
-      // No sandbox, o provedor aplica `automatic` e rejeita propriedades que
-      // não fazem parte desse cenário. Produção segue o contrato Pix normal.
-      ...(sandbox ? {} : { processing_mode: 'automatic' }),
+      processing_mode: 'automatic',
       transactions: {
         payments: [
           {
             amount: input.totalAmount,
             payment_method: { id: 'pix', type: 'bank_transfer' },
-            ...(sandbox ? {} : { expiration_time: input.expiration }),
+            expiration_time: input.expiration,
           },
         ],
       },

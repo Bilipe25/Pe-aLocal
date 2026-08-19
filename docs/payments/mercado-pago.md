@@ -68,7 +68,7 @@ Use uma conta de teste do tipo vendedor para representar o estabelecimento na au
 4. Como proprietário, clique em **Conectar Mercado Pago** e autentique a conta vendedor de teste.
 5. Confirme que o callback retorna ao staging e a conexão fica `ACTIVE`; `liveMode` é apenas metadado informativo e não define o sandbox.
 6. Confirme que o Worker principal e o `order-events` possuem `MERCADO_PAGO_TEST_ACCESS_TOKEN`, selecione `paymentMode=ONLINE`, gere um pedido Pix sandbox e valide webhook/reconciliação, Central e Merchant Push.
-7. No checkout sandbox, a Orders API aceita somente o cenário Pix predefinido pelo Mercado Pago: total exato de `R$ 50,00`, `payer.email=test_user_br@testuser.com` e `payer.first_name=APRO`. O checkout valida esses valores antes de criar o pedido e omite `processing_mode`/`expiration_time` da chamada de teste, conforme o payload oficial. Em produção, o valor e o e-mail reais são usados normalmente, com `processing_mode=automatic` e expiração de 30 minutos.
+7. No checkout sandbox, a Orders API aceita somente o cenário Pix predefinido pelo Mercado Pago: total exato de `R$ 50,00`, `payer.email=test_user_br@testuser.com` e `payer.first_name=APRO`. O checkout valida esses valores antes de criar o pedido. Tanto no sandbox quanto em produção, a chamada envia `processing_mode=automatic` e `transactions.payments[].expiration_time=PT30M`, conforme o contrato atual da Orders API. Em produção, o valor e o e-mail reais são usados normalmente.
 8. Execute o teste negativo: uma conta real, sem a tag `test_user`, deve ser rejeitada em staging e nunca deixar a conexão `ACTIVE`.
 
 Nenhum pagamento real deve ser feito nesse smoke test.
@@ -89,6 +89,8 @@ Referências oficiais consultadas:
 - Redirect URI canônica: `/api/integrations/mercado-pago/oauth/callback`.
 - Webhook único: `/api/webhooks/mercado-pago`. Em staging, configure a URL completa `https://pedidolocal-staging.gabriellion97.workers.dev/api/webhooks/mercado-pago`.
 - Evento obrigatório: **Order (Mercado Pago)**, cujo payload usa `type=order`. A notificação opcional de vinculação continua usando `mp-connect`.
+- Em staging, salve a URL na aba **Modo de teste** e confirme que a configuração da aplicação contém os tópicos `order` e `mp-connect`. A aba de produção é independente e deve permanecer sem URL até o rollout produtivo.
+- O valor de `MERCADO_PAGO_WEBHOOK_SECRET` do Worker principal deve ser exatamente o segredo exibido para o modo de teste da aplicação. O Worker auxiliar também precisa do mesmo secret para manter uma configuração operacional coerente, embora a validação HMAC aconteça no Worker principal.
 - O contrato estrito aceita os campos oficiais de Orders, incluindo `application_id`, e rejeita campos desconhecidos ou qualquer assinatura inválida.
 - OAuth: PKCE S256, state de uso único e scopes `offline_access read write`.
 - Hosts externos fixos: `auth.mercadopago.com`, `api.mercadopago.com` e `api.mercadolibre.com` apenas para validar a tag pública do vendedor.

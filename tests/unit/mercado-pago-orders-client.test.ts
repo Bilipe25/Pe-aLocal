@@ -108,11 +108,13 @@ describe('cliente Mercado Pago Orders', () => {
       type: 'online',
       total_amount: '50.00',
       external_reference: 'pl_mp_sandbox_reference',
+      processing_mode: 'automatic',
       transactions: {
         payments: [
           {
             amount: '50.00',
             payment_method: { id: 'pix', type: 'bank_transfer' },
+            expiration_time: 'PT30M',
           },
         ],
       },
