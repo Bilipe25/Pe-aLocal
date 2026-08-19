@@ -23,6 +23,7 @@ interface OnlinePaymentSettingsProps {
     mode: 'MANUAL' | 'ONLINE';
     effectiveMode: 'MANUAL' | 'ONLINE';
     canSelectOnline: boolean;
+    environment: 'sandbox' | 'production';
     connection: {
       status: 'ACTIVE' | 'REAUTH_REQUIRED' | 'DISCONNECTED' | 'REVOKED' | 'ERROR';
       liveMode: boolean;
@@ -221,8 +222,12 @@ export function OnlinePaymentSettings({
               ) : (
                 <Badge variant="secondary">Não conectada</Badge>
               )}
-              {connection?.status === 'ACTIVE' && !connection.liveMode ? (
-                <Badge variant="secondary">Ambiente de teste</Badge>
+              {connection?.status === 'ACTIVE' ? (
+                <Badge variant="secondary">
+                  {capability.environment === 'sandbox'
+                    ? 'Ambiente de teste'
+                    : 'Ambiente de produção'}
+                </Badge>
               ) : null}
               {paymentDegraded ? <Badge variant="warning">Cobranças com falha</Badge> : null}
             </div>

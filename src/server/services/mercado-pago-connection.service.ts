@@ -16,6 +16,7 @@ import {
   assertMercadoPagoOrdersCompatibleAccessToken,
   assertMercadoPagoSellerEnvironment,
   getMercadoPagoConfig,
+  getMercadoPagoOAuthEnvironment,
   isMercadoPagoEnabled,
   MERCADO_PAGO_AUTH_ORIGIN,
   MercadoPagoOrdersCredentialError,
@@ -134,6 +135,7 @@ interface MercadoPagoCapabilitySource {
 export function resolveMercadoPagoCapability(
   store: MercadoPagoCapabilitySource,
   rolloutEnabled: boolean,
+  environment: 'sandbox' | 'production',
 ) {
   if (!rolloutEnabled || !store.entitlement?.onlinePaymentsEnabled) return null;
 
@@ -146,6 +148,7 @@ export function resolveMercadoPagoCapability(
     effectiveMode: mode === 'ONLINE' && canSelectOnline ? ('ONLINE' as const) : ('MANUAL' as const),
     connection,
     canSelectOnline,
+    environment,
   } as const;
 }
 
@@ -210,7 +213,11 @@ export async function getMercadoPagoCapability(storeId: string) {
     },
   });
   if (!store) throw new NotFoundError('Loja');
-  const capability = resolveMercadoPagoCapability(store, isMercadoPagoEnabled());
+  const capability = resolveMercadoPagoCapability(
+    store,
+    isMercadoPagoEnabled(),
+    getMercadoPagoOAuthEnvironment(),
+  );
   if (!capability) return null;
   const paymentHealth = await getMercadoPagoPaymentHealth(session.tenantId, storeId);
   return { ...capability, paymentHealth };

@@ -74,6 +74,7 @@ function safeProviderErrorCode(error: unknown): string {
 export function isRetryableMercadoPagoCreationError(error: unknown): boolean {
   return (
     error instanceof AmbiguousProviderOrderError ||
+    (error instanceof MercadoPagoApiError && error.code === 'idempotency_validation_failed') ||
     (error instanceof MercadoPagoApiError &&
       ([402, 409, 423, 429].includes(error.status) || error.status >= 500)) ||
     (error instanceof DOMException && error.name === 'AbortError') ||
@@ -579,6 +580,7 @@ interface LocalMercadoPagoCreation {
   connectionId: string;
   externalReference: string;
   idempotencyKey: string;
+  lastErrorCode: string | null;
   createdAt: Date;
   credentialVersion: number;
   payerEmailCiphertext: string | null;
@@ -725,6 +727,31 @@ async function recoverMercadoPagoOrderByExternalReference(
     found: true,
     result: await reconcileMercadoPagoOrder(providerOrder, credential.expectedProviderUserId),
   } as const;
+}
+
+async function rotateMercadoPagoIdempotencyKey(
+  local: LocalMercadoPagoCreation,
+  currentKey: string,
+) {
+  const nextKey = `pl_${crypto.randomUUID()}`;
+  const rotated = await getDb().mercadoPagoPayment.updateMany({
+    where: {
+      id: local.id,
+      tenantId: local.tenantId,
+      storeId: local.storeId,
+      idempotencyKey: currentKey,
+      providerOrderId: null,
+    },
+    data: { idempotencyKey: nextKey },
+  });
+  if (rotated.count === 1) return { idempotencyKey: nextKey, providerOrderId: null };
+
+  const current = await getDb().mercadoPagoPayment.findUnique({
+    where: { id: local.id },
+    select: { idempotencyKey: true, providerOrderId: true },
+  });
+  if (!current) throw new NotFoundError('Pagamento Mercado Pago');
+  return current;
 }
 
 async function failCreation(
@@ -909,6 +936,8 @@ export async function ensureMercadoPagoPixCreated(
     return fetchAndReconcileMercadoPagoOrder(local, credential, local.providerOrderId);
   }
 
+  let idempotencyKey = local.idempotencyKey;
+
   if (local.creationStatus === 'RETRYABLE_ERROR') {
     try {
       const recovered = await recoverMercadoPagoOrderByExternalReference(local, credential);
@@ -921,6 +950,13 @@ export async function ensureMercadoPagoPixCreated(
         code,
       });
       return null;
+    }
+    if (local.lastErrorCode === 'idempotency_validation_failed') {
+      const rotated = await rotateMercadoPagoIdempotencyKey(local, idempotencyKey);
+      if (rotated.providerOrderId) {
+        return fetchAndReconcileMercadoPagoOrder(local, credential, rotated.providerOrderId);
+      }
+      idempotencyKey = rotated.idempotencyKey;
     }
   }
 
@@ -948,7 +984,7 @@ export async function ensureMercadoPagoPixCreated(
     try {
       createdOrder = await createMercadoPagoPixOrder({
         accessToken: credential.accessToken,
-        idempotencyKey: local.idempotencyKey,
+        idempotencyKey,
         totalAmount: centsToAmount(local.order.total),
         externalReference: local.externalReference,
         payerEmail,
@@ -974,6 +1010,25 @@ export async function ensureMercadoPagoPixCreated(
         error.status === 401
       ) {
         await markMercadoPagoReauthRequired(local.connectionId, 'SECOND_401');
+      }
+
+      if (error instanceof MercadoPagoApiError && error.code === 'idempotency_validation_failed') {
+        try {
+          const recovered = await recoverMercadoPagoOrderByExternalReference(local, credential);
+          if (recovered.found) return recovered.result;
+        } catch (recoveryError) {
+          if (recoveryError instanceof AmbiguousProviderOrderError) lastError = recoveryError;
+          break;
+        }
+        if (attempt === 0) {
+          const rotated = await rotateMercadoPagoIdempotencyKey(local, idempotencyKey);
+          if (rotated.providerOrderId) {
+            return fetchAndReconcileMercadoPagoOrder(local, credential, rotated.providerOrderId);
+          }
+          idempotencyKey = rotated.idempotencyKey;
+          continue;
+        }
+        break;
       }
 
       if (isRetryableMercadoPagoCreationError(error)) {

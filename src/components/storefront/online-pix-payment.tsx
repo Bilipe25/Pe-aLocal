@@ -5,6 +5,7 @@ import encodeQR from 'qr';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { reportCheckoutConversionEvent } from '@/lib/checkout/telemetry';
 import type { CartSnapshot } from '@/stores/cart-store';
 import { useCartStore } from '@/stores/cart-store';
 
@@ -22,6 +23,23 @@ function remainingLabel(expiresAt: string | null, now: number) {
   const minutes = Math.floor(remaining / 60_000);
   const seconds = Math.floor((remaining % 60_000) / 1_000);
   return `Expira em ${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function absoluteExpirationLabel(expiresAt: string | null, timeZone: string) {
+  if (!expiresAt) return null;
+  const expiration = new Date(expiresAt);
+  if (Number.isNaN(expiration.getTime())) return null;
+  const formatted = new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone,
+  })
+    .format(expiration)
+    .replace(',', ' às');
+  return `Válido até ${formatted}`;
 }
 
 function PixQr({ value }: { value: string }) {
@@ -54,10 +72,12 @@ function PixQr({ value }: { value: string }) {
 export function OnlinePixPayment({
   storeSlug,
   publicToken,
+  timeZone,
   initialPayment,
 }: {
   storeSlug: string;
   publicToken: string;
+  timeZone: string;
   initialPayment: PixPresentation;
 }) {
   const [payment, setPayment] = useState(initialPayment);
@@ -138,6 +158,12 @@ export function OnlinePixPayment({
     return () => window.clearInterval(timer);
   }, [payment.expiresAt]);
 
+  useEffect(() => {
+    if (!payment.qrCode) return;
+    reportCheckoutConversionEvent(storeSlug, publicToken, 'checkout_completed');
+    reportCheckoutConversionEvent(storeSlug, publicToken, 'pix_created');
+  }, [payment.qrCode, publicToken, storeSlug]);
+
   const copyCode = async () => {
     if (!payment.qrCode) return;
     setCopyError(false);
@@ -185,6 +211,7 @@ export function OnlinePixPayment({
 
   const expired = Boolean(payment.expiresAt && new Date(payment.expiresAt).getTime() <= now);
   const expirationLabel = remainingLabel(payment.expiresAt, now);
+  const absoluteExpiration = absoluteExpirationLabel(payment.expiresAt, timeZone);
 
   return (
     <section className="storefront-tracking-card" aria-labelledby="online-pix-title">
@@ -197,10 +224,11 @@ export function OnlinePixPayment({
       <div className="mt-4 flex justify-center text-black">
         <PixQr value={payment.qrCode} />
       </div>
-      {expirationLabel ? (
-        <p className="text-text-secondary mt-3 text-center text-sm font-semibold">
-          {expirationLabel}
-        </p>
+      {expirationLabel || absoluteExpiration ? (
+        <div className="text-text-secondary mt-3 text-center text-sm">
+          {expirationLabel ? <p className="font-semibold">{expirationLabel}</p> : null}
+          {absoluteExpiration ? <p className="mt-0.5 text-xs">{absoluteExpiration}</p> : null}
+        </div>
       ) : null}
       <label htmlFor="pix-copy-code" className="text-tinta mt-4 block text-sm font-semibold">
         Pix Copia e Cola

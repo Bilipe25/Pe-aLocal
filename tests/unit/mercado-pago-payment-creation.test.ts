@@ -65,6 +65,7 @@ const localCreation = {
   connectionId: 'connection-1',
   externalReference: 'pl_mp_opaque_reference',
   idempotencyKey: 'stable-idempotency-key',
+  lastErrorCode: null,
   createdAt: new Date('2026-08-12T17:00:00.000Z'),
   credentialVersion: 1,
   payerEmailCiphertext: 'ciphertext',
@@ -128,6 +129,39 @@ describe('criação idempotente do Pix Mercado Pago', () => {
       expect.objectContaining({
         where: expect.objectContaining({ id: localCreation.id }),
         data: expect.objectContaining({ creationStatus: 'RETRYABLE_ERROR' }),
+      }),
+    );
+  });
+
+  it('consulta a referência e troca a chave antes de repetir idempotency_validation_failed', async () => {
+    mocks.db.mercadoPagoPayment.findUnique.mockResolvedValue(localCreation);
+    mocks.createOrder
+      .mockRejectedValueOnce(
+        new MercadoPagoApiError('chave inválida', 400, 'idempotency_validation_failed'),
+      )
+      .mockRejectedValueOnce(new TypeError('network unavailable'));
+    mocks.searchOrders.mockResolvedValue({ data: [] });
+
+    await expect(ensureMercadoPagoPixCreated(localCreation.id)).resolves.toBeNull();
+
+    expect(mocks.searchOrders).toHaveBeenCalledTimes(2);
+    expect(mocks.searchOrders.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createOrder.mock.invocationCallOrder[1],
+    );
+    expect(mocks.createOrder).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ idempotencyKey: 'stable-idempotency-key' }),
+    );
+    expect(mocks.createOrder).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ idempotencyKey: expect.stringMatching(/^pl_[0-9a-f-]{36}$/u) }),
+    );
+    expect(mocks.db.mercadoPagoPayment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ idempotencyKey: 'stable-idempotency-key' }),
+        data: expect.objectContaining({
+          idempotencyKey: expect.stringMatching(/^pl_[0-9a-f-]{36}$/u),
+        }),
       }),
     );
   });

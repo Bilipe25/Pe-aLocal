@@ -29,36 +29,46 @@ function capabilitySource({
 
 describe('capacidade Mercado Pago da tela da loja', () => {
   it('permanece oculta quando o rollout global está desligado', () => {
-    expect(resolveMercadoPagoCapability(capabilitySource(), false)).toBeNull();
+    expect(resolveMercadoPagoCapability(capabilitySource(), false, 'sandbox')).toBeNull();
   });
 
   it('permanece oculta quando a loja não possui entitlement', () => {
-    expect(resolveMercadoPagoCapability(capabilitySource({ entitled: false }), true)).toBeNull();
+    expect(
+      resolveMercadoPagoCapability(capabilitySource({ entitled: false }), true, 'sandbox'),
+    ).toBeNull();
   });
 
   it('fica visível, mas não permite Online antes da conexão', () => {
     expect(
-      resolveMercadoPagoCapability(capabilitySource({ connection: null }), true),
+      resolveMercadoPagoCapability(capabilitySource({ connection: null }), true, 'sandbox'),
     ).toMatchObject({
       mode: 'MANUAL',
       effectiveMode: 'MANUAL',
       connection: null,
       canSelectOnline: false,
+      environment: 'sandbox',
     });
   });
 
   it('permite Online somente com conexão ativa', () => {
-    expect(resolveMercadoPagoCapability(capabilitySource({ mode: 'ONLINE' }), true)).toMatchObject({
+    expect(
+      resolveMercadoPagoCapability(capabilitySource({ mode: 'ONLINE' }), true, 'production'),
+    ).toMatchObject({
       mode: 'ONLINE',
       effectiveMode: 'ONLINE',
       canSelectOnline: true,
+      environment: 'production',
     });
   });
 
   it('preserva a preferência Online e informa fallback efetivo quando exige reconexão', () => {
     const connection = { ...activeConnection, status: 'REAUTH_REQUIRED' as const };
     expect(
-      resolveMercadoPagoCapability(capabilitySource({ mode: 'ONLINE', connection }), true),
+      resolveMercadoPagoCapability(
+        capabilitySource({ mode: 'ONLINE', connection }),
+        true,
+        'sandbox',
+      ),
     ).toMatchObject({ mode: 'ONLINE', effectiveMode: 'MANUAL', canSelectOnline: false });
   });
 });

@@ -20,7 +20,10 @@ import {
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
-import { toCustomerOrderTrackingState } from '@/server/services/customer-order-tracking.service';
+import {
+  getPublicPaymentStatusLabel,
+  toCustomerOrderTrackingState,
+} from '@/server/services/customer-order-tracking.service';
 import { getPublicVapidKey } from '@/lib/web-push/config';
 
 export const dynamic = 'force-dynamic';
@@ -61,15 +64,6 @@ const paymentMap = {
   PIX: 'Pix',
   CASH: 'Dinheiro',
   CARD_ON_DELIVERY: 'Cartão no recebimento',
-};
-
-const paymentStatusMap = {
-  PENDING: 'Pagamento pendente',
-  CUSTOMER_REPORTED_PAID: 'Pagamento informado',
-  PAID: 'Pagamento confirmado',
-  FAILED: 'Pagamento não identificado',
-  CANCELLED: 'Pagamento cancelado',
-  REFUNDED: 'Pagamento reembolsado',
 };
 
 export default async function OrderPage({ params }: OrderPageProps) {
@@ -128,6 +122,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               <OnlinePixPayment
                 storeSlug={order.store.slug}
                 publicToken={order.publicToken}
+                timeZone={order.store.timeZone}
                 initialPayment={{
                   creationStatus: order.mercadoPagoPayment.creationStatus,
                   qrCode: order.mercadoPagoPayment.qrCode,
@@ -225,7 +220,11 @@ export default async function OrderPage({ params }: OrderPageProps) {
               </div>
               <p className="storefront-tracking-info-value">{paymentMap[order.paymentMethod]}</p>
               <p className="storefront-tracking-info-detail">
-                {paymentStatusMap[order.paymentStatus]}
+                {getPublicPaymentStatusLabel({
+                  paymentStatus: order.paymentStatus,
+                  provider: order.payment?.provider ?? null,
+                  cancellationReasonCode: order.cancellationReasonCode,
+                })}
               </p>
               {order.paymentMethod === 'CASH' && order.changeFor && (
                 <p className="storefront-tracking-info-detail">

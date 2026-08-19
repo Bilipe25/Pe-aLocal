@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   push: vi.fn(),
   reportCheckoutAbandonment: vi.fn(),
+  reportCheckoutConversionEvent: vi.fn(),
   reportCheckoutEvent: vi.fn(),
   setCouponCode: vi.fn(),
   setStore: vi.fn(),
@@ -111,6 +112,7 @@ vi.mock('@/features/orders/actions', () => ({
 }));
 vi.mock('@/lib/checkout/telemetry', () => ({
   reportCheckoutAbandonment: mocks.reportCheckoutAbandonment,
+  reportCheckoutConversionEvent: mocks.reportCheckoutConversionEvent,
   reportCheckoutEvent: mocks.reportCheckoutEvent,
 }));
 vi.mock('@/stores/cart-store', () => ({
@@ -793,6 +795,63 @@ describe('checkout público v2', () => {
 
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/loja-1/order/${PUBLIC_TOKEN}`));
   });
+
+  it.each([
+    ['PENDING', []],
+    ['READY', ['checkout_completed', 'pix_created']],
+  ] as const)(
+    'separa a telemetria quando a criação do Pix termina em %s',
+    async (onlinePaymentState, expectedEvents) => {
+      mocks.createOrderAction.mockResolvedValue({
+        success: true,
+        data: {
+          publicToken: PUBLIC_TOKEN,
+          orderNumber: 2,
+          paymentReportToken: null,
+          onlinePayment: true,
+          onlinePaymentState,
+        },
+      });
+      renderCheckout({
+        paymentConfig: {
+          methods: [
+            {
+              method: 'PIX',
+              processing: 'ONLINE',
+              provider: 'MERCADO_PAGO',
+              requiresEmail: true,
+              environment: 'PRODUCTION',
+            },
+          ],
+        },
+      });
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'Nome' }), {
+        target: { value: 'Cliente Teste' },
+      });
+      fireEvent.change(screen.getByRole('textbox', { name: 'Celular' }), {
+        target: { value: '11999999999' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Continuar para pagamento/ }));
+      fireEvent.change(await screen.findByRole('textbox', { name: 'E-mail do comprador' }), {
+        target: { value: 'cliente@example.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Revisar pedido/ }));
+      const confirm = await screen.findByRole('button', { name: /Confirmar/ });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      fireEvent.click(confirm);
+
+      expect(await screen.findByText(/Pedido #2/i)).toBeInTheDocument();
+      expect(mocks.reportCheckoutEvent).not.toHaveBeenCalledWith('loja-1', {
+        event: 'checkout_completed',
+        step: 'review',
+      });
+      expect(mocks.reportCheckoutConversionEvent.mock.calls).toEqual(
+        expectedEvents.map((event) => ['loja-1', PUBLIC_TOKEN, event]),
+      );
+    },
+  );
 
   it('oferece Pix automático junto com dinheiro e cartão no recebimento', async () => {
     renderCheckout({

@@ -5,6 +5,7 @@ import {
   getCustomerOrderDetails,
   getCustomerOrderTrackingState,
   getCustomerOrderTrackingStates,
+  getPublicPaymentStatusLabel,
   toCustomerOrderTrackingState,
 } from '@/server/services/customer-order-tracking.service';
 
@@ -76,6 +77,23 @@ describe('acompanhamento público do pedido', () => {
       'A loja cancelou o pedido porque um item ficou indisponível.',
     );
     expect(JSON.stringify(state)).not.toContain('cancellationNote');
+  });
+
+  it('diferencia falha de criação do Pix de pagamento não identificado', () => {
+    expect(
+      getPublicPaymentStatusLabel({
+        paymentStatus: 'FAILED',
+        provider: 'MERCADO_PAGO',
+        cancellationReasonCode: 'ONLINE_PAYMENT_CREATION_FAILED',
+      }),
+    ).toBe('Falha ao gerar o Pix');
+    expect(
+      getPublicPaymentStatusLabel({
+        paymentStatus: 'FAILED',
+        provider: null,
+        cancellationReasonCode: 'PAYMENT_NOT_IDENTIFIED',
+      }),
+    ).toBe('Pagamento não identificado');
   });
 
   it('mantém a promessa criada no checkout mesmo se a configuração da loja mudar', () => {

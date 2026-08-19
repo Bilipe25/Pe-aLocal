@@ -3,7 +3,8 @@ export type CheckoutTelemetryEvent =
   | 'checkout_step_viewed'
   | 'checkout_abandoned'
   | 'checkout_quote_changed'
-  | 'checkout_completed';
+  | 'checkout_completed'
+  | 'pix_created';
 
 export type CheckoutTelemetryStep = 'identification' | 'fulfillment' | 'payment' | 'review';
 
@@ -54,6 +55,22 @@ export function reportCheckoutEvent(storeSlug: string, payload: CheckoutTelemetr
   }).catch(() => {
     // Telemetria nunca deve interromper ou degradar o checkout.
   });
+}
+
+export function reportCheckoutConversionEvent(
+  storeSlug: string,
+  publicToken: string,
+  event: 'checkout_completed' | 'pix_created',
+) {
+  if (typeof window === 'undefined') return;
+  const storageKey = `checkout-telemetry:${publicToken}:${event}`;
+  try {
+    if (window.sessionStorage.getItem(storageKey) === 'reported') return;
+    window.sessionStorage.setItem(storageKey, 'reported');
+  } catch {
+    // A telemetria continua best-effort quando o armazenamento está indisponível.
+  }
+  reportCheckoutEvent(storeSlug, { event, step: 'review' });
 }
 
 export function reportStorefrontEvent(
