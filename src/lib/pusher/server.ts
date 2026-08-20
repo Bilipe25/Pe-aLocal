@@ -152,3 +152,26 @@ export async function triggerPaymentUpdated(
     triggerCustomerTracking(orderId),
   ]);
 }
+
+export type DiningRoomInvalidationReason =
+  'ORDER_ATTACHED' | 'REQUEST_OPENED' | 'REQUEST_RESOLVED' | 'TRANSFERRED' | 'CLOSED';
+
+export async function triggerDiningRoomUpdated(
+  storeId: string,
+  input: {
+    tableId: string;
+    sessionId: string;
+    reason: DiningRoomInvalidationReason;
+    version: number;
+  },
+) {
+  return getPusherHttpClient().trigger(eventChannels(storeId), 'dining-room-updated', {
+    eventId: crypto.randomUUID(),
+    entity: 'DINING_ROOM',
+    tableId: input.tableId,
+    sessionId: input.sessionId,
+    reason: input.reason,
+    version: input.version,
+    timestamp: Date.now(),
+  });
+}

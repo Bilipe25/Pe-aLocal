@@ -47,6 +47,7 @@ interface CreateOrderData {
   paymentReportToken: string | null;
   onlinePayment: boolean;
   onlinePaymentState: 'READY' | 'PENDING' | null;
+  diningSessionPublicToken: string | null;
 }
 
 interface ReportPixPaymentData {
@@ -284,6 +285,7 @@ export async function createOrderAction(
         !order.onlinePayment && input.paymentMethod === 'PIX' ? order.paymentReportToken : null,
       onlinePayment: order.onlinePayment,
       onlinePaymentState,
+      diningSessionPublicToken: order.diningSessionPublicToken,
     });
   } catch (error) {
     console.warn('[CHECKOUT_ORDER_REJECTED]', {
@@ -401,6 +403,7 @@ export async function createDineInOrderAction(
       paymentReportToken: null,
       onlinePayment: order.onlinePayment,
       onlinePaymentState,
+      diningSessionPublicToken: order.diningSessionPublicToken,
     });
   } catch (error) {
     console.warn('[DINE_IN_ORDER_REJECTED]', {

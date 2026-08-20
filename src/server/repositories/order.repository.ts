@@ -47,6 +47,10 @@ import {
   createOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
+import {
+  getOrCreateDiningSessionForCheckout,
+  touchDiningSessionAfterOrder,
+} from '@/server/services/dining-table-session.service';
 
 type CreateOrderParams =
   | {
@@ -72,6 +76,7 @@ interface CreateOrderResult {
   outboxEventIds: string[];
   customerNameConflict: boolean;
   rememberDeviceExpiresAt: Date | null;
+  diningSessionPublicToken: string | null;
 }
 
 /**
@@ -105,28 +110,28 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       if (dineIn && !diningTable) throw new NotFoundError('QR Code');
 
       const storeSelect = {
-          id: true,
-          tenantId: true,
-          slug: true,
-          address: { select: { city: true, state: true } },
-          settings: {
-            select: {
-              acceptsPix: true,
-              pixKeyType: true,
-              pixKey: true,
-              acceptsCash: true,
-              acceptsCardOnDelivery: true,
-              acceptsCardInPerson: true,
-              paymentMode: true,
-            },
+        id: true,
+        tenantId: true,
+        slug: true,
+        address: { select: { city: true, state: true } },
+        settings: {
+          select: {
+            acceptsPix: true,
+            pixKeyType: true,
+            pixKey: true,
+            acceptsCash: true,
+            acceptsCardOnDelivery: true,
+            acceptsCardInPerson: true,
+            paymentMode: true,
           },
-          entitlement: { select: { onlinePaymentsEnabled: true, dineInQrEnabled: true } },
-          paymentProviderConnections: {
-            where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
-            take: 1,
-            select: { id: true },
-          },
-        } satisfies Prisma.StoreSelect;
+        },
+        entitlement: { select: { onlinePaymentsEnabled: true, dineInQrEnabled: true } },
+        paymentProviderConnections: {
+          where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
+          take: 1,
+          select: { id: true },
+        },
+      } satisfies Prisma.StoreSelect;
       const store = dineIn
         ? await tx.store.findFirst({
             where: { id: diningTable!.storeId, tenantId: diningTable!.tenantId },
@@ -175,15 +180,14 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
-      const resolvedIdentity =
-        dineIn
-          ? {
-              customerId: null,
-              customerName: dineInInput!.customerName,
-              customerPhone: null,
-              phoneNormalized: null,
-            }
-          : standardInput!.identityMode === 'RECOGNIZED'
+      const resolvedIdentity = dineIn
+        ? {
+            customerId: null,
+            customerName: dineInInput!.customerName,
+            customerPhone: null,
+            phoneNormalized: null,
+          }
+        : standardInput!.identityMode === 'RECOGNIZED'
           ? {
               customerId: recognizedIdentity!.customerId,
               customerName: recognizedIdentity!.customerName,
@@ -225,6 +229,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           idempotencyFingerprint: true,
           customerId: true,
           mercadoPagoPayment: { select: { id: true } },
+          diningTableSession: { select: { publicToken: true } },
         },
       });
       if (existing) {
@@ -252,6 +257,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
           mercadoPagoPaymentId: existing.mercadoPagoPayment?.id ?? null,
           onlinePayment: Boolean(existing.mercadoPagoPayment),
+          diningSessionPublicToken: existing.diningTableSession?.publicToken ?? null,
         };
       }
 
@@ -417,11 +423,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       } else if (input.paymentMethod === 'CARD_IN_PERSON' && !settings.acceptsCardInPerson) {
-        throw new CheckoutError(
-          'STORE_UNAVAILABLE',
-          'O cartão na mesa não está disponível.',
-          409,
-        );
+        throw new CheckoutError('STORE_UNAVAILABLE', 'O cartão na mesa não está disponível.', 409);
       }
       if (
         standardInput &&
@@ -489,9 +491,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             city: store.address.city,
             state: store.address.state.toUpperCase(),
             zipCode:
-              standardInput.deliveryAddress.postalCode ??
-              standardInput.deliveryPostalCode ??
-              null,
+              standardInput.deliveryAddress.postalCode ?? standardInput.deliveryPostalCode ?? null,
             reference: standardInput.deliveryAddress.reference || null,
           };
         } else {
@@ -515,6 +515,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               }),
             )
           : null;
+      const diningSession = dineIn
+        ? await getOrCreateDiningSessionForCheckout(tx, diningTable!, now)
+        : null;
       const order = await tx.order.create({
         data: {
           tenantId: store.tenantId,
@@ -524,14 +527,14 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           quoteFingerprint: quote.quoteFingerprint,
           publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
           paymentReportToken: onlinePayment || dineIn ? null : crypto.randomUUID(),
-          paymentReportExpiresAt: onlinePayment || dineIn
-            ? null
-            : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
+          paymentReportExpiresAt:
+            onlinePayment || dineIn ? null : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
           customerName: resolvedIdentity.customerName,
           customerPhone: resolvedIdentity.customerPhone,
           customerPhoneNormalized: resolvedIdentity.phoneNormalized,
           modality: dineIn ? 'DINE_IN' : standardInput!.modality,
           diningTableId: diningTable?.id ?? null,
+          diningTableSessionId: diningSession?.id ?? null,
           diningTableLabelSnapshot: diningTable?.label ?? null,
           deliveryAddress: address ? formatAddressForStore(address) : null,
           deliveryZoneName: quote.deliveryZoneName,
@@ -614,6 +617,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
+      if (diningSession) {
+        await touchDiningSessionAfterOrder(tx, diningSession.id, now);
+      }
 
       if (onlinePayment && mercadoPagoPaymentId && encryptedPayerEmail) {
         await tx.mercadoPagoPayment.create({
@@ -737,6 +743,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
         mercadoPagoPaymentId,
         onlinePayment,
+        diningSessionPublicToken: diningSession?.publicToken ?? null,
       };
     },
     {
@@ -779,6 +786,18 @@ export async function getOrderByPublicToken(publicToken: string) {
       modality: true,
       diningTableId: true,
       diningTableLabelSnapshot: true,
+      diningTableSession: {
+        select: {
+          publicToken: true,
+          status: true,
+          diningTable: { select: { label: true } },
+          serviceRequests: {
+            where: { status: 'OPEN' },
+            select: { type: true },
+          },
+          store: { select: { entitlement: { select: { dineInQrEnabled: true } } } },
+        },
+      },
       deliveryAddress: true,
       deliveryZoneName: true,
       subtotal: true,

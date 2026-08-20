@@ -131,6 +131,21 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum DiningTableSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum DiningTableServiceRequestType {
+  ASSISTANCE
+  BILL
+}
+
+enum DiningTableServiceRequestStatus {
+  OPEN
+  RESOLVED
+}
+
 enum OrderChangeSource {
   CUSTOMER
   DASHBOARD
@@ -292,6 +307,10 @@ enum AuditAction {
   PAYMENT_PROVIDER_DISCONNECTED
   PAYMENT_PROVIDER_REAUTH_REQUIRED
   PAYMENT_PROVIDER_STATUS_UPDATED
+  DINING_SESSION_OPENED
+  DINING_SESSION_CLOSED
+  DINING_SESSION_TRANSFERRED
+  DINING_SERVICE_REQUEST_RESOLVED
 }
 
 enum CustomizationRevisionAction {
@@ -372,6 +391,8 @@ model User {
   orderInternalNotes        OrderInternalNote[]           @relation("OrderInternalNoteAuthor")
   paymentStatusChanges      PaymentStatusHistory[]        @relation("PaymentStatusChangedBy")
   paymentOAuthAttempts      PaymentProviderOAuthAttempt[] @relation("PaymentProviderOAuthAttemptInitiatedBy")
+  diningSessionsClosed      DiningTableSession[]          @relation("DiningTableSessionClosedBy")
+  diningRequestsResolved    DiningTableServiceRequest[]   @relation("DiningTableServiceRequestResolvedBy")
 
   @@index([email])
   @@map("users")
@@ -433,6 +454,8 @@ model Tenant {
   paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
   mercadoPagoPayments           MercadoPagoPayment[]
   diningTables                  StoreDiningTable[]
+  diningTableSessions           DiningTableSession[]
+  diningTableServiceRequests    DiningTableServiceRequest[]
 
   @@map("tenants")
 }
@@ -517,6 +540,8 @@ model Store {
   paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
   mercadoPagoPayments           MercadoPagoPayment[]
   diningTables                  StoreDiningTable[]
+  diningTableSessions           DiningTableSession[]
+  diningTableServiceRequests    DiningTableServiceRequest[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -769,14 +794,71 @@ model StoreDiningTable {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store  Store   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  orders Order[]
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store    Store                @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  orders   Order[]
+  sessions DiningTableSession[]
 
   @@unique([id, tenantId, storeId])
   @@unique([tenantId, storeId, labelNormalized])
   @@index([tenantId, storeId, isActive, sortOrder, id])
   @@map("store_dining_tables")
+}
+
+model DiningTableSession {
+  id            String                   @id @default(uuid())
+  tenantId      String
+  storeId       String
+  diningTableId String
+  publicToken   String                   @unique @db.VarChar(43)
+  status        DiningTableSessionStatus @default(OPEN)
+  version       Int                      @default(0)
+  openedAt      DateTime                 @default(now())
+  lastOrderAt   DateTime                 @default(now())
+  closedAt      DateTime?
+  closedById    String?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  tenant          Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store           Store                       @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  diningTable     StoreDiningTable            @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  closedBy        User?                       @relation("DiningTableSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  orders          Order[]
+  serviceRequests DiningTableServiceRequest[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status, openedAt, id])
+  @@index([tenantId, storeId, diningTableId, status])
+  @@index([closedById])
+  @@map("dining_table_sessions")
+}
+
+model DiningTableServiceRequest {
+  id                   String                          @id @default(uuid())
+  tenantId             String
+  storeId              String
+  diningTableSessionId String
+  type                 DiningTableServiceRequestType
+  status               DiningTableServiceRequestStatus @default(OPEN)
+  idempotencyKey       String                          @db.VarChar(80)
+  version              Int                             @default(0)
+  createdAt            DateTime                        @default(now())
+  resolvedAt           DateTime?
+  resolvedById         String?
+  updatedAt            DateTime                        @updatedAt
+
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store              Store              @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  diningTableSession DiningTableSession @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  resolvedBy         User?              @relation("DiningTableServiceRequestResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([diningTableSessionId, idempotencyKey])
+  @@index([tenantId, storeId, status, createdAt, id])
+  @@index([diningTableSessionId, status, createdAt, id])
+  @@index([resolvedById])
+  @@map("dining_table_service_requests")
 }
 
 model StoreAddress {
@@ -1238,6 +1320,7 @@ model Order {
   // Modalidade e endereço
   modality                 OrderModality
   diningTableId            String?
+  diningTableSessionId     String?
   diningTableLabelSnapshot String?       @db.VarChar(80)
   deliveryAddress          String?
   deliveryZoneName         String?
@@ -1292,11 +1375,12 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store       Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  cancelledBy User?             @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  diningTable StoreDiningTable? @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store              Store               @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy        User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  diningTable        StoreDiningTable?   @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  diningTableSession DiningTableSession? @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
 
   items                         OrderItem[]
   statusHistory                 OrderStatusHistory[]
@@ -1326,6 +1410,8 @@ model Order {
   @@index([customerPhone])
   @@index([customerId])
   @@index([diningTableId])
+  @@index([diningTableSessionId])
+  @@index([tenantId, storeId, diningTableSessionId, createdAt, id])
   @@index([tenantId, storeId, diningTableId, createdAt, id])
   @@index([cancelledById])
   @@index([publicToken])

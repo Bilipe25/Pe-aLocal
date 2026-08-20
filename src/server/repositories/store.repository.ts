@@ -269,6 +269,7 @@ export async function findStoreScopeById(id: string, tenantId: string) {
           advancedReportsEnabled: true,
           operationalSlaEnabled: true,
           operationalSlaEnabledAt: true,
+          dineInQrEnabled: true,
         },
       },
       tenant: {
