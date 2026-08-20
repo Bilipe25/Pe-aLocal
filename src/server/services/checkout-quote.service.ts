@@ -9,6 +9,7 @@ import {
   MAX_POSTGRES_INTEGER_CENTS,
   type CheckoutInput,
   type CheckoutQuoteInput,
+  type DineInCheckoutQuoteInput,
 } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import { CheckoutError, DomainError } from '@/server/errors';
@@ -46,9 +47,18 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   estimatedMaxMinutes: number;
 }
 
-type CheckoutQuoteCalculationInput = CheckoutQuoteInput & {
-  deliveryAddress?: CheckoutInput['deliveryAddress'];
-};
+type CheckoutQuoteCalculationInput =
+  | (CheckoutQuoteInput & { deliveryAddress?: CheckoutInput['deliveryAddress'] })
+  | (DineInCheckoutQuoteInput & { modality: 'DINE_IN' });
+
+export interface ResolvedDiningTableQuoteContext {
+  id: string;
+  tenantId: string;
+  storeId: string;
+  label: string;
+  version: number;
+  isActive: boolean;
+}
 
 function safeAdd(left: number, right: number) {
   const result = left + right;
@@ -122,7 +132,8 @@ function addMinutes(value: Date, minutes: number) {
 
 function quoteFingerprint(input: {
   storeId: string;
-  modality: CheckoutQuoteInput['modality'];
+  modality: CheckoutQuoteCalculationInput['modality'];
+  diningTableReference: string | null;
   postalCode: string | null;
   lines: CheckoutQuoteLineDto[];
   subtotal: number;
@@ -190,6 +201,7 @@ export async function calculateCheckoutQuote(
     client?: QuoteClient;
     now?: Date;
     savedAddress?: ResolvedSavedCheckoutAddress | null;
+    diningTable?: ResolvedDiningTableQuoteContext | null;
   } = {},
 ): Promise<ResolvedCheckoutQuote | null> {
   const client = options.client ?? getDb();
@@ -210,6 +222,7 @@ export async function calculateCheckoutQuote(
           pickupEnabled: true,
         },
       },
+      entitlement: { select: { dineInQrEnabled: true } },
     },
   });
   if (!store) return null;
@@ -238,6 +251,24 @@ export async function calculateCheckoutQuote(
       code: 'STORE_UNAVAILABLE',
       message: 'A retirada não está disponível nesta loja.',
     });
+  } else if (input.modality === 'DINE_IN') {
+    const table = options.diningTable;
+    if (!store.entitlement?.dineInQrEnabled) {
+      issues.push({
+        code: 'STORE_UNAVAILABLE',
+        message: 'Os pedidos pelo QR Code estão indisponíveis nesta loja.',
+      });
+    } else if (
+      !table ||
+      !table.isActive ||
+      table.tenantId !== store.tenantId ||
+      table.storeId !== store.id
+    ) {
+      issues.push({
+        code: 'STORE_UNAVAILABLE',
+        message: 'Este QR Code não está disponível. Peça ajuda à equipe.',
+      });
+    }
   }
 
   const productIds = [...new Set(input.items.map((item) => item.productId))];
@@ -401,9 +432,10 @@ export async function calculateCheckoutQuote(
     savedAddressPostalCodeDigits && /^\d{8}$/.test(savedAddressPostalCodeDigits)
       ? savedAddressPostalCodeDigits
       : null;
-  const manualAddressPostalCode = input.deliveryAddress?.postalCode ?? null;
+  const standardInput = input.modality === 'DINE_IN' ? null : input;
+  const manualAddressPostalCode = standardInput?.deliveryAddress?.postalCode ?? null;
   const effectivePostalCode =
-    savedAddressPostalCode ?? manualAddressPostalCode ?? input.deliveryPostalCode ?? null;
+    savedAddressPostalCode ?? manualAddressPostalCode ?? standardInput?.deliveryPostalCode ?? null;
   const deliveryAddressVersion = savedAddress
     ? `${savedAddress.addressFingerprint}:${savedAddress.updatedAt.toISOString()}`
     : null;
@@ -630,6 +662,10 @@ export async function calculateCheckoutQuote(
   const fingerprint = quoteFingerprint({
     storeId: store.id,
     modality: input.modality,
+    diningTableReference:
+      input.modality === 'DINE_IN' && options.diningTable
+        ? `${options.diningTable.id}:${options.diningTable.version}`
+        : null,
     postalCode: effectivePostalCode,
     lines,
     subtotal,

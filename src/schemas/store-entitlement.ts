@@ -30,6 +30,7 @@ export const storeEntitlementInputSchema = z
     kdsEnabled: z.boolean(),
     advancedReportsEnabled: z.boolean(),
     orderPrintingEnabled: z.boolean(),
+    dineInQrEnabled: z.boolean(),
   })
   .strict();
 

@@ -87,6 +87,7 @@ function order(status: KdsOrderDTO['status'], id = `order-${status}`): KdsOrderD
     id,
     orderNumber: status === 'CONFIRMED' ? 101 : status === 'PREPARING' ? 102 : 103,
     modality: 'PICKUP',
+    diningTableLabel: null,
     status,
     version: 7,
     stageStartedAt: '2026-08-18T12:00:00.000Z',

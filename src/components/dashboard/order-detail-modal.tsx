@@ -450,7 +450,7 @@ function OrderDetails({
               id={`customer-heading-${order.id}`}
               className="text-text-primary mb-2 text-sm font-semibold"
             >
-              Cliente e entrega
+              {order.modality === 'DINE_IN' ? 'Mesa e cliente' : 'Cliente e entrega'}
             </h3>
             <div className="border-border bg-surface-secondary divide-border divide-y overflow-hidden rounded-lg border text-sm">
               <div className="order-detail-contact-row p-3">
@@ -460,12 +460,14 @@ function OrderDetails({
                     <p className="text-text-primary font-semibold break-words">
                       {order.customer.name}
                     </p>
+                    {order.modality !== 'DINE_IN' ? (
                     <p className="text-text-secondary mt-0.5 flex items-center gap-1.5">
                       <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       {order.customer.phone && normalizedPhone
                         ? order.customer.phone
                         : 'Contato protegido'}
                     </p>
+                    ) : null}
                   </div>
                 </div>
                 {order.customer.phone && normalizedPhone ? (
@@ -496,12 +498,18 @@ function OrderDetails({
                 <MapPin className="text-text-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-text-secondary text-xs font-medium">
-                    {order.modality === 'DELIVERY' ? 'Endereço de entrega' : 'Retirada no local'}
+                    {order.modality === 'DELIVERY'
+                      ? 'Endereço de entrega'
+                      : order.modality === 'DINE_IN'
+                        ? 'Pedido no salão'
+                        : 'Retirada no local'}
                   </p>
                   <p className="text-text-primary mt-0.5 font-medium break-words">
                     {order.modality === 'DELIVERY'
                       ? (deliveryAddress ?? 'Endereço protegido')
-                      : 'Cliente retira o pedido no estabelecimento'}
+                      : order.modality === 'DINE_IN'
+                        ? (order.diningTable.label ?? 'Mesa não identificada')
+                        : 'Cliente retira o pedido no estabelecimento'}
                   </p>
                 </div>
                 {order.modality === 'DELIVERY' && mapUrl ? (

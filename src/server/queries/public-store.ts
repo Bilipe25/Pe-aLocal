@@ -51,6 +51,7 @@ const publicStoreSelect = {
       acceptsPix: true,
       acceptsCash: true,
       acceptsCardOnDelivery: true,
+      acceptsCardInPerson: true,
       showEstimatedTimeInHero: true,
       showFulfillmentInHero: true,
       showMinOrderValueInHero: true,
@@ -108,6 +109,7 @@ const publicPurchaseStoreSelect = {
       acceptsPix: true,
       acceptsCash: true,
       acceptsCardOnDelivery: true,
+      acceptsCardInPerson: true,
       paymentMode: true,
     },
   },
@@ -460,6 +462,7 @@ async function getPurchaseStoreFromDb(slug: string) {
         acceptsPix: store.settings.acceptsPix,
         acceptsCash: store.settings.acceptsCash,
         acceptsCardOnDelivery: store.settings.acceptsCardOnDelivery,
+        acceptsCardInPerson: store.settings.acceptsCardInPerson,
       }
     : null;
   const onlinePayment =

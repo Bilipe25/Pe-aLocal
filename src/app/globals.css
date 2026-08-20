@@ -9261,3 +9261,671 @@ button.storefront-cart-line-row:focus-visible {
   line-height: 1.35;
   color: var(--store-text-muted);
 }
+
+/* =============================================================================
+ * Pedido no salão por QR Code
+ * ============================================================================= */
+
+.dine-in-context-banner {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.65rem 1rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--store-primary) 28%, var(--store-border));
+  background: color-mix(in srgb, var(--store-primary) 9%, var(--store-surface));
+  color: var(--store-text);
+  font-size: 0.875rem;
+}
+
+.dine-in-context-banner svg,
+.dine-in-table-chip svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--store-primary);
+}
+
+.dine-in-table-chip,
+.storefront-table-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  width: fit-content;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--store-primary) 10%, var(--store-surface));
+  color: var(--store-text);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.dine-in-unavailable,
+.dine-in-empty,
+.dine-in-loading,
+.dine-in-success {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 2rem 1.25rem;
+  background: var(--store-background, #f7f3ea);
+  color: var(--store-text, #24211d);
+  text-align: center;
+}
+
+.dine-in-unavailable > svg,
+.dine-in-empty > svg,
+.dine-in-success-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--store-primary, #d9480f) 12%, white);
+  color: var(--store-primary, #d9480f);
+}
+
+.dine-in-unavailable h1,
+.dine-in-empty h1,
+.dine-in-success h1,
+.dine-in-checkout h1 {
+  color: var(--store-text, #24211d);
+  font-family: var(--store-font-heading, var(--font-bricolage), serif);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.dine-in-unavailable p,
+.dine-in-success > p,
+.dine-in-empty p {
+  max-width: 32rem;
+  color: var(--store-text-muted, #625e57);
+}
+
+.dine-in-success-actions {
+  display: grid;
+  width: min(100%, 22rem);
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.dine-in-checkout,
+.dine-in-closed {
+  width: min(100%, 44rem);
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: 1rem 1rem 9rem;
+  background: var(--store-background);
+  color: var(--store-text);
+}
+
+.dine-in-checkout-header {
+  display: grid;
+  gap: 0.35rem;
+  padding-block: 0.5rem 1.25rem;
+}
+
+.dine-in-checkout-header h1 {
+  margin-top: 0.65rem;
+  font-size: clamp(1.65rem, 7vw, 2.25rem);
+}
+
+.dine-in-checkout-header > p:last-child {
+  color: var(--store-text-muted);
+}
+
+.dine-in-checkout-summary,
+.dine-in-checkout-fields {
+  display: grid;
+  gap: 1rem;
+  padding-block: 1.25rem;
+  border-block-start: 1px solid var(--store-border);
+}
+
+.dine-in-checkout-summary h2,
+.dine-in-checkout-fields legend {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.dine-in-checkout-summary ul {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.dine-in-checkout-summary li,
+.dine-in-checkout-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dine-in-checkout-total {
+  padding-top: 0.85rem;
+  border-block-start: 1px solid var(--store-border);
+  font-size: 1.1rem;
+}
+
+.dine-in-checkout-fields > label,
+.dine-in-checkout-fields fieldset {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.dine-in-checkout-fields label > span,
+.dine-in-checkout-fields legend {
+  color: var(--store-text);
+  font-weight: 700;
+}
+
+.dine-in-checkout-fields input[type='text'],
+.dine-in-checkout-fields input[type='email'],
+.dine-in-checkout-fields label > input:not([type='radio']),
+.dine-in-checkout-fields textarea {
+  min-height: 2.9rem;
+  width: 100%;
+  border: 1px solid var(--store-border);
+  border-radius: 0.75rem;
+  background: var(--store-surface);
+  color: var(--store-text);
+  padding: 0.75rem;
+  font: inherit;
+}
+
+.dine-in-checkout-fields textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.dine-in-checkout-fields input:focus-visible,
+.dine-in-checkout-fields textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--store-focus-ring) 30%, transparent);
+  outline-offset: 2px;
+  border-color: var(--store-focus-ring);
+}
+
+.dine-in-payment-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.6rem;
+}
+
+.dine-in-payment-options label {
+  position: relative;
+  display: flex;
+  min-height: 4.5rem;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--store-border);
+  border-radius: 0.75rem;
+  background: var(--store-surface);
+  padding: 0.75rem;
+}
+
+.dine-in-payment-options label[data-selected='true'] {
+  border-color: var(--store-primary);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--store-primary) 14%, transparent);
+}
+
+.dine-in-payment-options label:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--store-focus-ring) 30%, transparent);
+  outline-offset: 2px;
+  border-color: var(--store-focus-ring);
+}
+
+.dine-in-payment-options input {
+  position: absolute;
+  opacity: 0;
+}
+
+.dine-in-payment-options svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  color: var(--store-primary);
+}
+
+.dine-in-payment-options span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.dine-in-payment-options small {
+  color: var(--store-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.dine-in-checkout-error {
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--store-danger) 10%, var(--store-surface));
+  color: var(--store-danger);
+  padding: 0.8rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.dine-in-field-error {
+  color: var(--store-danger);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.dine-in-checkout-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--store-border);
+  background: color-mix(in srgb, var(--store-surface) 96%, transparent);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.dine-in-checkout-footer > * {
+  width: min(100%, 42rem);
+  min-height: 3rem;
+  margin-inline: auto;
+}
+
+.dine-in-footer-context {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--store-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.dine-in-footer-context svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--store-primary);
+}
+
+.kds-order-number {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dining-tables-admin {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.dining-tables-batch {
+  display: grid;
+  gap: 1rem;
+  border-radius: 0.875rem;
+  background: var(--color-kraft, #efe2c9);
+  padding: 1rem;
+}
+
+.dining-tables-batch h2,
+.dining-tables-list-header h2 {
+  color: var(--color-text-primary);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.dining-tables-batch p,
+.dining-tables-list-header p {
+  color: var(--color-text-secondary);
+  margin-top: 0.2rem;
+  font-size: 0.875rem;
+}
+
+.dining-tables-batch-fields {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) repeat(2, minmax(7rem, 0.5fr)) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.dining-tables-batch-fields label,
+.dining-table-rename label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dining-tables-batch-fields input,
+.dining-table-rename input {
+  min-height: 2.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.625rem;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.dining-tables-list-header,
+.dining-table-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dining-tables-list {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.875rem;
+  background: var(--color-surface);
+}
+
+.dining-tables-list > li + li {
+  border-block-start: 1px solid var(--color-border);
+}
+
+.dining-table-row {
+  min-height: 4.75rem;
+  padding: 0.85rem 1rem;
+}
+
+.dining-table-identity {
+  display: grid;
+  min-width: 8rem;
+  gap: 0.2rem;
+}
+
+.dining-table-identity strong {
+  color: var(--color-text-primary);
+}
+
+.dining-table-identity span {
+  color: var(--color-success);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dining-tables-list > li[data-active='false'] .dining-table-identity span {
+  color: var(--color-text-muted);
+}
+
+.dining-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.dining-table-actions details {
+  position: relative;
+}
+
+.dining-table-actions summary {
+  display: inline-flex;
+  min-height: 2.25rem;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 650;
+  list-style: none;
+}
+
+.dining-table-actions summary:hover {
+  background: var(--color-surface-secondary);
+}
+
+.dining-table-actions svg,
+.dining-table-qr-panel svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.dining-table-qr-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  width: min(22rem, calc(100vw - 2rem));
+  gap: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.875rem;
+  background: var(--color-surface);
+  padding: 1rem;
+  box-shadow: 0 12px 32px rgb(36 33 29 / 0.16);
+}
+
+.dining-table-qr {
+  width: 11rem;
+  margin-inline: auto;
+}
+
+.dining-table-qr svg,
+.dining-table-print-card svg {
+  width: 100%;
+  height: auto;
+}
+
+.dining-table-qr-panel p {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.dining-table-qr-panel > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.dining-table-rename {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) auto auto;
+  align-items: end;
+  gap: 0.6rem;
+  padding: 0 1rem 1rem;
+}
+
+.dining-table-rename label {
+  grid-column: 1;
+}
+
+.dining-table-rename input {
+  grid-column: 1;
+}
+
+.dining-table-rotation-receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 1rem 1rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+  padding: 0.8rem;
+}
+
+.dining-table-rotation-receipt > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dining-table-rotation-receipt strong {
+  color: var(--color-success);
+}
+
+.dining-table-rotation-receipt span {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.dining-tables-empty {
+  border: 1px dashed var(--color-border);
+  border-radius: 0.875rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.dining-tables-empty p {
+  color: var(--color-text-primary);
+  font-weight: 750;
+}
+
+.dining-tables-empty span {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.dining-table-print-card {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .dining-tables-batch-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dining-tables-batch-fields label:first-child,
+  .dining-tables-batch-fields button {
+    grid-column: 1 / -1;
+  }
+
+  .dining-table-row,
+  .dining-tables-list-header {
+    align-items: flex-start;
+  }
+
+  .dining-table-row {
+    flex-direction: column;
+  }
+
+  .dining-table-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dining-table-qr-panel {
+    right: auto;
+    left: 0;
+  }
+
+  .dining-table-rotation-receipt {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@page dine-a4 {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@page dine-a6 {
+  size: A6 portrait;
+  margin: 0;
+}
+
+@media print {
+  body:has(.dining-tables-admin[data-print-target]) > * {
+    visibility: hidden;
+  }
+
+  body:has(.dining-tables-admin[data-print-target]) .dining-tables-admin,
+  body:has(.dining-tables-admin[data-print-target]) .dining-tables-admin * {
+    visibility: visible;
+  }
+
+  .dining-tables-admin[data-print-target] {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 105mm);
+    align-content: start;
+    width: 210mm;
+    gap: 0;
+    background: white;
+  }
+
+  .dining-tables-admin[data-print-mode='A4'] {
+    page: dine-a4;
+  }
+
+  .dining-tables-admin[data-print-mode='A6'] {
+    page: dine-a6;
+    grid-template-columns: 105mm;
+    width: 105mm;
+  }
+
+  .dining-tables-admin[data-print-target] > :not(.dining-tables-list),
+  .dining-tables-admin[data-print-target] .dining-table-row,
+  .dining-tables-admin[data-print-target] .dining-table-rename,
+  .dining-tables-admin[data-print-target] .dining-tables-list > li[data-active='false'] {
+    display: none !important;
+  }
+
+  .dining-tables-admin[data-print-target] .dining-tables-list {
+    display: contents;
+  }
+
+  .dining-tables-admin[data-print-target] .dining-tables-list > li {
+    display: block;
+    border: 0;
+  }
+
+  .dining-tables-admin[data-print-target] .dining-tables-list > li[data-print-selected='false'] {
+    display: none;
+  }
+
+  .dining-table-print-card {
+    display: flex;
+    width: 105mm;
+    height: 148mm;
+    break-inside: avoid;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4mm;
+    border: 0.3mm solid #d4cec2;
+    padding: 10mm;
+    color: #24211d;
+    text-align: center;
+  }
+
+  .dining-table-print-card p {
+    font-size: 11pt;
+    font-weight: 650;
+  }
+
+  .dining-table-print-card h3 {
+    font-size: 24pt;
+    font-weight: 850;
+  }
+
+  .dining-table-print-card > div {
+    width: 62mm;
+  }
+
+  .dining-table-print-card strong {
+    font-size: 15pt;
+  }
+
+  .dining-table-print-card span {
+    max-width: 72mm;
+    color: #625e57;
+    font-size: 9pt;
+  }
+}

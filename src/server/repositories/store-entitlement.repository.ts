@@ -19,6 +19,7 @@ export const DEFAULT_STORE_ENTITLEMENT = {
   kdsEnabled: false,
   advancedReportsEnabled: false,
   orderPrintingEnabled: false,
+  dineInQrEnabled: false,
 };
 
 export const entitlementSelect = {
@@ -40,6 +41,7 @@ export const entitlementSelect = {
   kdsEnabled: true,
   advancedReportsEnabled: true,
   orderPrintingEnabled: true,
+  dineInQrEnabled: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.StoreEntitlementSelect;
@@ -71,6 +73,7 @@ export async function lockStoreEntitlement(
       kdsEnabled: boolean;
       advancedReportsEnabled: boolean;
       orderPrintingEnabled: boolean;
+      dineInQrEnabled: boolean;
     }[]
   >(Prisma.sql`
     SELECT
@@ -84,7 +87,8 @@ export async function lockStoreEntitlement(
       "operationalSlaEnabledAt",
       "kdsEnabled",
       "advancedReportsEnabled",
-      "orderPrintingEnabled"
+      "orderPrintingEnabled",
+      "dineInQrEnabled"
     FROM "store_entitlements"
     WHERE "tenantId" = ${tenantId} AND "storeId" = ${storeId}
     FOR UPDATE

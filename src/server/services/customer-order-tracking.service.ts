@@ -95,7 +95,12 @@ function estimate(snapshot: TrackingSnapshot): CustomerOrderTrackingStateDTO['es
 
   if (snapshot.promisedFulfillmentMinAt && snapshot.promisedFulfillmentMaxAt) {
     return {
-      label: snapshot.modality === 'PICKUP' ? 'Previsão para retirada' : 'Previsão de chegada',
+      label:
+        snapshot.modality === 'PICKUP'
+          ? 'Previsão para retirada'
+          : snapshot.modality === 'DINE_IN'
+            ? 'Previsão para ficar pronto'
+            : 'Previsão de chegada',
       minAt: snapshot.promisedFulfillmentMinAt.toISOString(),
       maxAt: snapshot.promisedFulfillmentMaxAt.toISOString(),
     };
@@ -114,7 +119,9 @@ function estimate(snapshot: TrackingSnapshot): CustomerOrderTrackingStateDTO['es
       ? 'Previsão de chegada'
       : snapshot.modality === 'PICKUP'
         ? 'Previsão para retirada'
-        : 'Previsão do pedido';
+        : snapshot.modality === 'DINE_IN'
+          ? 'Previsão para ficar pronto'
+          : 'Previsão do pedido';
 
   return {
     label,
@@ -224,6 +231,7 @@ const paymentMethodLabels: Record<string, string> = {
   PIX: 'Pix',
   CASH: 'Dinheiro',
   CARD_ON_DELIVERY: 'Cartão no recebimento',
+  CARD_IN_PERSON: 'Cartão na mesa',
 };
 
 const statusLabels: Record<OrderStatus, string> = {
@@ -302,7 +310,12 @@ export async function getCustomerOrderDetails(
 
   timelineSteps.push({
     status: 'DELIVERED',
-    label: order.modality === 'DELIVERY' ? 'Entregue' : 'Retirado',
+    label:
+      order.modality === 'DELIVERY'
+        ? 'Entregue'
+        : order.modality === 'DINE_IN'
+          ? 'Entregue na mesa'
+          : 'Retirado',
     date: order.deliveredAt,
   });
 

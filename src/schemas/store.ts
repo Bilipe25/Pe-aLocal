@@ -169,6 +169,7 @@ export const updateStorePaymentSettingsSchema = z
     acceptsPix: formBooleanSchema.default(false),
     acceptsCash: formBooleanSchema.default(false),
     acceptsCardOnDelivery: formBooleanSchema.default(false),
+    acceptsCardInPerson: formBooleanSchema.default(false),
     replacePixKey: formBooleanSchema.default(false),
     pixKeyType: pixKeyTypeSchema.default(null),
     pixKey: z.string().trim().max(100).optional().default(''),

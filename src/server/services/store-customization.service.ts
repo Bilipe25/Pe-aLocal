@@ -83,6 +83,7 @@ function parseEntitlementConfig(entitlement: Awaited<ReturnType<typeof ensureSto
     kdsEnabled: entitlement.kdsEnabled,
     advancedReportsEnabled: entitlement.advancedReportsEnabled,
     orderPrintingEnabled: entitlement.orderPrintingEnabled,
+    dineInQrEnabled: entitlement.dineInQrEnabled,
   });
 }
 

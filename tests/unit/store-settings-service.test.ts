@@ -97,6 +97,7 @@ describe('StoreSettingsService', () => {
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
+          acceptsCardInPerson: false,
           pixConfigured: true,
         },
       },

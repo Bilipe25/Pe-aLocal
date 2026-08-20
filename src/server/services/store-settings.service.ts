@@ -54,6 +54,7 @@ export interface StorePageCapabilities {
   editDisplay: boolean;
   viewPayments: boolean;
   editPayments: boolean;
+  viewDiningTables: boolean;
   changeStatus: boolean;
 }
 
@@ -71,6 +72,7 @@ export function getStorePageCapabilities(role: TenantRole): StorePageCapabilitie
     editDisplay: hasTenantPermission(role, Permission.EDIT_STOREFRONT_DISPLAY),
     viewPayments: hasTenantPermission(role, Permission.VIEW_PAYMENT_SETTINGS),
     editPayments: hasTenantPermission(role, Permission.EDIT_PAYMENT_SETTINGS),
+    viewDiningTables: hasTenantPermission(role, Permission.VIEW_DINING_TABLES),
     changeStatus: hasTenantPermission(role, Permission.CHANGE_STORE_STATUS),
   };
 }
@@ -242,6 +244,7 @@ export async function getStoreOperationalSettings(storeId: string) {
     acceptsPix: settings?.acceptsPix ?? false,
     acceptsCash: settings?.acceptsCash ?? false,
     acceptsCardOnDelivery: settings?.acceptsCardOnDelivery ?? false,
+    acceptsCardInPerson: settings?.acceptsCardInPerson ?? false,
     pixConfigured: Boolean(
       settings?.pixKeyType &&
       settings.pixKey &&
@@ -616,6 +619,7 @@ export async function updateStorePaymentSettings(
         acceptsPix: true,
         acceptsCash: true,
         acceptsCardOnDelivery: true,
+        acceptsCardInPerson: true,
         pixKeyType: true,
         pixKey: true,
         pixRecipient: true,
@@ -652,6 +656,7 @@ export async function updateStorePaymentSettings(
       acceptsPix: parsed.acceptsPix,
       acceptsCash: parsed.acceptsCash,
       acceptsCardOnDelivery: parsed.acceptsCardOnDelivery,
+      acceptsCardInPerson: parsed.acceptsCardInPerson,
       pixKeyType: nextPixKeyType,
       pixKey: nextPixKey || null,
       pixRecipient: nextPixRecipient,
@@ -663,6 +668,7 @@ export async function updateStorePaymentSettings(
           acceptsPix: previous.acceptsPix,
           acceptsCash: previous.acceptsCash,
           acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
+          acceptsCardInPerson: previous.acceptsCardInPerson,
           pixKeyType: previous.pixKeyType,
           pixKeyMasked: maskPixKey(previous.pixKeyType, previous.pixKey),
           pixRecipientConfigured: Boolean(previous.pixRecipient),
@@ -674,6 +680,7 @@ export async function updateStorePaymentSettings(
       acceptsPix: settingsData.acceptsPix,
       acceptsCash: settingsData.acceptsCash,
       acceptsCardOnDelivery: settingsData.acceptsCardOnDelivery,
+      acceptsCardInPerson: settingsData.acceptsCardInPerson,
       pixKeyType: settingsData.pixKeyType,
       pixKeyMasked: maskPixKey(settingsData.pixKeyType, settingsData.pixKey),
       pixRecipientConfigured: Boolean(settingsData.pixRecipient),
@@ -732,6 +739,7 @@ export async function removeStorePixConfiguration(
         acceptsPix: true,
         acceptsCash: true,
         acceptsCardOnDelivery: true,
+        acceptsCardInPerson: true,
         pixKeyType: true,
         pixKey: true,
         pixRecipient: true,
@@ -764,6 +772,7 @@ export async function removeStorePixConfiguration(
         acceptsPix: false,
         acceptsCash: previous.acceptsCash,
         acceptsCardOnDelivery: previous.acceptsCardOnDelivery,
+        acceptsCardInPerson: previous.acceptsCardInPerson,
       },
     });
     await writeStoreAudit(tx, {

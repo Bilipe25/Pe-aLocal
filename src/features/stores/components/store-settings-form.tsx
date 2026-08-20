@@ -27,6 +27,7 @@ interface PaymentSummary {
   acceptsPix: boolean;
   acceptsCash: boolean;
   acceptsCardOnDelivery: boolean;
+  acceptsCardInPerson: boolean;
   pixConfigured: boolean;
 }
 
@@ -53,6 +54,7 @@ function paymentLabels(summary: PaymentSummary) {
     summary.acceptsPix ? 'Pix' : null,
     summary.acceptsCash ? 'Dinheiro' : null,
     summary.acceptsCardOnDelivery ? 'Cartão no recebimento' : null,
+    summary.acceptsCardInPerson ? 'Cartão na mesa' : null,
   ].filter((label): label is string => Boolean(label));
 }
 

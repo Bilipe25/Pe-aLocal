@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CartItem } from '@/stores/cart-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 
-export type CartFulfillmentModality = 'DELIVERY' | 'PICKUP';
+export type CartFulfillmentModality = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 export type CartQuoteStatus = 'idle' | 'waiting' | 'loading' | 'success' | 'error';
 
 interface UseCartQuoteInput {
@@ -15,6 +15,7 @@ interface UseCartQuoteInput {
   modality: CartFulfillmentModality;
   couponCode?: string | null;
   enabled?: boolean;
+  quoteEndpoint?: string;
 }
 
 function responseErrorMessage(payload: unknown) {
@@ -36,6 +37,7 @@ export function useCartQuote({
   modality,
   couponCode,
   enabled = true,
+  quoteEndpoint,
 }: UseCartQuoteInput) {
   const [quote, setQuote] = useState<CheckoutQuoteDto | null>(null);
   const [status, setStatus] = useState<CartQuoteStatus>('idle');
@@ -46,7 +48,7 @@ export function useCartQuote({
   const requestBody = useMemo(() => {
     const normalizedCouponCode = couponCode?.trim().toUpperCase();
     return {
-      modality,
+      ...(modality === 'DINE_IN' ? {} : { modality }),
       couponCode: normalizedCouponCode || undefined,
       items: items.map((item) => ({
         lineId: item.id,
@@ -77,7 +79,8 @@ export function useCartQuote({
       setError(null);
       try {
         const response = await fetch(
-          `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote?context=cart`,
+          quoteEndpoint ??
+            `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote?context=cart`,
           {
             method: 'POST',
             headers: {
@@ -107,7 +110,7 @@ export function useCartQuote({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [canRequest, requestKey, retryKey, revision, storeSlug]);
+  }, [canRequest, quoteEndpoint, requestKey, retryKey, revision, storeSlug]);
 
   const visibleState =
     !enabled || !canRequest || resolvedRequestKey !== requestKey

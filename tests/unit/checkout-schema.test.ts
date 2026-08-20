@@ -4,6 +4,8 @@ import {
   cartQuoteSchema,
   checkoutQuoteSchema,
   checkoutSchema,
+  dineInCheckoutQuoteSchema,
+  dineInCheckoutSchema,
   MAX_CHECKOUT_ITEM_QUANTITY,
   MAX_CHECKOUT_LINES,
   MAX_CHECKOUT_OPTIONS_PER_LINE,
@@ -46,6 +48,30 @@ const validCheckout = {
 };
 
 describe('checkout v2 — contrato de pagamento e entrega', () => {
+  it('mantém o checkout do salão sem telefone, endereço, modalidade ou troco', () => {
+    const dineIn = {
+      customerName: 'Bia',
+      paymentMethod: 'CARD_IN_PERSON' as const,
+      expectedQuoteFingerprint: quoteFingerprint,
+      idempotencyKey: '4da03571-bffd-45ef-8c44-20686c487838',
+      items: [item()],
+    };
+
+    expect(dineInCheckoutSchema.safeParse(dineIn).success).toBe(true);
+    expect(dineInCheckoutQuoteSchema.safeParse({ items: [item()] }).success).toBe(true);
+    for (const forbidden of [
+      { customerPhone: '(85) 99999-9999' },
+      { modality: 'DINE_IN' },
+      { deliveryAddress: { street: 'Rua A', number: '1' } },
+      { changeFor: 5000 },
+    ]) {
+      expect(dineInCheckoutSchema.safeParse({ ...dineIn, ...forbidden }).success).toBe(false);
+    }
+    expect(
+      dineInCheckoutSchema.safeParse({ ...dineIn, paymentMethod: 'CARD_ON_DELIVERY' }).success,
+    ).toBe(false);
+  });
+
   it('permite prévia do carrinho sem antecipar a região, mas exige uma seleção no checkout', () => {
     const deliveryPreview = { modality: 'DELIVERY' as const, items: [item()] };
 

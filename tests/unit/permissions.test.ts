@@ -59,6 +59,13 @@ describe('Permissions', () => {
     expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_STOREFRONT_DISPLAY)).toBe(
       false,
     );
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.VIEW_DINING_TABLES)).toBe(false);
+    expect(hasTenantPermission(TenantRole.ATTENDANT, Permission.MANAGE_DINING_TABLES)).toBe(false);
+  });
+
+  it('reserva a gestão de mesas ao OWNER e MANAGER', () => {
+    expect(hasTenantPermission(TenantRole.OWNER, Permission.MANAGE_DINING_TABLES)).toBe(true);
+    expect(hasTenantPermission(TenantRole.MANAGER, Permission.MANAGE_DINING_TABLES)).toBe(true);
   });
 
   it('reconhece somente o papel de plataforma SUPER_ADMIN', () => {

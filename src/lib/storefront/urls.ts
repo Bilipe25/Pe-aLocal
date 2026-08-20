@@ -27,6 +27,10 @@ export function getStorefrontUrl(slug: string) {
   return new URL(`/${encodeURIComponent(slug)}`, getSiteUrl()).toString();
 }
 
+export function getDiningTableUrl(tableToken: string) {
+  return new URL(`/q/${encodeURIComponent(tableToken)}`, getSiteUrl()).toString();
+}
+
 export function getSitemapUrl() {
   return new URL('/sitemap.xml', getSiteUrl()).toString();
 }

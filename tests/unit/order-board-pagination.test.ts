@@ -16,6 +16,7 @@ function order(id: string): OrderQueueItemDTO {
     orderNumber: Number(id.replace(/\D/g, '')) || 1,
     customerDisplayName: 'Cliente',
     modality: 'PICKUP',
+    diningTableLabel: null,
     paymentMethod: 'PIX',
     paymentStatus: 'PAID',
     status: 'PENDING',

@@ -4,9 +4,10 @@ import { cookies, headers } from 'next/headers';
 
 import type { EffectiveStoreAvailabilityState } from '@/features/stores/availability';
 import { normalizePhone } from '@/lib/brazil';
+import { diningTableTokenFingerprint } from '@/domain/dining-tables';
 import { MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE } from '@/lib/mercado-pago/sandbox';
 import { triggerNewOrder, triggerPaymentUpdated } from '@/lib/pusher/server';
-import { checkoutSchema } from '@/schemas/checkout';
+import { checkoutSchema, dineInCheckoutSchema } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import {
   actionError,
@@ -22,6 +23,7 @@ import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { createOrder } from '@/server/repositories/order.repository';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
+import { resolveDiningTableContext } from '@/server/services/dining-table.service';
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
 import {
   ensureMercadoPagoPixCreated,
@@ -285,6 +287,123 @@ export async function createOrderAction(
     });
   } catch (error) {
     console.warn('[CHECKOUT_ORDER_REJECTED]', {
+      correlationId,
+      code: error instanceof DomainError ? error.code : 'INTERNAL_ERROR',
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    return actionError(error);
+  }
+}
+
+export async function createDineInOrderAction(
+  tableToken: string,
+  rawInput: unknown,
+): Promise<ActionResult<CreateOrderData>> {
+  const startedAt = performance.now();
+  const correlationId = crypto.randomUUID();
+
+  try {
+    const parsed = dineInCheckoutSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      throw new CheckoutError(
+        'CART_INVALID',
+        'Dados do checkout inválidos',
+        400,
+        parsed.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+        })),
+      );
+    }
+
+    const table = await resolveDiningTableContext(tableToken);
+    if (!table) {
+      throw new CheckoutError(
+        'STORE_UNAVAILABLE',
+        'Este QR Code não está disponível. Peça ajuda à equipe.',
+        409,
+      );
+    }
+    const requestHeaders = await headers();
+    const clientAddress = getClientAddress(requestHeaders);
+    const strict = isDeployedRuntime();
+    const tokenKey = diningTableTokenFingerprint(tableToken);
+    const [ipRateLimit, tableRateLimit] = await Promise.all([
+      getRateLimiter().check({
+        identifier: `dine-in-order-ip:${table.storeId}:${clientAddress}`,
+        ...RATE_LIMITS.createOrderByIp,
+        strict,
+      }),
+      getRateLimiter().check({
+        identifier: `dine-in-order:${table.storeId}:${tokenKey}`,
+        ...RATE_LIMITS.createOrder,
+        strict,
+      }),
+    ]);
+    if (ipRateLimit.unavailable || tableRateLimit.unavailable) {
+      throw new RateLimitError(
+        'Não foi possível validar esta solicitação agora. Tente novamente em instantes.',
+      );
+    }
+    if (!ipRateLimit.allowed || !tableRateLimit.allowed) {
+      throw new RateLimitError('Muitos pedidos em sequência. Aguarde um minuto.');
+    }
+
+    const order = await createOrder({ input: parsed.data, tableToken });
+    let onlinePaymentState: CreateOrderData['onlinePaymentState'] = null;
+    if (order.onlinePayment && order.mercadoPagoPaymentId) {
+      const sync = await ensureMercadoPagoPixCreated(order.mercadoPagoPaymentId);
+      if (sync?.eventIds.length) {
+        await dispatchCommittedOrderEvents({
+          eventIds: sync.eventIds,
+          publishDirect: async () => {
+            await triggerPaymentUpdated(sync.storeId, sync.orderId, sync.paymentStatus);
+            if (sync.becameActionable) {
+              await triggerNewOrder(sync.storeId, sync.orderId, sync.orderNumber);
+            }
+          },
+        });
+      }
+      const presentation = await getMercadoPagoPaymentPresentation(order.id);
+      if (
+        sync?.paymentStatus === 'FAILED' ||
+        sync?.paymentStatus === 'CANCELLED' ||
+        presentation?.creationStatus === 'FAILED'
+      ) {
+        throw new CheckoutError(
+          'PAYMENT_CREATION_FAILED',
+          'Não foi possível gerar o Pix. Escolha dinheiro ou cartão na mesa.',
+          422,
+          [{ code: sync?.failureCode ?? 'PROVIDER_CREATE_FAILED' }],
+        );
+      }
+      onlinePaymentState = presentation?.qrCode ? 'READY' : 'PENDING';
+    } else if (order.created) {
+      await dispatchCommittedOrderEvents({
+        eventIds: order.outboxEventIds,
+        publishDirect: async () => {
+          await triggerNewOrder(order.storeId, order.id, order.orderNumber);
+        },
+      });
+    }
+
+    console.info('[DINE_IN_ORDER_CREATED]', {
+      correlationId,
+      storeId: order.storeId,
+      orderNumber: order.orderNumber,
+      created: order.created,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+
+    return actionSuccess({
+      publicToken: order.publicToken,
+      orderNumber: order.orderNumber,
+      paymentReportToken: null,
+      onlinePayment: order.onlinePayment,
+      onlinePaymentState,
+    });
+  } catch (error) {
+    console.warn('[DINE_IN_ORDER_REJECTED]', {
       correlationId,
       code: error instanceof DomainError ? error.code : 'INTERNAL_ERROR',
       durationMs: Math.round(performance.now() - startedAt),

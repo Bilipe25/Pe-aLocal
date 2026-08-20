@@ -1,4 +1,11 @@
 export const STORE_FEATURE_DEFINITIONS = {
+  dineInQr: {
+    key: 'dineInQr',
+    label: 'Pedido por QR Code no salão',
+    description: 'Permite cadastrar mesas e receber pedidos presenciais pelo cardápio da loja.',
+    entitlementField: 'dineInQrEnabled',
+    implementationStatus: 'AVAILABLE',
+  },
   onlinePayments: {
     key: 'onlinePayments',
     label: 'Pagamento online',

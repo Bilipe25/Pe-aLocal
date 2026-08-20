@@ -174,6 +174,7 @@ describe('store feature definitions', () => {
     kdsEnabled: true,
     advancedReportsEnabled: true,
     orderPrintingEnabled: true,
+    dineInQrEnabled: true,
   };
 
   it('expõe somente recursos realmente implementados como disponíveis', () => {

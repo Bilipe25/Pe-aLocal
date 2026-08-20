@@ -51,6 +51,8 @@ interface CatalogViewProps {
   showFeaturedProductsSection?: boolean;
   minOrderValue?: number | null;
   recentOrdersSlot?: ReactNode;
+  cartScopeId?: string;
+  cartHref?: string;
 }
 
 const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
@@ -99,6 +101,8 @@ export function CatalogView({
   showFeaturedProductsSection = true,
   minOrderValue,
   recentOrdersSlot,
+  cartScopeId = storeId,
+  cartHref = `/${storeSlug}/cart`,
 }: CatalogViewProps) {
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
@@ -134,9 +138,9 @@ export function CatalogView({
   );
 
   useEffect(() => {
-    setStore(storeId, storeSlug);
+    setStore(cartScopeId, storeSlug);
     if (initialCouponCode) setCouponCode(initialCouponCode);
-  }, [initialCouponCode, setCouponCode, setStore, storeId, storeSlug]);
+  }, [cartScopeId, initialCouponCode, setCouponCode, setStore, storeSlug]);
   const availableProductIds = useMemo(
     () => categories.flatMap((category) => category.products.map((product) => product.id)),
     [categories],
@@ -168,8 +172,8 @@ export function CatalogView({
   );
   const favoriteProductIdSet = useMemo(() => new Set(favoriteProductIds), [favoriteProductIds]);
   const cartTotalForStore = useMemo(
-    () => (cartStoreId === storeId ? cartTotal : 0),
-    [cartStoreId, cartTotal, storeId],
+    () => (cartStoreId === cartScopeId ? cartTotal : 0),
+    [cartScopeId, cartStoreId, cartTotal],
   );
   const effectiveMinOrder = minOrderValue ?? 0;
   const missingForMinimum = useMemo(() => {
@@ -600,7 +604,7 @@ export function CatalogView({
             {formatCurrency(effectiveMinOrder)}.
           </span>
           <Link
-            href={`/${storeSlug}/cart`}
+            href={cartHref}
             className="storefront-minimum-banner-action"
             aria-label="Ver sacola para continuar"
           >
@@ -639,7 +643,7 @@ export function CatalogView({
       />
 
       <ScrollToTop />
-      <CartFab storeId={storeId} />
+      <CartFab storeId={cartScopeId} href={cartHref} />
     </>
   );
 }

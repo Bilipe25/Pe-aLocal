@@ -19,7 +19,7 @@ export type PublicCheckoutPaymentMethod =
       environment: 'SANDBOX' | 'PRODUCTION';
     }
   | {
-      method: 'PIX' | 'CASH' | 'CARD_ON_DELIVERY';
+      method: 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' | 'CARD_IN_PERSON';
       processing: 'MANUAL';
     };
 

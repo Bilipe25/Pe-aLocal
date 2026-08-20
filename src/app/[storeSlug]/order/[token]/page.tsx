@@ -58,12 +58,14 @@ export async function generateMetadata({ params }: OrderPageProps) {
 const modalityMap = {
   DELIVERY: 'Entrega',
   PICKUP: 'Retirada',
+  DINE_IN: 'Salão',
 };
 
 const paymentMap = {
   PIX: 'Pix',
   CASH: 'Dinheiro',
   CARD_ON_DELIVERY: 'Cartão no recebimento',
+  CARD_IN_PERSON: 'Cartão na mesa',
 };
 
 export default async function OrderPage({ params }: OrderPageProps) {
@@ -209,7 +211,11 @@ export default async function OrderPage({ params }: OrderPageProps) {
                 <span>{modalityMap[order.modality]}</span>
               </div>
               <p className="storefront-tracking-info-value">
-                {order.modality === 'DELIVERY' ? order.deliveryAddress : 'Na loja'}
+                {order.modality === 'DELIVERY'
+                  ? order.deliveryAddress
+                  : order.modality === 'DINE_IN'
+                    ? (order.diningTableLabelSnapshot ?? 'No salão')
+                    : 'Na loja'}
               </p>
             </div>
 

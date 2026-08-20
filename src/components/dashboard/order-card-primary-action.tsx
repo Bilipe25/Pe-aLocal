@@ -37,12 +37,15 @@ const ACTIONS: Partial<Record<OrderOperationalAction, OrderMutation>> = {
   MARK_ORDER_READY: markOrderReadyAction,
   DISPATCH_FOR_DELIVERY: dispatchOrderAction,
   COMPLETE_PICKUP: completeOrderAction,
+  COMPLETE_DINE_IN: completeOrderAction,
   COMPLETE_DELIVERY: completeOrderAction,
   CONFIRM_PAYMENT: confirmPaymentAction,
 };
 
 function needsConfirmation(action: OrderOperationalAction) {
-  return ['COMPLETE_PICKUP', 'COMPLETE_DELIVERY', 'CONFIRM_PAYMENT'].includes(action);
+  return ['COMPLETE_PICKUP', 'COMPLETE_DINE_IN', 'COMPLETE_DELIVERY', 'CONFIRM_PAYMENT'].includes(
+    action,
+  );
 }
 
 export function OrderCardPrimaryAction({
@@ -116,6 +119,7 @@ export function OrderCardPrimaryAction({
       toast.success(
         `${order.nextActionLabel} concluído.`,
         action === 'COMPLETE_PICKUP' ||
+          action === 'COMPLETE_DINE_IN' ||
           action === 'COMPLETE_DELIVERY' ||
           action === 'CONFIRM_PAYMENT'
           ? undefined

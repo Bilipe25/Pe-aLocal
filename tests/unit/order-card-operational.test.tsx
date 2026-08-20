@@ -8,6 +8,7 @@ const order: OrderCardData = {
   orderNumber: 1042,
   customerDisplayName: 'Mariana Souza',
   modality: 'DELIVERY',
+  diningTableLabel: null,
   paymentMethod: 'PIX',
   paymentStatus: 'PAID',
   status: 'PENDING',

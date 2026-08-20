@@ -16,7 +16,7 @@ import {
   MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE,
   MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL,
 } from '@/lib/mercado-pago/sandbox';
-import type { CheckoutInput } from '@/schemas/checkout';
+import type { CheckoutInput, DineInCheckoutInput } from '@/schemas/checkout';
 import { getDb } from '@/server/database/client';
 import {
   CheckoutError,
@@ -48,12 +48,17 @@ import {
 } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
 
-interface CreateOrderParams {
-  input: CheckoutInput;
-  storeSlug: string;
-  recognitionBrowserToken?: string | null;
-  deviceTokenHash?: string | null;
-}
+type CreateOrderParams =
+  | {
+      input: CheckoutInput;
+      storeSlug: string;
+      recognitionBrowserToken?: string | null;
+      deviceTokenHash?: string | null;
+    }
+  | {
+      input: DineInCheckoutInput;
+      tableToken: string;
+    };
 
 interface CreateOrderResult {
   id: string;
@@ -75,15 +80,34 @@ interface CreateOrderResult {
  * tratado como fonte de verdade.
  */
 async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderResult> {
-  const { input, storeSlug, recognitionBrowserToken, deviceTokenHash } = params;
+  const { input } = params;
+  const dineIn = 'tableToken' in params;
+  const standardInput = dineIn ? null : (input as CheckoutInput);
+  const dineInInput = dineIn ? (input as DineInCheckoutInput) : null;
+  const recognitionBrowserToken = dineIn ? null : params.recognitionBrowserToken;
+  const deviceTokenHash = dineIn ? null : params.deviceTokenHash;
 
   return getDb().$transaction(
     async (tx) => {
-      const store = await tx.store.findUnique({
-        where: { slug: storeSlug },
-        select: {
+      const diningTable = dineIn
+        ? await tx.storeDiningTable.findUnique({
+            where: { publicToken: params.tableToken },
+            select: {
+              id: true,
+              tenantId: true,
+              storeId: true,
+              label: true,
+              isActive: true,
+              version: true,
+            },
+          })
+        : null;
+      if (dineIn && !diningTable) throw new NotFoundError('QR Code');
+
+      const storeSelect = {
           id: true,
           tenantId: true,
+          slug: true,
           address: { select: { city: true, state: true } },
           settings: {
             select: {
@@ -92,18 +116,40 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               pixKey: true,
               acceptsCash: true,
               acceptsCardOnDelivery: true,
+              acceptsCardInPerson: true,
               paymentMode: true,
             },
           },
-          entitlement: { select: { onlinePaymentsEnabled: true } },
+          entitlement: { select: { onlinePaymentsEnabled: true, dineInQrEnabled: true } },
           paymentProviderConnections: {
             where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
             take: 1,
             select: { id: true },
           },
-        },
-      });
+        } satisfies Prisma.StoreSelect;
+      const store = dineIn
+        ? await tx.store.findFirst({
+            where: { id: diningTable!.storeId, tenantId: diningTable!.tenantId },
+            select: storeSelect,
+          })
+        : await tx.store.findUnique({
+            where: { slug: params.storeSlug },
+            select: storeSelect,
+          });
       if (!store) throw new NotFoundError('Loja');
+      if (
+        dineIn &&
+        (!diningTable?.isActive ||
+          !store.entitlement?.dineInQrEnabled ||
+          diningTable.tenantId !== store.tenantId ||
+          diningTable.storeId !== store.id)
+      ) {
+        throw new CheckoutError(
+          'STORE_UNAVAILABLE',
+          'Este QR Code não está disponível. Peça ajuda à equipe.',
+          409,
+        );
+      }
 
       const idempotencyLockKey = `${store.id}:${input.idempotencyKey}`;
       await tx.$executeRaw`
@@ -112,7 +158,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
 
       const now = new Date();
       const recognizedIdentity =
-        input.identityMode === 'RECOGNIZED' && recognitionBrowserToken
+        standardInput?.identityMode === 'RECOGNIZED' && recognitionBrowserToken
           ? await resolveRecognitionIdentity({
               tenantId: store.tenantId,
               storeId: store.id,
@@ -122,7 +168,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               allowConsumed: true,
             })
           : null;
-      if (input.identityMode === 'RECOGNIZED' && !recognizedIdentity) {
+      if (standardInput?.identityMode === 'RECOGNIZED' && !recognizedIdentity) {
         throw new CheckoutError(
           'CART_INVALID',
           'O reconhecimento expirou. Informe seus dados novamente para continuar.',
@@ -130,7 +176,14 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         );
       }
       const resolvedIdentity =
-        input.identityMode === 'RECOGNIZED'
+        dineIn
+          ? {
+              customerId: null,
+              customerName: dineInInput!.customerName,
+              customerPhone: null,
+              phoneNormalized: null,
+            }
+          : standardInput!.identityMode === 'RECOGNIZED'
           ? {
               customerId: recognizedIdentity!.customerId,
               customerName: recognizedIdentity!.customerName,
@@ -139,9 +192,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             }
           : {
               customerId: null,
-              customerName: input.customerName,
-              customerPhone: input.customerPhone,
-              phoneNormalized: normalizePhone(input.customerPhone),
+              customerName: standardInput!.customerName,
+              customerPhone: standardInput!.customerPhone,
+              phoneNormalized: normalizePhone(standardInput!.customerPhone),
             };
       const idempotencyFingerprint = createOrderFingerprint(
         input,
@@ -149,8 +202,11 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           ? {
               customerId: resolvedIdentity.customerId,
               customerName: resolvedIdentity.customerName,
-              customerPhone: resolvedIdentity.customerPhone,
+              customerPhone: resolvedIdentity.customerPhone!,
             }
+          : null,
+        dineIn
+          ? { diningTableId: diningTable!.id, diningTableVersion: diningTable!.version }
           : null,
       );
 
@@ -174,7 +230,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       if (existing) {
         assertMatchingOrderFingerprint(existing.idempotencyFingerprint, idempotencyFingerprint);
         const remembered =
-          input.saveCustomerData && existing.customerId && deviceTokenHash
+          standardInput?.saveCustomerData && existing.customerId && deviceTokenHash
             ? await persistDeviceRecognitionAfterOrder({
                 tx,
                 tokenHash: deviceTokenHash,
@@ -207,7 +263,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         );
       }
       const activeUnconfirmedRecognition =
-        recognitionBrowserToken && !recognizedIdentity
+        !dineIn && recognitionBrowserToken && !recognizedIdentity
           ? await resolveActiveRecognitionSession({
               tenantId: store.tenantId,
               storeId: store.id,
@@ -219,12 +275,12 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       const recognizedCustomerId = recognizedIdentity?.customerId ?? null;
 
       let savedAddressResolution: ResolvedRecognitionAddress | null = null;
-      if (input.savedAddressReference) {
+      if (standardInput?.savedAddressReference) {
         savedAddressResolution = recognitionBrowserToken
           ? await resolveRecognitionAddressReference({
               tenantId: store.tenantId,
               storeId: store.id,
-              opaqueReference: input.savedAddressReference,
+              opaqueReference: standardInput.savedAddressReference,
               browserToken: recognitionBrowserToken,
               client: tx,
               now,
@@ -243,16 +299,24 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         }
       }
 
-      const quote = await calculateCheckoutQuote(storeSlug, input, {
-        client: tx,
-        now,
-        savedAddress: savedAddressResolution
-          ? {
-              ...savedAddressResolution.address,
-              mappedDeliveryZoneId: savedAddressResolution.mappedDeliveryZoneId,
-            }
-          : null,
-      });
+      const quoteInput = dineIn
+        ? { ...dineInInput!, modality: 'DINE_IN' as const }
+        : standardInput!;
+      const quote = await calculateCheckoutQuote(
+        dineIn ? store.slug : params.storeSlug,
+        quoteInput,
+        {
+          client: tx,
+          now,
+          savedAddress: savedAddressResolution
+            ? {
+                ...savedAddressResolution.address,
+                mappedDeliveryZoneId: savedAddressResolution.mappedDeliveryZoneId,
+              }
+            : null,
+          ...(dineIn ? { diningTable } : {}),
+        },
+      );
       if (!quote) throw new NotFoundError('Loja');
       const publicQuote = toPublicCheckoutQuote(quote);
 
@@ -321,6 +385,13 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           }
         }
       } else if (input.paymentMethod === 'PIX') {
+        if (dineIn) {
+          throw new CheckoutError(
+            'STORE_UNAVAILABLE',
+            'O Pix online está temporariamente indisponível. Escolha dinheiro ou cartão na mesa.',
+            409,
+          );
+        }
         if (
           !settings.acceptsPix ||
           !settings.pixKeyType ||
@@ -345,11 +416,18 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           'O cartão no recebimento não está disponível.',
           409,
         );
+      } else if (input.paymentMethod === 'CARD_IN_PERSON' && !settings.acceptsCardInPerson) {
+        throw new CheckoutError(
+          'STORE_UNAVAILABLE',
+          'O cartão na mesa não está disponível.',
+          409,
+        );
       }
       if (
+        standardInput &&
         input.paymentMethod === 'CASH' &&
-        input.changeFor != null &&
-        input.changeFor < quote.total
+        standardInput.changeFor != null &&
+        standardInput.changeFor < quote.total
       ) {
         throw new CheckoutError(
           'CART_INVALID',
@@ -396,22 +474,25 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
 
       let address: CheckoutCustomerAddress | null = null;
-      if (input.modality === 'DELIVERY') {
+      if (standardInput?.modality === 'DELIVERY') {
         if (savedAddressResolution) {
           address = {
             ...savedAddressResolution.address,
             zipCode: savedAddressResolution.address.zipCode?.replace(/\D/g, '') || null,
           };
-        } else if (input.deliveryAddress && store.address && quote.deliveryZoneName) {
+        } else if (standardInput.deliveryAddress && store.address && quote.deliveryZoneName) {
           address = {
-            street: input.deliveryAddress.street,
-            number: input.deliveryAddress.number,
-            complement: input.deliveryAddress.complement || null,
+            street: standardInput.deliveryAddress.street,
+            number: standardInput.deliveryAddress.number,
+            complement: standardInput.deliveryAddress.complement || null,
             neighborhood: quote.deliveryZoneName,
             city: store.address.city,
             state: store.address.state.toUpperCase(),
-            zipCode: input.deliveryAddress.postalCode ?? input.deliveryPostalCode ?? null,
-            reference: input.deliveryAddress.reference || null,
+            zipCode:
+              standardInput.deliveryAddress.postalCode ??
+              standardInput.deliveryPostalCode ??
+              null,
+            reference: standardInput.deliveryAddress.reference || null,
           };
         } else {
           throw new CheckoutError(
@@ -442,14 +523,16 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           idempotencyFingerprint,
           quoteFingerprint: quote.quoteFingerprint,
           publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
-          paymentReportToken: onlinePayment ? null : crypto.randomUUID(),
-          paymentReportExpiresAt: onlinePayment
+          paymentReportToken: onlinePayment || dineIn ? null : crypto.randomUUID(),
+          paymentReportExpiresAt: onlinePayment || dineIn
             ? null
             : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
           customerName: resolvedIdentity.customerName,
           customerPhone: resolvedIdentity.customerPhone,
           customerPhoneNormalized: resolvedIdentity.phoneNormalized,
-          modality: input.modality,
+          modality: dineIn ? 'DINE_IN' : standardInput!.modality,
+          diningTableId: diningTable?.id ?? null,
+          diningTableLabelSnapshot: diningTable?.label ?? null,
           deliveryAddress: address ? formatAddressForStore(address) : null,
           deliveryZoneName: quote.deliveryZoneName,
           deliveryPostalCode: address?.zipCode ?? null,
@@ -468,7 +551,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           discount: quote.discount,
           total: quote.total,
           paymentMethod: input.paymentMethod,
-          changeFor: input.changeFor ?? null,
+          changeFor: standardInput?.changeFor ?? null,
           status: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
           paymentStatus: 'PENDING',
           notes: input.notes || null,
@@ -551,19 +634,21 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         });
       }
 
-      const persistedCustomer = await persistCheckoutCustomerAfterOrder({
-        tx,
-        tenantId: store.tenantId,
-        storeId: store.id,
-        orderId: order.id,
-        input,
-        customerName: resolvedIdentity.customerName,
-        customerPhone: resolvedIdentity.customerPhone,
-        recognizedCustomerId,
-        address,
-        deliveryZoneId: quote.deliveryZoneId,
-        now,
-      });
+      const persistedCustomer = dineIn
+        ? { customerId: null, addressId: null, nameConflict: false }
+        : await persistCheckoutCustomerAfterOrder({
+            tx,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            orderId: order.id,
+            input: standardInput!,
+            customerName: resolvedIdentity.customerName,
+            customerPhone: resolvedIdentity.customerPhone!,
+            recognizedCustomerId,
+            address,
+            deliveryZoneId: quote.deliveryZoneId,
+            now,
+          });
 
       const recognitionSessionId =
         recognizedIdentity?.sessionId ?? activeUnconfirmedRecognition?.sessionId ?? null;
@@ -579,7 +664,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
 
       const remembered =
-        input.saveCustomerData &&
+        standardInput?.saveCustomerData &&
         persistedCustomer.customerId &&
         !persistedCustomer.nameConflict &&
         deviceTokenHash
@@ -692,6 +777,8 @@ export async function getOrderByPublicToken(publicToken: string) {
       customerName: true,
       customerPhone: true,
       modality: true,
+      diningTableId: true,
+      diningTableLabelSnapshot: true,
       deliveryAddress: true,
       deliveryZoneName: true,
       subtotal: true,

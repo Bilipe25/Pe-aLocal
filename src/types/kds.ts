@@ -21,7 +21,8 @@ export interface KdsOrderItemDTO {
 export interface KdsOrderDTO {
   id: string;
   orderNumber: number;
-  modality: 'DELIVERY' | 'PICKUP';
+  modality: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+  diningTableLabel: string | null;
   status: KdsOrderStatus;
   version: number;
   stageStartedAt: string;

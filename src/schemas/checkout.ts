@@ -38,6 +38,14 @@ export const checkoutItemSchema = z
     path: ['optionIds'],
   });
 
+const checkoutCartShape = {
+  couponCode: couponCodeSchema.optional(),
+  items: z
+    .array(checkoutItemSchema)
+    .min(1, 'O pedido deve ter pelo menos 1 item.')
+    .max(MAX_CHECKOUT_LINES, `O pedido deve ter no máximo ${MAX_CHECKOUT_LINES} itens.`),
+} as const;
+
 const checkoutQuoteShape = {
   modality: z.enum(['DELIVERY', 'PICKUP']),
   // O PostgreSQL aceita UUIDs legados sem bits RFC 4122 (usados pelo seed).
@@ -48,11 +56,7 @@ const checkoutQuoteShape = {
     .string()
     .regex(CHECKOUT_ADDRESS_REFERENCE_PATTERN, 'A referência do endereço é inválida.')
     .optional(),
-  couponCode: couponCodeSchema.optional(),
-  items: z
-    .array(checkoutItemSchema)
-    .min(1, 'O pedido deve ter pelo menos 1 item.')
-    .max(MAX_CHECKOUT_LINES, `O pedido deve ter no máximo ${MAX_CHECKOUT_LINES} itens.`),
+  ...checkoutCartShape,
 };
 
 function addQuoteRefinements<T extends z.ZodTypeAny>(
@@ -108,6 +112,17 @@ export const checkoutQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteSha
 
 export const cartQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).strict(), {
   requireDeliverySelection: false,
+});
+
+export const dineInCheckoutQuoteSchema = z.object(checkoutCartShape).strict().superRefine((data, ctx) => {
+  const totalUnits = data.items.reduce((sum, item) => sum + item.quantity, 0);
+  if (totalUnits > MAX_CHECKOUT_TOTAL_UNITS) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `O pedido deve ter no máximo ${MAX_CHECKOUT_TOTAL_UNITS} unidades.`,
+      path: ['items'],
+    });
+  }
 });
 
 export const checkoutDeliveryAddressSchema = z
@@ -256,7 +271,36 @@ export const checkoutSchema = addQuoteRefinements(
     }),
 );
 
+export const dineInCheckoutSchema = z
+  .object({
+    ...checkoutCartShape,
+    customerName: boundedTrimmedString(40).min(1, 'Informe como podemos chamar você.'),
+    paymentMethod: z.enum(['PIX', 'CASH', 'CARD_IN_PERSON']),
+    payerEmail: z
+      .string()
+      .trim()
+      .email('Informe um e-mail válido para gerar o Pix.')
+      .max(254)
+      .optional(),
+    notes: boundedTrimmedString(500).optional().default(''),
+    expectedQuoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),
+    idempotencyKey: z.uuid(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    const totalUnits = data.items.reduce((sum, item) => sum + item.quantity, 0);
+    if (totalUnits > MAX_CHECKOUT_TOTAL_UNITS) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `O pedido deve ter no máximo ${MAX_CHECKOUT_TOTAL_UNITS} unidades.`,
+        path: ['items'],
+      });
+    }
+  });
+
 export type CheckoutQuoteInput = z.infer<typeof checkoutQuoteSchema>;
+export type DineInCheckoutQuoteInput = z.infer<typeof dineInCheckoutQuoteSchema>;
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+export type DineInCheckoutInput = z.infer<typeof dineInCheckoutSchema>;
 export type CheckoutItemInput = z.infer<typeof checkoutItemSchema>;
 export type CheckoutDeliveryAddressInput = z.infer<typeof checkoutDeliveryAddressSchema>;
