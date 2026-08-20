@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-18T03:24:49.284Z",
+  "generatedAt": "2026-08-20T14:32:59.267Z",
   "title": "Design System: PedidoLocal",
   "extensions": {
     "colorMeta": {
@@ -233,15 +233,32 @@
       "description": "Produto acionável com preço imediatamente reconhecível.",
       "html": "<button class=\"ds-product-card\"><span class=\"ds-product-image\"></span><span class=\"ds-product-copy\"><strong>X-Burger da Casa</strong><small>Pão, carne, queijo e molho especial</small><b>R$ 24,90</b></span></button>",
       "css": ".ds-product-card { display: flex; width: 100%; max-width: 380px; gap: 12px; padding: 12px; border: 1px solid var(--store-border, #d6cec4); border-radius: var(--store-radius, 12px); background: var(--store-surface, #fffdf9); color: var(--store-text, #241c15); text-align: left; transition: border-color 150ms ease-out, transform 150ms ease-out; } .ds-product-card:hover { border-color: var(--store-primary, #d9480f); } .ds-product-card:active { transform: scale(0.985); } .ds-product-card:focus-visible { outline: 2px solid var(--store-primary, #d9480f); outline-offset: 2px; } .ds-product-image { width: 64px; height: 64px; flex: none; border-radius: 9px; background: color-mix(in srgb, var(--store-border, #d6cec4) 45%, var(--store-surface, #fffdf9)); } .ds-product-copy { display: grid; min-width: 0; gap: 3px; font-family: var(--store-body-font, Inter, sans-serif); } .ds-product-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; } .ds-product-copy small { color: var(--store-muted-text, #8a7e72); font-size: 12px; } .ds-product-copy b { margin-top: 3px; color: var(--store-primary, #d9480f); font: 700 14px/1.4 var(--font-space-mono, 'Space Mono', monospace); }"
+    },
+    {
+      "name": "Dine-in Table Context",
+      "kind": "custom",
+      "refersTo": "badge-primary",
+      "description": "A assinatura Mesa 08 contínua mantém a mesa reconhecível na jornada móvel.",
+      "html": "<div class=\"ds-dine-context\" role=\"status\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 2v7c0 1.1.9 2 2 2s2-.9 2-2V2M7 2v20M21 15V2M18 15V2M18 15a3 3 0 1 0 3 3\"/></svg><span>Você está na <strong>Mesa 08</strong></span></div>",
+      "css": ".ds-dine-context { position: sticky; top: 0; display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; border-bottom: 1px solid var(--store-border, #d6cec4); background: color-mix(in srgb, var(--store-primary, #d9480f) 9%, var(--store-surface, #fffdf9)); color: var(--store-text, #241c15); font: 500 14px/1.4 var(--store-body-font, Inter, sans-serif); } .ds-dine-context svg { width: 16px; height: 16px; fill: none; stroke: var(--store-primary, #d9480f); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; } .ds-dine-context strong { font-weight: 750; }"
+    },
+    {
+      "name": "Dine-in Operational Ticket",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Mesa dominante, número secundário e uma única progressão oficial para Central e KDS.",
+      "html": "<article class=\"ds-dine-ticket\"><div><strong>Mesa 08</strong><span>Pedido #143</span></div><p>2× X-Burger da Casa</p><button>Iniciar preparo</button></article>",
+      "css": ".ds-dine-ticket { display: grid; width: min(100%, 320px); gap: 12px; padding: 16px; border: 1px solid var(--color-border, #d6cec4); border-radius: var(--radius-xl, 16px); background: var(--color-papel, #fffdf9); color: var(--color-tinta, #241c15); font-family: var(--font-body, Inter, sans-serif); } .ds-dine-ticket > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; } .ds-dine-ticket strong { font: 700 20px/1.25 var(--font-mono, 'Space Mono', monospace); } .ds-dine-ticket span { color: var(--color-text-secondary, #5c4f42); font-size: 12px; font-weight: 600; } .ds-dine-ticket p { margin: 0; color: var(--color-text-secondary, #5c4f42); font-size: 14px; } .ds-dine-ticket button { min-height: 44px; border: 0; border-radius: var(--radius-lg, 12px); background: var(--color-pimenta, #d9480f); color: #fff; font: 650 14px/1.4 var(--font-body, Inter, sans-serif); transition: background 150ms ease-out; } .ds-dine-ticket button:hover { background: var(--color-brand-600, #c2410c); } .ds-dine-ticket button:focus-visible { outline: 2px solid var(--color-pimenta, #d9480f); outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "O Balcão Digital do Bairro",
-    "overview": "O PedidoLocal combina a proximidade humana de um negócio conhecido com a precisão de uma operação bem organizada. A interface deve ser acolhedora sem ficar informal demais, autêntica sem sacrificar familiaridade e ágil sem comprimir informações importantes. O sistema serve com igual cuidado quem compra e quem vende. A plataforma é web responsiva, com jornadas do consumidor mobile-first e painéis estruturalmente responsivos. O sistema rejeita aparência corporativa fria, SaaS genérico e interfaces carregadas para pessoas pouco técnicas.",
+    "overview": "O PedidoLocal combina a proximidade humana de um negócio conhecido com a precisão de uma operação bem organizada. A interface deve ser acolhedora sem ficar informal demais, autêntica sem sacrificar familiaridade e ágil sem comprimir informações importantes. O sistema serve com igual cuidado quem compra e quem vende. A plataforma é web responsiva, com jornadas do consumidor mobile-first e painéis estruturalmente responsivos. O Pedido por QR Code no salão estende esse mesmo mundo sem criar uma identidade paralela: a tese Mesa 08 contínua mantém a mesa reconhecível do QR ao pedido, à Central e ao KDS. O sistema rejeita aparência corporativa fria, SaaS genérico e interfaces carregadas para pessoas pouco técnicas.",
     "keyCharacteristics": [
       "Próximo e autêntico, com vocabulário visual ligado ao comércio local.",
       "Acolhedor e preciso, sem decoração que dispute atenção com a tarefa.",
       "Mobile-first para consumidores e estruturalmente responsivo nos painéis.",
+      "Identidade da mesa contínua do QR ao atendimento operacional.",
       "Familiar, tátil e direto nas ações.",
       "Acessível por padrão, em conformidade com WCAG 2.2 AA."
     ],
@@ -293,7 +310,8 @@
       "Do manter alvos de toque com pelo menos 44 × 44px nas jornadas do consumidor.",
       "Do usar Inter para trabalho, Bricolage para identidade e Space Mono para preços e códigos.",
       "Do explicar estados com texto, ícone ou estrutura além da cor e cumprir WCAG 2.2 AA.",
-      "Do preservar a fronteira white-label: personalização da loja nunca invade as superfícies da plataforma."
+      "Do preservar a fronteira white-label: personalização da loja nunca invade as superfícies da plataforma.",
+      "Do manter a mesa dominante e somente uma ação oficial de progressão por estado no fluxo QR → pedido → Central → KDS."
     ],
     "donts": [
       "Don't criar uma aparência corporativa fria; a precisão deve continuar humana e próxima.",

@@ -115,6 +115,8 @@ O PedidoLocal combina a proximidade humana de um negócio conhecido com a precis
 
 A plataforma é web responsiva. As jornadas do consumidor são mobile-first: decisões, preços, estados da loja, carrinho e checkout precisam ser legíveis e acionáveis com uma mão. Painéis de estabelecimento e administração devem se adaptar do celular ao desktop, preservando densidade, hierarquia e previsibilidade. As vitrines são white-label e podem expressar cada marca dentro de limites seguros de contraste e usabilidade.
 
+O Pedido por QR Code no salão estende esse mesmo mundo sem criar uma identidade paralela. A tese **“Mesa 08 contínua”** mantém a mesa reconhecível do QR ao pedido, à Central e ao KDS; Papel, Tinta, Pimenta, Kraft, Erva e Azulejo continuam governando cada superfície da jornada.
+
 O sistema rejeita aparência corporativa fria, SaaS genérico e interfaces carregadas para pessoas pouco técnicas. Familiaridade é uma virtude: componentes devem desaparecer dentro da tarefa e usar movimento somente para comunicar estado ou resposta.
 
 **Key Characteristics:**
@@ -122,6 +124,7 @@ O sistema rejeita aparência corporativa fria, SaaS genérico e interfaces carre
 - Próximo e autêntico, com vocabulário visual ligado ao comércio local.
 - Acolhedor e preciso, sem decoração que dispute atenção com a tarefa.
 - Mobile-first para consumidores e estruturalmente responsivo nos painéis.
+- Identidade da mesa contínua do QR ao atendimento operacional.
 - Familiar, tátil e direto nas ações.
 - Acessível por padrão, em conformidade com WCAG 2.2 AA.
 
@@ -188,6 +191,12 @@ A paleta traduz ingredientes e materiais cotidianos em papéis semânticos está
 
 **The Mobile Reading Rule.** Texto essencial nunca fica abaixo de 0.875rem; títulos precisam quebrar sem transbordar e conteúdo acionável deve permanecer legível sem zoom.
 
+## Layout
+
+No salão, a hierarquia muda por dispositivo sem perder o fio da mesa. No mobile do cliente, a mesa permanece no primeiro viewport e acompanha a jornada como contexto persistente. No desktop de gestão, listas, estados e ações de QR são escaneáveis, com prévia e impressão acessíveis por mesa. No tablet operacional, o rótulo da mesa domina o ticket e o número do pedido permanece como referência secundária.
+
+O checkout de salão acontece em uma única tela, com resumo, dados e pagamento em fluxo vertical. A ação oficial do estado fica isolada no rodapé e preserva alvo mínimo de 44 × 44px; campos condicionais aparecem somente quando a forma de pagamento exige informação adicional.
+
 ## Elevation
 
 A elevação é estrutural e discreta. O sistema usa camadas tonais e bordas para organizar a maior parte da interface; sombras indicam superfícies elevadas, popovers, modais ou resposta de hover. Elas são derivadas da Tinta para permanecerem coerentes com a paleta e nunca devem criar cartões flutuantes decorativos.
@@ -247,6 +256,19 @@ Os componentes são familiares, táteis e diretos. Estados devem responder em 15
 - Lista prioriza leitura rápida; grid prioriza descoberta visual. O estado esgotado desabilita a ação e permanece compreensível por texto e ícone.
 - A vitrine respeita os tokens do estabelecimento sem perder hierarquia, contraste, foco e alvos de toque.
 
+### Pedido por QR Code no Salão
+
+- A mesa é contexto persistente na vitrine, sacola, checkout, confirmação e acompanhamento; no mobile, aparece antes do conteúdo principal ou junto da ação fixa.
+- O checkout mantém uma tela, revela apenas o campo condicionado pelo pagamento e oferece uma única ação primária para confirmar o pedido. Estados vazio, enviando, erro e sucesso substituem essa ação com clareza, sem competir entre si.
+- Na Central e no KDS, pedidos de salão promovem a mesa a identificador principal e mantêm o número do pedido como apoio. Cada estado operacional expõe uma única progressão oficial; ao ficar pronto, o KDS explica que entrega e pagamento são concluídos na Central.
+
+### Gestão de Mesas e QR
+
+- A gestão desktop usa lista compacta com nome, estado do QR e ações agrupadas; Kraft destaca a criação em lote, Erva confirma disponibilidade e Tinta sustenta a leitura operacional.
+- Prévia, download e impressão preservam um cartão de mesa escaneável, com nome do estabelecimento, mesa dominante, QR e instrução curta. Rotação do QR exige confirmação e torna a substituição física do cartão a próxima ação explícita.
+
+**Disposition:** `ship`. A revisão conectada da jornada completa fica para o rollout, após a migration ser autorizada e aplicada.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -257,6 +279,7 @@ Os componentes são familiares, táteis e diretos. Estados devem responder em 15
 - **Do** usar Inter para trabalho, Bricolage para identidade e Space Mono para preços e códigos.
 - **Do** explicar estados com texto, ícone ou estrutura além da cor e cumprir WCAG 2.2 AA.
 - **Do** preservar a fronteira white-label: personalização da loja nunca invade as superfícies da plataforma.
+- **Do** manter a mesa dominante e somente uma ação oficial de progressão por estado no fluxo QR → pedido → Central → KDS.
 
 ### Don't:
 
