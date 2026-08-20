@@ -34,6 +34,7 @@ const details = {
   orderNumber: 1042,
   customer: { name: 'Mariana Souza', phone: null },
   modality: 'PICKUP',
+  diningTable: { label: null },
   delivery: {
     address: null,
     zoneName: null,

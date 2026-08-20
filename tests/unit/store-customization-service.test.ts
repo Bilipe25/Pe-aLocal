@@ -133,6 +133,7 @@ describe('StoreCustomizationService', () => {
       kdsEnabled: false,
       advancedReportsEnabled: false,
       orderPrintingEnabled: false,
+      dineInQrEnabled: false,
       createdAt: new Date('2026-07-17T12:00:00Z'),
       updatedAt: new Date('2026-07-17T12:00:00Z'),
     });
@@ -187,6 +188,7 @@ describe('StoreCustomizationService', () => {
       kdsEnabled: false,
       advancedReportsEnabled: false,
       orderPrintingEnabled: false,
+      dineInQrEnabled: false,
     });
     expect(result.entitlement).not.toHaveProperty('id');
     expect(result.entitlement).not.toHaveProperty('tenantId');

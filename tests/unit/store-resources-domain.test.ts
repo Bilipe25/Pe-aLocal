@@ -87,6 +87,7 @@ describe('recursos white-label', () => {
       kdsEnabled: false,
       advancedReportsEnabled: false,
       orderPrintingEnabled: false,
+      dineInQrEnabled: false,
     };
     expect(storeEntitlementInputSchema.safeParse(base).success).toBe(true);
     expect(

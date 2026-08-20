@@ -46,7 +46,7 @@ export async function buildMerchantNewOrderNotification(input: MerchantNewOrderN
   const tag = `merchant-order-${topic}`;
   const details = [
     formatCurrency(input.total),
-    input.modality === 'DELIVERY' ? 'Entrega' : 'Retirada',
+    input.modality === 'DELIVERY' ? 'Entrega' : input.modality === 'DINE_IN' ? 'Salão' : 'Retirada',
     itemLabel(input.itemCount),
   ];
   if (input.includeStoreName) details.unshift(input.storeName);

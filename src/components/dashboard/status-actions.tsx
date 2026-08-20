@@ -417,13 +417,17 @@ export function StatusActions({
                     ? undefined
                     : order.modality === 'PICKUP'
                       ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.className
-                      : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.className
+                      : order.modality === 'DINE_IN'
+                        ? ORDER_ACTION_PRESENTATION.COMPLETE_DINE_IN.className
+                        : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.className
                 }
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
                 {order.modality === 'PICKUP'
                   ? ORDER_ACTION_PRESENTATION.COMPLETE_PICKUP.label
-                  : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.label}
+                  : order.modality === 'DINE_IN'
+                    ? ORDER_ACTION_PRESENTATION.COMPLETE_DINE_IN.label
+                    : ORDER_ACTION_PRESENTATION.COMPLETE_DELIVERY.label}
               </Button>
             }
           />

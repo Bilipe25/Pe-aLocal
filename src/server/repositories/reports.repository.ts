@@ -261,7 +261,7 @@ export async function getReportsDurationsByHour(scope: ReportsQueryScope) {
 }
 
 export interface ModalityRow {
-  modality: 'DELIVERY' | 'PICKUP';
+  modality: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
   orderCount: number;
   cancelledOrders: number;
   completedPaidOrders: number;

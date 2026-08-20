@@ -158,7 +158,7 @@ export interface AdvancedReportsDTO {
     } | null;
   };
   modalities: Array<{
-    modality: 'DELIVERY' | 'PICKUP';
+    modality: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
     label: string;
     orderCount: number;
     sharePercent: number;

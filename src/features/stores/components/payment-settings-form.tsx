@@ -45,6 +45,7 @@ interface PaymentSettingsFormProps {
     acceptsPix: boolean;
     acceptsCash: boolean;
     acceptsCardOnDelivery: boolean;
+    acceptsCardInPerson: boolean;
     pixKeyType: string | null;
     pixKeyMasked: string;
     hasPixKey: boolean;
@@ -65,10 +66,12 @@ export function PaymentSettingsForm({
     acceptsPix: settings?.acceptsPix ?? false,
     acceptsCash: settings?.acceptsCash ?? true,
     acceptsCardOnDelivery: settings?.acceptsCardOnDelivery ?? true,
+    acceptsCardInPerson: settings?.acceptsCardInPerson ?? false,
   };
   const [acceptsPix, setAcceptsPix] = useState(initial.acceptsPix);
   const [acceptsCash, setAcceptsCash] = useState(initial.acceptsCash);
   const [acceptsCardOnDelivery, setAcceptsCardOnDelivery] = useState(initial.acceptsCardOnDelivery);
+  const [acceptsCardInPerson, setAcceptsCardInPerson] = useState(initial.acceptsCardInPerson);
   const [replacePixKey, setReplacePixKey] = useState(
     initial.acceptsPix && !settings?.hasValidPixConfiguration,
   );
@@ -98,6 +101,7 @@ export function PaymentSettingsForm({
     setAcceptsPix(initial.acceptsPix);
     setAcceptsCash(initial.acceptsCash);
     setAcceptsCardOnDelivery(initial.acceptsCardOnDelivery);
+    setAcceptsCardInPerson(initial.acceptsCardInPerson);
     setReplacePixKey(initial.acceptsPix && !settings?.hasValidPixConfiguration);
     setRevealed(false);
   }
@@ -344,6 +348,36 @@ export function PaymentSettingsForm({
                 checked={acceptsCash}
                 onCheckedChange={(value) => {
                   setAcceptsCash(value);
+                  markDirty();
+                }}
+                value="true"
+              />
+            </div>
+
+            <div className="flex min-h-20 items-center justify-between gap-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <CreditCard className="text-text-muted size-5 shrink-0" aria-hidden="true" />
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label htmlFor="acceptsCardInPerson" className="font-semibold">
+                      Cartão na mesa
+                    </Label>
+                    <Badge variant={acceptsCardInPerson ? 'success' : 'secondary'}>
+                      {acceptsCardInPerson ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </div>
+                  <p className="text-text-secondary mt-0.5 text-sm">
+                    Pagamento presencial por maquininha nos pedidos do salão.
+                  </p>
+                </div>
+              </div>
+              <input type="hidden" name="acceptsCardInPerson" value="false" />
+              <Switch
+                id="acceptsCardInPerson"
+                name="acceptsCardInPerson"
+                checked={acceptsCardInPerson}
+                onCheckedChange={(value) => {
+                  setAcceptsCardInPerson(value);
                   markDirty();
                 }}
                 value="true"

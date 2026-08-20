@@ -221,6 +221,7 @@ async function transitionOrder(
     const changedAt = new Date();
     const confirmPaymentOnCompletion =
       targetStatus === 'DELIVERED' &&
+      order.modality !== 'DINE_IN' &&
       order.paymentMethod !== 'PIX' &&
       order.paymentStatus === 'PENDING';
     if (confirmPaymentOnCompletion && !context.canConfirmPayment) {

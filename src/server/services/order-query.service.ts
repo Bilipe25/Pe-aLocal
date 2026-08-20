@@ -88,6 +88,7 @@ const ORDER_BOARD_ITEM_SELECT = {
   orderNumber: true,
   customerName: true,
   modality: true,
+  diningTableLabelSnapshot: true,
   paymentMethod: true,
   paymentStatus: true,
   status: true,
@@ -351,14 +352,18 @@ function searchConditions(query: string): Prisma.OrderWhereInput[] {
   if ('entrega'.includes(lowerQuery) || lowerQuery.includes('delivery'))
     modalities.push('DELIVERY');
   if ('retirada'.includes(lowerQuery) || lowerQuery.includes('pickup')) modalities.push('PICKUP');
+  if (lowerQuery.includes('salao') || lowerQuery.includes('salão') || lowerQuery.includes('mesa')) {
+    modalities.push('DINE_IN');
+  }
   if (lowerQuery.includes('pix')) paymentMethods.push('PIX');
   if (lowerQuery.includes('dinheiro')) paymentMethods.push('CASH');
   if (lowerQuery.includes('cartao') || lowerQuery.includes('cartão')) {
-    paymentMethods.push('CARD_ON_DELIVERY');
+    paymentMethods.push('CARD_ON_DELIVERY', 'CARD_IN_PERSON');
   }
 
   return [
     { customerName: { contains: query, mode: 'insensitive' } },
+    { diningTableLabelSnapshot: { contains: query, mode: 'insensitive' } },
     ...(phone.length >= 2 ? [{ customerPhoneNormalized: { startsWith: phone } }] : []),
     ...(orderNumber === null ? [] : [{ orderNumber }]),
     ...(modalities.length ? [{ modality: { in: modalities } }] : []),
@@ -442,6 +447,7 @@ function nextActionLabel(
     DISPATCH_FOR_DELIVERY: capabilities.canDispatch,
     CONFIRM_PAYMENT: capabilities.canConfirmPayment && canConfirmCurrentPayment,
     COMPLETE_PICKUP: capabilities.canComplete,
+    COMPLETE_DINE_IN: capabilities.canComplete,
     COMPLETE_DELIVERY: capabilities.canComplete,
   };
   return action && allowed[action] ? getOrderWorkflowLabel(action) : null;
@@ -602,6 +608,7 @@ function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoard
     orderNumber: order.orderNumber,
     customerDisplayName: order.customerName,
     modality: order.modality,
+    diningTableLabel: order.diningTableLabelSnapshot,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
     status: order.status,
@@ -910,6 +917,7 @@ export async function getOrderQueue(
           orderNumber: true,
           customerName: true,
           modality: true,
+          diningTableLabelSnapshot: true,
           paymentMethod: true,
           paymentStatus: true,
           status: true,
@@ -963,6 +971,7 @@ export async function getOrderQueue(
           orderNumber: order.orderNumber,
           customerDisplayName: order.customerName,
           modality: order.modality,
+          diningTableLabel: order.diningTableLabelSnapshot,
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
           status: order.status,
@@ -1073,6 +1082,7 @@ export async function getOrderDetails(
         customerName: true,
         customerPhone: true,
         modality: true,
+        diningTableLabelSnapshot: true,
         deliveryAddress: true,
         deliveryZoneName: true,
         deliveryStreet: true,
@@ -1207,6 +1217,7 @@ export async function getOrderDetails(
         phone: capabilities.canViewCustomerContact ? order.customerPhone : null,
       },
       modality: order.modality,
+      diningTable: { label: order.diningTableLabelSnapshot },
       delivery: {
         address: capabilities.canViewCustomerContact ? order.deliveryAddress : null,
         zoneName: order.deliveryZoneName,

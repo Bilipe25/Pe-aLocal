@@ -150,14 +150,18 @@ export function deriveLiveStageAlerts(order: OrderCardData, now: number) {
       }
       break;
     case 'READY': {
-      const pickup = order.modality === 'PICKUP';
+      const pickup = order.modality !== 'DELIVERY';
       const threshold =
         configuredStageThreshold ??
         (pickup ? READY_PICKUP_ALERT_MINUTES : READY_DISPATCH_ALERT_MINUTES);
       if (stageElapsed >= threshold) {
         operationalAlert = liveAlert(
           pickup ? 'READY_WAITING_PICKUP' : 'READY_WAITING_DISPATCH',
-          formatSlaAlertLabel(pickup ? 'Retirada' : 'Despacho', stageElapsed, threshold),
+          formatSlaAlertLabel(
+            order.modality === 'DINE_IN' ? 'Entrega na mesa' : pickup ? 'Retirada' : 'Despacho',
+            stageElapsed,
+            threshold,
+          ),
           stageElapsed,
           threshold,
         );
@@ -338,8 +342,13 @@ export function OrderCard({
               id={`order-card-title-${order.id}`}
               className="text-text-primary font-mono text-base font-extrabold"
             >
-              #{order.orderNumber}
+              {order.modality === 'DINE_IN'
+                ? (order.diningTableLabel ?? 'Salão')
+                : `#${order.orderNumber}`}
             </h3>
+            {order.modality === 'DINE_IN' ? (
+              <span className="text-text-secondary text-xs font-semibold">#{order.orderNumber}</span>
+            ) : null}
             {order.status === 'PENDING' ? (
               <OrderSlaIndicator
                 config={operationalSla}
@@ -355,7 +364,11 @@ export function OrderCard({
               {order.customerDisplayName}
             </p>
             <span className="order-card-mobile-modality text-text-secondary shrink-0 text-xs">
-              {order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
+              {order.modality === 'DELIVERY'
+                ? 'Entrega'
+                : order.modality === 'DINE_IN'
+                  ? 'Salão'
+                  : 'Retirada'}
             </span>
           </div>
         </div>
@@ -427,7 +440,11 @@ export function OrderCard({
           <dt className="sr-only">Modalidade</dt>
           <dd className="text-text-secondary flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {order.modality === 'DELIVERY' ? 'Entrega' : 'Retirada'}
+            {order.modality === 'DELIVERY'
+              ? 'Entrega'
+              : order.modality === 'DINE_IN'
+                ? (order.diningTableLabel ?? 'Salão')
+                : 'Retirada'}
           </dd>
         </div>
         <div className="order-card-meta-total min-w-0 text-right">

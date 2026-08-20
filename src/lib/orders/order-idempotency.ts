@@ -1,18 +1,21 @@
-import type { CheckoutInput } from '@/schemas/checkout';
+import type { CheckoutInput, DineInCheckoutInput } from '@/schemas/checkout';
 
 type CheckoutFingerprintItem = Omit<CheckoutInput['items'][number], 'notes' | 'lineId'> & {
   notes?: string;
 };
 
-type CheckoutFingerprintInputFor<T> = T extends CheckoutInput
-  ? Omit<T, 'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'> & {
-      notes?: string;
-      expectedQuoteFingerprint?: string;
-      items: CheckoutFingerprintItem[];
-    }
-  : never;
+type CheckoutFingerprintInputFor<T extends CheckoutInput | DineInCheckoutInput> =
+  T extends CheckoutInput | DineInCheckoutInput
+    ? Omit<T, 'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'> & {
+        notes?: string;
+        expectedQuoteFingerprint?: string;
+        items: CheckoutFingerprintItem[];
+      }
+    : never;
 
-export type CheckoutFingerprintInput = CheckoutFingerprintInputFor<CheckoutInput>;
+export type CheckoutFingerprintInput =
+  | CheckoutFingerprintInputFor<CheckoutInput>
+  | CheckoutFingerprintInputFor<DineInCheckoutInput>;
 
 export interface ResolvedCheckoutFingerprintIdentity {
   customerId: string;
@@ -20,9 +23,15 @@ export interface ResolvedCheckoutFingerprintIdentity {
   customerPhone: string;
 }
 
+export interface ResolvedDiningTableFingerprintContext {
+  diningTableId: string;
+  diningTableVersion: number;
+}
+
 export function canonicalizeCheckoutForIdempotency(
   input: CheckoutFingerprintInput,
   resolvedIdentity?: ResolvedCheckoutFingerprintIdentity | null,
+  diningTable?: ResolvedDiningTableFingerprintContext | null,
 ) {
   const items = input.items
     .map((item) =>
@@ -35,30 +44,37 @@ export function canonicalizeCheckoutForIdempotency(
     )
     .sort();
 
+  const standard = 'identityMode' in input ? input : null;
   return JSON.stringify({
-    identityMode: input.identityMode,
-    customerName:
-      input.identityMode === 'VISITOR'
+    identityMode: standard?.identityMode ?? 'DINE_IN_VISITOR',
+    customerName: standard
+      ? standard.identityMode === 'VISITOR'
+        ? standard.customerName
+        : (resolvedIdentity?.customerName ?? null)
+      : 'customerName' in input
         ? input.customerName
-        : (resolvedIdentity?.customerName ?? null),
-    customerPhone:
-      input.identityMode === 'VISITOR'
-        ? input.customerPhone
-        : (resolvedIdentity?.customerPhone ?? null),
+        : null,
+    customerPhone: standard
+      ? standard.identityMode === 'VISITOR'
+        ? standard.customerPhone
+        : (resolvedIdentity?.customerPhone ?? null)
+      : null,
     recognizedCustomerId:
-      input.identityMode === 'RECOGNIZED' ? (resolvedIdentity?.customerId ?? null) : null,
-    modality: input.modality,
-    deliveryZoneId: input.deliveryZoneId ?? null,
-    deliveryPostalCode: input.deliveryPostalCode ?? null,
-    deliveryAddress: input.deliveryAddress ?? null,
-    savedAddressReference: input.savedAddressReference ?? null,
-    saveCustomerData: input.saveCustomerData,
-    addressLabel: input.addressLabel,
-    setAddressAsDefault: input.setAddressAsDefault,
+      standard?.identityMode === 'RECOGNIZED' ? (resolvedIdentity?.customerId ?? null) : null,
+    modality: standard?.modality ?? 'DINE_IN',
+    diningTableId: diningTable?.diningTableId ?? null,
+    diningTableVersion: diningTable?.diningTableVersion ?? null,
+    deliveryZoneId: standard?.deliveryZoneId ?? null,
+    deliveryPostalCode: standard?.deliveryPostalCode ?? null,
+    deliveryAddress: standard?.deliveryAddress ?? null,
+    savedAddressReference: standard?.savedAddressReference ?? null,
+    saveCustomerData: standard?.saveCustomerData ?? false,
+    addressLabel: standard?.addressLabel ?? null,
+    setAddressAsDefault: standard?.setAddressAsDefault ?? false,
     couponCode: input.couponCode ?? null,
     paymentMethod: input.paymentMethod,
     payerEmail: input.payerEmail?.trim().toLowerCase() ?? null,
-    changeFor: input.changeFor ?? null,
+    changeFor: standard?.changeFor ?? null,
     expectedQuoteFingerprint: input.expectedQuoteFingerprint ?? null,
     notes: input.notes ?? '',
     items,

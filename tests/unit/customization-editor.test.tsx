@@ -48,6 +48,7 @@ function renderEditor(hasDraft = false) {
         kdsEnabled: false,
         advancedReportsEnabled: false,
         orderPrintingEnabled: false,
+        dineInQrEnabled: false,
       }}
       mercadoPagoReadiness={{
         rolloutEnabled: false,

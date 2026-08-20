@@ -26,6 +26,10 @@ export const ORDER_ACTION_PRESENTATION: Record<OrderOperationalAction, OrderActi
     label: 'Concluir pedido',
     className: 'bg-success text-white hover:bg-success/90',
   },
+  COMPLETE_DINE_IN: {
+    label: 'Entregue na mesa',
+    className: 'bg-success text-white hover:bg-success/90',
+  },
   COMPLETE_DELIVERY: {
     label: 'Concluir pedido',
     className: 'bg-success text-white hover:bg-success/90',

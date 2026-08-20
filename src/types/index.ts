@@ -41,12 +41,12 @@ export type MutationResult<T = void> =
 /**
  * Modalidades de atendimento.
  */
-export type OrderModality = 'DELIVERY' | 'PICKUP';
+export type OrderModality = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 
 /**
  * Formas de pagamento aceitas.
  */
-export type PaymentMethod = 'PIX' | 'CASH' | 'CARD_ON_DELIVERY';
+export type PaymentMethod = 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' | 'CARD_IN_PERSON';
 
 /**
  * Status do pedido.

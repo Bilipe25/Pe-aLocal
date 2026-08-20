@@ -34,6 +34,7 @@ const pendingOrder: OrderQueueItemDTO = {
   orderNumber: 1042,
   customerDisplayName: 'Mariana',
   modality: 'PICKUP',
+  diningTableLabel: null,
   paymentMethod: 'PIX',
   paymentStatus: 'PENDING',
   status: 'PENDING',

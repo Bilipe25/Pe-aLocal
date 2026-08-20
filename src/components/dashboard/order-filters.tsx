@@ -149,6 +149,7 @@ function OrderFilterFields({
           <option value="">Todos</option>
           <option value="DELIVERY">Entrega</option>
           <option value="PICKUP">Retirada</option>
+          <option value="DINE_IN">Salão</option>
         </select>
       </div>
 

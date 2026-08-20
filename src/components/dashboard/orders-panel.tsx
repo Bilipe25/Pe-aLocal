@@ -170,7 +170,10 @@ function filtersFromUrl(searchParams: URLSearchParams, localDate: string): Order
       rawPayment && ALL_PAYMENT_STATUSES.includes(rawPayment as PaymentStatus)
         ? (rawPayment as PaymentStatus)
         : undefined,
-    modality: rawModality === 'DELIVERY' || rawModality === 'PICKUP' ? rawModality : undefined,
+    modality:
+      rawModality === 'DELIVERY' || rawModality === 'PICKUP' || rawModality === 'DINE_IN'
+        ? rawModality
+        : undefined,
     delayedOnly:
       !isHistoryStatusFilter(resolvedStatuses) && searchParams.get('delayed') === '1'
         ? true

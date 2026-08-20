@@ -60,12 +60,14 @@ enum StoreScheduleExceptionType {
 enum OrderModality {
   DELIVERY
   PICKUP
+  DINE_IN
 }
 
 enum PaymentMethodType {
   PIX
   CASH
   CARD_ON_DELIVERY
+  CARD_IN_PERSON
 }
 
 enum StorePaymentMode {
@@ -430,6 +432,7 @@ model Tenant {
   paymentProviderConnections    StorePaymentProviderConnection[]
   paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
   mercadoPagoPayments           MercadoPagoPayment[]
+  diningTables                  StoreDiningTable[]
 
   @@map("tenants")
 }
@@ -513,6 +516,7 @@ model Store {
   paymentProviderConnections    StorePaymentProviderConnection[]
   paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
   mercadoPagoPayments           MercadoPagoPayment[]
+  diningTables                  StoreDiningTable[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -551,6 +555,7 @@ model StoreSettings {
   acceptsPix            Boolean          @default(true)
   acceptsCash           Boolean          @default(true)
   acceptsCardOnDelivery Boolean          @default(true)
+  acceptsCardInPerson   Boolean          @default(false)
   paymentMode           StorePaymentMode @default(MANUAL)
 
   // Pix
@@ -739,6 +744,7 @@ model StoreEntitlement {
   kdsEnabled                     Boolean   @default(false)
   advancedReportsEnabled         Boolean   @default(false)
   orderPrintingEnabled           Boolean   @default(false)
+  dineInQrEnabled                Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -748,6 +754,29 @@ model StoreEntitlement {
   @@unique([storeId, tenantId])
   @@index([tenantId, storeId])
   @@map("store_entitlements")
+}
+
+model StoreDiningTable {
+  id              String   @id @default(uuid())
+  tenantId        String
+  storeId         String
+  label           String   @db.VarChar(80)
+  labelNormalized String   @db.VarChar(80)
+  sortOrder       Int      @default(0)
+  publicToken     String   @unique @db.VarChar(43)
+  isActive        Boolean  @default(true)
+  version         Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  orders Order[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([tenantId, storeId, labelNormalized])
+  @@index([tenantId, storeId, isActive, sortOrder, id])
+  @@map("store_dining_tables")
 }
 
 model StoreAddress {
@@ -1203,11 +1232,13 @@ model Order {
 
   // Dados do cliente (snapshot)
   customerName            String
-  customerPhone           String
+  customerPhone           String?
   customerPhoneNormalized String?
 
   // Modalidade e endereço
   modality                 OrderModality
+  diningTableId            String?
+  diningTableLabelSnapshot String?       @db.VarChar(80)
   deliveryAddress          String?
   deliveryZoneName         String?
   deliveryPostalCode       String?       @db.VarChar(8)
@@ -1261,10 +1292,11 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store       Store     @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  cancelledBy User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy User?             @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  diningTable StoreDiningTable? @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
 
   items                         OrderItem[]
   statusHistory                 OrderStatusHistory[]
@@ -1293,6 +1325,8 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([customerId])
+  @@index([diningTableId])
+  @@index([tenantId, storeId, diningTableId, createdAt, id])
   @@index([cancelledById])
   @@index([publicToken])
   @@index([publicTokenExpiresAt])

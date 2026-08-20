@@ -62,6 +62,11 @@ interface CartViewProps {
   unavailableReason: string;
   deliveryEnabled?: boolean;
   pickupEnabled?: boolean;
+  baseHref?: string;
+  checkoutHref?: string;
+  quoteEndpoint?: string;
+  quoteModality?: CartFulfillmentModality;
+  contextLabel?: string;
 }
 
 export function buildCartCheckoutHref(storeSlug: string) {
@@ -78,6 +83,11 @@ export function CartView({
   unavailableReason,
   deliveryEnabled = false,
   pickupEnabled = true,
+  baseHref = `/${storeSlug}`,
+  checkoutHref: checkoutHrefOverride,
+  quoteEndpoint,
+  quoteModality: quoteModalityOverride,
+  contextLabel,
 }: CartViewProps) {
   const items = useCartStore((state) => state.items);
   const activeStoreId = useCartStore((state) => state.storeId);
@@ -118,11 +128,9 @@ export function CartView({
     };
   }, [setStore, storeId, storeSlug]);
 
-  const quoteModality: CartFulfillmentModality = pickupEnabled
-    ? 'PICKUP'
-    : deliveryEnabled
-      ? 'DELIVERY'
-      : 'PICKUP';
+  const quoteModality: CartFulfillmentModality =
+    quoteModalityOverride ??
+    (pickupEnabled ? 'PICKUP' : deliveryEnabled ? 'DELIVERY' : 'PICKUP');
   const quoteState = useCartQuote({
     storeSlug,
     items,
@@ -130,6 +138,7 @@ export function CartView({
     modality: quoteModality,
     couponCode,
     enabled: cartHydrated,
+    quoteEndpoint,
   });
   useEffect(() => {
     if (quoteState.status !== 'success' || !quoteState.quote) return;
@@ -173,7 +182,7 @@ export function CartView({
   const total = quoteState.quote?.total ?? subtotal;
   const canCheckout =
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
-  const checkoutHref = buildCartCheckoutHref(storeSlug);
+  const checkoutHref = checkoutHrefOverride ?? buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
 
   useEffect(() => {
@@ -322,7 +331,7 @@ export function CartView({
         <h1>Nenhum item por aqui ainda</h1>
         <p>Dê uma olhada no cardápio — tem coisa boa esperando você.</p>
         <Button asChild className="storefront-primary-action">
-          <Link href={`/${storeSlug}`}>
+          <Link href={baseHref}>
             <ArrowLeft aria-hidden="true" />
             Explorar cardápio
           </Link>
@@ -337,7 +346,7 @@ export function CartView({
         {cartAnnouncement}
       </span>
       <StorePurchaseHeader
-        backHref={`/${storeSlug}`}
+        backHref={baseHref}
         backLabel="Voltar ao cardápio"
         title="Sua sacola"
         storeName={storeName}
@@ -345,6 +354,7 @@ export function CartView({
         logoImageAssetId={logoImageAssetId}
       />
       <div className="storefront-cart-heading">
+        {contextLabel ? <strong className="storefront-table-context">{contextLabel}</strong> : null}
         <p>
           {itemCount} {itemCount === 1 ? 'item no pedido' : 'itens no pedido'}
         </p>

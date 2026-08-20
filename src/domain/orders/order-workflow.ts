@@ -15,6 +15,7 @@ export type OrderOperationalAction =
   | 'DISPATCH_FOR_DELIVERY'
   | 'CONFIRM_PAYMENT'
   | 'COMPLETE_PICKUP'
+  | 'COMPLETE_DINE_IN'
   | 'COMPLETE_DELIVERY';
 
 type OperationalOrderStatus = Exclude<OrderStatus, 'AWAITING_PAYMENT'>;
@@ -36,6 +37,7 @@ const ACTION_LABELS: Record<OrderOperationalAction, string> = {
   DISPATCH_FOR_DELIVERY: 'Despachar para entrega',
   CONFIRM_PAYMENT: 'Confirmar pagamento',
   COMPLETE_PICKUP: 'Concluir retirada',
+  COMPLETE_DINE_IN: 'Entregar na mesa',
   COMPLETE_DELIVERY: 'Concluir entrega',
 };
 
@@ -46,6 +48,9 @@ function assertOperationalStatus(status: OrderStatus): asserts status is Operati
 }
 
 function canCompleteOrder(context: OrderWorkflowContext): boolean {
+  if (context.modality === 'DINE_IN') {
+    return context.paymentStatus === 'PAID';
+  }
   if (context.paymentMethod === 'PIX') {
     return context.paymentStatus === 'PAID';
   }
@@ -103,10 +108,15 @@ export function assertOrderTransition(
 
   const isCompletionStep =
     nextStatus === 'DELIVERED' &&
-    ((context.status === 'READY' && context.modality === 'PICKUP') ||
+    ((context.status === 'READY' && context.modality !== 'DELIVERY') ||
       context.status === 'OUT_FOR_DELIVERY');
 
   if (isCompletionStep && !canCompleteOrder(context)) {
+    if (context.modality === 'DINE_IN') {
+      throw new BusinessRuleError(
+        'Confirme o pagamento antes de marcar o pedido como entregue na mesa.',
+      );
+    }
     if (context.paymentMethod === 'PIX') {
       throw new BusinessRuleError(
         'O pagamento via PIX deve estar confirmado para concluir o pedido.',
@@ -139,7 +149,8 @@ export function getNextOperationalAction(
       if (context.modality === 'DELIVERY') {
         return 'DISPATCH_FOR_DELIVERY';
       }
-      return canCompleteOrder(context) ? 'COMPLETE_PICKUP' : 'CONFIRM_PAYMENT';
+      if (!canCompleteOrder(context)) return 'CONFIRM_PAYMENT';
+      return context.modality === 'DINE_IN' ? 'COMPLETE_DINE_IN' : 'COMPLETE_PICKUP';
     case 'OUT_FOR_DELIVERY':
       return canCompleteOrder(context) ? 'COMPLETE_DELIVERY' : 'CONFIRM_PAYMENT';
     case 'DELIVERED':

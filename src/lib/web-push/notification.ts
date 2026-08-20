@@ -24,13 +24,17 @@ function notificationBody(status: NotifiableOrderStatus, modality: OrderModality
     case 'READY':
       return modality === 'PICKUP'
         ? 'Seu pedido está pronto para retirada.'
-        : 'Seu pedido está pronto e aguarda a saída para entrega.';
+        : modality === 'DINE_IN'
+          ? 'Seu pedido está pronto e será levado à sua mesa.'
+          : 'Seu pedido está pronto e aguarda a saída para entrega.';
     case 'OUT_FOR_DELIVERY':
       return 'Seu pedido está a caminho.';
     case 'DELIVERED':
       return modality === 'PICKUP'
         ? 'Seu pedido foi retirado. Esperamos que aproveite!'
-        : 'Seu pedido foi entregue. Esperamos que aproveite!';
+        : modality === 'DINE_IN'
+          ? 'Seu pedido foi entregue na mesa. Bom apetite!'
+          : 'Seu pedido foi entregue. Esperamos que aproveite!';
     case 'CANCELLED':
       return 'Seu pedido foi cancelado. Abra para ver os detalhes.';
   }

@@ -48,6 +48,7 @@ export interface OrderQueueItemDTO {
   orderNumber: number;
   customerDisplayName: string;
   modality: OrderModality;
+  diningTableLabel: string | null;
   paymentMethod: PaymentMethodType;
   paymentStatus: PaymentStatus;
   status: OrderStatus;
@@ -197,6 +198,9 @@ export interface OrderDetailsDTO {
     phone: string | null;
   };
   modality: OrderModality;
+  diningTable: {
+    label: string | null;
+  };
   delivery: {
     address: string | null;
     zoneName: string | null;

@@ -54,6 +54,7 @@ const input: StoreEntitlementInput = {
   kdsEnabled: false,
   advancedReportsEnabled: false,
   orderPrintingEnabled: false,
+  dineInQrEnabled: false,
 };
 
 const current = {

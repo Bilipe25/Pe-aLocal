@@ -276,6 +276,7 @@ describe('componentes do painel do tenant', () => {
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
+          acceptsCardInPerson: false,
           pixConfigured: true,
         }}
         paymentsHref="/dashboard/stores/00000000-0000-0000-0000-000000000001/payments"
@@ -301,6 +302,7 @@ describe('componentes do painel do tenant', () => {
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: true,
+          acceptsCardInPerson: false,
           pixConfigured: true,
         }}
         paymentsHref={null}
@@ -321,6 +323,7 @@ describe('componentes do painel do tenant', () => {
           acceptsPix: true,
           acceptsCash: true,
           acceptsCardOnDelivery: false,
+          acceptsCardInPerson: true,
           pixKeyType: 'EMAIL',
           pixKeyMasked: 'fi***@example.com',
           hasPixKey: true,

@@ -53,7 +53,7 @@ function isDismissGesture(event: ReactPointerEvent<HTMLElement>) {
   );
 }
 
-export function CartFab({ storeId }: { storeId: string }) {
+export function CartFab({ storeId, href }: { storeId: string; href?: string }) {
   const activeStoreId = useCartStore(selectCartStoreId);
   const storeSlug = useCartStore(selectCartStoreSlug);
   const count = useCartStore(selectCartItemCount);
@@ -219,7 +219,7 @@ export function CartFab({ storeId }: { storeId: string }) {
       onPointerCancel={handlePointerCancel}
     >
       <Link
-        href={`/${storeSlug}/cart`}
+        href={href ?? `/${storeSlug}/cart`}
         className="storefront-cart-fab-link"
         aria-label={`Ver carrinho com ${count} ${count === 1 ? 'item' : 'itens'}, total ${formatCurrency(total)}`}
         onClick={handleClick}

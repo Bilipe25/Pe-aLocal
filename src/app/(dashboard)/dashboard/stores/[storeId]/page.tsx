@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Clock, CreditCard, Eye, MapPin, Settings, Store, Truck } from 'lucide-react';
+import { ArrowRight, Clock, CreditCard, Eye, MapPin, QrCode, Settings, Store, Truck } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,13 @@ export default async function StorePage({ params }: { params: Promise<{ storeId:
       href: `${basePath}/operations`,
       icon: Truck,
       visible: capabilities.viewOperations,
+    },
+    {
+      title: 'Mesas e QR Code',
+      description: 'Crie, imprima e controle os QR Codes do salão',
+      href: `${basePath}/tables`,
+      icon: QrCode,
+      visible: capabilities.viewDiningTables,
     },
     {
       title: 'Exibição no cardápio',

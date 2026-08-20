@@ -45,6 +45,7 @@ describe('máquina de estados de pedidos', () => {
       { status: 'PREPARING', modality: 'PICKUP', expected: ['READY', 'CANCELLED'] },
       { status: 'PREPARING', modality: 'DELIVERY', expected: ['READY', 'CANCELLED'] },
       { status: 'READY', modality: 'PICKUP', expected: ['DELIVERED', 'CANCELLED'] },
+      { status: 'READY', modality: 'DINE_IN', expected: ['DELIVERED', 'CANCELLED'] },
       {
         status: 'READY',
         modality: 'DELIVERY',
@@ -77,6 +78,21 @@ describe('máquina de estados de pedidos', () => {
         }
       });
     }
+
+    it('bloqueia despacho e conclusão da mesa enquanto o pagamento presencial está pendente', () => {
+      const dineIn = context({
+        status: 'READY',
+        modality: 'DINE_IN',
+        paymentMethod: 'CARD_IN_PERSON',
+        paymentStatus: 'PENDING',
+      });
+      expect(canTransitionOrder(dineIn, 'OUT_FOR_DELIVERY')).toBe(false);
+      expect(canTransitionOrder(dineIn, 'DELIVERED')).toBe(false);
+      expect(getNextOperationalAction(dineIn)).toBe('CONFIRM_PAYMENT');
+      expect(
+        getNextOperationalAction({ ...dineIn, paymentStatus: 'PAID' }),
+      ).toBe('COMPLETE_DINE_IN');
+    });
 
     it('assert aceita todas as transições válidas sem efeitos colaterais', () => {
       const current = context({ status: 'PENDING' });
@@ -248,6 +264,7 @@ describe('máquina de estados de pedidos', () => {
         DISPATCH_FOR_DELIVERY: 'Despachar para entrega',
         CONFIRM_PAYMENT: 'Confirmar pagamento',
         COMPLETE_PICKUP: 'Concluir retirada',
+        COMPLETE_DINE_IN: 'Entregar na mesa',
         COMPLETE_DELIVERY: 'Concluir entrega',
       };
 

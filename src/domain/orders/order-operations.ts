@@ -88,7 +88,12 @@ function currentStage(input: OrderOperationalInput) {
       return { label: 'Em preparo', startedAt: input.preparingAt ?? input.statusChangedAt };
     case 'READY':
       return {
-        label: input.modality === 'PICKUP' ? 'Aguardando retirada' : 'Aguardando despacho',
+        label:
+          input.modality === 'PICKUP'
+            ? 'Aguardando retirada'
+            : input.modality === 'DINE_IN'
+              ? 'Aguardando entrega na mesa'
+              : 'Aguardando despacho',
         startedAt: input.readyAt ?? input.statusChangedAt,
       };
     case 'OUT_FOR_DELIVERY':
@@ -151,12 +156,16 @@ function operationalAlert(
         : null;
     }
     case 'READY': {
-      const pickup = input.modality === 'PICKUP';
+      const pickup = input.modality !== 'DELIVERY';
       const threshold = pickup ? READY_PICKUP_ALERT_MINUTES : READY_DISPATCH_ALERT_MINUTES;
       return elapsedMinutes >= threshold
         ? {
             code: pickup ? 'READY_WAITING_PICKUP' : 'READY_WAITING_DISPATCH',
-            label: formatSlaAlertLabel(pickup ? 'Retirada' : 'Despacho', elapsedMinutes, threshold),
+            label: formatSlaAlertLabel(
+              input.modality === 'DINE_IN' ? 'Entrega na mesa' : pickup ? 'Retirada' : 'Despacho',
+              elapsedMinutes,
+              threshold,
+            ),
             severity: critical(threshold) ? 'critical' : 'warning',
           }
         : null;

@@ -541,7 +541,7 @@ export async function getAdvancedReports(
   );
 
   const modalityByName = new Map(modalityRows.map((row) => [row.modality, row]));
-  const modalities = (['DELIVERY', 'PICKUP'] as const).map((modality) => {
+  const modalities = (['DELIVERY', 'PICKUP', 'DINE_IN'] as const).map((modality) => {
     const row = modalityByName.get(modality);
     const orderCount = row?.orderCount ?? 0;
     const completedPaidOrders = row?.completedPaidOrders ?? 0;
@@ -549,7 +549,7 @@ export async function getAdvancedReports(
     const cancelledOrders = row?.cancelledOrders ?? 0;
     return {
       modality,
-      label: modality === 'DELIVERY' ? 'Entrega' : 'Retirada',
+      label: modality === 'DELIVERY' ? 'Entrega' : modality === 'DINE_IN' ? 'Salão' : 'Retirada',
       orderCount,
       sharePercent:
         currentSummary.operationalOrders > 0

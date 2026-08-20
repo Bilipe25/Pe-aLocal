@@ -21,6 +21,7 @@ const snapshot: KdsSnapshotDTO = {
           id: 'order-a',
           orderNumber: 101,
           modality: 'PICKUP',
+          diningTableLabel: null,
           status: 'CONFIRMED',
           version: 7,
           stageStartedAt: '2026-08-18T12:00:00.000Z',

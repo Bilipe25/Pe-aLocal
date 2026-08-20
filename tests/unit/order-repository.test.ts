@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => {
   const tx = {
     $executeRaw: vi.fn(),
     $queryRaw: vi.fn(),
-    store: { findUnique: vi.fn() },
+    store: { findUnique: vi.fn(), findFirst: vi.fn() },
+    storeDiningTable: { findUnique: vi.fn() },
     order: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -156,6 +157,8 @@ describe('OrderRepository checkout v2', () => {
       entitlement: { onlinePaymentsEnabled: false },
       paymentProviderConnections: [],
     });
+    mocks.tx.store.findFirst.mockResolvedValue(null);
+    mocks.tx.storeDiningTable.findUnique.mockResolvedValue(null);
     mocks.tx.order.findUnique.mockResolvedValue(null);
     mocks.tx.order.create.mockResolvedValue({
       id: 'order-a',
@@ -336,6 +339,84 @@ describe('OrderRepository checkout v2', () => {
       expect(mocks.appendOrderOutboxEvent).toHaveBeenCalledOnce();
     },
   );
+
+  it('deriva loja e Mesa 08 do token e persiste o pedido de salão sem dados de entrega', async () => {
+    const tableToken = 'A'.repeat(43);
+    const diningTable = {
+      id: 'table-08',
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      label: 'Mesa 08',
+      isActive: true,
+      version: 4,
+    };
+    const dineInInput = {
+      customerName: 'Maria',
+      paymentMethod: 'CASH' as const,
+      notes: 'Sem cebola',
+      expectedQuoteFingerprint,
+      idempotencyKey: 'bd7bfc8f-e557-4305-9691-3446481e186e',
+      items: input.items,
+    };
+    mocks.tx.storeDiningTable.findUnique.mockResolvedValue(diningTable);
+    mocks.tx.store.findFirst.mockResolvedValue({
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      slug: 'loja-a',
+      address: { city: 'São Paulo', state: 'SP' },
+      settings: {
+        acceptsPix: false,
+        pixKeyType: null,
+        pixKey: null,
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+        acceptsCardInPerson: true,
+        paymentMode: 'MANUAL',
+      },
+      entitlement: { onlinePaymentsEnabled: false, dineInQrEnabled: true },
+      paymentProviderConnections: [],
+    });
+    mocks.tx.order.create.mockResolvedValue({
+      id: 'order-a',
+      publicToken: 'public-token',
+      orderNumber: 184,
+      paymentReportToken: null,
+      createdAt: now,
+      payment: { id: 'payment-a' },
+    });
+
+    const result = await createOrder({ input: dineInInput, tableToken });
+
+    expect(result).toMatchObject({ storeId: 'store-a', paymentReportToken: null });
+    expect(mocks.tx.storeDiningTable.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { publicToken: tableToken } }),
+    );
+    expect(mocks.tx.store.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'store-a', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith(
+      'loja-a',
+      { ...dineInInput, modality: 'DINE_IN' },
+      expect.objectContaining({ client: mocks.tx, diningTable }),
+    );
+    expect(mocks.tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          modality: 'DINE_IN',
+          diningTableId: 'table-08',
+          diningTableLabelSnapshot: 'Mesa 08',
+          customerPhone: null,
+          deliveryAddress: null,
+          deliveryFee: 0,
+          changeFor: null,
+          paymentReportToken: null,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+        }),
+      }),
+    );
+    expect(mocks.persistCheckoutCustomerAfterOrder).not.toHaveBeenCalled();
+  });
 
   it('recalcula e grava pedido, auditoria e outbox na mesma transação serializável', async () => {
     vi.useFakeTimers();

@@ -12,13 +12,14 @@ async function fingerprintPayload(payload: CheckoutFingerprintInput) {
   // O registro persistido no navegador nunca deriva nome, telefone, endereço,
   // observações ou a referência opaca. A impressão autoritativa e completa
   // continua sendo calculada somente no servidor.
+  const standard = 'identityMode' in payload ? payload : null;
   const nonSensitiveAttempt = JSON.stringify({
-    modality: payload.modality,
-    deliveryZoneId: payload.deliveryZoneId ?? null,
+    modality: standard?.modality ?? 'DINE_IN',
+    deliveryZoneId: standard?.deliveryZoneId ?? null,
     couponCode: payload.couponCode ?? null,
     paymentMethod: payload.paymentMethod,
-    changeFor: payload.changeFor ?? null,
-    saveCustomerData: payload.saveCustomerData,
+    changeFor: standard?.changeFor ?? null,
+    saveCustomerData: standard?.saveCustomerData ?? false,
     expectedQuoteFingerprint: payload.expectedQuoteFingerprint ?? null,
     items: payload.items
       .map((item) => ({

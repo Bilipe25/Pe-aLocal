@@ -12,7 +12,8 @@ interface QuoteError {
 
 interface UseCheckoutQuoteOptions {
   storeSlug: string;
-  input: CheckoutQuoteInput | null;
+  input: CheckoutQuoteInput | Omit<CheckoutQuoteInput, 'modality'> | null;
+  quoteEndpoint?: string;
   enabled?: boolean;
   debounceMs?: number;
 }
@@ -20,6 +21,7 @@ interface UseCheckoutQuoteOptions {
 export function useCheckoutQuote({
   storeSlug,
   input,
+  quoteEndpoint,
   enabled = true,
   debounceMs = 250,
 }: UseCheckoutQuoteOptions) {
@@ -44,7 +46,7 @@ export function useCheckoutQuote({
 
       try {
         const response = await fetch(
-          `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote`,
+          quoteEndpoint ?? `/api/storefront/${encodeURIComponent(storeSlug)}/checkout/quote`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -105,7 +107,7 @@ export function useCheckoutQuote({
         if (sequence === requestSequence.current) setIsLoading(false);
       }
     },
-    [enabled, input, storeSlug],
+    [enabled, input, quoteEndpoint, storeSlug],
   );
 
   useEffect(() => {

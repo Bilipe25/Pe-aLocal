@@ -645,8 +645,14 @@ export function CheckoutForm({
   );
   const onlinePayment = Boolean(onlinePixMethod);
   const onlineSandbox = onlinePixMethod?.environment === 'SANDBOX';
-  const availablePaymentMethods = useMemo(
-    () => paymentConfig.methods.map((method) => method.method),
+  const availablePaymentMethods = useMemo<Array<'PIX' | 'CASH' | 'CARD_ON_DELIVERY'>>(
+    () =>
+      paymentConfig.methods
+        .map((method) => method.method)
+        .filter(
+          (method): method is 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' =>
+            method !== 'CARD_IN_PERSON',
+        ),
     [paymentConfig.methods],
   );
   const defaultPayment = availablePaymentMethods[0] ?? 'PIX';
@@ -2017,6 +2023,7 @@ export function CheckoutForm({
                 aria-describedby={errors.paymentMethod ? 'paymentMethod-error' : undefined}
               >
                 {paymentConfig.methods.flatMap((configuredMethod) => {
+                  if (configuredMethod.method === 'CARD_IN_PERSON') return [];
                   const method =
                     configuredMethod.method === 'PIX'
                       ? {

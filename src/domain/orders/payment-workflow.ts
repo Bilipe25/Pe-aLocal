@@ -55,7 +55,11 @@ function operationMatchesMethod(
     case 'RETRY_FAILED':
       return context.method === 'PIX';
     case 'CONFIRM_MANUALLY':
-      return context.method === 'PIX' || context.method === 'CASH';
+      return (
+        context.method === 'PIX' ||
+        context.method === 'CASH' ||
+        context.method === 'CARD_IN_PERSON'
+      );
     case 'CONFIRM_ON_COMPLETION':
       return (
         (context.method === 'CASH' || context.method === 'CARD_ON_DELIVERY') &&
