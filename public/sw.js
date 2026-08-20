@@ -14,6 +14,7 @@ const PRECACHE_PATHS = new Set(PRECACHE_URLS);
 
 function isSensitiveNavigation(pathname) {
   if (/^\/(?:dashboard|admin|auth)(?:\/|$)/.test(pathname)) return true;
+  if (/^\/q\/s\//.test(pathname)) return true;
   if (/^\/(?:login|forgot-password|reset-password)(?:\/|$)/.test(pathname)) return true;
   return /^\/[^/]+\/(?:cart|checkout|orders|order)(?:\/|$)/.test(pathname);
 }

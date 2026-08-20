@@ -99,6 +99,9 @@ export function KdsBoard({
     onPaymentUpdated: () => {
       void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
     },
+    onDiningRoomUpdated: () => {
+      void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
+    },
   });
   const orders = useKdsOrders(storeId, authorizationScope, initialSnapshot, realtimeState);
   const sound = useOrderNotificationSound(`kds:${storeId}`);

@@ -10,6 +10,14 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     store: { findUnique: vi.fn(), findFirst: vi.fn() },
     storeDiningTable: { findUnique: vi.fn() },
+    diningTableSession: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    diningTableServiceRequest: { findFirst: vi.fn() },
+    auditLog: { create: vi.fn() },
     order: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -159,6 +167,14 @@ describe('OrderRepository checkout v2', () => {
     });
     mocks.tx.store.findFirst.mockResolvedValue(null);
     mocks.tx.storeDiningTable.findUnique.mockResolvedValue(null);
+    mocks.tx.diningTableSession.findFirst.mockResolvedValue(null);
+    mocks.tx.diningTableSession.create.mockResolvedValue({
+      id: 'dining-session-a',
+      publicToken: 'S'.repeat(43),
+    });
+    mocks.tx.diningTableSession.update.mockResolvedValue({ id: 'dining-session-a' });
+    mocks.tx.diningTableSession.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.auditLog.create.mockResolvedValue({ id: 'dining-audit-a' });
     mocks.tx.order.findUnique.mockResolvedValue(null);
     mocks.tx.order.create.mockResolvedValue({
       id: 'order-a',
@@ -387,7 +403,11 @@ describe('OrderRepository checkout v2', () => {
 
     const result = await createOrder({ input: dineInInput, tableToken });
 
-    expect(result).toMatchObject({ storeId: 'store-a', paymentReportToken: null });
+    expect(result).toMatchObject({
+      storeId: 'store-a',
+      paymentReportToken: null,
+      diningSessionPublicToken: 'S'.repeat(43),
+    });
     expect(mocks.tx.storeDiningTable.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { publicToken: tableToken } }),
     );
@@ -404,6 +424,7 @@ describe('OrderRepository checkout v2', () => {
         data: expect.objectContaining({
           modality: 'DINE_IN',
           diningTableId: 'table-08',
+          diningTableSessionId: 'dining-session-a',
           diningTableLabelSnapshot: 'Mesa 08',
           customerPhone: null,
           deliveryAddress: null,
@@ -436,6 +457,7 @@ describe('OrderRepository checkout v2', () => {
       rememberDeviceExpiresAt: null,
       mercadoPagoPaymentId: null,
       onlinePayment: false,
+      diningSessionPublicToken: null,
     });
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',

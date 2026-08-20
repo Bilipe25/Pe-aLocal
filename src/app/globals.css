@@ -85,6 +85,108 @@
   --shadow-lg: 0 10px 15px -3px rgb(36 28 21 / 0.08), 0 4px 6px -4px rgb(36 28 21 / 0.06);
 }
 
+.dining-session-public {
+  width: min(100% - 2rem, 36rem);
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+  color: var(--color-text-primary);
+}
+
+.dining-session-public > h1 {
+  margin-top: 1rem;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.75rem, 7vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.dining-session-public > p:not(.dine-in-table-chip) {
+  margin-top: 0.75rem;
+  max-width: 65ch;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.dining-session-store-name {
+  font-weight: 700;
+}
+
+.dining-session-actions {
+  margin-top: 2rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.5rem;
+  text-align: left;
+}
+
+.dining-session-actions > h2 {
+  margin-bottom: 1rem;
+  font-size: 1.125rem;
+  font-weight: 750;
+}
+
+.dining-session-actions > .storefront-primary-action {
+  width: 100%;
+}
+
+.dining-session-help-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.dining-session-help-grid > div {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.dining-session-help-grid strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.dining-session-help-grid p {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.dining-session-help-grid button {
+  width: 100%;
+  white-space: normal;
+}
+
+.dining-session-message {
+  margin-top: 1rem;
+  border-radius: 0.75rem;
+  background: var(--color-warning-light);
+  padding: 0.875rem;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+}
+
+.dining-session-public-closed {
+  min-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.dining-session-public-closed > svg {
+  width: 3rem;
+  height: 3rem;
+  color: var(--color-success);
+}
+
+@media (min-width: 36rem) {
+  .dining-session-help-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .purchase-step-action {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
