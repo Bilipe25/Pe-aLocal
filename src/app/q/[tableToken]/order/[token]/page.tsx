@@ -2,6 +2,7 @@ import { Utensils } from 'lucide-react';
 import { notFound } from 'next/navigation';
 
 import { CustomerOrderTracking } from '@/components/storefront/customer-order-tracking';
+import { DiningSessionActions } from '@/components/storefront/dining-session-actions';
 import { OnlinePixPayment } from '@/components/storefront/online-pix-payment';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { getPublicVapidKey } from '@/lib/web-push/config';
@@ -39,13 +40,17 @@ export default async function DineInOrderPage({
   const channelName = await privateCustomerOrderChannel(order.publicToken);
 
   const config = store.customization.config;
+  const activeSession = order.diningTableSession?.status === 'OPEN'
+    ? order.diningTableSession
+    : null;
+  const effectiveTableLabel = activeSession?.diningTable.label ?? order.diningTableLabelSnapshot;
   return (
     <div
       className={`storefront-theme ${storefrontLayoutClass(config)} storefront-page-bottom-safe`}
       style={getStorefrontThemeStyle(config)}
     >
       <StorePurchaseHeader
-        backHref={`/q/${tableToken}`}
+        backHref={activeSession ? `/q/s/${activeSession.publicToken}` : `/q/${tableToken}`}
         backLabel="Voltar ao cardápio"
         title={`Pedido #${order.orderNumber}`}
         storeName={store.name}
@@ -54,7 +59,7 @@ export default async function DineInOrderPage({
       />
       <div className="dine-in-context-banner" role="status">
         <Utensils aria-hidden="true" />
-        <span>Pedido para <strong>{order.diningTableLabelSnapshot}</strong></span>
+        <span>Pedido para <strong>{effectiveTableLabel}</strong></span>
       </div>
       <main className="storefront-tracking-main">
         <CustomerOrderTracking
@@ -79,6 +84,16 @@ export default async function DineInOrderPage({
               ticketUrl: order.mercadoPagoPayment.ticketUrl,
               expiresAt: order.mercadoPagoPayment.expiresAt?.toISOString() ?? null,
             }}
+          />
+        ) : null}
+        {activeSession ? (
+          <DiningSessionActions
+            sessionToken={activeSession.publicToken}
+            continueOrderingHref={`/q/s/${activeSession.publicToken}/menu`}
+            continueVariant="outline"
+            assistanceRequested={activeSession.serviceRequests.some((request) => request.type === 'ASSISTANCE')}
+            billRequested={activeSession.serviceRequests.some((request) => request.type === 'BILL')}
+            publicOperationsEnabled={activeSession.store.entitlement?.dineInQrEnabled === true}
           />
         ) : null}
       </main>

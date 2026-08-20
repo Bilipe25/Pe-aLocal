@@ -12,14 +12,12 @@ interface OrderRealtimeHandlers {
   onNewOrder: (event: { orderId: string; orderNumber: number }) => void;
   onOrderUpdated: (event: { orderId: string }) => void;
   onPaymentUpdated: (event: { orderId: string }) => void;
+  onDiningRoomUpdated?: (event: { tableId: string; sessionId: string }) => void;
 }
 
 function hasOrderId(value: unknown): value is { orderId: string } {
   return Boolean(
-    value &&
-    typeof value === 'object' &&
-    'orderId' in value &&
-    typeof value.orderId === 'string',
+    value && typeof value === 'object' && 'orderId' in value && typeof value.orderId === 'string',
   );
 }
 
@@ -35,6 +33,9 @@ export function useOrderRealtime(
   const onNewOrderEvent = useEffectEvent(handlers.onNewOrder);
   const onOrderUpdatedEvent = useEffectEvent(handlers.onOrderUpdated);
   const onPaymentUpdatedEvent = useEffectEvent(handlers.onPaymentUpdated);
+  const onDiningRoomUpdatedEvent = useEffectEvent(
+    handlers.onDiningRoomUpdated ?? (() => undefined),
+  );
   const [connection, setConnection] = useState<{
     storeId: string | null;
     state: OrderRealtimeState;
@@ -76,12 +77,25 @@ export function useOrderRealtime(
     const onPaymentUpdated = (event: unknown) => {
       if (hasOrderId(event)) onPaymentUpdatedEvent(event);
     };
+    const onDiningRoomUpdated = (event: unknown) => {
+      if (
+        event &&
+        typeof event === 'object' &&
+        'tableId' in event &&
+        typeof event.tableId === 'string' &&
+        'sessionId' in event &&
+        typeof event.sessionId === 'string'
+      ) {
+        onDiningRoomUpdatedEvent({ tableId: event.tableId, sessionId: event.sessionId });
+      }
+    };
 
     channel.bind('pusher:subscription_succeeded', onSubscriptionSucceeded);
     channel.bind('pusher:subscription_error', onSubscriptionError);
     channel.bind('new-order', onNewOrder);
     channel.bind('order-updated', onOrderUpdated);
     channel.bind('payment-updated', onPaymentUpdated);
+    channel.bind('dining-room-updated', onDiningRoomUpdated);
     client.connection.bind('state_change', onConnectionChange);
 
     if (subscribed) {
@@ -97,6 +111,7 @@ export function useOrderRealtime(
       channel.unbind('new-order', onNewOrder);
       channel.unbind('order-updated', onOrderUpdated);
       channel.unbind('payment-updated', onPaymentUpdated);
+      channel.unbind('dining-room-updated', onDiningRoomUpdated);
       client.connection.unbind('state_change', onConnectionChange);
       client.unsubscribe(channelName);
     };

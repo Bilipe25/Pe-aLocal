@@ -80,6 +80,12 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
           orderNumber: true,
           modality: true,
           diningTableLabelSnapshot: true,
+          diningTableSession: {
+            select: {
+              status: true,
+              diningTable: { select: { label: true } },
+            },
+          },
           status: true,
           version: true,
           statusChangedAt: true,
@@ -129,7 +135,10 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
       id: row.id,
       orderNumber: row.orderNumber,
       modality: row.modality,
-      diningTableLabel: row.diningTableLabelSnapshot,
+      diningTableLabel:
+        row.diningTableSession?.status === 'OPEN'
+          ? row.diningTableSession.diningTable.label
+          : row.diningTableLabelSnapshot,
       status: row.status,
       version: row.version,
       stageStartedAt: stageStartedAt.toISOString(),

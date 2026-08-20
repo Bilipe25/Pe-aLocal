@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { DiningSessionActions } from '@/components/storefront/dining-session-actions';
 import { createDineInOrderAction } from '@/features/orders/actions';
 import { useCheckoutQuote } from '@/hooks/use-checkout-quote';
 import {
@@ -62,7 +63,11 @@ export function DineInCheckout({
     paymentMethods[0]?.method ?? 'CASH',
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ orderNumber: number; token: string } | null>(null);
+  const [confirmed, setConfirmed] = useState<{
+    orderNumber: number;
+    token: string;
+    sessionToken: string | null;
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
   const idempotencyRef = useRef<CheckoutIdempotencyRecord | null>(null);
   const customerNameRef = useRef<HTMLInputElement>(null);
@@ -103,7 +108,9 @@ export function DineInCheckout({
       return;
     }
     if (!quote.quote?.canCheckout) {
-      setSubmitError(quote.error?.message ?? quote.quote?.issues[0]?.message ?? 'Aguarde os valores.');
+      setSubmitError(
+        quote.error?.message ?? quote.quote?.issues[0]?.message ?? 'Aguarde os valores.',
+      );
       return;
     }
     if (onlinePixSelected && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(payerEmail.trim())) {
@@ -145,7 +152,11 @@ export function DineInCheckout({
       clearCheckoutIdempotency(storage, storageKey);
       idempotencyRef.current = null;
       clearCart();
-      setConfirmed({ orderNumber: result.data.orderNumber, token: result.data.publicToken });
+      setConfirmed({
+        orderNumber: result.data.orderNumber,
+        token: result.data.publicToken,
+        sessionToken: result.data.diningSessionPublicToken,
+      });
     });
   }
 
@@ -156,18 +167,26 @@ export function DineInCheckout({
   if (confirmed) {
     return (
       <main className="dine-in-success">
-        <span className="dine-in-success-icon"><ReceiptText aria-hidden="true" /></span>
-        <p className="dine-in-table-chip"><Utensils aria-hidden="true" /> {tableLabel}</p>
+        <span className="dine-in-success-icon">
+          <ReceiptText aria-hidden="true" />
+        </span>
+        <p className="dine-in-table-chip">
+          <Utensils aria-hidden="true" /> {tableLabel}
+        </p>
         <h1>Pedido #{confirmed.orderNumber} recebido</h1>
         <p>A confirmação está pendente. Você pode acompanhar o preparo sem sair da mesa.</p>
         <div className="dine-in-success-actions">
           <Button asChild className="storefront-primary-action">
             <Link href={`/q/${tableToken}/order/${confirmed.token}`}>Acompanhar pedido</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href={`/q/${tableToken}`}>Fazer outro pedido</Link>
-          </Button>
         </div>
+        {confirmed.sessionToken ? (
+          <DiningSessionActions
+            sessionToken={confirmed.sessionToken}
+            continueOrderingHref={`/q/s/${confirmed.sessionToken}/menu`}
+            continueVariant="outline"
+          />
+        ) : null}
       </main>
     );
   }
@@ -187,7 +206,9 @@ export function DineInCheckout({
   return (
     <main className="dine-in-checkout">
       <header className="dine-in-checkout-header">
-        <p className="dine-in-table-chip"><Utensils aria-hidden="true" /> Você está na {tableLabel}</p>
+        <p className="dine-in-table-chip">
+          <Utensils aria-hidden="true" /> Você está na {tableLabel}
+        </p>
         <h1>Finalizar pedido</h1>
         <p>{storeName}</p>
       </header>
@@ -197,14 +218,18 @@ export function DineInCheckout({
         <ul>
           {items.map((item) => (
             <li key={item.id}>
-              <span>{item.quantity}× {item.productName}</span>
+              <span>
+                {item.quantity}× {item.productName}
+              </span>
               <strong>{formatCurrency(item.quantity * item.unitPrice)}</strong>
             </li>
           ))}
         </ul>
         <div className="dine-in-checkout-total">
           <span>Total</span>
-          <strong>{quote.isLoading ? 'Atualizando…' : formatCurrency(quote.quote?.total ?? 0)}</strong>
+          <strong>
+            {quote.isLoading ? 'Atualizando…' : formatCurrency(quote.quote?.total ?? 0)}
+          </strong>
         </div>
       </section>
 
@@ -214,14 +239,21 @@ export function DineInCheckout({
           <input
             ref={customerNameRef}
             value={customerName}
-            onChange={(event) => { setCustomerName(event.target.value); setNameError(null); }}
+            onChange={(event) => {
+              setCustomerName(event.target.value);
+              setNameError(null);
+            }}
             maxLength={40}
             autoComplete="given-name"
             placeholder="Seu primeiro nome"
             aria-invalid={Boolean(nameError)}
             aria-describedby={nameError ? 'dine-customer-name-error' : undefined}
           />
-          {nameError ? <small id="dine-customer-name-error" className="dine-in-field-error">{nameError}</small> : null}
+          {nameError ? (
+            <small id="dine-customer-name-error" className="dine-in-field-error">
+              {nameError}
+            </small>
+          ) : null}
         </label>
 
         <fieldset>
@@ -240,7 +272,10 @@ export function DineInCheckout({
                     onChange={() => setPaymentMethod(method.method)}
                   />
                   <Icon aria-hidden="true" />
-                  <span><strong>{presentation.label}</strong><small>{presentation.detail}</small></span>
+                  <span>
+                    <strong>{presentation.label}</strong>
+                    <small>{presentation.detail}</small>
+                  </span>
                 </label>
               );
             })}
@@ -254,19 +289,28 @@ export function DineInCheckout({
               ref={payerEmailRef}
               type="email"
               value={payerEmail}
-              onChange={(event) => { setPayerEmail(event.target.value); setPayerEmailError(null); }}
+              onChange={(event) => {
+                setPayerEmail(event.target.value);
+                setPayerEmailError(null);
+              }}
               maxLength={254}
               autoComplete="email"
               placeholder="voce@exemplo.com"
               aria-invalid={Boolean(payerEmailError)}
               aria-describedby={payerEmailError ? 'dine-payer-email-error' : undefined}
             />
-            {payerEmailError ? <small id="dine-payer-email-error" className="dine-in-field-error">{payerEmailError}</small> : null}
+            {payerEmailError ? (
+              <small id="dine-payer-email-error" className="dine-in-field-error">
+                {payerEmailError}
+              </small>
+            ) : null}
           </label>
         ) : null}
 
         <label>
-          <span>Observação <small>(opcional)</small></span>
+          <span>
+            Observação <small>(opcional)</small>
+          </span>
           <textarea
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
@@ -277,17 +321,27 @@ export function DineInCheckout({
         </label>
       </section>
 
-      {submitError ? <p className="dine-in-checkout-error" role="alert">{submitError}</p> : null}
+      {submitError ? (
+        <p className="dine-in-checkout-error" role="alert">
+          {submitError}
+        </p>
+      ) : null}
       <footer className="dine-in-checkout-footer">
-        <span className="dine-in-footer-context"><Utensils aria-hidden="true" /> Total na {tableLabel}</span>
+        <span className="dine-in-footer-context">
+          <Utensils aria-hidden="true" /> Total na {tableLabel}
+        </span>
         <Button
           type="button"
           className="storefront-primary-action"
-          disabled={isPending || quote.isLoading || !quote.quote?.canCheckout || paymentMethods.length === 0}
+          disabled={
+            isPending || quote.isLoading || !quote.quote?.canCheckout || paymentMethods.length === 0
+          }
           onClick={submit}
         >
           {isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-          {isPending ? 'Enviando pedido…' : `Confirmar pedido · ${formatCurrency(quote.quote?.total ?? 0)}`}
+          {isPending
+            ? 'Enviando pedido…'
+            : `Confirmar pedido · ${formatCurrency(quote.quote?.total ?? 0)}`}
         </Button>
       </footer>
     </main>

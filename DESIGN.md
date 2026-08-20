@@ -262,6 +262,13 @@ Os componentes são familiares, táteis e diretos. Estados devem responder em 15
 - O checkout mantém uma tela, revela apenas o campo condicionado pelo pagamento e oferece uma única ação primária para confirmar o pedido. Estados vazio, enviando, erro e sucesso substituem essa ação com clareza, sem competir entre si.
 - Na Central e no KDS, pedidos de salão promovem a mesa a identificador principal e mantêm o número do pedido como apoio. Cada estado operacional expõe uma única progressão oficial; ao ficar pronto, o KDS explica que entrega e pagamento são concluídos na Central.
 
+### Salão — gestão da mesa
+
+- A visão operacional responde primeiro “qual mesa precisa de mim?”: atendimento solicitado, conta solicitada, demais sessões abertas e mesas livres aparecem nessa ordem.
+- Mesas livres ficam em lista compacta; somente sessões abertas recebem cards com duração, pedidos, total considerado e uma ação oficial do estado.
+- O detalhe da mesa é um drawer de trabalho com histórico de Orders, resumo derivado, transferência segura e fechamento condicionado. Não replica a Central nem leva finanças para o KDS.
+- No cliente, “Fazer outro pedido”, “Chamar atendimento” e “Pedir a conta” usam o contexto atual da sessão sem revelar conta consolidada, PII ou pedidos de outras pessoas.
+
 ### Gestão de Mesas e QR
 
 - A gestão desktop usa lista compacta com nome, estado do QR e ações agrupadas; Kraft destaca a criação em lote, Erva confirma disponibilidade e Tinta sustenta a leitura operacional.

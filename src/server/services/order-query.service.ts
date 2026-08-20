@@ -89,6 +89,9 @@ const ORDER_BOARD_ITEM_SELECT = {
   customerName: true,
   modality: true,
   diningTableLabelSnapshot: true,
+  diningTableSession: {
+    select: { status: true, diningTable: { select: { label: true } } },
+  },
   paymentMethod: true,
   paymentStatus: true,
   status: true,
@@ -364,6 +367,14 @@ function searchConditions(query: string): Prisma.OrderWhereInput[] {
   return [
     { customerName: { contains: query, mode: 'insensitive' } },
     { diningTableLabelSnapshot: { contains: query, mode: 'insensitive' } },
+    {
+      diningTableSession: {
+        is: {
+          status: 'OPEN',
+          diningTable: { is: { label: { contains: query, mode: 'insensitive' } } },
+        },
+      },
+    },
     ...(phone.length >= 2 ? [{ customerPhoneNormalized: { startsWith: phone } }] : []),
     ...(orderNumber === null ? [] : [{ orderNumber }]),
     ...(modalities.length ? [{ modality: { in: modalities } }] : []),
@@ -608,7 +619,10 @@ function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoard
     orderNumber: order.orderNumber,
     customerDisplayName: order.customerName,
     modality: order.modality,
-    diningTableLabel: order.diningTableLabelSnapshot,
+    diningTableLabel:
+      order.diningTableSession?.status === 'OPEN'
+        ? order.diningTableSession.diningTable.label
+        : order.diningTableLabelSnapshot,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
     status: order.status,
@@ -918,6 +932,9 @@ export async function getOrderQueue(
           customerName: true,
           modality: true,
           diningTableLabelSnapshot: true,
+          diningTableSession: {
+            select: { status: true, diningTable: { select: { label: true } } },
+          },
           paymentMethod: true,
           paymentStatus: true,
           status: true,
@@ -971,7 +988,10 @@ export async function getOrderQueue(
           orderNumber: order.orderNumber,
           customerDisplayName: order.customerName,
           modality: order.modality,
-          diningTableLabel: order.diningTableLabelSnapshot,
+          diningTableLabel:
+            order.diningTableSession?.status === 'OPEN'
+              ? order.diningTableSession.diningTable.label
+              : order.diningTableLabelSnapshot,
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
           status: order.status,
@@ -1083,6 +1103,9 @@ export async function getOrderDetails(
         customerPhone: true,
         modality: true,
         diningTableLabelSnapshot: true,
+        diningTableSession: {
+          select: { status: true, diningTable: { select: { label: true } } },
+        },
         deliveryAddress: true,
         deliveryZoneName: true,
         deliveryStreet: true,
@@ -1217,7 +1240,12 @@ export async function getOrderDetails(
         phone: capabilities.canViewCustomerContact ? order.customerPhone : null,
       },
       modality: order.modality,
-      diningTable: { label: order.diningTableLabelSnapshot },
+      diningTable: {
+        label:
+          order.diningTableSession?.status === 'OPEN'
+            ? order.diningTableSession.diningTable.label
+            : order.diningTableLabelSnapshot,
+      },
       delivery: {
         address: capabilities.canViewCustomerContact ? order.deliveryAddress : null,
         zoneName: order.deliveryZoneName,

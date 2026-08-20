@@ -76,24 +76,27 @@ describe('Service Worker PedidoLocal', () => {
     expect(respondWith).not.toHaveBeenCalled();
   });
 
-  it.each(['/api/store-assets/a', '/dashboard/orders', '/loja/cart', '/loja/checkout'])(
-    'mantém %s em Network Only',
-    async (pathname) => {
-      const { handlers, fetchMock, caches } = loadServiceWorker();
-      const respondWith = vi.fn();
-      const request = {
-        method: 'GET',
-        url: `https://pedidolocal.test${pathname}`,
-        mode: pathname.startsWith('/api/') ? 'cors' : 'navigate',
-      };
-      handlers.get('fetch')?.({ request, respondWith });
+  it.each([
+    '/api/store-assets/a',
+    '/dashboard/orders',
+    '/loja/cart',
+    '/loja/checkout',
+    `/q/s/${'S'.repeat(43)}`,
+  ])('mantém %s em Network Only', async (pathname) => {
+    const { handlers, fetchMock, caches } = loadServiceWorker();
+    const respondWith = vi.fn();
+    const request = {
+      method: 'GET',
+      url: `https://pedidolocal.test${pathname}`,
+      mode: pathname.startsWith('/api/') ? 'cors' : 'navigate',
+    };
+    handlers.get('fetch')?.({ request, respondWith });
 
-      expect(respondWith).toHaveBeenCalledOnce();
-      await respondWith.mock.calls[0][0];
-      expect(fetchMock).toHaveBeenCalledWith(request);
-      expect(caches.match).not.toHaveBeenCalled();
-    },
-  );
+    expect(respondWith).toHaveBeenCalledOnce();
+    await respondWith.mock.calls[0][0];
+    expect(fetchMock).toHaveBeenCalledWith(request);
+    expect(caches.match).not.toHaveBeenCalled();
+  });
 
   it('usa somente o fallback offline quando uma navegação pública falha', async () => {
     const { handlers, fetchMock, caches } = loadServiceWorker();

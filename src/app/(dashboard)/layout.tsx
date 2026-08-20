@@ -60,6 +60,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           hasTenantPermission(session.tenantRole, Permission.VIEW_ORDERS) &&
           hasTenantPermission(session.tenantRole, Permission.UPDATE_ORDER_STATUS),
         )}
+        canViewDiningRoom={hasTenantPermission(session.tenantRole, Permission.VIEW_DINING_ROOM)}
         canViewReports={Boolean(
           activeContext?.store.entitlement?.advancedReportsEnabled &&
           hasTenantPermission(session.tenantRole, Permission.VIEW_REPORTS),

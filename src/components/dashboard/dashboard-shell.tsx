@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Clock3,
   LayoutDashboard,
+  LayoutGrid,
   LogOut,
   Menu,
   RefreshCw,
@@ -55,6 +56,7 @@ interface DashboardShellProps {
   initialNowIso: string;
   canViewCoupons?: boolean;
   canViewKds?: boolean;
+  canViewDiningRoom?: boolean;
   canViewReports?: boolean;
   merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
@@ -103,6 +105,7 @@ function Navigation({
   activeStoreId,
   canViewCoupons = false,
   canViewKds = false,
+  canViewDiningRoom = false,
   canViewReports = false,
   appearance = 'light',
   onNavigate,
@@ -111,6 +114,7 @@ function Navigation({
   activeStoreId: string | null;
   canViewCoupons: boolean;
   canViewKds: boolean;
+  canViewDiningRoom: boolean;
   canViewReports: boolean;
   appearance?: 'light' | 'dark';
   onNavigate?: () => void;
@@ -133,6 +137,12 @@ function Navigation({
       label: 'Cozinha',
       icon: ChefHat,
       hidden: !canViewKds,
+    },
+    {
+      href: activeStoreId ? '/dashboard/dining-room' : fallbackHref,
+      label: 'Salão',
+      icon: LayoutGrid,
+      hidden: !canViewDiningRoom,
     },
     {
       href: activeStoreId ? '/dashboard/catalog' : fallbackHref,
@@ -446,6 +456,7 @@ export function DashboardShell({
   initialNowIso,
   canViewCoupons = false,
   canViewKds = false,
+  canViewDiningRoom = false,
   canViewReports = false,
   merchantPush,
 }: DashboardShellProps) {
@@ -499,6 +510,7 @@ export function DashboardShell({
             activeStoreId={activeStore?.id ?? null}
             canViewCoupons={canViewCoupons}
             canViewKds={canViewKds}
+            canViewDiningRoom={canViewDiningRoom}
             canViewReports={canViewReports}
             appearance="dark"
           />
@@ -720,6 +732,7 @@ export function DashboardShell({
                       activeStoreId={activeStore?.id ?? null}
                       canViewCoupons={canViewCoupons}
                       canViewKds={canViewKds}
+                      canViewDiningRoom={canViewDiningRoom}
                       canViewReports={canViewReports}
                       onNavigate={() => setMenuOpen(false)}
                     />

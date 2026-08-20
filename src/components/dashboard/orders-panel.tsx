@@ -385,6 +385,7 @@ export function OrdersPanel({
     onNewOrder: (event) => processSignals([{ ...event, isNew: true }]),
     onOrderUpdated: (event) => scheduleRefresh([event.orderId]),
     onPaymentUpdated: (event) => scheduleRefresh([event.orderId]),
+    onDiningRoomUpdated: () => scheduleRefresh(),
   });
   const pollingInterval = orderPollingInterval(connectionState);
   useOrderNotificationSignals(
