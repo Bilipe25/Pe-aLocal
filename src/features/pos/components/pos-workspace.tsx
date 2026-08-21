@@ -3,15 +3,21 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   BadgePercent,
   Check,
   ChevronRight,
+  Clock3,
   CirclePlus,
   Loader2,
+  Maximize2,
   Minus,
   PackageOpen,
   Plus,
   Search,
+  Settings2,
+  Star,
   ShoppingBag,
   Trash2,
   Truck,
@@ -26,12 +32,31 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency } from '@/lib/utils';
-import type { PosOrderInput, PosQuoteInput } from '@/schemas/pos';
+import type {
+  PosDraftIntentInput,
+  PosManualDiscountInput,
+  PosOrderInput,
+  PosQuoteInput,
+} from '@/schemas/pos';
 import type { getPosWorkspace } from '@/server/services/pos-order.service';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 import { cn } from '@/lib/utils';
 
-import { createPosOrderAction, lookupPosCustomerAction, quotePosOrderAction } from '../actions';
+import {
+  createPosOrderAction,
+  createPosShortcutAction,
+  deactivatePosTerminalAction,
+  deletePosShortcutAction,
+  discardPosDraftAction,
+  listOpenPosDraftsAction,
+  lookupPosCustomerAction,
+  quotePosOrderAction,
+  repeatPosOrderAction,
+  reorderPosShortcutsAction,
+  resumePosDraftAction,
+  savePosDraftAction,
+  savePosTerminalAction,
+} from '../actions';
 
 type Workspace = Awaited<ReturnType<typeof getPosWorkspace>>;
 type Product = Workspace['products'][number];
@@ -60,6 +85,18 @@ interface CustomerLookup {
 interface PosQuoteData {
   quote: CheckoutQuoteDto;
   availabilityWarning: string | null;
+}
+
+interface PosDraftSummary {
+  id: string;
+  version: number;
+  modality: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+  customerName: string;
+  itemCount: number;
+  expiresAt: Date;
+  updatedAt: Date;
+  createdByName: string;
+  terminal: { id: string; name: string; isActive: boolean } | null;
 }
 
 const EMPTY_ADDRESS = {
@@ -101,6 +138,13 @@ function parseCurrencyToCents(value: string) {
   if (!normalized) return undefined;
   const amount = Number(normalized);
   return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : undefined;
+}
+
+function parsePercentageToBasisPoints(value: string) {
+  const amount = Number(value.trim().replace(',', '.'));
+  return Number.isFinite(amount) && amount > 0 && amount <= 100
+    ? Math.round(amount * 100)
+    : undefined;
 }
 
 function ProductDialog({
@@ -482,6 +526,25 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
   >('');
   const [paidNow, setPaidNow] = useState(false);
   const [changeFor, setChangeFor] = useState('');
+  const [manualDiscountMode, setManualDiscountMode] = useState<'FIXED' | 'PERCENTAGE'>('FIXED');
+  const [manualDiscountValue, setManualDiscountValue] = useState('');
+  const [manualDiscountReason, setManualDiscountReason] = useState<
+    'COURTESY' | 'SERVICE_RECOVERY' | 'NEGOTIATED' | 'OTHER'
+  >('COURTESY');
+  const [manualDiscountNote, setManualDiscountNote] = useState('');
+  const [showManualDiscount, setShowManualDiscount] = useState(false);
+  const [drafts, setDrafts] = useState<PosDraftSummary[]>([]);
+  const [activeDraft, setActiveDraft] = useState<{ id: string; version: number } | null>(null);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [recentsOpen, setRecentsOpen] = useState(false);
+  const [operationState, setOperationState] = useState<'idle' | 'loading'>('idle');
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const [selectedTerminalId, setSelectedTerminalId] = useState('');
+  const [operations, setOperations] = useState(initialData.operations);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newTerminalName, setNewTerminalName] = useState('');
+  const [shortcutTarget, setShortcutTarget] = useState('');
   const [quote, setQuote] = useState<PosQuoteData>();
   const [quotedIntentKey, setQuotedIntentKey] = useState<string | null>(null);
   const [quoteState, setQuoteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -495,7 +558,21 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     orderId: string;
   } | null>(null);
   const submittingRef = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const idempotencyAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const remembered = window.localStorage.getItem('pedidolocal:pos-terminal');
+      const activeTerminals = operations.terminals.filter((terminal) => terminal.isActive);
+      const selected = activeTerminals.some((terminal) => terminal.id === remembered)
+        ? remembered!
+        : (activeTerminals[0]?.id ?? '');
+      setSelectedTerminalId(selected);
+      void refreshDrafts();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [operations.terminals]);
 
   const filteredProducts = useMemo(() => {
     const query = normalizeSearch(search);
@@ -532,6 +609,29 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     ? paymentMethod
     : (availablePaymentMethods[0]?.value ?? '');
   const activePaidNow = paidNow && (modality !== 'DELIVERY' || activePaymentMethod === 'PIX');
+  const manualDiscount = useMemo<PosManualDiscountInput | undefined>(() => {
+    if (!showManualDiscount || !initialData.capabilities.canApplyManualDiscount) return undefined;
+    const value =
+      manualDiscountMode === 'FIXED'
+        ? parseCurrencyToCents(manualDiscountValue)
+        : parsePercentageToBasisPoints(manualDiscountValue);
+    if (!value || (manualDiscountReason === 'OTHER' && manualDiscountNote.trim().length < 3)) {
+      return undefined;
+    }
+    return {
+      mode: manualDiscountMode,
+      value,
+      reasonCode: manualDiscountReason,
+      reasonNote: manualDiscountReason === 'OTHER' ? manualDiscountNote.trim() : undefined,
+    };
+  }, [
+    initialData.capabilities.canApplyManualDiscount,
+    manualDiscountMode,
+    manualDiscountNote,
+    manualDiscountReason,
+    manualDiscountValue,
+    showManualDiscount,
+  ]);
   const quoteIntent = useMemo<PosQuoteInput>(
     () => ({
       modality,
@@ -542,6 +642,7 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
       deliveryAddress: modality === 'DELIVERY' ? address : undefined,
       items: stripCartMetadata(cart),
       couponCode: couponCode.trim() || undefined,
+      manualDiscount,
       notes: orderNotes,
     }),
     [
@@ -552,6 +653,7 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
       customerName,
       customerPhone,
       modality,
+      manualDiscount,
       orderNotes,
       tableId,
     ],
@@ -640,10 +742,249 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     setSaveCustomerData(false);
     setPaidNow(false);
     setChangeFor('');
+    setManualDiscountValue('');
+    setManualDiscountNote('');
+    setShowManualDiscount(false);
+    setActiveDraft(null);
     setSuccess(null);
     setSubmitError(null);
     idempotencyAttemptRef.current = null;
   }
+
+  async function refreshDrafts() {
+    const result = await listOpenPosDraftsAction();
+    if (result.success) setDrafts(result.data as PosDraftSummary[]);
+  }
+
+  function restoreDraftIntent(intent: PosDraftIntentInput) {
+    setModality(intent.modality);
+    setTableId(intent.diningTableId);
+    setCustomerId(intent.customerId);
+    setCustomerName(intent.customerName);
+    setCustomerPhone(intent.customerPhone);
+    setAddress(
+      intent.deliveryAddress
+        ? {
+            ...EMPTY_ADDRESS,
+            ...intent.deliveryAddress,
+            customerAddressId: intent.deliveryAddress.customerAddressId,
+            postalCode: intent.deliveryAddress.postalCode ?? '',
+          }
+        : EMPTY_ADDRESS,
+    );
+    setCouponCode(intent.couponCode ?? '');
+    setOrderNotes(intent.notes);
+    setSaveCustomerData(intent.saveCustomerData);
+    setPaymentMethod(intent.paymentMethod ?? '');
+    setPaidNow(intent.paidNow);
+    setChangeFor(intent.changeFor ? String(intent.changeFor / 100).replace('.', ',') : '');
+    if (intent.manualDiscount) {
+      setShowManualDiscount(true);
+      setManualDiscountMode(intent.manualDiscount.mode);
+      setManualDiscountValue(
+        intent.manualDiscount.mode === 'FIXED'
+          ? String(intent.manualDiscount.value / 100).replace('.', ',')
+          : String(intent.manualDiscount.value / 100).replace('.', ','),
+      );
+      setManualDiscountReason(intent.manualDiscount.reasonCode);
+      setManualDiscountNote(intent.manualDiscount.reasonNote ?? '');
+    }
+    const restored = intent.items.flatMap<CartLine>((line) => {
+      if (line.kind === 'COMBO') {
+        const offer = initialData.offers.find((candidate) => candidate.id === line.comboId);
+        return offer && offer.kind !== 'PRODUCT_PROMOTION'
+          ? [{ ...line, label: offer.name, displayPrice: offer.offerPrice }]
+          : [];
+      }
+      const product = initialData.products.find((candidate) => candidate.id === line.productId);
+      if (!product) return [];
+      const optionsPrice = product.optionGroups
+        .flatMap((group) => group.options)
+        .filter((option) => line.optionIds.includes(option.id))
+        .reduce((sum, option) => sum + option.price, 0);
+      return [{ ...line, label: product.name, displayPrice: product.basePrice + optionsPrice }];
+    });
+    setCart(restored);
+  }
+
+  async function holdOrder() {
+    if (cart.length === 0 || operationState === 'loading') return;
+    setOperationState('loading');
+    setOperationError(null);
+    const draftId = activeDraft?.id ?? crypto.randomUUID();
+    const intent: PosDraftIntentInput = {
+      ...quoteIntent,
+      paymentMethod: activePaymentMethod || undefined,
+      paidNow: activePaidNow,
+      changeFor: activePaymentMethod === 'CASH' ? parseCurrencyToCents(changeFor) : undefined,
+      saveCustomerData,
+    };
+    const result = await savePosDraftAction({
+      draftId,
+      expectedVersion: activeDraft?.version,
+      terminalId: selectedTerminalId || undefined,
+      intent,
+    });
+    setOperationState('idle');
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    resetForNextOrder();
+    await refreshDrafts();
+    setDraftsOpen(true);
+  }
+
+  async function resumeDraft(draftId: string) {
+    setOperationState('loading');
+    setOperationError(null);
+    const result = await resumePosDraftAction(draftId);
+    setOperationState('idle');
+    if (!result.success) {
+      setOperationError(result.error.message);
+      await refreshDrafts();
+      return;
+    }
+    restoreDraftIntent(result.data.intent);
+    setActiveDraft({ id: result.data.id, version: result.data.version });
+    if (result.data.terminal?.isActive) setSelectedTerminalId(result.data.terminal.id);
+    setDraftsOpen(false);
+  }
+
+  async function discardDraft(draftId: string, expectedVersion: number) {
+    const result = await discardPosDraftAction({ draftId, expectedVersion });
+    if (!result.success) setOperationError(result.error.message);
+    await refreshDrafts();
+  }
+
+  async function repeatRecentOrder(orderId: string) {
+    setOperationState('loading');
+    setOperationError(null);
+    const result = await repeatPosOrderAction(orderId);
+    setOperationState('idle');
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setCart(
+      result.data.readyItems.map((item) => ({
+        kind: 'PRODUCT' as const,
+        lineId: crypto.randomUUID(),
+        productId: item.productId,
+        quantity: item.quantity,
+        notes: item.notes,
+        optionIds: item.selectedOptions.map((option) => option.id),
+        label: item.productName,
+        displayPrice: item.unitPrice,
+      })),
+    );
+    setCouponCode('');
+    setPaidNow(false);
+    setChangeFor('');
+    setActiveDraft(null);
+    setRecentsOpen(false);
+    if (result.data.issues.length > 0) {
+      setOperationError(result.data.issues.map((issue) => issue.message).join(' '));
+    }
+  }
+
+  async function createTerminal() {
+    if (!newTerminalName.trim()) return;
+    const result = await savePosTerminalAction({ name: newTerminalName });
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setOperations((current) => ({
+      ...current,
+      terminals: [...current.terminals, result.data].sort((left, right) =>
+        left.name.localeCompare(right.name, 'pt-BR'),
+      ),
+    }));
+    setNewTerminalName('');
+  }
+
+  async function deactivateTerminal(id: string, expectedVersion: number) {
+    const result = await deactivatePosTerminalAction({ id, expectedVersion });
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setOperations((current) => ({
+      ...current,
+      terminals: current.terminals.map((terminal) =>
+        terminal.id === id
+          ? { ...terminal, isActive: false, version: result.data.version }
+          : terminal,
+      ),
+    }));
+  }
+
+  async function createShortcut() {
+    const [kind, id] = shortcutTarget.split(':');
+    if (!id) return;
+    const result = await createPosShortcutAction(
+      kind === 'product' ? { productId: id } : { offerId: id },
+    );
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setOperations((current) => ({ ...current, shortcuts: result.data }));
+    setShortcutTarget('');
+  }
+
+  async function removeShortcut(id: string) {
+    const result = await deletePosShortcutAction({ id });
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setOperations((current) => ({ ...current, shortcuts: result.data }));
+  }
+
+  async function moveShortcut(id: string, direction: -1 | 1) {
+    const ids = operations.shortcuts.map((shortcut) => shortcut.id);
+    const index = ids.indexOf(id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target]!, ids[index]!];
+    const result = await reorderPosShortcutsAction({ shortcutIds: ids });
+    if (!result.success) {
+      setOperationError(result.error.message);
+      return;
+    }
+    setOperations((current) => ({ ...current, shortcuts: result.data }));
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const editing = target?.matches('input, textarea, select, [contenteditable="true"]') ?? false;
+      if (event.key === '/' && !editing) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      } else if (event.altKey && !editing && event.key === '1') {
+        event.preventDefault();
+        setModality('PICKUP');
+      } else if (event.altKey && !editing && event.key === '2') {
+        event.preventDefault();
+        setModality('DELIVERY');
+      } else if (event.altKey && !editing && event.key === '3') {
+        event.preventDefault();
+        setModality('DINE_IN');
+      } else if (event.altKey && !editing && event.key.toLocaleLowerCase() === 'h') {
+        event.preventDefault();
+        void holdOrder();
+      } else if (event.key === '?' && !editing) {
+        setOperationError(
+          'Atalhos: / busca · Alt+1 retirada · Alt+2 entrega · Alt+3 mesa · Alt+H espera.',
+        );
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   async function lookupCustomer() {
     setLookupState('loading');
@@ -691,6 +1032,29 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     setSubmitState('loading');
     setSubmitError(null);
     const changeForCents = parseCurrencyToCents(changeFor);
+    let finalDraft = activeDraft;
+    if (activeDraft) {
+      const savedDraft = await savePosDraftAction({
+        draftId: activeDraft.id,
+        expectedVersion: activeDraft.version,
+        terminalId: selectedTerminalId || undefined,
+        intent: {
+          ...quoteIntent,
+          paymentMethod: activePaymentMethod,
+          paidNow: activePaidNow,
+          changeFor: activePaymentMethod === 'CASH' ? changeForCents : undefined,
+          saveCustomerData,
+        },
+      });
+      if (!savedDraft.success) {
+        setSubmitError(savedDraft.error.message);
+        submittingRef.current = false;
+        setSubmitState('idle');
+        return;
+      }
+      finalDraft = { id: savedDraft.data.id, version: savedDraft.data.version };
+      setActiveDraft(finalDraft);
+    }
     const orderIntent = {
       modality,
       diningTableId: modality === 'DINE_IN' ? tableId : undefined,
@@ -700,11 +1064,15 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
       deliveryAddress: modality === 'DELIVERY' ? address : undefined,
       items: stripCartMetadata(cart),
       couponCode: couponCode.trim() || undefined,
+      manualDiscount,
       notes: orderNotes,
       paymentMethod: activePaymentMethod,
       paidNow: activePaidNow,
       changeFor: activePaymentMethod === 'CASH' ? changeForCents : undefined,
       saveCustomerData,
+      posTerminalId: selectedTerminalId || undefined,
+      draftId: finalDraft?.id,
+      expectedDraftVersion: finalDraft?.version,
       expectedQuoteFingerprint: quote.quote.quoteFingerprint,
     };
     const fingerprint = JSON.stringify(orderIntent);
@@ -772,16 +1140,91 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     (modality !== 'DELIVERY' || activePaymentMethod === 'PIX');
 
   return (
-    <main className="pos-workspace bg-papel min-h-[calc(100dvh-4rem)] pb-28 xl:pb-0">
+    <main
+      className={cn(
+        'pos-workspace bg-papel min-h-[calc(100dvh-4rem)] pb-28 xl:pb-0',
+        focusMode && 'fixed inset-0 z-40 min-h-dvh overflow-y-auto',
+      )}
+    >
       <div className="border-border bg-surface sticky top-0 z-20 border-b px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-4">
           <div>
             <h1 className="text-text-primary text-xl font-bold sm:text-2xl">Novo pedido</h1>
             <p className="text-text-secondary text-sm">{initialData.store.name} · PDV</p>
           </div>
-          <span className="bg-kraft rounded-full px-3 py-1 text-xs font-bold">Pedido interno</span>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {operations.terminals.some((terminal) => terminal.isActive) ? (
+              <label className="sr-only" htmlFor="pos-terminal">
+                Terminal do PDV
+              </label>
+            ) : null}
+            {operations.terminals.some((terminal) => terminal.isActive) ? (
+              <select
+                id="pos-terminal"
+                className="border-border bg-surface focus-visible:ring-brand-500 h-11 max-w-44 rounded-lg border px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
+                value={selectedTerminalId}
+                onChange={(event) => {
+                  setSelectedTerminalId(event.target.value);
+                  window.localStorage.setItem('pedidolocal:pos-terminal', event.target.value);
+                }}
+              >
+                {operations.terminals
+                  .filter((terminal) => terminal.isActive)
+                  .map((terminal) => (
+                    <option key={terminal.id} value={terminal.id}>
+                      {terminal.name}
+                    </option>
+                  ))}
+              </select>
+            ) : null}
+            <Button variant="outline" onClick={() => setDraftsOpen(true)}>
+              <Clock3 /> Em espera {drafts.length > 0 ? `(${drafts.length})` : ''}
+            </Button>
+            <Button variant="outline" onClick={() => setRecentsOpen(true)}>
+              <Clock3 /> Recentes
+            </Button>
+            <Button
+              variant="outline"
+              disabled={cart.length === 0 || operationState === 'loading'}
+              onClick={() => void holdOrder()}
+            >
+              {operationState === 'loading' ? <Loader2 className="animate-spin" /> : <Clock3 />}
+              Em espera
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={focusMode ? 'Sair do modo foco' : 'Ativar modo foco'}
+              onClick={() => setFocusMode((value) => !value)}
+            >
+              {focusMode ? <X /> : <Maximize2 />}
+            </Button>
+            {initialData.capabilities.canManagePosShortcuts ||
+            initialData.capabilities.canManagePosTerminals ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Configurar PDV"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Settings2 />
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
+
+      {operationError ? (
+        <div
+          role="status"
+          className="bg-warning-light text-warning mx-auto mt-3 flex max-w-[96rem] items-start justify-between gap-3 rounded-xl px-4 py-3 text-sm font-semibold"
+        >
+          <span>{operationError}</span>
+          <button type="button" aria-label="Fechar aviso" onClick={() => setOperationError(null)}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
 
       {initialData.availability.blocksPos ? (
         <div className="bg-error-light text-error mx-auto mt-4 flex max-w-[96rem] items-start gap-2 rounded-xl px-4 py-3 text-sm font-semibold">
@@ -1131,12 +1574,61 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
           <div className="mt-5 flex items-center gap-2">
             <Search className="text-text-muted h-5 w-5" aria-hidden="true" />
             <Input
+              ref={searchRef}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar produto por nome"
               aria-label="Buscar produto por nome"
             />
           </div>
+          {operations.shortcuts.length > 0 ? (
+            <section className="mt-4" aria-labelledby="pos-shortcuts-heading">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="pos-shortcuts-heading" className="flex items-center gap-2 font-bold">
+                  <Star className="text-brand-600 h-4 w-4" /> Favoritos
+                </h2>
+                <span className="text-text-secondary text-xs">Atalhos da loja</span>
+              </div>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
+                {operations.shortcuts.map((shortcut) => {
+                  const product = shortcut.product
+                    ? initialData.products.find((item) => item.id === shortcut.product!.id)
+                    : null;
+                  const offer = shortcut.offer
+                    ? initialData.offers.find((item) => item.id === shortcut.offer!.id)
+                    : null;
+                  const available =
+                    shortcut.product?.available ?? shortcut.offer?.available ?? false;
+                  return (
+                    <button
+                      key={shortcut.id}
+                      type="button"
+                      disabled={!available}
+                      onClick={() => {
+                        if (product) addProduct(product);
+                        if (offer) setOfferDialog(offer);
+                      }}
+                      className="border-border bg-surface focus-visible:ring-brand-500 flex min-h-16 min-w-44 shrink-0 items-center justify-between gap-3 rounded-xl border px-3 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                    >
+                      <span className="min-w-0">
+                        <strong className="block truncate">
+                          {shortcut.product?.name ?? shortcut.offer?.name}
+                        </strong>
+                        <small className="text-text-secondary">
+                          {available ? 'Adicionar ao pedido' : 'Indisponível'}
+                        </small>
+                      </span>
+                      {available ? (
+                        <Plus className="h-4 w-4" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           <div className="mt-3 flex gap-2 overflow-x-auto pb-2" aria-label="Categorias">
             <button
               type="button"
@@ -1327,6 +1819,92 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                     placeholder="Código opcional"
                   />
                 </label>
+                {initialData.capabilities.canApplyManualDiscount ? (
+                  <section
+                    className="border-border rounded-xl border p-3"
+                    aria-labelledby="discount-heading"
+                  >
+                    <button
+                      type="button"
+                      className="flex min-h-11 w-full items-center justify-between gap-3 text-left font-semibold"
+                      aria-expanded={showManualDiscount}
+                      onClick={() => {
+                        setShowManualDiscount((value) => !value);
+                        if (showManualDiscount) setManualDiscountValue('');
+                      }}
+                    >
+                      <span id="discount-heading" className="flex items-center gap-2">
+                        <BadgePercent className="text-brand-600 h-4 w-4" /> Desconto manual
+                      </span>
+                      <ChevronRight
+                        className={cn(
+                          'h-4 w-4 transition-transform',
+                          showManualDiscount && 'rotate-90',
+                        )}
+                      />
+                    </button>
+                    {showManualDiscount ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-sm font-semibold">
+                            Tipo
+                            <select
+                              className="border-border bg-surface mt-1 h-11 w-full rounded-lg border px-3"
+                              value={manualDiscountMode}
+                              onChange={(event) =>
+                                setManualDiscountMode(event.target.value as 'FIXED' | 'PERCENTAGE')
+                              }
+                            >
+                              <option value="FIXED">Valor</option>
+                              <option value="PERCENTAGE">Percentual</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-semibold">
+                            {manualDiscountMode === 'FIXED' ? 'Valor (R$)' : 'Percentual (%)'}
+                            <Input
+                              className="mt-1"
+                              inputMode="decimal"
+                              value={manualDiscountValue}
+                              onChange={(event) => setManualDiscountValue(event.target.value)}
+                            />
+                          </label>
+                        </div>
+                        <label className="block text-sm font-semibold">
+                          Motivo
+                          <select
+                            className="border-border bg-surface mt-1 h-11 w-full rounded-lg border px-3"
+                            value={manualDiscountReason}
+                            onChange={(event) =>
+                              setManualDiscountReason(
+                                event.target.value as typeof manualDiscountReason,
+                              )
+                            }
+                          >
+                            <option value="COURTESY">Cortesia</option>
+                            <option value="SERVICE_RECOVERY">Recuperação de atendimento</option>
+                            <option value="NEGOTIATED">Negociação</option>
+                            <option value="OTHER">Outro</option>
+                          </select>
+                        </label>
+                        {manualDiscountReason === 'OTHER' ? (
+                          <label className="block text-sm font-semibold">
+                            Descreva o motivo
+                            <Input
+                              className="mt-1"
+                              maxLength={200}
+                              value={manualDiscountNote}
+                              onChange={(event) => setManualDiscountNote(event.target.value)}
+                            />
+                          </label>
+                        ) : null}
+                        <p className="text-text-secondary text-xs">
+                          Aplicado após ofertas e cupom, somente sobre mercadorias. A autorização
+                          usa sua sessão.
+                        </p>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
                 <label className="block text-sm font-semibold">
                   Observação do pedido
                   <Textarea
@@ -1444,10 +2022,21 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                       {formatCurrency(quote?.quote.subtotal ?? localSubtotal)}
                     </dd>
                   </div>
-                  {(quote?.quote.discount ?? 0) > 0 ? (
+                  {(quote?.quote.discount ?? 0) - (quote?.quote.manualDiscount ?? 0) > 0 ? (
                     <div className="text-success flex justify-between">
                       <dt>Promoções e cupom</dt>
-                      <dd className="font-mono">-{formatCurrency(quote!.quote.discount)}</dd>
+                      <dd className="font-mono">
+                        -
+                        {formatCurrency(quote!.quote.discount - (quote!.quote.manualDiscount ?? 0))}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {(quote?.quote.manualDiscount ?? 0) > 0 ? (
+                    <div className="text-success flex justify-between">
+                      <dt>Desconto manual</dt>
+                      <dd className="font-mono">
+                        -{formatCurrency(quote!.quote.manualDiscount ?? 0)}
+                      </dd>
                     </div>
                   ) : null}
                   {modality === 'DELIVERY' ? (
@@ -1525,6 +2114,266 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
           </Button>
         </div>
       ) : null}
+
+      <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="bg-tinta/55 fixed inset-0 z-50" />
+          <Dialog.Content className="bg-surface fixed inset-x-3 top-1/2 z-50 max-h-[90dvh] -translate-y-1/2 overflow-y-auto rounded-2xl p-5 shadow-xl sm:inset-x-auto sm:left-1/2 sm:w-[42rem] sm:-translate-x-1/2">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Dialog.Title className="text-xl font-bold">Configurar PDV</Dialog.Title>
+                <Dialog.Description className="text-text-secondary mt-1 text-sm">
+                  Terminais identificam o balcão; favoritos aceleram a montagem do pedido.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="icon" aria-label="Fechar configurações do PDV">
+                  <X />
+                </Button>
+              </Dialog.Close>
+            </div>
+
+            {initialData.capabilities.canManagePosTerminals ? (
+              <section className="mt-6" aria-labelledby="terminals-settings-heading">
+                <h2 id="terminals-settings-heading" className="font-bold">
+                  Terminais
+                </h2>
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    maxLength={80}
+                    value={newTerminalName}
+                    onChange={(event) => setNewTerminalName(event.target.value)}
+                    placeholder="Ex.: Balcão 02"
+                    aria-label="Nome do novo terminal"
+                  />
+                  <Button onClick={() => void createTerminal()}>Adicionar</Button>
+                </div>
+                <ul className="divide-border mt-3 divide-y">
+                  {operations.terminals.map((terminal) => (
+                    <li
+                      key={terminal.id}
+                      className="flex min-h-12 items-center justify-between gap-3 py-2"
+                    >
+                      <span className="min-w-0">
+                        <strong className="block truncate">{terminal.name}</strong>
+                        <small className="text-text-secondary">
+                          {terminal.isActive ? 'Ativo' : 'Inativo'}
+                        </small>
+                      </span>
+                      {terminal.isActive ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => void deactivateTerminal(terminal.id, terminal.version)}
+                        >
+                          Desativar
+                        </Button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {initialData.capabilities.canManagePosShortcuts ? (
+              <section
+                className="border-border mt-6 border-t pt-5"
+                aria-labelledby="shortcuts-settings-heading"
+              >
+                <h2 id="shortcuts-settings-heading" className="font-bold">
+                  Produtos rápidos
+                </h2>
+                <div className="mt-2 flex gap-2">
+                  <select
+                    className="border-border bg-surface focus-visible:ring-brand-500 h-11 min-w-0 flex-1 rounded-lg border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+                    value={shortcutTarget}
+                    onChange={(event) => setShortcutTarget(event.target.value)}
+                    aria-label="Produto ou oferta para fixar"
+                  >
+                    <option value="">Selecione um produto ou oferta</option>
+                    <optgroup label="Produtos">
+                      {initialData.products.map((product) => (
+                        <option key={product.id} value={`product:${product.id}`}>
+                          {product.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Ofertas">
+                      {initialData.offers
+                        .filter((offer) => offer.kind !== 'PRODUCT_PROMOTION')
+                        .map((offer) => (
+                          <option key={offer.id} value={`offer:${offer.id}`}>
+                            {offer.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                  <Button disabled={!shortcutTarget} onClick={() => void createShortcut()}>
+                    Fixar
+                  </Button>
+                </div>
+                <ul className="divide-border mt-3 divide-y">
+                  {operations.shortcuts.map((shortcut, index) => (
+                    <li key={shortcut.id} className="flex min-h-12 items-center gap-2 py-2">
+                      <strong className="min-w-0 flex-1 truncate">
+                        {shortcut.product?.name ?? shortcut.offer?.name}
+                      </strong>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={index === 0}
+                        aria-label="Mover para cima"
+                        onClick={() => void moveShortcut(shortcut.id, -1)}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={index === operations.shortcuts.length - 1}
+                        aria-label="Mover para baixo"
+                        onClick={() => void moveShortcut(shortcut.id, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remover produto rápido"
+                        onClick={() => void removeShortcut(shortcut.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={draftsOpen} onOpenChange={setDraftsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="bg-tinta/55 fixed inset-0 z-50" />
+          <Dialog.Content className="bg-surface fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Dialog.Title className="text-xl font-bold">Pedidos em espera</Dialog.Title>
+                <Dialog.Description className="text-text-secondary mt-1 text-sm">
+                  Retome com preços e disponibilidade recalculados.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="icon" aria-label="Fechar pedidos em espera">
+                  <X />
+                </Button>
+              </Dialog.Close>
+            </div>
+            <div className="mt-5 space-y-2" aria-live="polite">
+              {drafts.map((draft) => (
+                <article key={draft.id} className="border-border rounded-xl border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <strong className="block truncate">{draft.customerName}</strong>
+                      <span className="text-text-secondary block text-sm">
+                        {draft.itemCount} itens ·{' '}
+                        {draft.modality === 'PICKUP'
+                          ? 'Retirada'
+                          : draft.modality === 'DELIVERY'
+                            ? 'Entrega'
+                            : 'Mesa'}
+                      </span>
+                      <small className="text-text-secondary">
+                        {draft.terminal?.name ?? 'Sem terminal'} · {draft.createdByName}
+                      </small>
+                    </div>
+                    <Clock3 className="text-brand-600 h-4 w-4 shrink-0" />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      className="flex-1"
+                      disabled={operationState === 'loading'}
+                      onClick={() => void resumeDraft(draft.id)}
+                    >
+                      Retomar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Descartar pedido de ${draft.customerName}`}
+                      onClick={() => void discardDraft(draft.id, draft.version)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </article>
+              ))}
+              {drafts.length === 0 ? (
+                <div className="border-border text-text-secondary rounded-xl border border-dashed p-6 text-center text-sm">
+                  Nenhum pedido em espera.
+                </div>
+              ) : null}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={recentsOpen} onOpenChange={setRecentsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="bg-tinta/55 fixed inset-0 z-50" />
+          <Dialog.Content className="bg-surface fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Dialog.Title className="text-xl font-bold">Pedidos recentes</Dialog.Title>
+                <Dialog.Description className="text-text-secondary mt-1 text-sm">
+                  Últimos pedidos do PDV desta loja, sem dados de contato.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="icon" aria-label="Fechar pedidos recentes">
+                  <X />
+                </Button>
+              </Dialog.Close>
+            </div>
+            <div className="mt-5 space-y-2">
+              {operations.recentOrders.map((order) => (
+                <article key={order.id} className="border-border rounded-xl border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <strong className="block truncate">
+                        #{order.orderNumber} · {order.customerName || 'Sem nome'}
+                      </strong>
+                      <span className="text-text-secondary text-sm">
+                        {order._count.items} itens · {formatCurrency(order.total)}
+                      </span>
+                      <small className="text-text-secondary block">
+                        {order.posTerminalLabelSnapshot ?? 'Sem terminal'} ·{' '}
+                        {order.createdBy?.name ?? 'Operador'}
+                      </small>
+                    </div>
+                    <span className="bg-kraft rounded-full px-2 py-1 text-xs font-bold">
+                      {order.status}
+                    </span>
+                  </div>
+                  <Button
+                    className="mt-3 w-full"
+                    variant="outline"
+                    disabled={operationState === 'loading'}
+                    onClick={() => void repeatRecentOrder(order.id)}
+                  >
+                    Repetir com preço atual
+                  </Button>
+                </article>
+              ))}
+              {operations.recentOrders.length === 0 ? (
+                <div className="border-border text-text-secondary rounded-xl border border-dashed p-6 text-center text-sm">
+                  Nenhum pedido recente no PDV.
+                </div>
+              ) : null}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <ProductDialog
         key={productDialog?.id ?? 'no-product'}

@@ -88,3 +88,38 @@ Rollback funcional: desligar `posEnabled` imediatamente. Isso impede novas cria�
 - Central/KDS: origem, criador e label Balcão corretos;
 - Merchant Push e SLA: sem aviso redundante/falso;
 - logs/auditoria: sem PII.
+
+## V2 — operação em horário de pico
+
+### Pedidos em espera
+
+`PosDraft` guarda intenção, nunca preço. O payload (itens, opções, cliente, endereço e intenção de pagamento) usa AES-256-GCM com `POS_DRAFT_ENCRYPTION_KEY` e AAD formada por tenant, loja e draft. Metadados não sensíveis ficam em colunas indexadas. O TTL é de 12 horas; listagens ignoram expirados e fazem limpeza oportunística limitada a 25 registros, apagando o payload sensível.
+
+Criar/atualizar usa versão CAS. Retomar sempre recalcula a quote. Finalizar bloqueia o draft na mesma transação `Serializable` da criação do `Order`, valida versão e expiração, cria exatamente um pedido e marca o draft como `CONVERTED`. Draft não consome `orderNumber`, cupom, `OfferUsage`, `Payment`, outbox, KDS, Central, SLA nem relatórios.
+
+### Favoritos, mais usados e recentes
+
+- `StorePosShortcut` fixa até 24 produtos/ofertas com ordenação simples; Owner e Manager gerenciam, qualquer operador do PDV utiliza.
+- “Mais usados” agrega no PostgreSQL os últimos 30 dias de pedidos `POS` não cancelados, limitado a 12 produtos, sem N+1.
+- Recentes carrega no máximo 20 pedidos da loja, com DTO mínimo e sem telefone/endereço.
+- Repetir chama `rebuildOrderIntentFromHistory()`: revalida produto/opções e usa preço atual. Não copia cupom, pagamento, estado pago nem desconto manual.
+
+### Desconto manual e stacking
+
+Somente a sessão autenticada de Owner/Manager com `APPLY_POS_MANUAL_DISCOUNT` pode aplicar. Não existe PIN compartilhado nem `authorized=true` vindo do browser. Valores fixos usam centavos; percentuais usam basis points (10.000 = 100%) e são arredondados uma vez para centavos.
+
+Ordem única: ofertas automáticas → cupom → desconto manual → frete. A base elegível é `subtotal - automaticDiscount - couponDiscount`; frete não recebe desconto e o desconto nunca excede a base. O valor entra em `Order.discount`, `Order.total`, `Payment.amount` e `OrderPriceAdjustment(MANUAL_DISCOUNT)`. `PosManualDiscountLedger` preserva ator, autorizador, motivo, base, entrada e valor final; `AuditLog` registra o evento sem PII.
+
+### Terminais, operador e atalhos
+
+`StorePosTerminal` identifica onde, não quem. O navegador lembra apenas o ID; o servidor revalida tenant/loja/ativo. `Order.posTerminalLabelSnapshot` mantém o nome histórico após renome/deativação. O operador continua vindo exclusivamente da sessão em `Order.createdById`.
+
+Atalhos: `/` busca, `Alt+1/2/3` troca modalidade, `Alt+H` coloca em espera e `?` mostra ajuda. Eles não disparam durante edição de inputs. Modo foco recobre a navegação sem mudar domínio ou autorização.
+
+Impressão permanece `SKIPPED`: `orderPrinting` está `COMING_SOON`; não há impressão fiscal ou browser print improvisado.
+
+### Migration, rollout e rollback V2
+
+`20260821190000_pos_v2_operations` é aditiva: cria três entidades operacionais e o ledger, acrescenta terminal ao `Order`, tipos de desconto e índices/FKs/RLS. Não usar `db push` nem `migrate reset`.
+
+Antes do rollout, gerar uma chave com 32 bytes aleatórios em base64 e configurá-la como secret `POS_DRAFT_ENCRYPTION_KEY`. Depois de aplicar a migration em ambiente controlado, validar uma loja piloto com dois terminais, conflito de draft e desconto de gerente. `posEnabled=false` continua sendo o rollback funcional: impede novo uso; Orders permanecem intactos e drafts nunca se convertem.
