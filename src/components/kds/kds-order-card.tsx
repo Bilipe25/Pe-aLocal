@@ -1,6 +1,14 @@
 'use client';
 
-import { AlertTriangle, Bike, CheckCircle2, Clock3, Loader2, MapPin, ShoppingBag } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bike,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  MapPin,
+  ShoppingBag,
+} from 'lucide-react';
 
 import { getKdsElapsedSeconds, getKdsUrgency, getKdsUrgencyLabel } from '@/domain/orders/kds';
 import { cn } from '@/lib/utils';
@@ -29,13 +37,16 @@ export function KdsOrderCard({
   const urgencyLabel = getKdsUrgencyLabel(order.status, urgency);
   const actionable = order.status === 'CONFIRMED' || order.status === 'PREPARING';
   const actionLabel = order.status === 'CONFIRMED' ? 'Iniciar preparo' : 'Marcar como pronto';
-  const ModeIcon = order.modality === 'DELIVERY' ? Bike : order.modality === 'DINE_IN' ? MapPin : ShoppingBag;
+  const ModeIcon =
+    order.modality === 'DELIVERY' ? Bike : order.modality === 'DINE_IN' ? MapPin : ShoppingBag;
   const serviceLabel =
     order.modality === 'DELIVERY'
       ? 'Entrega'
       : order.modality === 'DINE_IN'
         ? (order.diningTableLabel ?? 'Salão')
-        : 'Retirada';
+        : order.origin === 'POS'
+          ? 'Balcão'
+          : 'Retirada';
 
   return (
     <article

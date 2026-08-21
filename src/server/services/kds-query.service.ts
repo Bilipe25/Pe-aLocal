@@ -79,6 +79,7 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
           id: true,
           orderNumber: true,
           modality: true,
+          origin: true,
           diningTableLabelSnapshot: true,
           diningTableSession: {
             select: {
@@ -136,6 +137,7 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
       id: row.id,
       orderNumber: row.orderNumber,
       modality: row.modality,
+      origin: row.origin,
       diningTableLabel:
         row.diningTableSession?.status === 'OPEN'
           ? row.diningTableSession.diningTable.label

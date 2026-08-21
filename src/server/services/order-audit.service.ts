@@ -107,18 +107,22 @@ export async function writeOrderCreatedAudit(
     orderId: string;
     orderNumber: number;
     status?: OrderStatus;
+    userId?: string | null;
+    source?: OrderChangeSource;
+    origin?: 'STOREFRONT' | 'DINE_IN_QR' | 'POS';
   },
 ): Promise<string> {
   const audit = await auditRepo.createAuditLog(
     {
       tenantId: data.tenantId,
       storeId: data.storeId,
-      userId: null,
+      userId: data.userId ?? null,
       action: data.status === 'AWAITING_PAYMENT' ? 'CREATE' : 'ORDER_CREATED',
       entity: 'Order',
       entityId: data.orderId,
       metadata: {
-        source: 'CUSTOMER',
+        source: data.source ?? 'CUSTOMER',
+        ...(data.origin ? { origin: data.origin } : {}),
         lifecycle:
           data.status === 'AWAITING_PAYMENT'
             ? 'AWAITING_PROVIDER_PAYMENT'

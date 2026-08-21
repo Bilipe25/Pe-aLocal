@@ -87,6 +87,7 @@ const ORDER_BOARD_ITEM_SELECT = {
   id: true,
   orderNumber: true,
   customerName: true,
+  origin: true,
   modality: true,
   diningTableLabelSnapshot: true,
   diningTableSession: {
@@ -617,7 +618,8 @@ function boardItem(context: OrderQueryContext, order: OrderBoardRow): OrderBoard
   return {
     id: order.id,
     orderNumber: order.orderNumber,
-    customerDisplayName: order.customerName,
+    customerDisplayName: order.customerName ?? 'Cliente não informado',
+    origin: order.origin,
     modality: order.modality,
     diningTableLabel:
       order.diningTableSession?.status === 'OPEN'
@@ -930,6 +932,7 @@ export async function getOrderQueue(
           id: true,
           orderNumber: true,
           customerName: true,
+          origin: true,
           modality: true,
           diningTableLabelSnapshot: true,
           diningTableSession: {
@@ -986,7 +989,8 @@ export async function getOrderQueue(
         return {
           id: order.id,
           orderNumber: order.orderNumber,
-          customerDisplayName: order.customerName,
+          customerDisplayName: order.customerName ?? 'Cliente não informado',
+          origin: order.origin,
           modality: order.modality,
           diningTableLabel:
             order.diningTableSession?.status === 'OPEN'
@@ -1100,6 +1104,8 @@ export async function getOrderDetails(
         id: true,
         orderNumber: true,
         customerName: true,
+        origin: true,
+        createdBy: { select: { id: true, name: true } },
         customerPhone: true,
         modality: true,
         diningTableLabelSnapshot: true,
@@ -1245,8 +1251,10 @@ export async function getOrderDetails(
     return {
       id: order.id,
       orderNumber: order.orderNumber,
+      origin: order.origin,
+      createdBy: order.createdBy,
       customer: {
-        name: order.customerName,
+        name: order.customerName ?? 'Cliente não informado',
         phone: capabilities.canViewCustomerContact ? order.customerPhone : null,
       },
       modality: order.modality,

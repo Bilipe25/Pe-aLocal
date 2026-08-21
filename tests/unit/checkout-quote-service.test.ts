@@ -140,6 +140,35 @@ describe('cotação autoritativa do checkout', () => {
     expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
   });
 
+  it('mantém pricing idêntico no PDV e só flexibiliza o fechamento público', async () => {
+    const client = createClient();
+    mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
+      acceptingOrders: false,
+      state: 'CLOSED_BY_SCHEDULE',
+      reason: 'Fechada agora pelo horário.',
+      nextTransitionAt: null,
+    });
+
+    const storefront = await calculateCheckoutQuote('loja-a', input(), {
+      client: client as never,
+      now,
+    });
+    const pos = await calculateCheckoutQuote('loja-a', input(), {
+      client: client as never,
+      now,
+      channel: 'POS',
+    });
+
+    expect(storefront?.canCheckout).toBe(false);
+    expect(pos).toMatchObject({
+      canCheckout: true,
+      subtotal: 4000,
+      discount: 0,
+      deliveryFee: 0,
+      total: 4000,
+    });
+  });
+
   it('aplica promoção antes do cupom e preserva os ajustes separados', async () => {
     const client = createClient();
     client.store.findUnique.mockResolvedValueOnce({

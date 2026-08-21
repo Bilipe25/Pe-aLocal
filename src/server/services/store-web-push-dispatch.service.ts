@@ -16,6 +16,7 @@ export async function projectStoreWebPushDispatch(db: PrismaClient, eventId: str
       aggregateVersion: true,
       occurredAt: true,
       payload: true,
+      order: { select: { origin: true } },
     },
   });
   if (!event) return { projected: false, reason: 'missing' } as const;
@@ -27,7 +28,8 @@ export async function projectStoreWebPushDispatch(db: PrismaClient, eventId: str
     !parsed.success ||
     parsed.data.orderId !== event.orderId ||
     parsed.data.version !== event.aggregateVersion ||
-    parsed.data.status !== 'PENDING'
+    parsed.data.status !== 'PENDING' ||
+    event.order.origin === 'POS'
   ) {
     return { projected: false, reason: 'ineligible' } as const;
   }
@@ -88,7 +90,11 @@ export async function projectStoreWebPushDispatch(db: PrismaClient, eventId: str
 
 export async function reconcileStoreWebPushDispatches(db: PrismaClient, batchSize = 100) {
   const events = await db.orderOutboxEvent.findMany({
-    where: { eventType: 'ORDER_CREATED', storeWebPushDispatch: null },
+    where: {
+      eventType: 'ORDER_CREATED',
+      storeWebPushDispatch: null,
+      order: { is: { origin: { not: 'POS' } } },
+    },
     orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
     take: batchSize,
     select: { id: true },

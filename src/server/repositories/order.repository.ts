@@ -19,6 +19,7 @@ import {
   MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL,
 } from '@/lib/mercado-pago/sandbox';
 import type { CheckoutInput, DineInCheckoutInput } from '@/schemas/checkout';
+import type { PosOrderInput } from '@/schemas/pos';
 import { getDb } from '@/server/database/client';
 import {
   CheckoutError,
@@ -47,12 +48,17 @@ import * as orderAudit from '@/server/services/order-audit.service';
 import {
   assertMatchingOrderFingerprint,
   createOrderFingerprint,
+  createPosOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
 import {
   getOrCreateDiningSessionForCheckout,
   touchDiningSessionAfterOrder,
 } from '@/server/services/dining-table-session.service';
+import { persistPosCustomerAfterOrder } from '@/server/services/pos-customer-persistence.service';
+import { acceptOrderInTransaction } from '@/server/services/order-workflow.service';
+import { confirmManualPaymentInTransaction } from '@/server/services/order-payment.service';
+import type { OrderMutationContext } from '@/server/services/order-mutation.types';
 
 type CreateOrderParams =
   | {
@@ -64,6 +70,10 @@ type CreateOrderParams =
   | {
       input: DineInCheckoutInput;
       tableToken: string;
+    }
+  | {
+      input: PosOrderInput;
+      pos: OrderMutationContext;
     };
 
 interface CreateOrderResult {
@@ -89,10 +99,12 @@ interface CreateOrderResult {
 async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderResult> {
   const { input } = params;
   const dineIn = 'tableToken' in params;
-  const standardInput = dineIn ? null : (input as CheckoutInput);
+  const pos = 'pos' in params;
+  const standardInput = dineIn || pos ? null : (input as CheckoutInput);
   const dineInInput = dineIn ? (input as DineInCheckoutInput) : null;
-  const recognitionBrowserToken = dineIn ? null : params.recognitionBrowserToken;
-  const deviceTokenHash = dineIn ? null : params.deviceTokenHash;
+  const posInput = pos ? (input as PosOrderInput) : null;
+  const recognitionBrowserToken = dineIn || pos ? null : params.recognitionBrowserToken;
+  const deviceTokenHash = dineIn || pos ? null : params.deviceTokenHash;
 
   return getDb().$transaction(
     async (tx) => {
@@ -108,7 +120,23 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               version: true,
             },
           })
-        : null;
+        : pos && posInput!.modality === 'DINE_IN'
+          ? await tx.storeDiningTable.findFirst({
+              where: {
+                id: posInput!.diningTableId,
+                tenantId: params.pos.tenantId,
+                storeId: params.pos.storeId,
+              },
+              select: {
+                id: true,
+                tenantId: true,
+                storeId: true,
+                label: true,
+                isActive: true,
+                version: true,
+              },
+            })
+          : null;
       if (dineIn && !diningTable) throw new NotFoundError('QR Code');
 
       const storeSelect = {
@@ -127,7 +155,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             paymentMode: true,
           },
         },
-        entitlement: { select: { onlinePaymentsEnabled: true, dineInQrEnabled: true } },
+        entitlement: {
+          select: { onlinePaymentsEnabled: true, dineInQrEnabled: true, posEnabled: true },
+        },
         paymentProviderConnections: {
           where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
           take: 1,
@@ -139,13 +169,25 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             where: { id: diningTable!.storeId, tenantId: diningTable!.tenantId },
             select: storeSelect,
           })
-        : await tx.store.findUnique({
-            where: { slug: params.storeSlug },
-            select: storeSelect,
-          });
+        : pos
+          ? await tx.store.findFirst({
+              where: { id: params.pos.storeId, tenantId: params.pos.tenantId },
+              select: storeSelect,
+            })
+          : await tx.store.findUnique({
+              where: { slug: params.storeSlug },
+              select: storeSelect,
+            });
       if (!store) throw new NotFoundError('Loja');
+      if (pos && !store.entitlement?.posEnabled) {
+        throw new CheckoutError(
+          'STORE_UNAVAILABLE',
+          'O PDV não está habilitado para esta loja.',
+          409,
+        );
+      }
       if (
-        dineIn &&
+        (dineIn || (pos && posInput!.modality === 'DINE_IN')) &&
         (!diningTable?.isActive ||
           !store.entitlement?.dineInQrEnabled ||
           diningTable.tenantId !== store.tenantId ||
@@ -153,7 +195,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       ) {
         throw new CheckoutError(
           'STORE_UNAVAILABLE',
-          'Este QR Code não está disponível. Peça ajuda à equipe.',
+          pos
+            ? 'Esta mesa não está disponível para novos pedidos.'
+            : 'Este QR Code não está disponível. Peça ajuda à equipe.',
           409,
         );
       }
@@ -164,6 +208,55 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       `;
 
       const now = new Date();
+      const posCustomer =
+        pos && posInput!.customerId
+          ? await tx.customer.findFirst({
+              where: { id: posInput!.customerId, tenantId: store.tenantId },
+              select: { id: true, name: true, phone: true, phoneNormalized: true },
+            })
+          : null;
+      if (pos && posInput!.customerId && !posCustomer) {
+        throw new CheckoutError('CART_INVALID', 'O cliente selecionado não está disponível.', 422);
+      }
+      const requestedAddressId = posInput?.deliveryAddress?.customerAddressId;
+      if (pos && requestedAddressId && !posCustomer) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'Selecione o cliente vinculado ao endereço salvo.',
+          422,
+        );
+      }
+      const posSavedAddress =
+        pos && requestedAddressId
+          ? await tx.customerAddress.findFirst({
+              where: {
+                id: requestedAddressId,
+                tenantId: store.tenantId,
+                ...(posCustomer ? { customerId: posCustomer.id } : {}),
+              },
+              select: {
+                id: true,
+                street: true,
+                number: true,
+                complement: true,
+                neighborhood: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                reference: true,
+                addressFingerprint: true,
+                updatedAt: true,
+                storeUses: {
+                  where: { storeId: store.id },
+                  take: 1,
+                  select: { deliveryZoneId: true },
+                },
+              },
+            })
+          : null;
+      if (pos && requestedAddressId && !posSavedAddress) {
+        throw new CheckoutError('CART_INVALID', 'O endereço selecionado não está disponível.', 422);
+      }
       const recognizedIdentity =
         standardInput?.identityMode === 'RECOGNIZED' && recognitionBrowserToken
           ? await resolveRecognitionIdentity({
@@ -182,39 +275,54 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
-      const resolvedIdentity = dineIn
+      const resolvedIdentity = pos
         ? {
-            customerId: null,
-            customerName: dineInInput!.customerName,
-            customerPhone: null,
-            phoneNormalized: null,
+            customerId: posCustomer?.id ?? null,
+            customerName: (posCustomer?.name ?? posInput!.customerName) || null,
+            customerPhone: (posCustomer?.phone ?? posInput!.customerPhone) || null,
+            phoneNormalized:
+              posCustomer?.phoneNormalized ||
+              (posInput!.customerPhone ? normalizePhone(posInput!.customerPhone) : null),
           }
-        : standardInput!.identityMode === 'RECOGNIZED'
+        : dineIn
           ? {
-              customerId: recognizedIdentity!.customerId,
-              customerName: recognizedIdentity!.customerName,
-              customerPhone: recognizedIdentity!.customerPhone,
-              phoneNormalized: recognizedIdentity!.phoneNormalized,
-            }
-          : {
               customerId: null,
-              customerName: standardInput!.customerName,
-              customerPhone: standardInput!.customerPhone,
-              phoneNormalized: normalizePhone(standardInput!.customerPhone),
-            };
-      const idempotencyFingerprint = createOrderFingerprint(
-        input,
-        resolvedIdentity.customerId
-          ? {
-              customerId: resolvedIdentity.customerId,
-              customerName: resolvedIdentity.customerName,
-              customerPhone: resolvedIdentity.customerPhone!,
+              customerName: dineInInput!.customerName,
+              customerPhone: null,
+              phoneNormalized: null,
             }
-          : null,
-        dineIn
-          ? { diningTableId: diningTable!.id, diningTableVersion: diningTable!.version }
-          : null,
-      );
+          : standardInput!.identityMode === 'RECOGNIZED'
+            ? {
+                customerId: recognizedIdentity!.customerId,
+                customerName: recognizedIdentity!.customerName,
+                customerPhone: recognizedIdentity!.customerPhone,
+                phoneNormalized: recognizedIdentity!.phoneNormalized,
+              }
+            : {
+                customerId: null,
+                customerName: standardInput!.customerName,
+                customerPhone: standardInput!.customerPhone,
+                phoneNormalized: normalizePhone(standardInput!.customerPhone),
+              };
+      const idempotencyFingerprint = pos
+        ? createPosOrderFingerprint(posInput!, {
+            customerId: resolvedIdentity.customerId,
+            diningTableId: diningTable?.id ?? null,
+            addressId: posSavedAddress?.id ?? null,
+          })
+        : createOrderFingerprint(
+            input as CheckoutInput | DineInCheckoutInput,
+            resolvedIdentity.customerId
+              ? {
+                  customerId: resolvedIdentity.customerId,
+                  customerName: resolvedIdentity.customerName!,
+                  customerPhone: resolvedIdentity.customerPhone!,
+                }
+              : null,
+            dineIn
+              ? { diningTableId: diningTable!.id, diningTableVersion: diningTable!.version }
+              : null,
+          );
 
       const existing = await tx.order.findUnique({
         where: {
@@ -307,22 +415,64 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         }
       }
 
-      const quoteInput = dineIn
-        ? { ...dineInInput!, modality: 'DINE_IN' as const }
-        : standardInput!;
+      const quoteInput = pos
+        ? posInput!.modality === 'DINE_IN'
+          ? {
+              modality: 'DINE_IN' as const,
+              items: posInput!.items,
+              couponCode: posInput!.couponCode,
+            }
+          : {
+              modality: posInput!.modality,
+              items: posInput!.items,
+              couponCode: posInput!.couponCode,
+              deliveryZoneId: posInput!.deliveryAddress?.deliveryZoneId,
+              deliveryPostalCode: posInput!.deliveryAddress?.postalCode,
+              deliveryAddress: posInput!.deliveryAddress
+                ? {
+                    postalCode: posInput!.deliveryAddress.postalCode,
+                    street: posInput!.deliveryAddress.street,
+                    number: posInput!.deliveryAddress.number,
+                    complement: posInput!.deliveryAddress.complement,
+                    reference: posInput!.deliveryAddress.reference,
+                  }
+                : undefined,
+            }
+        : dineIn
+          ? { ...dineInInput!, modality: 'DINE_IN' as const }
+          : standardInput!;
       const quote = await calculateCheckoutQuote(
-        dineIn ? store.slug : params.storeSlug,
+        dineIn || pos ? store.slug : params.storeSlug,
         quoteInput,
         {
           client: tx,
           now,
-          savedAddress: savedAddressResolution
+          savedAddress: posSavedAddress
             ? {
-                ...savedAddressResolution.address,
-                mappedDeliveryZoneId: savedAddressResolution.mappedDeliveryZoneId,
+                id: posSavedAddress.id,
+                addressFingerprint: posSavedAddress.addressFingerprint,
+                updatedAt: posSavedAddress.updatedAt,
+                street: posSavedAddress.street,
+                number: posSavedAddress.number,
+                complement: posSavedAddress.complement,
+                neighborhood: posSavedAddress.neighborhood,
+                city: posSavedAddress.city,
+                state: posSavedAddress.state,
+                zipCode: posSavedAddress.zipCode,
+                reference: posSavedAddress.reference,
+                mappedDeliveryZoneId:
+                  posSavedAddress.storeUses[0]?.deliveryZoneId ??
+                  posInput?.deliveryAddress?.deliveryZoneId ??
+                  null,
               }
-            : null,
-          ...(dineIn ? { diningTable } : {}),
+            : savedAddressResolution
+              ? {
+                  ...savedAddressResolution.address,
+                  mappedDeliveryZoneId: savedAddressResolution.mappedDeliveryZoneId,
+                }
+              : null,
+          ...(dineIn || (pos && posInput!.modality === 'DINE_IN') ? { diningTable } : {}),
+          ...(pos ? { channel: 'POS' as const } : {}),
         },
       );
       if (!quote) throw new NotFoundError('Loja');
@@ -386,9 +536,12 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         settings.paymentMode === 'ONLINE' &&
         store.paymentProviderConnections[0],
       );
-      const onlinePayment = onlinePaymentAvailable && input.paymentMethod === 'PIX';
+      // Pix online Mercado Pago não faz parte do PDV V1. No canal interno,
+      // PIX representa somente o método manual já configurado pela loja.
+      const onlinePayment = !pos && onlinePaymentAvailable && input.paymentMethod === 'PIX';
+      const payerEmail = standardInput?.payerEmail ?? dineInInput?.payerEmail;
       if (onlinePayment) {
-        if (!input.payerEmail) {
+        if (!payerEmail) {
           throw new CheckoutError(
             'CART_INVALID',
             'Informe um e-mail válido para gerar o Pix com confirmação automática.',
@@ -397,7 +550,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           );
         }
         if (getMercadoPagoOAuthEnvironment() === 'sandbox') {
-          if (input.payerEmail.trim().toLowerCase() !== MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL) {
+          if (payerEmail.trim().toLowerCase() !== MERCADO_PAGO_SANDBOX_PIX_PAYER_EMAIL) {
             throw new CheckoutError('CART_INVALID', MERCADO_PAGO_SANDBOX_PIX_EMAIL_MESSAGE, 422, [
               { path: 'payerEmail', code: 'invalid_email_for_sandbox' },
             ]);
@@ -409,7 +562,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           }
         }
       } else if (input.paymentMethod === 'PIX') {
-        if (dineIn) {
+        if (dineIn && !pos) {
           throw new CheckoutError(
             'STORE_UNAVAILABLE',
             'O Pix online está temporariamente indisponível. Escolha dinheiro ou cartão na mesa.',
@@ -443,11 +596,39 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       } else if (input.paymentMethod === 'CARD_IN_PERSON' && !settings.acceptsCardInPerson) {
         throw new CheckoutError('STORE_UNAVAILABLE', 'O cartão na mesa não está disponível.', 409);
       }
+      if (pos && input.paymentMethod === 'CARD_ON_DELIVERY' && posInput!.modality !== 'DELIVERY') {
+        throw new CheckoutError('CART_INVALID', 'Cartão na entrega é exclusivo para Delivery.');
+      }
+      if (pos && input.paymentMethod === 'CARD_IN_PERSON' && posInput!.modality === 'DELIVERY') {
+        throw new CheckoutError('CART_INVALID', 'Cartão presencial não é válido para Delivery.');
+      }
+      if (
+        pos &&
+        posInput!.modality === 'DELIVERY' &&
+        posInput!.paidNow &&
+        input.paymentMethod !== 'PIX'
+      ) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'No Delivery, somente o Pix manual pode ser marcado como pago agora.',
+        );
+      }
       if (
         standardInput &&
         input.paymentMethod === 'CASH' &&
         standardInput.changeFor != null &&
         standardInput.changeFor < quote.total
+      ) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'O valor para troco precisa ser igual ou maior que o total.',
+        );
+      }
+      if (
+        pos &&
+        input.paymentMethod === 'CASH' &&
+        posInput!.changeFor != null &&
+        posInput!.changeFor < quote.total
       ) {
         throw new CheckoutError(
           'CART_INVALID',
@@ -494,13 +675,36 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
 
       let address: CheckoutCustomerAddress | null = null;
-      if (standardInput?.modality === 'DELIVERY') {
-        if (savedAddressResolution) {
+      if (posInput?.modality === 'DELIVERY' || standardInput?.modality === 'DELIVERY') {
+        if (posSavedAddress) {
+          address = {
+            id: posSavedAddress.id,
+            street: posSavedAddress.street,
+            number: posSavedAddress.number,
+            complement: posSavedAddress.complement,
+            neighborhood: posSavedAddress.neighborhood,
+            city: posSavedAddress.city,
+            state: posSavedAddress.state,
+            zipCode: posSavedAddress.zipCode,
+            reference: posSavedAddress.reference,
+          };
+        } else if (posInput?.deliveryAddress) {
+          address = {
+            street: posInput.deliveryAddress.street,
+            number: posInput.deliveryAddress.number,
+            complement: posInput.deliveryAddress.complement || null,
+            neighborhood: posInput.deliveryAddress.neighborhood,
+            city: posInput.deliveryAddress.city,
+            state: posInput.deliveryAddress.state,
+            zipCode: posInput.deliveryAddress.postalCode ?? null,
+            reference: posInput.deliveryAddress.reference || null,
+          };
+        } else if (savedAddressResolution) {
           address = {
             ...savedAddressResolution.address,
             zipCode: savedAddressResolution.address.zipCode?.replace(/\D/g, '') || null,
           };
-        } else if (standardInput.deliveryAddress && store.address && quote.deliveryZoneName) {
+        } else if (standardInput?.deliveryAddress && store.address && quote.deliveryZoneName) {
           address = {
             street: standardInput.deliveryAddress.street,
             number: standardInput.deliveryAddress.number,
@@ -521,9 +725,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
       const mercadoPagoPaymentId = onlinePayment ? crypto.randomUUID() : null;
       const encryptedPayerEmail =
-        onlinePayment && input.payerEmail
+        onlinePayment && payerEmail
           ? await encryptCredential(
-              input.payerEmail.toLowerCase(),
+              payerEmail.toLowerCase(),
               getMercadoPagoConfig().encryptionKey,
               credentialAad({
                 tenantId: store.tenantId,
@@ -533,9 +737,10 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               }),
             )
           : null;
-      const diningSession = dineIn
-        ? await getOrCreateDiningSessionForCheckout(tx, diningTable!, now)
-        : null;
+      const diningSession =
+        dineIn || (pos && posInput!.modality === 'DINE_IN')
+          ? await getOrCreateDiningSessionForCheckout(tx, diningTable!, now)
+          : null;
       const offerGroups = quote.offerGroups ?? [];
       const adjustments = quote.adjustments ?? [];
       const adjustmentSourceIds = [
@@ -611,17 +816,22 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
+          customerId: resolvedIdentity.customerId,
+          createdById: pos ? params.pos.userId : null,
+          origin: pos ? 'POS' : dineIn ? 'DINE_IN_QR' : 'STOREFRONT',
           idempotencyKey: input.idempotencyKey,
           idempotencyFingerprint,
           quoteFingerprint: quote.quoteFingerprint,
           publicTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
-          paymentReportToken: onlinePayment || dineIn ? null : crypto.randomUUID(),
+          paymentReportToken: onlinePayment || dineIn || pos ? null : crypto.randomUUID(),
           paymentReportExpiresAt:
-            onlinePayment || dineIn ? null : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
+            onlinePayment || dineIn || pos
+              ? null
+              : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
           customerName: resolvedIdentity.customerName,
           customerPhone: resolvedIdentity.customerPhone,
           customerPhoneNormalized: resolvedIdentity.phoneNormalized,
-          modality: dineIn ? 'DINE_IN' : standardInput!.modality,
+          modality: pos ? posInput!.modality : dineIn ? 'DINE_IN' : standardInput!.modality,
           diningTableId: diningTable?.id ?? null,
           diningTableSessionId: diningSession?.id ?? null,
           diningTableLabelSnapshot: diningTable?.label ?? null,
@@ -643,7 +853,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           discount: quote.discount,
           total: quote.total,
           paymentMethod: input.paymentMethod,
-          changeFor: standardInput?.changeFor ?? null,
+          changeFor: posInput?.changeFor ?? standardInput?.changeFor ?? null,
           status: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
           paymentStatus: 'PENDING',
           notes: input.notes || null,
@@ -691,10 +901,13 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               toStatus: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
               note: onlinePayment
                 ? 'Pedido criado e aguardando confirmação do pagamento online'
-                : 'Pedido criado pelo cliente',
-              changedBy: 'system',
-              actorNameSnapshot: 'Cliente',
-              source: 'CUSTOMER',
+                : pos
+                  ? 'Pedido criado no PDV'
+                  : 'Pedido criado pelo cliente',
+              changedBy: pos ? params.pos.userId : 'system',
+              changedById: pos ? params.pos.userId : null,
+              actorNameSnapshot: pos ? params.pos.userName : 'Cliente',
+              source: pos ? 'DASHBOARD' : 'CUSTOMER',
               versionFrom: null,
               versionTo: 0,
             },
@@ -830,21 +1043,36 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         });
       }
 
-      const persistedCustomer = dineIn
-        ? { customerId: null, addressId: null, nameConflict: false }
-        : await persistCheckoutCustomerAfterOrder({
-            tx,
-            tenantId: store.tenantId,
-            storeId: store.id,
-            orderId: order.id,
-            input: standardInput!,
-            customerName: resolvedIdentity.customerName,
-            customerPhone: resolvedIdentity.customerPhone!,
-            recognizedCustomerId,
-            address,
-            deliveryZoneId: quote.deliveryZoneId,
-            now,
-          });
+      const persistedCustomer = pos
+        ? {
+            ...(await persistPosCustomerAfterOrder({
+              tx,
+              tenantId: store.tenantId,
+              storeId: store.id,
+              orderId: order.id,
+              orderInput: posInput!,
+              address: posInput!.deliveryAddress?.customerAddressId
+                ? null
+                : (posInput!.deliveryAddress ?? null),
+              now,
+            })),
+            nameConflict: false,
+          }
+        : dineIn
+          ? { customerId: null, addressId: null, nameConflict: false }
+          : await persistCheckoutCustomerAfterOrder({
+              tx,
+              tenantId: store.tenantId,
+              storeId: store.id,
+              orderId: order.id,
+              input: standardInput!,
+              customerName: resolvedIdentity.customerName ?? undefined,
+              customerPhone: resolvedIdentity.customerPhone!,
+              recognizedCustomerId,
+              address,
+              deliveryZoneId: quote.deliveryZoneId,
+              now,
+            });
 
       const recognitionSessionId =
         recognizedIdentity?.sessionId ?? activeUnconfirmedRecognition?.sessionId ?? null;
@@ -905,6 +1133,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: onlinePayment ? 'AWAITING_PAYMENT' : 'PENDING',
+        userId: pos ? params.pos.userId : null,
+        source: pos ? 'DASHBOARD' : 'CUSTOMER',
+        origin: pos ? 'POS' : dineIn ? 'DINE_IN_QR' : 'STOREFRONT',
       });
       const outboxEvent = onlinePayment
         ? null
@@ -921,6 +1152,20 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             occurredAt: order.createdAt,
           });
 
+      const posAccepted = pos
+        ? await acceptOrderInTransaction(tx, params.pos, {
+            orderId: order.id,
+            expectedVersion: 0,
+          })
+        : null;
+      const posPayment =
+        pos && posInput!.paidNow
+          ? await confirmManualPaymentInTransaction(tx, params.pos, {
+              orderId: order.id,
+              expectedVersion: posAccepted!.version,
+            })
+          : null;
+
       return {
         id: order.id,
         storeId: store.id,
@@ -928,7 +1173,11 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         orderNumber: order.orderNumber,
         paymentReportToken: order.paymentReportToken,
         created: true,
-        outboxEventIds: outboxEvent ? [outboxEvent.id] : [],
+        outboxEventIds: [
+          ...(outboxEvent ? [outboxEvent.id] : []),
+          ...(posAccepted?.outboxEventIds ?? []),
+          ...(posPayment?.outboxEventIds ?? []),
+        ],
         customerNameConflict: persistedCustomer.nameConflict,
         rememberDeviceExpiresAt: remembered?.expiresAt ?? null,
         mercadoPagoPaymentId,

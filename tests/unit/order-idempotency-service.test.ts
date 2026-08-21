@@ -4,7 +4,9 @@ import type { CheckoutInput } from '@/schemas/checkout';
 import {
   assertMatchingOrderFingerprint,
   createOrderFingerprint,
+  createPosOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
+import type { PosOrderInput } from '@/schemas/pos';
 
 const input: CheckoutInput = {
   identityMode: 'VISITOR',
@@ -59,6 +61,41 @@ describe('order idempotency fingerprint', () => {
     expect(createOrderFingerprint(equivalent)).toBe(createOrderFingerprint(input));
   });
 
+  it('mantém a tentativa do PDV estável e detecta alteração no recebimento', () => {
+    const posInput: PosOrderInput = {
+      modality: 'PICKUP',
+      customerName: '',
+      customerPhone: '',
+      items: [
+        {
+          kind: 'PRODUCT',
+          lineId: '10000000-0000-4000-8000-000000000001',
+          productId: '00000000-0000-0000-0002-000000000001',
+          quantity: 1,
+          notes: '',
+          optionIds: [],
+        },
+      ],
+      notes: '',
+      paymentMethod: 'CASH',
+      paidNow: false,
+      saveCustomerData: false,
+      expectedQuoteFingerprint: 'a'.repeat(64),
+      idempotencyKey: '4da03571-bffd-45ef-8c44-20686c487838',
+    };
+    const resolved = { customerId: null, diningTableId: null, addressId: null };
+
+    expect(
+      createPosOrderFingerprint(
+        { ...posInput, idempotencyKey: '65bdab05-46f3-40ed-9285-c733721d8709' },
+        resolved,
+      ),
+    ).toBe(createPosOrderFingerprint(posInput, resolved));
+    expect(createPosOrderFingerprint({ ...posInput, paidNow: true }, resolved)).not.toBe(
+      createPosOrderFingerprint(posInput, resolved),
+    );
+  });
+
   it('permanece determinístico com customizações distintas do mesmo produto', () => {
     const customized: CheckoutInput = {
       ...input,
@@ -77,9 +114,7 @@ describe('order idempotency fingerprint', () => {
       items: [...customized.items]
         .reverse()
         .map((entry) =>
-          entry.kind === 'COMBO'
-            ? entry
-            : { ...entry, optionIds: [...entry.optionIds].reverse() },
+          entry.kind === 'COMBO' ? entry : { ...entry, optionIds: [...entry.optionIds].reverse() },
         ),
     };
 

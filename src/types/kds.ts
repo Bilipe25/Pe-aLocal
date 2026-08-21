@@ -23,6 +23,7 @@ export interface KdsOrderDTO {
   id: string;
   orderNumber: number;
   modality: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+  origin?: 'STOREFRONT' | 'DINE_IN_QR' | 'POS' | null;
   diningTableLabel: string | null;
   status: KdsOrderStatus;
   version: number;

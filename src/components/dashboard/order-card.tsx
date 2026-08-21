@@ -347,7 +347,14 @@ export function OrderCard({
                 : `#${order.orderNumber}`}
             </h3>
             {order.modality === 'DINE_IN' ? (
-              <span className="text-text-secondary text-xs font-semibold">#{order.orderNumber}</span>
+              <span className="text-text-secondary text-xs font-semibold">
+                #{order.orderNumber}
+              </span>
+            ) : null}
+            {order.origin === 'POS' ? (
+              <span className="bg-kraft text-text-primary rounded-full px-2 py-0.5 text-xs font-bold">
+                PDV
+              </span>
             ) : null}
             {order.status === 'PENDING' ? (
               <OrderSlaIndicator
