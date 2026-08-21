@@ -67,6 +67,10 @@ export function domainsCacheTag(storeId: string): string {
   return `domains:${storeId}`;
 }
 
+export function offersCacheTag(storeId: string): string {
+  return `store-offers:${storeId}`;
+}
+
 /**
  * Retorna todas as tags de cache de uma loja.
  * Útil para invalidar tudo quando a loja é suspensa.
@@ -82,6 +86,7 @@ export function allStoreCacheTags(storeId: string): string[] {
     assetsCacheTag(storeId),
     bannersCacheTag(storeId),
     domainsCacheTag(storeId),
+    offersCacheTag(storeId),
   ];
 }
 
@@ -100,5 +105,6 @@ export const CACHE_TAGS = {
   asset: assetCacheTag,
   banners: bannersCacheTag,
   domains: domainsCacheTag,
+  offers: offersCacheTag,
   all: allStoreCacheTags,
 } as const;

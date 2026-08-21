@@ -34,6 +34,13 @@ export const STORE_FEATURE_DEFINITIONS = {
     entitlementField: 'advancedReportsEnabled',
     implementationStatus: 'AVAILABLE',
   },
+  combosPromotions: {
+    key: 'combosPromotions',
+    label: 'Combos e promoções',
+    description: 'Crie combos com preço especial e promoções simples para produtos.',
+    entitlementField: 'combosPromotionsEnabled',
+    implementationStatus: 'AVAILABLE',
+  },
   orderPrinting: {
     key: 'orderPrinting',
     label: 'Impressão / comandas',

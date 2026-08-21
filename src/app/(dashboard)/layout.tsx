@@ -55,6 +55,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         activeStoreTimeZone={activeContext?.store.timeZone ?? null}
         initialNowIso={new Date().toISOString()}
         canViewCoupons={hasTenantPermission(session.tenantRole, Permission.VIEW_COUPONS)}
+        canViewOffers={Boolean(
+          activeContext?.store.entitlement?.combosPromotionsEnabled &&
+          hasTenantPermission(session.tenantRole, Permission.VIEW_OFFERS),
+        )}
         canViewKds={Boolean(
           activeContext?.store.entitlement?.kdsEnabled &&
           hasTenantPermission(session.tenantRole, Permission.VIEW_ORDERS) &&

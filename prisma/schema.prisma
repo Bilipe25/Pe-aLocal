@@ -223,6 +223,16 @@ enum CouponType {
   FIXED
 }
 
+enum OrderOfferType {
+  COMBO
+}
+
+enum OrderPriceAdjustmentType {
+  COMBO
+  PRODUCT_PROMOTION
+  COUPON
+}
+
 enum CustomerAddressLabel {
   HOME
   WORK
@@ -303,6 +313,12 @@ enum AuditAction {
   COUPON_CREATED
   COUPON_UPDATED
   COUPON_DELETED
+  COMBO_CREATED
+  COMBO_UPDATED
+  COMBO_ARCHIVED
+  PRODUCT_PROMOTION_CREATED
+  PRODUCT_PROMOTION_UPDATED
+  PRODUCT_PROMOTION_ARCHIVED
   PAYMENT_PROVIDER_CONNECTED
   PAYMENT_PROVIDER_DISCONNECTED
   PAYMENT_PROVIDER_REAUTH_REQUIRED
@@ -437,6 +453,11 @@ model Tenant {
   recognitionThrottles          CustomerRecognitionThrottle[]
   orders                        Order[]
   coupons                       Coupon[]
+  storeCombos                   StoreCombo[]
+  storeComboItems               StoreComboItem[]
+  storeProductPromotions        StoreProductPromotion[]
+  orderOfferGroups              OrderOfferGroup[]
+  orderPriceAdjustments         OrderPriceAdjustment[]
   auditLogs                     AuditLog[]
   orderOutboxEvents             OrderOutboxEvent[]
   paymentStatusHistory          PaymentStatusHistory[]
@@ -517,6 +538,11 @@ model Store {
   deviceRecognitions            CustomerDeviceRecognition[]
   recognitionThrottles          CustomerRecognitionThrottle[]
   coupons                       Coupon[]
+  combos                        StoreCombo[]
+  comboItems                    StoreComboItem[]
+  productPromotions             StoreProductPromotion[]
+  orderOfferGroups              OrderOfferGroup[]
+  orderPriceAdjustments         OrderPriceAdjustment[]
   orders                        Order[]
   orderCounter                  StoreOrderCounter?
   customization                 StoreCustomization?
@@ -770,6 +796,7 @@ model StoreEntitlement {
   advancedReportsEnabled         Boolean   @default(false)
   orderPrintingEnabled           Boolean   @default(false)
   dineInQrEnabled                Boolean   @default(false)
+  combosPromotionsEnabled        Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -973,7 +1000,10 @@ model Product {
   category     Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   imageAsset   StoreAsset?          @relation("ProductImageAsset", fields: [imageAssetId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   optionGroups ProductOptionGroup[]
+  comboItems   StoreComboItem[]
+  promotions  StoreProductPromotion[]
 
+  @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
   @@index([storeId, isAvailable, isSoldOut, archivedAt])
   @@index([categoryId, archivedAt, sortOrder])
@@ -1032,6 +1062,86 @@ model ProductOption {
   @@index([groupId])
   @@index([sortOrder])
   @@map("product_options")
+}
+
+// =============================================================================
+// Ofertas — Combos e Promoções
+// =============================================================================
+
+model StoreCombo {
+  id                 String      @id @default(uuid())
+  tenantId           String
+  storeId            String
+  name               String      @db.VarChar(120)
+  description        String?     @db.VarChar(500)
+  specialPrice       Int
+  isActive           Boolean     @default(true)
+  sortOrder          Int         @default(0)
+  version            Int         @default(0)
+  startsOn           DateTime?   @db.Date
+  endsOnExclusive    DateTime?   @db.Date
+  weekdays           DayOfWeek[] @default([])
+  startMinute        Int?
+  endMinuteExclusive Int?
+  archivedAt         DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  items  StoreComboItem[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, isActive, archivedAt, sortOrder])
+  @@index([storeId, updatedAt])
+  @@map("store_combos")
+}
+
+model StoreComboItem {
+  id        String @id @default(uuid())
+  tenantId  String
+  storeId   String
+  comboId   String
+  productId String
+  quantity  Int
+  position  Int    @default(0)
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store   Store      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  combo   StoreCombo @relation(fields: [comboId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  product Product    @relation(fields: [productId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([comboId, productId])
+  @@index([comboId, position, id])
+  @@index([tenantId, storeId, productId])
+  @@map("store_combo_items")
+}
+
+model StoreProductPromotion {
+  id                 String      @id @default(uuid())
+  tenantId           String
+  storeId            String
+  productId          String
+  promotionalPrice   Int
+  isActive           Boolean     @default(true)
+  version            Int         @default(0)
+  startsOn           DateTime?   @db.Date
+  endsOnExclusive    DateTime?   @db.Date
+  weekdays           DayOfWeek[] @default([])
+  startMinute        Int?
+  endMinuteExclusive Int?
+  archivedAt         DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product Product @relation(fields: [productId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, productId, isActive, archivedAt])
+  @@index([storeId, updatedAt])
+  @@map("store_product_promotions")
 }
 
 // =============================================================================
@@ -1383,6 +1493,8 @@ model Order {
   diningTableSession DiningTableSession? @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
 
   items                         OrderItem[]
+  offerGroups                   OrderOfferGroup[]
+  priceAdjustments              OrderPriceAdjustment[]
   statusHistory                 OrderStatusHistory[]
   internalNotes                 OrderInternalNote[]
   payment                       Payment?
@@ -1445,6 +1557,8 @@ model OrderInternalNote {
 model OrderItem {
   id       String @id @default(uuid())
   orderId  String
+  offerGroupId String?
+  offerComponentPosition Int?
   position Int    @default(0)
 
   // Snapshot do produto no momento do pedido
@@ -1457,13 +1571,72 @@ model OrderItem {
   imageUrl     String? // Snapshot da URL legada no momento da compra
   imageAssetId String? // Snapshot do StoreAsset no momento da compra
 
-  order   Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  options OrderItemOption[]
+  order            Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  offerGroup       OrderOfferGroup?       @relation(fields: [offerGroupId], references: [id], onDelete: SetNull)
+  options          OrderItemOption[]
+  priceAdjustments OrderPriceAdjustment[]
 
   @@index([orderId, position, id])
+  @@index([offerGroupId, offerComponentPosition, id])
   @@index([productId])
   @@index([imageAssetId])
   @@map("order_items")
+}
+
+model OrderOfferGroup {
+  id                    String         @id @default(uuid())
+  tenantId              String
+  storeId               String
+  orderId               String
+  offerType             OrderOfferType
+  sourceOfferIdSnapshot String
+  sourceOfferVersion    Int
+  nameSnapshot          String         @db.VarChar(120)
+  quantity              Int
+  position              Int            @default(0)
+  regularBaseAmount     Int
+  offerBaseAmount       Int
+  discountAmount        Int
+  createdAt             DateTime       @default(now())
+
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store                  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order            Order                  @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  items            OrderItem[]
+  priceAdjustments OrderPriceAdjustment[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([orderId, position, id])
+  @@index([tenantId, storeId, offerType, createdAt])
+  @@map("order_offer_groups")
+}
+
+model OrderPriceAdjustment {
+  id                  String                   @id @default(uuid())
+  tenantId            String
+  storeId             String
+  orderId             String
+  adjustmentType      OrderPriceAdjustmentType
+  sourceIdSnapshot    String?
+  sourceVersion       Int?
+  labelSnapshot       String                   @db.VarChar(120)
+  amount              Int
+  orderItemId         String?
+  orderOfferGroupId   String?
+  position            Int                      @default(0)
+  createdAt           DateTime                 @default(now())
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store      Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order      Order            @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  orderItem  OrderItem?       @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  offerGroup OrderOfferGroup? @relation(fields: [orderOfferGroupId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, position, id])
+  @@index([orderItemId])
+  @@index([orderOfferGroupId])
+  @@index([tenantId, storeId, adjustmentType, createdAt])
+  @@map("order_price_adjustments")
 }
 
 model OrderItemOption {
