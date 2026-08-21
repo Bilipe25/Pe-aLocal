@@ -311,6 +311,11 @@ function OrderDetails({
             <Dialog.Title className="text-text-primary text-lg font-bold sm:text-xl">
               Pedido #{order.orderNumber}
             </Dialog.Title>
+            {order.origin === 'POS' ? (
+              <span className="bg-kraft text-text-primary inline-flex rounded-full px-2 py-0.5 text-xs font-bold">
+                PDV
+              </span>
+            ) : null}
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${currentStatus.color}`}
             >
@@ -320,6 +325,7 @@ function OrderDetails({
           </div>
           <Dialog.Description className="text-text-secondary mt-0.5 text-xs sm:text-sm">
             Recebido em {formatDate(order.createdAt, timeZone)}
+            {order.createdBy ? ` · Criado por ${order.createdBy.name}` : ''}
           </Dialog.Description>
         </div>
         <div className="flex shrink-0 items-center gap-0.5" data-order-print-hide>
@@ -437,21 +443,22 @@ function OrderDetails({
                     <dd>{formatCurrency(order.totals.deliveryFee)}</dd>
                   </div>
                 ) : null}
-                {order.totals.adjustments.length > 0
-                  ? order.totals.adjustments.map((adjustment) => (
-                      <div key={adjustment.id} className="text-success col-span-2 flex justify-between gap-2">
-                        <dt>{adjustment.label}</dt>
-                        <dd>-{formatCurrency(adjustment.amount)}</dd>
-                      </div>
-                    ))
-                  : order.totals.discount > 0
-                    ? (
-                        <div className="text-success col-span-2 flex justify-between gap-2">
-                          <dt>Desconto</dt>
-                          <dd>-{formatCurrency(order.totals.discount)}</dd>
-                        </div>
-                      )
-                    : null}
+                {order.totals.adjustments.length > 0 ? (
+                  order.totals.adjustments.map((adjustment) => (
+                    <div
+                      key={adjustment.id}
+                      className="text-success col-span-2 flex justify-between gap-2"
+                    >
+                      <dt>{adjustment.label}</dt>
+                      <dd>-{formatCurrency(adjustment.amount)}</dd>
+                    </div>
+                  ))
+                ) : order.totals.discount > 0 ? (
+                  <div className="text-success col-span-2 flex justify-between gap-2">
+                    <dt>Desconto</dt>
+                    <dd>-{formatCurrency(order.totals.discount)}</dd>
+                  </div>
+                ) : null}
               </dl>
             </div>
           </section>
@@ -475,12 +482,12 @@ function OrderDetails({
                       {order.customer.name}
                     </p>
                     {order.modality !== 'DINE_IN' ? (
-                    <p className="text-text-secondary mt-0.5 flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      {order.customer.phone && normalizedPhone
-                        ? order.customer.phone
-                        : 'Contato protegido'}
-                    </p>
+                      <p className="text-text-secondary mt-0.5 flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        {order.customer.phone && normalizedPhone
+                          ? order.customer.phone
+                          : 'Contato protegido'}
+                      </p>
                     ) : null}
                   </div>
                 </div>

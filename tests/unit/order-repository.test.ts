@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => {
     resolveRecognitionIdentity: vi.fn(),
     resolveRecognitionAddressReference: vi.fn(),
     consumeRecognitionSession: vi.fn(),
+    acceptOrderInTransaction: vi.fn(),
+    confirmManualPaymentInTransaction: vi.fn(),
   };
 });
 
@@ -76,6 +78,12 @@ vi.mock('@/server/services/customer-recognition.service', () => ({
   resolveRecognitionIdentity: mocks.resolveRecognitionIdentity,
   resolveRecognitionAddressReference: mocks.resolveRecognitionAddressReference,
   consumeRecognitionSession: mocks.consumeRecognitionSession,
+}));
+vi.mock('@/server/services/order-workflow.service', () => ({
+  acceptOrderInTransaction: mocks.acceptOrderInTransaction,
+}));
+vi.mock('@/server/services/order-payment.service', () => ({
+  confirmManualPaymentInTransaction: mocks.confirmManualPaymentInTransaction,
 }));
 
 const expectedQuoteFingerprint = 'a'.repeat(64);
@@ -216,6 +224,85 @@ describe('OrderRepository checkout v2', () => {
     mocks.resolveRecognitionIdentity.mockResolvedValue(null);
     mocks.resolveRecognitionAddressReference.mockResolvedValue(null);
     mocks.consumeRecognitionSession.mockResolvedValue(true);
+    mocks.acceptOrderInTransaction.mockResolvedValue({
+      version: 1,
+      outboxEventIds: ['outbox-accepted'],
+    });
+    mocks.confirmManualPaymentInTransaction.mockResolvedValue({
+      version: 2,
+      outboxEventIds: ['outbox-payment'],
+    });
+  });
+
+  it('cria, aceita e opcionalmente paga o pedido POS no mesmo callback transacional', async () => {
+    const posInput = {
+      modality: 'PICKUP' as const,
+      customerName: '',
+      customerPhone: '',
+      items: [input.items[0]],
+      notes: '',
+      paymentMethod: 'CASH' as const,
+      paidNow: true,
+      saveCustomerData: false,
+      expectedQuoteFingerprint,
+      idempotencyKey: '65bdab05-46f3-40ed-9285-c733721d8709',
+    };
+    const actor = {
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      userId: 'user-a',
+      userName: 'Ana',
+      canConfirmPayment: true,
+      canRefundPayment: false,
+    };
+    mocks.tx.store.findFirst.mockResolvedValue({
+      id: 'store-a',
+      tenantId: 'tenant-a',
+      slug: 'loja-a',
+      address: { city: 'São Paulo', state: 'SP' },
+      settings: {
+        acceptsPix: true,
+        pixKeyType: 'EMAIL',
+        pixKey: 'financeiro@loja.test',
+        acceptsCash: true,
+        acceptsCardOnDelivery: true,
+        acceptsCardInPerson: true,
+        paymentMode: 'MANUAL',
+      },
+      entitlement: {
+        onlinePaymentsEnabled: false,
+        dineInQrEnabled: false,
+        posEnabled: true,
+      },
+      paymentProviderConnections: [],
+    });
+
+    const result = await createOrder({ input: posInput, pos: actor });
+
+    expect(mocks.tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          origin: 'POS',
+          createdById: 'user-a',
+          customerName: null,
+          status: 'PENDING',
+        }),
+      }),
+    );
+    expect(mocks.calculateCheckoutQuote).toHaveBeenCalledWith(
+      'loja-a',
+      expect.objectContaining({ modality: 'PICKUP' }),
+      expect.objectContaining({ channel: 'POS' }),
+    );
+    expect(mocks.acceptOrderInTransaction).toHaveBeenCalledWith(mocks.tx, actor, {
+      orderId: 'order-a',
+      expectedVersion: 0,
+    });
+    expect(mocks.confirmManualPaymentInTransaction).toHaveBeenCalledWith(mocks.tx, actor, {
+      orderId: 'order-a',
+      expectedVersion: 1,
+    });
+    expect(result.outboxEventIds).toEqual(['outbox-a', 'outbox-accepted', 'outbox-payment']);
   });
 
   it('persiste AWAITING_PAYMENT e não publica ORDER_CREATED antes do Pix online', async () => {

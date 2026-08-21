@@ -19,6 +19,7 @@ import {
   ChefHat,
   ChevronDown,
   Clock3,
+  CirclePlus,
   LayoutDashboard,
   LayoutGrid,
   LogOut,
@@ -56,6 +57,7 @@ interface DashboardShellProps {
   activeStoreTimeZone: string | null;
   initialNowIso: string;
   canViewCoupons?: boolean;
+  canOperatePos?: boolean;
   canViewOffers?: boolean;
   canViewKds?: boolean;
   canViewDiningRoom?: boolean;
@@ -106,6 +108,7 @@ function Navigation({
   pathname,
   activeStoreId,
   canViewCoupons = false,
+  canOperatePos = false,
   canViewOffers = false,
   canViewKds = false,
   canViewDiningRoom = false,
@@ -116,6 +119,7 @@ function Navigation({
   pathname: string;
   activeStoreId: string | null;
   canViewCoupons: boolean;
+  canOperatePos: boolean;
   canViewOffers: boolean;
   canViewKds: boolean;
   canViewDiningRoom: boolean;
@@ -135,6 +139,12 @@ function Navigation({
       href: activeStoreId ? '/dashboard/orders' : fallbackHref,
       label: 'Central de pedidos',
       icon: ShoppingBag,
+    },
+    {
+      href: activeStoreId ? '/dashboard/pos' : fallbackHref,
+      label: 'PDV',
+      icon: CirclePlus,
+      hidden: !canOperatePos,
     },
     {
       href: activeStoreId ? '/dashboard/kds' : fallbackHref,
@@ -465,6 +475,7 @@ export function DashboardShell({
   activeStoreTimeZone,
   initialNowIso,
   canViewCoupons = false,
+  canOperatePos = false,
   canViewOffers = false,
   canViewKds = false,
   canViewDiningRoom = false,
@@ -520,6 +531,7 @@ export function DashboardShell({
             pathname={pathname}
             activeStoreId={activeStore?.id ?? null}
             canViewCoupons={canViewCoupons}
+            canOperatePos={canOperatePos}
             canViewOffers={canViewOffers}
             canViewKds={canViewKds}
             canViewDiningRoom={canViewDiningRoom}
@@ -743,6 +755,7 @@ export function DashboardShell({
                       pathname={pathname}
                       activeStoreId={activeStore?.id ?? null}
                       canViewCoupons={canViewCoupons}
+                      canOperatePos={canOperatePos}
                       canViewOffers={canViewOffers}
                       canViewKds={canViewKds}
                       canViewDiningRoom={canViewDiningRoom}

@@ -1,4 +1,12 @@
 export const STORE_FEATURE_DEFINITIONS = {
+  pos: {
+    key: 'pos',
+    label: 'PDV / Balcão',
+    description:
+      'Permite que a equipe registre pedidos de entrega, retirada e salão diretamente pelo PedidoLocal.',
+    entitlementField: 'posEnabled',
+    implementationStatus: 'AVAILABLE',
+  },
   dineInQr: {
     key: 'dineInQr',
     label: 'Pedido por QR Code no salão',
@@ -54,13 +62,13 @@ export type StoreFeatureKey = keyof typeof STORE_FEATURE_DEFINITIONS;
 export type StoreFeatureDefinition = (typeof STORE_FEATURE_DEFINITIONS)[StoreFeatureKey];
 export type StoreFeatureEntitlementField = StoreFeatureDefinition['entitlementField'];
 
-type EntitlementFlags = Record<StoreFeatureEntitlementField, boolean>;
+type EntitlementFlags = Partial<Record<StoreFeatureEntitlementField, boolean>>;
 
 export function isStoreFeatureEntitled(
   entitlement: EntitlementFlags,
   feature: StoreFeatureKey,
 ): boolean {
-  return entitlement[STORE_FEATURE_DEFINITIONS[feature].entitlementField];
+  return entitlement[STORE_FEATURE_DEFINITIONS[feature].entitlementField] === true;
 }
 
 export function isStoreFeatureAvailable(

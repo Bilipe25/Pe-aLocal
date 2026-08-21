@@ -1,6 +1,7 @@
 import type {
   OrderChangeSource,
   OrderModality,
+  OrderOrigin,
   OrderStatus,
   PaymentMethodType,
   PaymentStatus,
@@ -49,6 +50,7 @@ export interface OrderQueueItemDTO {
   id: string;
   orderNumber: number;
   customerDisplayName: string;
+  origin?: OrderOrigin | null;
   modality: OrderModality;
   diningTableLabel: string | null;
   paymentMethod: PaymentMethodType;
@@ -195,6 +197,8 @@ export interface OrderHistoryPageDTO {
 export interface OrderDetailsDTO {
   id: string;
   orderNumber: number;
+  origin?: OrderOrigin | null;
+  createdBy?: { id: string; name: string } | null;
   customer: {
     name: string;
     phone: string | null;

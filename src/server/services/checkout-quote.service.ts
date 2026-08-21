@@ -242,6 +242,7 @@ export async function calculateCheckoutQuote(
     now?: Date;
     savedAddress?: ResolvedSavedCheckoutAddress | null;
     diningTable?: ResolvedDiningTableQuoteContext | null;
+    channel?: 'STOREFRONT' | 'POS';
   } = {},
 ): Promise<ResolvedCheckoutQuote | null> {
   const client = options.client ?? getDb();
@@ -275,7 +276,10 @@ export async function calculateCheckoutQuote(
     now,
     client,
   });
-  if (!availability.acceptingOrders) {
+  const posMayOperateWhilePublicStoreIsClosed =
+    options.channel === 'POS' &&
+    (availability.state === 'CLOSED_BY_SCHEDULE' || availability.state === 'MANUALLY_CLOSED');
+  if (!availability.acceptingOrders && !posMayOperateWhilePublicStoreIsClosed) {
     issues.push({ code: 'STORE_UNAVAILABLE', message: availability.reason });
   }
 

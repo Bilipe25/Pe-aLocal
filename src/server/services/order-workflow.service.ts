@@ -220,165 +220,182 @@ function outboxEventTypeForStatus(status: OrderStatus): OrderOutboxEventType {
   }
 }
 
+export async function transitionOrderInTransaction(
+  tx: Prisma.TransactionClient,
+  context: OrderMutationContext,
+  input: OrderVersionInput,
+  targetStatus: OrderStatus,
+): Promise<OrderStatusMutationResult> {
+  const order = await getOrderSnapshot(tx, context, input.orderId);
+  assertExpectedVersion(order, input.expectedVersion);
+  assertOrderTransition(order, targetStatus);
+
+  const changedAt = new Date();
+  const confirmPaymentOnCompletion =
+    targetStatus === 'DELIVERED' &&
+    order.modality !== 'DINE_IN' &&
+    order.paymentMethod !== 'PIX' &&
+    order.paymentStatus === 'PENDING';
+  if (confirmPaymentOnCompletion && !context.canConfirmPayment) {
+    throw new AuthorizationError(
+      'Seu perfil não possui permissão para confirmar o pagamento na conclusão.',
+    );
+  }
+  if (confirmPaymentOnCompletion) {
+    assertPaymentTransition(
+      {
+        status: order.paymentStatus,
+        method: order.paymentMethod,
+        orderStatus: order.status,
+      },
+      'CONFIRM_ON_COMPLETION',
+    );
+  }
+  const nextPaymentStatus = confirmPaymentOnCompletion ? 'PAID' : order.paymentStatus;
+
+  const updated = await tx.order.updateMany({
+    where: {
+      id: order.id,
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      version: input.expectedVersion,
+    },
+    data: {
+      status: targetStatus,
+      paymentStatus: nextPaymentStatus,
+      statusChangedAt: changedAt,
+      version: { increment: 1 },
+      ...statusTimestampData(targetStatus, changedAt),
+    },
+  });
+  if (updated.count !== 1) conflict();
+
+  if (confirmPaymentOnCompletion) {
+    await appendPaymentStatusHistory(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      paymentId: order.payment!.id,
+      fromStatus: order.paymentStatus,
+      toStatus: 'PAID',
+      changedById: context.userId,
+      actorNameSnapshot: context.userName,
+      source: 'DASHBOARD',
+      reasonCode: 'ORDER_COMPLETED',
+      orderVersionFrom: input.expectedVersion,
+      orderVersionTo: input.expectedVersion + 1,
+      createdAt: changedAt,
+    });
+    const paymentUpdated = await tx.payment.updateMany({
+      where: {
+        orderId: order.id,
+        method: order.paymentMethod,
+        status: order.paymentStatus,
+      },
+      data: {
+        status: 'PAID',
+        paidAt: changedAt,
+        confirmedBy: context.userId,
+      },
+    });
+    if (paymentUpdated.count !== 1) conflict();
+  }
+
+  if (targetStatus === 'DELIVERED' && nextPaymentStatus === 'PAID') {
+    await tx.storeOfferUsage.updateMany({
+      where: { orderId: order.id, status: 'RESERVED' },
+      data: { status: 'CONSUMED', consumedAt: changedAt, expiresAt: null },
+    });
+  }
+
+  await createStatusHistory(tx, context, {
+    orderId: order.id,
+    fromStatus: order.status,
+    toStatus: targetStatus,
+    note: confirmPaymentOnCompletion
+      ? 'Pagamento confirmado durante a conclusão do pedido'
+      : undefined,
+    versionFrom: input.expectedVersion,
+    versionTo: input.expectedVersion + 1,
+  });
+
+  const statusAuditId = await orderAudit.writeOrderStatusAudit(tx, context, {
+    orderId: order.id,
+    action: auditActionForStatus(targetStatus),
+    previousStatus: order.status,
+    nextStatus: targetStatus,
+    previousVersion: input.expectedVersion,
+    nextVersion: input.expectedVersion + 1,
+  });
+  const orderEvent = await appendOrderOutboxEvent(tx, {
+    tenantId: context.tenantId,
+    storeId: context.storeId,
+    orderId: order.id,
+    auditLogId: statusAuditId,
+    eventType: outboxEventTypeForStatus(targetStatus),
+    orderNumber: order.orderNumber,
+    status: targetStatus,
+    paymentStatus: nextPaymentStatus,
+    aggregateVersion: input.expectedVersion + 1,
+    occurredAt: changedAt,
+  });
+  const outboxEventIds = [orderEvent.id];
+
+  if (confirmPaymentOnCompletion) {
+    const paymentAuditId = await orderAudit.writePaymentAudit(tx, context, {
+      orderId: order.id,
+      paymentId: order.payment!.id,
+      action: 'PAYMENT_CONFIRMED',
+      previousStatus: order.paymentStatus,
+      nextStatus: 'PAID',
+      previousVersion: input.expectedVersion,
+      nextVersion: input.expectedVersion + 1,
+    });
+    const paymentEvent = await appendOrderOutboxEvent(tx, {
+      tenantId: context.tenantId,
+      storeId: context.storeId,
+      orderId: order.id,
+      auditLogId: paymentAuditId,
+      eventType: 'PAYMENT_UPDATED',
+      orderNumber: order.orderNumber,
+      status: targetStatus,
+      paymentStatus: 'PAID',
+      aggregateVersion: input.expectedVersion + 1,
+      occurredAt: changedAt,
+    });
+    outboxEventIds.push(paymentEvent.id);
+  }
+
+  return {
+    orderId: order.id,
+    storeId: order.storeId,
+    status: targetStatus,
+    paymentStatus: nextPaymentStatus,
+    version: input.expectedVersion + 1,
+    statusChangedAt: changedAt,
+    paymentUpdated: confirmPaymentOnCompletion,
+    outboxEventIds,
+  };
+}
+
 async function transitionOrder(
   context: OrderMutationContext,
   input: OrderVersionInput,
   targetStatus: OrderStatus,
 ): Promise<OrderStatusMutationResult> {
-  return getDb().$transaction(async (tx) => {
-    const order = await getOrderSnapshot(tx, context, input.orderId);
-    assertExpectedVersion(order, input.expectedVersion);
-    assertOrderTransition(order, targetStatus);
+  return getDb().$transaction((tx) =>
+    transitionOrderInTransaction(tx, context, input, targetStatus),
+  );
+}
 
-    const changedAt = new Date();
-    const confirmPaymentOnCompletion =
-      targetStatus === 'DELIVERED' &&
-      order.modality !== 'DINE_IN' &&
-      order.paymentMethod !== 'PIX' &&
-      order.paymentStatus === 'PENDING';
-    if (confirmPaymentOnCompletion && !context.canConfirmPayment) {
-      throw new AuthorizationError(
-        'Seu perfil não possui permissão para confirmar o pagamento na conclusão.',
-      );
-    }
-    if (confirmPaymentOnCompletion) {
-      assertPaymentTransition(
-        {
-          status: order.paymentStatus,
-          method: order.paymentMethod,
-          orderStatus: order.status,
-        },
-        'CONFIRM_ON_COMPLETION',
-      );
-    }
-    const nextPaymentStatus = confirmPaymentOnCompletion ? 'PAID' : order.paymentStatus;
-
-    const updated = await tx.order.updateMany({
-      where: {
-        id: order.id,
-        tenantId: context.tenantId,
-        storeId: context.storeId,
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-        version: input.expectedVersion,
-      },
-      data: {
-        status: targetStatus,
-        paymentStatus: nextPaymentStatus,
-        statusChangedAt: changedAt,
-        version: { increment: 1 },
-        ...statusTimestampData(targetStatus, changedAt),
-      },
-    });
-    if (updated.count !== 1) conflict();
-
-    if (confirmPaymentOnCompletion) {
-      await appendPaymentStatusHistory(tx, {
-        tenantId: context.tenantId,
-        storeId: context.storeId,
-        orderId: order.id,
-        paymentId: order.payment!.id,
-        fromStatus: order.paymentStatus,
-        toStatus: 'PAID',
-        changedById: context.userId,
-        actorNameSnapshot: context.userName,
-        source: 'DASHBOARD',
-        reasonCode: 'ORDER_COMPLETED',
-        orderVersionFrom: input.expectedVersion,
-        orderVersionTo: input.expectedVersion + 1,
-        createdAt: changedAt,
-      });
-      const paymentUpdated = await tx.payment.updateMany({
-        where: {
-          orderId: order.id,
-          method: order.paymentMethod,
-          status: order.paymentStatus,
-        },
-        data: {
-          status: 'PAID',
-          paidAt: changedAt,
-          confirmedBy: context.userId,
-        },
-      });
-      if (paymentUpdated.count !== 1) conflict();
-    }
-
-    if (targetStatus === 'DELIVERED' && nextPaymentStatus === 'PAID') {
-      await tx.storeOfferUsage.updateMany({
-        where: { orderId: order.id, status: 'RESERVED' },
-        data: { status: 'CONSUMED', consumedAt: changedAt, expiresAt: null },
-      });
-    }
-
-    await createStatusHistory(tx, context, {
-      orderId: order.id,
-      fromStatus: order.status,
-      toStatus: targetStatus,
-      note: confirmPaymentOnCompletion
-        ? 'Pagamento confirmado durante a conclusão do pedido'
-        : undefined,
-      versionFrom: input.expectedVersion,
-      versionTo: input.expectedVersion + 1,
-    });
-
-    const statusAuditId = await orderAudit.writeOrderStatusAudit(tx, context, {
-      orderId: order.id,
-      action: auditActionForStatus(targetStatus),
-      previousStatus: order.status,
-      nextStatus: targetStatus,
-      previousVersion: input.expectedVersion,
-      nextVersion: input.expectedVersion + 1,
-    });
-    const orderEvent = await appendOrderOutboxEvent(tx, {
-      tenantId: context.tenantId,
-      storeId: context.storeId,
-      orderId: order.id,
-      auditLogId: statusAuditId,
-      eventType: outboxEventTypeForStatus(targetStatus),
-      orderNumber: order.orderNumber,
-      status: targetStatus,
-      paymentStatus: nextPaymentStatus,
-      aggregateVersion: input.expectedVersion + 1,
-      occurredAt: changedAt,
-    });
-    const outboxEventIds = [orderEvent.id];
-
-    if (confirmPaymentOnCompletion) {
-      const paymentAuditId = await orderAudit.writePaymentAudit(tx, context, {
-        orderId: order.id,
-        paymentId: order.payment!.id,
-        action: 'PAYMENT_CONFIRMED',
-        previousStatus: order.paymentStatus,
-        nextStatus: 'PAID',
-        previousVersion: input.expectedVersion,
-        nextVersion: input.expectedVersion + 1,
-      });
-      const paymentEvent = await appendOrderOutboxEvent(tx, {
-        tenantId: context.tenantId,
-        storeId: context.storeId,
-        orderId: order.id,
-        auditLogId: paymentAuditId,
-        eventType: 'PAYMENT_UPDATED',
-        orderNumber: order.orderNumber,
-        status: targetStatus,
-        paymentStatus: 'PAID',
-        aggregateVersion: input.expectedVersion + 1,
-        occurredAt: changedAt,
-      });
-      outboxEventIds.push(paymentEvent.id);
-    }
-
-    return {
-      orderId: order.id,
-      storeId: order.storeId,
-      status: targetStatus,
-      paymentStatus: nextPaymentStatus,
-      version: input.expectedVersion + 1,
-      statusChangedAt: changedAt,
-      paymentUpdated: confirmPaymentOnCompletion,
-      outboxEventIds,
-    };
-  });
+export function acceptOrderInTransaction(
+  tx: Prisma.TransactionClient,
+  context: OrderMutationContext,
+  input: OrderVersionInput,
+): Promise<OrderStatusMutationResult> {
+  return transitionOrderInTransaction(tx, context, input, 'CONFIRMED');
 }
 
 export function acceptOrder(

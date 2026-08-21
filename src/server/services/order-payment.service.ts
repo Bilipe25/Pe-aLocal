@@ -300,16 +300,25 @@ export async function confirmManualPayment(
   if (!context.canConfirmPayment) {
     throw new AuthorizationError('Seu perfil não possui permissão para confirmar pagamentos.');
   }
-  return getDb().$transaction(async (tx) => {
-    const order = await getScopedOrder(tx, context, input.orderId);
-    if (order.status === 'CANCELLED') {
-      throw new BusinessRuleError('Um pedido cancelado não pode ser marcado como pago.');
-    }
-    return transitionPayment(tx, order, {
-      operation: 'CONFIRM_MANUALLY',
-      expectedVersion: input.expectedVersion,
-      actor: dashboardActor(context),
-    });
+  return getDb().$transaction((tx) => confirmManualPaymentInTransaction(tx, context, input));
+}
+
+export async function confirmManualPaymentInTransaction(
+  tx: Prisma.TransactionClient,
+  context: OrderMutationContext,
+  input: OrderVersionInput,
+): Promise<OrderMutationResult> {
+  if (!context.canConfirmPayment) {
+    throw new AuthorizationError('Seu perfil não possui permissão para confirmar pagamentos.');
+  }
+  const order = await getScopedOrder(tx, context, input.orderId);
+  if (order.status === 'CANCELLED') {
+    throw new BusinessRuleError('Um pedido cancelado não pode ser marcado como pago.');
+  }
+  return transitionPayment(tx, order, {
+    operation: 'CONFIRM_MANUALLY',
+    expectedVersion: input.expectedVersion,
+    actor: dashboardActor(context),
   });
 }
 

@@ -69,6 +69,7 @@ export const Permission = {
   MANAGE_DINING_TABLES: 'MANAGE_DINING_TABLES',
   VIEW_DINING_ROOM: 'VIEW_DINING_ROOM',
   OPERATE_DINING_ROOM: 'OPERATE_DINING_ROOM',
+  OPERATE_POS: 'OPERATE_POS',
   VIEW_COUPONS: 'VIEW_COUPONS',
   MANAGE_COUPONS: 'MANAGE_COUPONS',
   VIEW_OFFERS: 'VIEW_OFFERS',
@@ -136,6 +137,7 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.MANAGE_DINING_TABLES,
     Permission.VIEW_DINING_ROOM,
     Permission.OPERATE_DINING_ROOM,
+    Permission.OPERATE_POS,
     Permission.VIEW_COUPONS,
     Permission.MANAGE_COUPONS,
     Permission.VIEW_OFFERS,
@@ -176,6 +178,7 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.MANAGE_DINING_TABLES,
     Permission.VIEW_DINING_ROOM,
     Permission.OPERATE_DINING_ROOM,
+    Permission.OPERATE_POS,
     Permission.VIEW_COUPONS,
     Permission.VIEW_OFFERS,
     Permission.MANAGE_OFFERS,
@@ -197,6 +200,7 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.CONFIRM_MANUAL_PAYMENT,
     Permission.VIEW_DINING_ROOM,
     Permission.OPERATE_DINING_ROOM,
+    Permission.OPERATE_POS,
   ]),
 };
 

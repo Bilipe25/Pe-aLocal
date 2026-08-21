@@ -167,6 +167,7 @@ export async function updateStoreEntitlement(
             orderPrintingEnabled: current.orderPrintingEnabled,
             dineInQrEnabled: current.dineInQrEnabled,
             combosPromotionsEnabled: current.combosPromotionsEnabled,
+            posEnabled: current.posEnabled,
           },
           next: {
             ...parsed.data,

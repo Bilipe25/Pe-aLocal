@@ -63,6 +63,12 @@ enum OrderModality {
   DINE_IN
 }
 
+enum OrderOrigin {
+  STOREFRONT
+  DINE_IN_QR
+  POS
+}
+
 enum PaymentMethodType {
   PIX
   CASH
@@ -436,6 +442,7 @@ model User {
   scheduleExceptionsCreated StoreScheduleException[]      @relation("StoreScheduleExceptionCreatedBy")
   slugRedirectsCreated      StoreSlugRedirect[]           @relation("StoreSlugRedirectCreatedBy")
   ordersCancelled           Order[]                       @relation("OrderCancelledBy")
+  ordersCreated             Order[]                       @relation("OrderCreatedBy")
   orderStatusChanges        OrderStatusHistory[]          @relation("OrderStatusChangedBy")
   orderInternalNotes        OrderInternalNote[]           @relation("OrderInternalNoteAuthor")
   paymentStatusChanges      PaymentStatusHistory[]        @relation("PaymentStatusChangedBy")
@@ -830,6 +837,7 @@ model StoreEntitlement {
   orderPrintingEnabled           Boolean   @default(false)
   dineInQrEnabled                Boolean   @default(false)
   combosPromotionsEnabled        Boolean   @default(false)
+  posEnabled                     Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1627,21 +1635,23 @@ model StoreOrderCounter {
 }
 
 model Order {
-  id                     String    @id @default(uuid())
+  id                     String       @id @default(uuid())
   tenantId               String
   storeId                String
   customerId             String?
-  orderNumber            Int       @default(0)
+  createdById            String?
+  origin                 OrderOrigin?
+  orderNumber            Int          @default(0)
   idempotencyKey         String
   idempotencyFingerprint String?
-  quoteFingerprint       String?   @db.VarChar(64)
-  publicToken            String    @unique @default(uuid())
-  publicTokenExpiresAt   DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
-  paymentReportToken     String?   @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  paymentReportExpiresAt DateTime? @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
+  quoteFingerprint       String?      @db.VarChar(64)
+  publicToken            String       @unique @default(uuid())
+  publicTokenExpiresAt   DateTime     @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
+  paymentReportToken     String?      @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  paymentReportExpiresAt DateTime?    @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
   // Dados do cliente (snapshot)
-  customerName            String
+  customerName            String?
   customerPhone           String?
   customerPhoneNormalized String?
 
@@ -1706,6 +1716,7 @@ model Order {
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store              Store               @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   cancelledBy        User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   diningTable        StoreDiningTable?   @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   diningTableSession DiningTableSession? @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
@@ -1739,6 +1750,7 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([customerId])
+  @@index([createdById, createdAt])
   @@index([diningTableId])
   @@index([diningTableSessionId])
   @@index([tenantId, storeId, diningTableSessionId, createdAt, id])
@@ -1751,6 +1763,7 @@ model Order {
   @@index([storeId, paymentStatus, createdAt, id])
   @@index([storeId, status, statusChangedAt, id])
   @@index([storeId, customerPhoneNormalized, createdAt, id])
+  @@index([storeId, origin, createdAt, id])
   @@map("orders")
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { projectStoreWebPushDispatch } from '@/server/services/store-web-push-dispatch.service';
 
-function database(eventType = 'ORDER_CREATED', status = 'PENDING') {
+function database(eventType = 'ORDER_CREATED', status = 'PENDING', origin: 'POS' | null = null) {
   const orderId = '00000000-0000-4000-8000-000000000001';
   const transaction = {
     storeWebPushDispatch: {
@@ -47,6 +47,7 @@ function database(eventType = 'ORDER_CREATED', status = 'PENDING') {
           version: 0,
           occurredAt: '2026-08-10T12:00:00.000Z',
         },
+        order: { origin },
       }),
     },
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) =>
@@ -78,5 +79,14 @@ describe('projeÃ§Ã£o Merchant Web Push', () => {
       projected: false,
       reason: 'ineligible',
     });
+  });
+
+  it('não notifica a própria equipe por push quando o pedido nasceu no PDV', async () => {
+    const { db, transaction } = database('ORDER_CREATED', 'PENDING', 'POS');
+    expect(await projectStoreWebPushDispatch(db as never, 'event-1')).toEqual({
+      projected: false,
+      reason: 'ineligible',
+    });
+    expect(transaction.storeWebPushDelivery.createMany).not.toHaveBeenCalled();
   });
 });
