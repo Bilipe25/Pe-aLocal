@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   getOrdersCredential: vi.fn(),
   markReauthRequired: vi.fn(),
   db: {
+    order: {
+      findFirst: vi.fn(),
+    },
     mercadoPagoPayment: {
       findUnique: vi.fn(),
       updateMany: vi.fn(),
@@ -75,7 +78,8 @@ const localCreation = {
   qrCode: null,
   ticketUrl: null,
   expiresAt: null,
-  order: { total: 1234 },
+  order: { total: 1234, status: 'AWAITING_PAYMENT', paymentStatus: 'PENDING' },
+  payment: { status: 'PENDING', provider: 'MERCADO_PAGO' },
   connection: { providerUserId: '321' },
 };
 
@@ -108,9 +112,32 @@ beforeEach(() => {
   });
   mocks.decryptCredential.mockResolvedValue('payer@example.test');
   mocks.db.mercadoPagoPayment.updateMany.mockResolvedValue({ count: 1 });
+  mocks.db.order.findFirst.mockResolvedValue({ id: localCreation.orderId });
 });
 
 describe('criação idempotente do Pix Mercado Pago', () => {
+  it('não cria cobrança quando o pedido já saiu do estado aguardando pagamento', async () => {
+    mocks.db.mercadoPagoPayment.findUnique.mockResolvedValue({
+      ...localCreation,
+      order: { ...localCreation.order, status: 'CANCELLED', paymentStatus: 'CANCELLED' },
+      payment: { ...localCreation.payment, status: 'CANCELLED' },
+    });
+
+    await expect(ensureMercadoPagoPixCreated(localCreation.id)).resolves.toBeNull();
+
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+    expect(mocks.getOrdersCredential).not.toHaveBeenCalled();
+  });
+
+  it('revalida o estado imediatamente antes do POST ao provedor', async () => {
+    mocks.db.mercadoPagoPayment.findUnique.mockResolvedValue(localCreation);
+    mocks.db.order.findFirst.mockResolvedValue(null);
+
+    await expect(ensureMercadoPagoPixCreated(localCreation.id)).resolves.toBeNull();
+
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+  });
+
   it('em 409 pesquisa a external_reference e não repete o POST', async () => {
     mocks.db.mercadoPagoPayment.findUnique.mockResolvedValue(localCreation);
     mocks.createOrder.mockRejectedValue(

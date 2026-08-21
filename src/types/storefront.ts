@@ -139,6 +139,19 @@ export interface PublicStorefrontComboComponentDto {
   product: PublicStorefrontProductDetailDto;
 }
 
+export interface PublicStorefrontFlexibleComboChoiceDto {
+  choiceId: string;
+  priceDelta: number;
+  product: PublicStorefrontProductDetailDto;
+}
+
+export interface PublicStorefrontFlexibleComboGroupDto {
+  groupId: string;
+  name: string;
+  quantity: number;
+  choices: PublicStorefrontFlexibleComboChoiceDto[];
+}
+
 export type PublicStorefrontOfferDto =
   | {
       kind: 'COMBO';
@@ -161,6 +174,19 @@ export type PublicStorefrontOfferDto =
       offerPrice: number;
       savings: number;
       product: PublicStorefrontProductSummaryDto;
+    }
+  | {
+      kind: 'FLEXIBLE_COMBO';
+      id: string;
+      version: number;
+      name: string;
+      description: string | null;
+      regularPrice: number;
+      offerPrice: number;
+      savings: number;
+      imageUrl: string | null;
+      imageAssetId: string | null;
+      groups: PublicStorefrontFlexibleComboGroupDto[];
     };
 
 export interface PublicStorefrontBannerDto {
@@ -232,7 +258,14 @@ export interface CheckoutQuoteOfferGroupDto {
   }>;
 }
 
-export type CheckoutQuoteAdjustmentType = 'COMBO' | 'PRODUCT_PROMOTION' | 'COUPON';
+export type CheckoutQuoteAdjustmentType =
+  | 'COMBO'
+  | 'PRODUCT_PROMOTION'
+  | 'QUANTITY_PROMOTION'
+  | 'BOGO'
+  | 'CART_DISCOUNT'
+  | 'FREE_DELIVERY'
+  | 'COUPON';
 
 export interface CheckoutQuoteAdjustmentDto {
   type: CheckoutQuoteAdjustmentType;

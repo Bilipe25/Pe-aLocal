@@ -225,12 +225,45 @@ enum CouponType {
 
 enum OrderOfferType {
   COMBO
+  FLEXIBLE_COMBO
 }
 
 enum OrderPriceAdjustmentType {
   COMBO
   PRODUCT_PROMOTION
+  QUANTITY_PROMOTION
+  BOGO
+  CART_DISCOUNT
+  FREE_DELIVERY
   COUPON
+}
+
+enum StoreOfferKind {
+  COMBO_FIXED
+  COMBO_FLEXIBLE
+  PRODUCT_FIXED_PRICE
+  QUANTITY_FIXED_PRICE
+  BOGO
+  CART_FIXED_DISCOUNT
+  FREE_DELIVERY
+}
+
+enum StoreOfferModality {
+  DELIVERY
+  PICKUP
+  DINE_IN
+}
+
+enum StoreOfferDiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+enum StoreOfferUsageStatus {
+  RESERVED
+  CONSUMED
+  RELEASED
+  EXPIRED
 }
 
 enum CustomerAddressLabel {
@@ -995,13 +1028,14 @@ model Product {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category     Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  imageAsset   StoreAsset?          @relation("ProductImageAsset", fields: [imageAssetId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
-  optionGroups ProductOptionGroup[]
-  comboItems   StoreComboItem[]
-  promotions  StoreProductPromotion[]
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category          Category                @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  imageAsset        StoreAsset?             @relation("ProductImageAsset", fields: [imageAssetId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  optionGroups      ProductOptionGroup[]
+  comboItems        StoreComboItem[]
+  promotions        StoreProductPromotion[]
+  offerComboChoices StoreOfferComboChoice[]
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
@@ -1142,6 +1176,190 @@ model StoreProductPromotion {
   @@index([tenantId, storeId, productId, isActive, archivedAt])
   @@index([storeId, updatedAt])
   @@map("store_product_promotions")
+}
+
+// Modelo canônico V2. As tabelas V1 permanecem durante a janela de rollback.
+model StoreOffer {
+  id                      String               @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  kind                    StoreOfferKind
+  name                    String               @db.VarChar(120)
+  description             String?              @db.VarChar(500)
+  isActive                Boolean              @default(true)
+  sortOrder               Int                  @default(0)
+  version                 Int                  @default(0)
+  modalities              StoreOfferModality[] @default([])
+  startsOn                DateTime?            @db.Date
+  endsOnExclusive         DateTime?            @db.Date
+  weekdays                DayOfWeek[]          @default([])
+  startMinute             Int?
+  endMinuteExclusive      Int?
+  maxTotalUses            Int?
+  maxUsesPerCustomer      Int?
+  maxApplicationsPerOrder Int                  @default(1)
+  archivedAt              DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  combo         StoreOfferCombo?
+  productPrice  StoreOfferProductPrice?
+  quantityPrice StoreOfferQuantityPrice?
+  bogo          StoreOfferBogo?
+  cartDiscount  StoreOfferCartDiscount?
+  freeDelivery  StoreOfferFreeDelivery?
+  usages        StoreOfferUsage[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, isActive, archivedAt, sortOrder, id])
+  @@index([tenantId, storeId, kind, updatedAt, id])
+  @@map("store_offers")
+}
+
+model StoreOfferCombo {
+  offerId    String @id
+  tenantId   String
+  storeId    String
+  fixedPrice Int
+
+  offer  StoreOffer             @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  groups StoreOfferComboGroup[]
+
+  @@unique([offerId, tenantId, storeId])
+  @@map("store_offer_combos")
+}
+
+model StoreOfferComboGroup {
+  id       String @id @default(uuid())
+  offerId  String
+  tenantId String
+  storeId  String
+  name     String @db.VarChar(80)
+  quantity Int    @default(1)
+  position Int    @default(0)
+
+  combo   StoreOfferCombo         @relation(fields: [offerId, tenantId, storeId], references: [offerId, tenantId, storeId], onDelete: Cascade)
+  choices StoreOfferComboChoice[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([offerId, position])
+  @@index([offerId, position, id])
+  @@map("store_offer_combo_groups")
+}
+
+model StoreOfferComboChoice {
+  id         String @id @default(uuid())
+  groupId    String
+  tenantId   String
+  storeId    String
+  productId  String
+  priceDelta Int    @default(0)
+  position   Int    @default(0)
+
+  group   StoreOfferComboGroup @relation(fields: [groupId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  product Product              @relation(fields: [productId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([groupId, productId])
+  @@index([groupId, position, id])
+  @@index([productId])
+  @@map("store_offer_combo_choices")
+}
+
+model StoreOfferProductPrice {
+  offerId    String @id
+  tenantId   String
+  storeId    String
+  productId  String
+  fixedPrice Int
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, tenantId, storeId])
+  @@index([productId])
+  @@map("store_offer_product_prices")
+}
+
+model StoreOfferQuantityPrice {
+  offerId          String @id
+  tenantId         String
+  storeId          String
+  productId        String
+  requiredQuantity Int
+  groupFixedPrice  Int
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, tenantId, storeId])
+  @@index([productId])
+  @@map("store_offer_quantity_prices")
+}
+
+model StoreOfferBogo {
+  offerId     String @id
+  tenantId    String
+  storeId     String
+  productId   String
+  buyQuantity Int
+  getQuantity Int
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, tenantId, storeId])
+  @@index([productId])
+  @@map("store_offer_bogos")
+}
+
+model StoreOfferCartDiscount {
+  offerId      String                 @id
+  tenantId     String
+  storeId      String
+  discountType StoreOfferDiscountType
+  value        Int
+  minSubtotal  Int                    @default(0)
+  maxDiscount  Int?
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, tenantId, storeId])
+  @@map("store_offer_cart_discounts")
+}
+
+model StoreOfferFreeDelivery {
+  offerId     String @id
+  tenantId    String
+  storeId     String
+  minSubtotal Int    @default(0)
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, tenantId, storeId])
+  @@map("store_offer_free_deliveries")
+}
+
+model StoreOfferUsage {
+  id               String                @id @default(uuid())
+  tenantId         String
+  storeId          String
+  offerId          String
+  orderId          String
+  customerId       String?
+  status           StoreOfferUsageStatus @default(RESERVED)
+  applicationCount Int                   @default(1)
+  discountAmount   Int
+  expiresAt        DateTime?
+  consumedAt       DateTime?
+  releasedAt       DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  offer StoreOffer @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([offerId, orderId])
+  @@index([tenantId, storeId, status, expiresAt])
+  @@index([offerId, status, createdAt])
+  @@index([customerId, offerId, status])
+  @@index([orderId])
+  @@map("store_offer_usages")
 }
 
 // =============================================================================
@@ -1555,11 +1773,11 @@ model OrderInternalNote {
 }
 
 model OrderItem {
-  id       String @id @default(uuid())
-  orderId  String
-  offerGroupId String?
+  id                     String  @id @default(uuid())
+  orderId                String
+  offerGroupId           String?
   offerComponentPosition Int?
-  position Int    @default(0)
+  position               Int     @default(0)
 
   // Snapshot do produto no momento do pedido
   productId    String
@@ -1572,10 +1790,11 @@ model OrderItem {
   imageAssetId String? // Snapshot do StoreAsset no momento da compra
 
   order            Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  offerGroup       OrderOfferGroup?       @relation(fields: [offerGroupId], references: [id], onDelete: SetNull)
+  offerGroup       OrderOfferGroup?       @relation(fields: [offerGroupId, orderId], references: [id, orderId], onDelete: Restrict)
   options          OrderItemOption[]
   priceAdjustments OrderPriceAdjustment[]
 
+  @@unique([id, orderId])
   @@index([orderId, position, id])
   @@index([offerGroupId, offerComponentPosition, id])
   @@index([productId])
@@ -1606,31 +1825,32 @@ model OrderOfferGroup {
   priceAdjustments OrderPriceAdjustment[]
 
   @@unique([id, tenantId, storeId])
+  @@unique([id, orderId])
   @@index([orderId, position, id])
   @@index([tenantId, storeId, offerType, createdAt])
   @@map("order_offer_groups")
 }
 
 model OrderPriceAdjustment {
-  id                  String                   @id @default(uuid())
-  tenantId            String
-  storeId             String
-  orderId             String
-  adjustmentType      OrderPriceAdjustmentType
-  sourceIdSnapshot    String?
-  sourceVersion       Int?
-  labelSnapshot       String                   @db.VarChar(120)
-  amount              Int
-  orderItemId         String?
-  orderOfferGroupId   String?
-  position            Int                      @default(0)
-  createdAt           DateTime                 @default(now())
+  id                String                   @id @default(uuid())
+  tenantId          String
+  storeId           String
+  orderId           String
+  adjustmentType    OrderPriceAdjustmentType
+  sourceIdSnapshot  String?
+  sourceVersion     Int?
+  labelSnapshot     String                   @db.VarChar(120)
+  amount            Int
+  orderItemId       String?
+  orderOfferGroupId String?
+  position          Int                      @default(0)
+  createdAt         DateTime                 @default(now())
 
   tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store      Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   order      Order            @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
-  orderItem  OrderItem?       @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
-  offerGroup OrderOfferGroup? @relation(fields: [orderOfferGroupId], references: [id], onDelete: SetNull)
+  orderItem  OrderItem?       @relation(fields: [orderItemId, orderId], references: [id, orderId], onDelete: Restrict)
+  offerGroup OrderOfferGroup? @relation(fields: [orderOfferGroupId, orderId], references: [id, orderId], onDelete: Restrict)
 
   @@index([orderId, position, id])
   @@index([orderItemId])
