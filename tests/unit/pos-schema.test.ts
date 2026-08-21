@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { posOrderSchema, posQuoteSchema } from '@/schemas/pos';
+import {
+  posManualDiscountSchema,
+  posOrderSchema,
+  posQuoteSchema,
+  savePosDraftSchema,
+} from '@/schemas/pos';
 
 const item = {
   lineId: '20000000-0000-4000-8000-000000000001',
@@ -98,5 +103,47 @@ describe('contrato do PDV', () => {
 
     expect(posOrderSchema.safeParse({ ...delivery, paymentMethod: 'CASH' }).success).toBe(false);
     expect(posOrderSchema.safeParse({ ...delivery, paymentMethod: 'PIX' }).success).toBe(true);
+  });
+
+  it('valida desconto manual em centavos ou basis points e exige motivo Outro', () => {
+    expect(
+      posManualDiscountSchema.safeParse({
+        mode: 'PERCENTAGE',
+        value: 1_250,
+        reasonCode: 'COURTESY',
+      }).success,
+    ).toBe(true);
+    expect(
+      posManualDiscountSchema.safeParse({
+        mode: 'PERCENTAGE',
+        value: 10_001,
+        reasonCode: 'COURTESY',
+      }).success,
+    ).toBe(false);
+    expect(
+      posManualDiscountSchema.safeParse({
+        mode: 'FIXED',
+        value: 500,
+        reasonCode: 'OTHER',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('aceita hold idempotente com id escolhido pelo cliente e exige versão só na edição', () => {
+    const draftId = '4da03571-bffd-45ef-8c44-20686c487838';
+    const intent = {
+      modality: 'PICKUP',
+      items: [item],
+      customerName: '',
+      customerPhone: '',
+      notes: '',
+      paidNow: false,
+      saveCustomerData: false,
+    };
+    expect(savePosDraftSchema.safeParse({ draftId, intent }).success).toBe(true);
+    expect(savePosDraftSchema.safeParse({ expectedVersion: 0, intent }).success).toBe(false);
+    expect(savePosDraftSchema.safeParse({ draftId, expectedVersion: 0, intent }).success).toBe(
+      true,
+    );
   });
 });

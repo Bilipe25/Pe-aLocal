@@ -39,6 +39,7 @@ export function createPosOrderFingerprint(
       save: input.saveCustomerData,
     },
     diningTableId: resolved.diningTableId,
+    posTerminalId: input.posTerminalId ?? null,
     addressId: resolved.addressId,
     address: input.deliveryAddress ?? null,
     items: input.items.map((item) =>
@@ -64,6 +65,7 @@ export function createPosOrderFingerprint(
           },
     ),
     couponCode: input.couponCode ?? null,
+    manualDiscount: input.manualDiscount ?? null,
     payment: {
       method: input.paymentMethod,
       paidNow: input.paidNow,

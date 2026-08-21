@@ -59,6 +59,7 @@ vi.mock('@/server/database/client', () => ({
 }));
 vi.mock('@/server/services/checkout-quote.service', () => ({
   calculateCheckoutQuote: mocks.calculateCheckoutQuote,
+  applyAuthorizedPosManualDiscount: (quote: unknown) => quote,
   toPublicCheckoutQuote: mocks.toPublicCheckoutQuote,
 }));
 vi.mock('@/server/services/order-audit.service', () => ({

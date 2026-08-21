@@ -18,6 +18,7 @@ import {
   type CheckoutQuoteInput,
   type DineInCheckoutQuoteInput,
 } from '@/schemas/checkout';
+import type { PosManualDiscountInput } from '@/schemas/pos';
 import { getDb } from '@/server/database/client';
 import { CheckoutError, DomainError } from '@/server/errors';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
@@ -63,6 +64,7 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   estimatedMaxMinutes: number;
   automaticDiscount: number;
   couponDiscount: number;
+  manualDiscount: number;
   adjustments: CheckoutQuoteAdjustmentDto[];
   offerGroups: CheckoutQuoteOfferGroupDto[];
 }
@@ -108,6 +110,7 @@ export function assertQuoteFinancialInvariants(quote: {
   subtotal: number;
   automaticDiscount: number;
   couponDiscount: number;
+  manualDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;
@@ -123,6 +126,88 @@ export function assertQuoteFinancialInvariants(quote: {
       'Não foi possível validar os totais do pedido. Atualize o carrinho e tente novamente.',
     );
   }
+}
+
+function calculatePercentageDiscount(eligibleBase: number, basisPoints: number): number {
+  const value = Math.round((eligibleBase * basisPoints) / 10_000);
+  if (!Number.isSafeInteger(value)) {
+    throw new CheckoutError('CART_INVALID', 'Não foi possível calcular o desconto informado.');
+  }
+  return value;
+}
+
+/**
+ * Etapa autorizada do pricing do PDV. A ordem de stacking é:
+ * ofertas automáticas -> cupom -> desconto manual -> frete.
+ */
+export function applyAuthorizedPosManualDiscount(
+  quote: ResolvedCheckoutQuote,
+  input: PosManualDiscountInput | undefined,
+): ResolvedCheckoutQuote {
+  if (!input) return quote;
+
+  const eligibleBase = quote.subtotal - quote.automaticDiscount - quote.couponDiscount;
+  if (!Number.isSafeInteger(eligibleBase) || eligibleBase <= 0) {
+    throw new CheckoutError(
+      'CART_INVALID',
+      'Não há valor de mercadorias elegível para desconto manual.',
+      422,
+    );
+  }
+  const amount =
+    input.mode === 'FIXED' ? input.value : calculatePercentageDiscount(eligibleBase, input.value);
+  if (amount <= 0 || amount > eligibleBase) {
+    throw new CheckoutError(
+      'CART_INVALID',
+      'O desconto manual não pode exceder o valor elegível das mercadorias.',
+      422,
+    );
+  }
+
+  const adjustments: CheckoutQuoteAdjustmentDto[] = [
+    ...quote.adjustments,
+    {
+      type: 'MANUAL_DISCOUNT',
+      sourceId: null,
+      sourceVersion: null,
+      label: 'Desconto manual',
+      amount,
+    },
+  ];
+  const discount = safeAdd(quote.discount, amount);
+  const total = quote.total - amount;
+  assertQuoteFinancialInvariants({
+    subtotal: quote.subtotal,
+    automaticDiscount: quote.automaticDiscount,
+    couponDiscount: quote.couponDiscount,
+    manualDiscount: amount,
+    discount,
+    deliveryFee: quote.deliveryFee,
+    total,
+    adjustments,
+    offerGroups: quote.offerGroups,
+  });
+  const quoteFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        baseQuoteFingerprint: quote.quoteFingerprint,
+        manualDiscount: input,
+        eligibleBase,
+        amount,
+        discount,
+        total,
+      }),
+    )
+    .digest('hex');
+
+  return {
+    ...quote,
+    quoteFingerprint,
+    adjustments,
+    manualDiscount: amount,
+    discount,
+    total,
+  };
 }
 
 const DEFAULT_ESTIMATED_MIN_MINUTES = 30;
@@ -1324,6 +1409,7 @@ export async function calculateCheckoutQuote(
     subtotal,
     automaticDiscount,
     couponDiscount,
+    manualDiscount: 0,
     discount,
     deliveryFee,
     total,
@@ -1364,6 +1450,7 @@ export async function calculateCheckoutQuote(
     subtotal,
     automaticDiscount,
     couponDiscount,
+    manualDiscount: 0,
     discount,
     deliveryFee,
     total,

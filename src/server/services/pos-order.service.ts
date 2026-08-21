@@ -10,25 +10,14 @@ import { createOrder } from '@/server/repositories/order.repository';
 import { getPublicDeliveryZones, getPublicOffers } from '@/server/queries/public-store';
 import {
   calculateCheckoutQuote,
+  applyAuthorizedPosManualDiscount,
   toPublicCheckoutQuote,
   type ResolvedSavedCheckoutAddress,
 } from '@/server/services/checkout-quote.service';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
-import { requireActiveStoreContext } from '@/server/services/store-context.service';
-
-type PosContext = Awaited<ReturnType<typeof requireActiveStoreContext>>;
-
-function assertPosEntitlement(context: PosContext) {
-  if (!context.store.entitlement?.posEnabled) {
-    throw new AuthorizationError('O PDV não está habilitado para esta loja.');
-  }
-}
-
-async function requirePosContext() {
-  const context = await requireActiveStoreContext(Permission.OPERATE_POS);
-  assertPosEntitlement(context);
-  return context;
-}
+import { requirePosContext, type PosContext } from '@/server/services/pos-context.service';
+import { rebuildPosOrderInputFromDraft } from '@/server/services/pos-draft.service';
+import { getPosOperationalOverview } from '@/server/services/pos-operations.service';
 
 async function resolveQuoteAddress(context: PosContext, input: PosQuoteInput) {
   const addressId = input.deliveryAddress?.customerAddressId;
@@ -104,6 +93,12 @@ async function resolveQuoteTable(context: PosContext, input: PosQuoteInput) {
 
 export async function calculatePosQuote(input: PosQuoteInput) {
   const context = await requirePosContext();
+  if (
+    input.manualDiscount &&
+    !hasTenantPermission(context.session.tenantRole, Permission.APPLY_POS_MANUAL_DISCOUNT)
+  ) {
+    throw new AuthorizationError('Seu perfil não pode aplicar desconto manual.');
+  }
   const [savedAddress, diningTable, availability] = await Promise.all([
     resolveQuoteAddress(context, input),
     resolveQuoteTable(context, input),
@@ -128,12 +123,13 @@ export async function calculatePosQuote(input: PosQuoteInput) {
               }
             : undefined,
         };
-  const quote = await calculateCheckoutQuote(context.store.slug, quoteInput, {
+  const baseQuote = await calculateCheckoutQuote(context.store.slug, quoteInput, {
     channel: 'POS',
     savedAddress,
     diningTable,
   });
-  if (!quote) throw new BusinessRuleError('A loja ativa não está disponível.');
+  if (!baseQuote) throw new BusinessRuleError('A loja ativa não está disponível.');
+  const quote = applyAuthorizedPosManualDiscount(baseQuote, input.manualDiscount);
   return {
     quote: toPublicCheckoutQuote(quote),
     availabilityWarning:
@@ -145,20 +141,31 @@ export async function calculatePosQuote(input: PosQuoteInput) {
 
 export async function createPosOrder(input: PosOrderInput) {
   const context = await requirePosContext();
+  const orderInput = await rebuildPosOrderInputFromDraft(context, input);
   if (
-    input.modality === 'DINE_IN' &&
+    orderInput.manualDiscount &&
+    !hasTenantPermission(context.session.tenantRole, Permission.APPLY_POS_MANUAL_DISCOUNT)
+  ) {
+    throw new AuthorizationError('Seu perfil não pode aplicar desconto manual.');
+  }
+  if (
+    orderInput.modality === 'DINE_IN' &&
     (!context.store.entitlement?.dineInQrEnabled ||
       !hasTenantPermission(context.session.tenantRole, Permission.OPERATE_DINING_ROOM))
   ) {
     throw new AuthorizationError('Seu perfil não pode criar pedidos para mesas.');
   }
   if (
-    input.paidNow &&
+    orderInput.paidNow &&
     !hasTenantPermission(context.session.tenantRole, Permission.CONFIRM_MANUAL_PAYMENT)
   ) {
     throw new AuthorizationError('Seu perfil não pode confirmar pagamentos manuais.');
   }
-  if (input.modality === 'DELIVERY' && input.paidNow && input.paymentMethod !== 'PIX') {
+  if (
+    orderInput.modality === 'DELIVERY' &&
+    orderInput.paidNow &&
+    orderInput.paymentMethod !== 'PIX'
+  ) {
     throw new BusinessRuleError(
       'No Delivery, somente o Pix manual pode ser marcado como pago agora.',
     );
@@ -167,12 +174,12 @@ export async function createPosOrder(input: PosOrderInput) {
   console.info('[POS_ORDER_CREATE_STARTED]', {
     storeId: context.store.id,
     userId: context.session.userId,
-    modality: input.modality,
-    itemCount: input.items.length,
+    modality: orderInput.modality,
+    itemCount: orderInput.items.length,
   });
   try {
     const result = await createOrder({
-      input,
+      input: orderInput,
       pos: {
         tenantId: context.session.tenantId,
         storeId: context.store.id,
@@ -260,7 +267,7 @@ export async function lookupPosCustomerByPhone(phone: string) {
 
 export async function getPosWorkspace() {
   const context = await requirePosContext();
-  const [categories, products, offers, deliveryZones, tables, settings, availability] =
+  const [categories, products, offers, deliveryZones, tables, settings, availability, operations] =
     await Promise.all([
       getDb().category.findMany({
         where: {
@@ -345,6 +352,7 @@ export async function getPosWorkspace() {
         },
       }),
       getEffectiveStoreAvailabilityForTenant(context.session.tenantId, context.store.id),
+      getPosOperationalOverview(context),
     ]);
 
   return {
@@ -361,6 +369,18 @@ export async function getPosWorkspace() {
       canUseDiningRoom: Boolean(
         context.store.entitlement?.dineInQrEnabled &&
         hasTenantPermission(context.session.tenantRole, Permission.OPERATE_DINING_ROOM),
+      ),
+      canManagePosShortcuts: hasTenantPermission(
+        context.session.tenantRole,
+        Permission.MANAGE_POS_SHORTCUTS,
+      ),
+      canManagePosTerminals: hasTenantPermission(
+        context.session.tenantRole,
+        Permission.MANAGE_POS_TERMINALS,
+      ),
+      canApplyManualDiscount: hasTenantPermission(
+        context.session.tenantRole,
+        Permission.APPLY_POS_MANUAL_DISCOUNT,
       ),
     },
     availability: {
@@ -384,5 +404,6 @@ export async function getPosWorkspace() {
       session: table.sessions[0] ?? null,
     })),
     settings,
+    operations,
   };
 }

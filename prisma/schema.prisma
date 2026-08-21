@@ -242,6 +242,26 @@ enum OrderPriceAdjustmentType {
   CART_DISCOUNT
   FREE_DELIVERY
   COUPON
+  MANUAL_DISCOUNT
+}
+
+enum PosDraftStatus {
+  OPEN
+  CONVERTED
+  DISCARDED
+  EXPIRED
+}
+
+enum PosManualDiscountMode {
+  FIXED
+  PERCENTAGE
+}
+
+enum PosManualDiscountReasonCode {
+  COURTESY
+  SERVICE_RECOVERY
+  NEGOTIATED
+  OTHER
 }
 
 enum StoreOfferKind {
@@ -366,6 +386,7 @@ enum AuditAction {
   DINING_SESSION_CLOSED
   DINING_SESSION_TRANSFERRED
   DINING_SERVICE_REQUEST_RESOLVED
+  POS_MANUAL_DISCOUNT_APPLIED
 }
 
 enum CustomizationRevisionAction {
@@ -449,6 +470,9 @@ model User {
   paymentOAuthAttempts      PaymentProviderOAuthAttempt[] @relation("PaymentProviderOAuthAttemptInitiatedBy")
   diningSessionsClosed      DiningTableSession[]          @relation("DiningTableSessionClosedBy")
   diningRequestsResolved    DiningTableServiceRequest[]   @relation("DiningTableServiceRequestResolvedBy")
+  posDraftsCreated          PosDraft[]                    @relation("PosDraftCreatedBy")
+  posDiscountsApplied       PosManualDiscountLedger[]     @relation("PosManualDiscountAppliedBy")
+  posDiscountsAuthorized    PosManualDiscountLedger[]     @relation("PosManualDiscountAuthorizedBy")
 
   @@index([email])
   @@map("users")
@@ -496,6 +520,7 @@ model Tenant {
   storeCombos                   StoreCombo[]
   storeComboItems               StoreComboItem[]
   storeProductPromotions        StoreProductPromotion[]
+  storeOffers                   StoreOffer[]
   orderOfferGroups              OrderOfferGroup[]
   orderPriceAdjustments         OrderPriceAdjustment[]
   auditLogs                     AuditLog[]
@@ -517,6 +542,10 @@ model Tenant {
   diningTables                  StoreDiningTable[]
   diningTableSessions           DiningTableSession[]
   diningTableServiceRequests    DiningTableServiceRequest[]
+  posDrafts                     PosDraft[]
+  posTerminals                  StorePosTerminal[]
+  posShortcuts                  StorePosShortcut[]
+  posManualDiscounts            PosManualDiscountLedger[]
 
   @@map("tenants")
 }
@@ -581,6 +610,7 @@ model Store {
   combos                        StoreCombo[]
   comboItems                    StoreComboItem[]
   productPromotions             StoreProductPromotion[]
+  offers                        StoreOffer[]
   orderOfferGroups              OrderOfferGroup[]
   orderPriceAdjustments         OrderPriceAdjustment[]
   orders                        Order[]
@@ -608,6 +638,10 @@ model Store {
   diningTables                  StoreDiningTable[]
   diningTableSessions           DiningTableSession[]
   diningTableServiceRequests    DiningTableServiceRequest[]
+  posDrafts                     PosDraft[]
+  posTerminals                  StorePosTerminal[]
+  posShortcuts                  StorePosShortcut[]
+  posManualDiscounts            PosManualDiscountLedger[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1044,6 +1078,7 @@ model Product {
   comboItems        StoreComboItem[]
   promotions        StoreProductPromotion[]
   offerComboChoices StoreOfferComboChoice[]
+  posShortcuts      StorePosShortcut[]
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
@@ -1217,6 +1252,9 @@ model StoreOffer {
   cartDiscount  StoreOfferCartDiscount?
   freeDelivery  StoreOfferFreeDelivery?
   usages        StoreOfferUsage[]
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                    @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  posShortcuts  StorePosShortcut[]
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, isActive, archivedAt, sortOrder, id])
@@ -1634,21 +1672,97 @@ model StoreOrderCounter {
   @@map("store_order_counters")
 }
 
+model StorePosTerminal {
+  id             String   @id @default(uuid())
+  tenantId       String
+  storeId        String
+  name           String   @db.VarChar(80)
+  nameNormalized String   @db.VarChar(80)
+  isActive       Boolean  @default(true)
+  version        Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  drafts PosDraft[]
+  orders Order[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, nameNormalized])
+  @@index([tenantId, storeId, isActive, nameNormalized, id])
+  @@map("store_pos_terminals")
+}
+
+model StorePosShortcut {
+  id        String   @id @default(uuid())
+  tenantId  String
+  storeId   String
+  productId String?
+  offerId   String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store   Store       @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product Product?    @relation(fields: [productId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  offer   StoreOffer? @relation(fields: [offerId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, position])
+  @@index([tenantId, storeId, position, id])
+  @@index([productId, tenantId, storeId])
+  @@index([offerId, tenantId, storeId])
+  @@map("store_pos_shortcuts")
+}
+
+model PosDraft {
+  id                String         @id @default(uuid())
+  tenantId          String
+  storeId           String
+  createdById       String
+  terminalId        String?
+  convertedOrderId  String?        @unique
+  modality          OrderModality
+  status            PosDraftStatus @default(OPEN)
+  version           Int            @default(0)
+  payloadCiphertext String         @db.Text
+  payloadIv         String         @db.VarChar(64)
+  expiresAt         DateTime
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store          Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy      User              @relation("PosDraftCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  terminal       StorePosTerminal? @relation(fields: [terminalId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  convertedOrder Order?            @relation("PosDraftConvertedOrder", fields: [convertedOrderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status, expiresAt, updatedAt, id])
+  @@index([createdById, status, updatedAt, id])
+  @@index([terminalId, tenantId, storeId])
+  @@map("pos_drafts")
+}
+
 model Order {
-  id                     String       @id @default(uuid())
-  tenantId               String
-  storeId                String
-  customerId             String?
-  createdById            String?
-  origin                 OrderOrigin?
-  orderNumber            Int          @default(0)
-  idempotencyKey         String
-  idempotencyFingerprint String?
-  quoteFingerprint       String?      @db.VarChar(64)
-  publicToken            String       @unique @default(uuid())
-  publicTokenExpiresAt   DateTime     @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
-  paymentReportToken     String?      @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  paymentReportExpiresAt DateTime?    @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
+  id                       String       @id @default(uuid())
+  tenantId                 String
+  storeId                  String
+  customerId               String?
+  createdById              String?
+  origin                   OrderOrigin?
+  posTerminalId            String?
+  posTerminalLabelSnapshot String?      @db.VarChar(80)
+  orderNumber              Int          @default(0)
+  idempotencyKey           String
+  idempotencyFingerprint   String?
+  quoteFingerprint         String?      @db.VarChar(64)
+  publicToken              String       @unique @default(uuid())
+  publicTokenExpiresAt     DateTime     @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)"))
+  paymentReportToken       String?      @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  paymentReportExpiresAt   DateTime?    @default(dbgenerated("(CURRENT_TIMESTAMP + '7 days'::interval)"))
 
   // Dados do cliente (snapshot)
   customerName            String?
@@ -1720,6 +1834,7 @@ model Order {
   cancelledBy        User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   diningTable        StoreDiningTable?   @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   diningTableSession DiningTableSession? @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  posTerminal        StorePosTerminal?   @relation(fields: [posTerminalId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
 
   items                         OrderItem[]
   offerGroups                   OrderOfferGroup[]
@@ -1739,6 +1854,8 @@ model Order {
   operationalSlaAlerts          OrderOperationalSlaAlert[]
   mercadoPagoPayment            MercadoPagoPayment?
   orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
+  convertedPosDrafts            PosDraft[]                    @relation("PosDraftConvertedOrder")
+  posManualDiscount             PosManualDiscountLedger?
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -1764,6 +1881,7 @@ model Order {
   @@index([storeId, status, statusChangedAt, id])
   @@index([storeId, customerPhoneNormalized, createdAt, id])
   @@index([storeId, origin, createdAt, id])
+  @@index([posTerminalId, tenantId, storeId])
   @@map("orders")
 }
 
@@ -1859,17 +1977,49 @@ model OrderPriceAdjustment {
   position          Int                      @default(0)
   createdAt         DateTime                 @default(now())
 
-  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store      Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  order      Order            @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
-  orderItem  OrderItem?       @relation(fields: [orderItemId, orderId], references: [id, orderId], onDelete: Restrict)
-  offerGroup OrderOfferGroup? @relation(fields: [orderOfferGroupId, orderId], references: [id, orderId], onDelete: Restrict)
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store          Store                    @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order          Order                    @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  orderItem      OrderItem?               @relation(fields: [orderItemId, orderId], references: [id, orderId], onDelete: Restrict)
+  offerGroup     OrderOfferGroup?         @relation(fields: [orderOfferGroupId, orderId], references: [id, orderId], onDelete: Restrict)
+  manualDiscount PosManualDiscountLedger?
 
   @@index([orderId, position, id])
   @@index([orderItemId])
   @@index([orderOfferGroupId])
   @@index([tenantId, storeId, adjustmentType, createdAt])
   @@map("order_price_adjustments")
+}
+
+model PosManualDiscountLedger {
+  id             String                      @id @default(uuid())
+  tenantId       String
+  storeId        String
+  orderId        String                      @unique
+  adjustmentId   String                      @unique
+  appliedById    String
+  authorizedById String
+  mode           PosManualDiscountMode
+  requestedValue Int
+  eligibleBase   Int
+  amount         Int
+  reasonCode     PosManualDiscountReasonCode
+  reasonNote     String?                     @db.VarChar(200)
+  createdAt      DateTime                    @default(now())
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store                @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  order        Order                @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  adjustment   OrderPriceAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  appliedBy    User                 @relation("PosManualDiscountAppliedBy", fields: [appliedById], references: [id], onDelete: Restrict)
+  authorizedBy User                 @relation("PosManualDiscountAuthorizedBy", fields: [authorizedById], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([orderId, tenantId, storeId])
+  @@index([tenantId, storeId, createdAt, id])
+  @@index([appliedById, createdAt, id])
+  @@index([authorizedById, createdAt, id])
+  @@map("pos_manual_discount_ledgers")
 }
 
 model OrderItemOption {
