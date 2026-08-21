@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    orderOfferGroup: { createMany: vi.fn() },
+    orderItem: { create: vi.fn() },
+    orderPriceAdjustment: { createMany: vi.fn() },
     coupon: { findUnique: vi.fn(), update: vi.fn() },
     couponUsage: { create: vi.fn() },
     couponReservation: { create: vi.fn() },
@@ -184,6 +187,9 @@ describe('OrderRepository checkout v2', () => {
       createdAt: now,
       payment: { id: 'payment-a' },
     });
+    mocks.tx.orderOfferGroup.createMany.mockResolvedValue({ count: 1 });
+    mocks.tx.orderItem.create.mockResolvedValue({ id: 'item-a' });
+    mocks.tx.orderPriceAdjustment.createMany.mockResolvedValue({ count: 1 });
     mocks.tx.coupon.update.mockResolvedValue({ id: 'coupon-a' });
     mocks.tx.coupon.findUnique.mockResolvedValue({
       maxUsages: 100,
@@ -509,6 +515,79 @@ describe('OrderRepository checkout v2', () => {
     expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.tx.order.findUnique.mock.invocationCallOrder[0],
     );
+  });
+
+  it('persiste grupo, componentes reais e ledger de ajustes da cotação', async () => {
+    mocks.calculateCheckoutQuote.mockResolvedValueOnce({
+      ...quote,
+      automaticDiscount: 500,
+      couponDiscount: 0,
+      discount: 500,
+      total: 1500,
+      offerGroups: [
+        {
+          lineId: 'combo-line',
+          comboId: '70000000-0000-4000-8000-000000000001',
+          comboVersion: 3,
+          name: 'Combo da Casa',
+          quantity: 1,
+          regularBaseAmount: 2000,
+          offerBaseAmount: 1500,
+          discountAmount: 500,
+          components: [
+            { lineId: quote.lines[0].lineId, comboItemId: 'combo-item-a', position: 0 },
+          ],
+        },
+      ],
+      adjustments: [
+        {
+          type: 'COMBO',
+          sourceId: '70000000-0000-4000-8000-000000000001',
+          sourceVersion: 3,
+          label: 'Combo: Combo da Casa',
+          amount: 500,
+          offerGroupLineId: 'combo-line',
+        },
+      ],
+      lines: [
+        {
+          ...quote.lines[0],
+          offerGroupLineId: 'combo-line',
+          offerComponentPosition: 0,
+        },
+      ],
+    });
+
+    await createOrder(params);
+
+    expect(mocks.tx.orderOfferGroup.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          orderId: 'order-a',
+          sourceOfferVersion: 3,
+          nameSnapshot: 'Combo da Casa',
+          discountAmount: 500,
+        }),
+      ],
+    });
+    expect(mocks.tx.orderItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orderId: 'order-a',
+        offerGroupId: expect.any(String),
+        offerComponentPosition: 0,
+      }),
+    });
+    expect(mocks.tx.orderPriceAdjustment.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          adjustmentType: 'COMBO',
+          labelSnapshot: 'Combo: Combo da Casa',
+          amount: 500,
+          orderOfferGroupId: expect.any(String),
+        }),
+      ],
+    });
+    expect(mocks.tx.order.create.mock.calls[0][0].data).not.toHaveProperty('items');
   });
 
   it('persiste posição e grupo dos adicionais sem consultar o catálogo novamente', async () => {

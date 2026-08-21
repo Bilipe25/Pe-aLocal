@@ -29,6 +29,12 @@ const input: CheckoutInput = {
   ],
 };
 
+function firstProductItem(value: CheckoutInput = input) {
+  const item = value.items[0];
+  if (!item || item.kind === 'COMBO') throw new Error('Produto de teste ausente.');
+  return item;
+}
+
 function withoutVisitorPii<T extends { customerName: string; customerPhone: string }>(value: T) {
   const result: Partial<T> = { ...value };
   delete result.customerName;
@@ -43,9 +49,9 @@ describe('order idempotency fingerprint', () => {
       idempotencyKey: '65bdab05-46f3-40ed-9285-c733721d8709',
       items: [
         {
-          ...input.items[0],
+          ...firstProductItem(),
           lineId: '10000000-0000-4000-8000-000000000002',
-          optionIds: [...input.items[0].optionIds].reverse(),
+          optionIds: [...firstProductItem().optionIds].reverse(),
         },
       ],
     };
@@ -57,12 +63,12 @@ describe('order idempotency fingerprint', () => {
     const customized: CheckoutInput = {
       ...input,
       items: [
-        { ...input.items[0], notes: 'Sem cebola' },
+        { ...firstProductItem(), notes: 'Sem cebola' },
         {
-          ...input.items[0],
+          ...firstProductItem(),
           lineId: '10000000-0000-4000-8000-000000000003',
           notes: 'Com bacon',
-          optionIds: [input.items[0].optionIds[1]],
+          optionIds: [firstProductItem().optionIds[1]],
         },
       ],
     };
@@ -70,7 +76,11 @@ describe('order idempotency fingerprint', () => {
       ...customized,
       items: [...customized.items]
         .reverse()
-        .map((entry) => ({ ...entry, optionIds: [...entry.optionIds].reverse() })),
+        .map((entry) =>
+          entry.kind === 'COMBO'
+            ? entry
+            : { ...entry, optionIds: [...entry.optionIds].reverse() },
+        ),
     };
 
     expect(createOrderFingerprint(reordered)).toBe(createOrderFingerprint(customized));

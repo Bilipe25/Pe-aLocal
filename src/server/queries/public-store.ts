@@ -4,6 +4,7 @@ import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 
 import { resolvePublicCustomization } from '@/features/customization/public';
+import { isOfferScheduleActive } from '@/domain/offers/schedule';
 import { storeAssetUrl } from '@/features/assets/urls';
 import {
   isMercadoPagoEnabled,
@@ -21,6 +22,7 @@ import type {
   PublicStorefrontCategoryDto,
   PublicStorefrontCategoryImageDto,
   PublicStorefrontProductDetailDto,
+  PublicStorefrontOfferDto,
 } from '@/types/storefront';
 
 const PUBLIC_CACHE_SECONDS = 60;
@@ -30,6 +32,7 @@ const publicStoreSelect = {
   tenantId: true,
   name: true,
   slug: true,
+  timeZone: true,
   description: true,
   phone: true,
   whatsapp: true,
@@ -821,6 +824,203 @@ async function getPublicCatalogForRequest(
  * catálogo é consultado mais de uma vez no mesmo request (metadata, page, etc.).
  */
 export const getPublicCatalog = cache(getPublicCatalogForRequest);
+
+async function getPublicOfferDefinitionsFromDb(storeId: string, tenantId: string) {
+  const [combos, promotions] = await Promise.all([
+    getDb().storeCombo.findMany({
+      where: { tenantId, storeId, isActive: true, archivedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        version: true,
+        name: true,
+        description: true,
+        specialPrice: true,
+        startsOn: true,
+        endsOnExclusive: true,
+        weekdays: true,
+        startMinute: true,
+        endMinuteExclusive: true,
+        items: {
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            quantity: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                imageUrl: true,
+                imageAssetId: true,
+                basePrice: true,
+                isFeatured: true,
+                isSoldOut: true,
+                isAvailable: true,
+                archivedAt: true,
+                allowNotes: true,
+                category: { select: { isActive: true, archivedAt: true } },
+                optionGroups: {
+                  where: { isActive: true, archivedAt: null },
+                  orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+                  select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    isRequired: true,
+                    isMultiple: true,
+                    minSelections: true,
+                    maxSelections: true,
+                    options: {
+                      where: { isAvailable: true, archivedAt: null },
+                      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+                      select: { id: true, name: true, price: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    getDb().storeProductPromotion.findMany({
+      where: { tenantId, storeId, isActive: true, archivedAt: null },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        version: true,
+        promotionalPrice: true,
+        startsOn: true,
+        endsOnExclusive: true,
+        weekdays: true,
+        startMinute: true,
+        endMinuteExclusive: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            imageUrl: true,
+            imageAssetId: true,
+            basePrice: true,
+            isFeatured: true,
+            isSoldOut: true,
+            isAvailable: true,
+            archivedAt: true,
+            category: { select: { isActive: true, archivedAt: true } },
+          },
+        },
+      },
+    }),
+  ]);
+  return { combos, promotions };
+}
+
+export async function getPublicOffers(
+  storeId: string,
+  tenantId: string,
+  timeZone: string,
+  now = new Date(),
+): Promise<PublicStorefrontOfferDto[]> {
+  const entitlement = await getDb().storeEntitlement.findFirst({
+    where: { tenantId, storeId },
+    select: { combosPromotionsEnabled: true },
+  });
+  if (!entitlement?.combosPromotionsEnabled) return [];
+
+  const definitions = await unstable_cache(
+    () => getPublicOfferDefinitionsFromDb(storeId, tenantId),
+    ['public-offer-definitions', storeId, tenantId],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.offers(storeId), CACHE_TAGS.catalog(storeId)],
+    },
+  )();
+
+  const combos: PublicStorefrontOfferDto[] = definitions.combos.flatMap((combo) => {
+    if (!isOfferScheduleActive(combo, timeZone, now) || combo.items.length < 2) return [];
+    if (
+      combo.items.some(
+        (item) =>
+          !item.product.isAvailable ||
+          item.product.isSoldOut ||
+          item.product.archivedAt ||
+          !item.product.category.isActive ||
+          item.product.category.archivedAt,
+      )
+    ) return [];
+    const regularPrice = combo.items.reduce(
+      (total, item) => total + item.product.basePrice * item.quantity,
+      0,
+    );
+    if (regularPrice <= combo.specialPrice) return [];
+    const firstProduct = combo.items[0]!.product;
+    return [{
+      kind: 'COMBO' as const,
+      id: combo.id,
+      version: combo.version,
+      name: combo.name,
+      description: combo.description,
+      regularPrice,
+      offerPrice: combo.specialPrice,
+      savings: regularPrice - combo.specialPrice,
+      imageUrl: firstProduct.imageAssetId
+        ? storeAssetUrl(firstProduct.imageAssetId, 768)
+        : firstProduct.imageUrl,
+      imageAssetId: firstProduct.imageAssetId,
+      components: combo.items.map((item) => ({
+        comboItemId: item.id,
+        quantity: item.quantity,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description,
+          imageUrl: item.product.imageAssetId
+            ? storeAssetUrl(item.product.imageAssetId, 384)
+            : item.product.imageUrl,
+          imageAssetId: item.product.imageAssetId,
+          basePrice: item.product.basePrice,
+          isFeatured: item.product.isFeatured,
+          isSoldOut: item.product.isSoldOut,
+          allowNotes: item.product.allowNotes,
+          optionGroups: item.product.optionGroups,
+        },
+      })),
+    }];
+  });
+  const promotions: PublicStorefrontOfferDto[] = definitions.promotions.flatMap((promotion) => {
+    const product = promotion.product;
+    if (
+      !isOfferScheduleActive(promotion, timeZone, now) ||
+      !product.isAvailable ||
+      product.isSoldOut ||
+      product.archivedAt ||
+      !product.category.isActive ||
+      product.category.archivedAt ||
+      promotion.promotionalPrice >= product.basePrice
+    ) return [];
+    return [{
+      kind: 'PRODUCT_PROMOTION' as const,
+      id: promotion.id,
+      version: promotion.version,
+      regularPrice: product.basePrice,
+      offerPrice: promotion.promotionalPrice,
+      savings: product.basePrice - promotion.promotionalPrice,
+      product: {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        imageUrl: product.imageAssetId ? storeAssetUrl(product.imageAssetId, 384) : product.imageUrl,
+        imageAssetId: product.imageAssetId,
+        basePrice: product.basePrice,
+        isFeatured: product.isFeatured,
+        isSoldOut: product.isSoldOut,
+      },
+    }];
+  });
+  return [...combos, ...promotions];
+}
 
 async function getDeliveryZonesFromDb(storeId: string): Promise<PublicDeliveryZoneDto[]> {
   return getDb().deliveryZone.findMany({

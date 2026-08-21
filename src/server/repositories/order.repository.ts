@@ -518,6 +518,16 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       const diningSession = dineIn
         ? await getOrCreateDiningSessionForCheckout(tx, diningTable!, now)
         : null;
+      const offerGroups = quote.offerGroups ?? [];
+      const adjustments = quote.adjustments ?? [];
+      const requiresSeparatedItems =
+        offerGroups.length > 0 || adjustments.some((adjustment) => adjustment.lineId != null);
+      const offerGroupIdByLineId = new Map(
+        offerGroups.map((group) => [group.lineId, crypto.randomUUID()]),
+      );
+      const orderItemIdByLineId = new Map(
+        quote.lines.map((line) => [line.lineId, crypto.randomUUID()]),
+      );
       const order = await tx.order.create({
         data: {
           tenantId: store.tenantId,
@@ -560,30 +570,34 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           notes: input.notes || null,
           couponId: quote.couponId,
           couponCode: quote.coupon?.code ?? null,
-          items: {
-            create: quote.lines.map((item, position) => ({
-              position,
-              productId: item.productId,
-              productName: item.productName,
-              unitPrice: item.unitPrice,
-              quantity: item.quantity,
-              notes: item.notes || null,
-              itemTotal: item.itemTotal,
-              imageUrl: item.imageUrl,
-              imageAssetId: item.imageAssetId,
-              options: {
-                create: item.options.map((option) => ({
-                  position: option.position,
-                  optionId: option.id,
-                  optionName: option.name,
-                  optionPrice: option.price,
-                  groupId: option.groupId,
-                  groupName: option.groupName,
-                  groupPosition: option.groupPosition,
-                })),
-              },
-            })),
-          },
+          ...(!requiresSeparatedItems
+            ? {
+                items: {
+                  create: quote.lines.map((item, position) => ({
+                    position,
+                    productId: item.productId,
+                    productName: item.productName,
+                    unitPrice: item.unitPrice,
+                    quantity: item.quantity,
+                    notes: item.notes || null,
+                    itemTotal: item.itemTotal,
+                    imageUrl: item.imageUrl,
+                    imageAssetId: item.imageAssetId,
+                    options: {
+                      create: item.options.map((option) => ({
+                        position: option.position,
+                        optionId: option.id,
+                        optionName: option.name,
+                        optionPrice: option.price,
+                        groupId: option.groupId,
+                        groupName: option.groupName,
+                        groupPosition: option.groupPosition,
+                      })),
+                    },
+                  })),
+                },
+              }
+            : {}),
           payment: {
             create: {
               method: input.paymentMethod,
@@ -617,6 +631,79 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
+
+      if (offerGroups.length > 0) {
+        await tx.orderOfferGroup.createMany({
+          data: offerGroups.map((group, position) => ({
+            id: offerGroupIdByLineId.get(group.lineId)!,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            orderId: order.id,
+            offerType: 'COMBO',
+            sourceOfferIdSnapshot: group.comboId,
+            sourceOfferVersion: group.comboVersion,
+            nameSnapshot: group.name,
+            quantity: group.quantity,
+            position,
+            regularBaseAmount: group.regularBaseAmount,
+            offerBaseAmount: group.offerBaseAmount,
+            discountAmount: group.discountAmount,
+          })),
+        });
+      }
+      for (const [position, item] of requiresSeparatedItems ? quote.lines.entries() : []) {
+        await tx.orderItem.create({
+          data: {
+            id: orderItemIdByLineId.get(item.lineId)!,
+            orderId: order.id,
+            offerGroupId: item.offerGroupLineId
+              ? (offerGroupIdByLineId.get(item.offerGroupLineId) ?? null)
+              : null,
+            offerComponentPosition: item.offerComponentPosition ?? null,
+            position,
+            productId: item.productId,
+            productName: item.productName,
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+            notes: item.notes || null,
+            itemTotal: item.itemTotal,
+            imageUrl: item.imageUrl,
+            imageAssetId: item.imageAssetId,
+            options: {
+              create: item.options.map((option) => ({
+                position: option.position,
+                optionId: option.id,
+                optionName: option.name,
+                optionPrice: option.price,
+                groupId: option.groupId,
+                groupName: option.groupName,
+                groupPosition: option.groupPosition,
+              })),
+            },
+          },
+        });
+      }
+      if (adjustments.length > 0) {
+        await tx.orderPriceAdjustment.createMany({
+          data: adjustments.map((adjustment, position) => ({
+            tenantId: store.tenantId,
+            storeId: store.id,
+            orderId: order.id,
+            adjustmentType: adjustment.type,
+            sourceIdSnapshot: adjustment.sourceId,
+            sourceVersion: adjustment.sourceVersion,
+            labelSnapshot: adjustment.label,
+            amount: adjustment.amount,
+            orderItemId: adjustment.lineId
+              ? (orderItemIdByLineId.get(adjustment.lineId) ?? null)
+              : null,
+            orderOfferGroupId: adjustment.offerGroupLineId
+              ? (offerGroupIdByLineId.get(adjustment.offerGroupLineId) ?? null)
+              : null,
+            position,
+          })),
+        });
+      }
       if (diningSession) {
         await touchDiningSessionAfterOrder(tx, diningSession.id, now);
       }
@@ -690,7 +777,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             data: {
               couponId: quote.couponId,
               orderId: order.id,
-              discount: quote.discount,
+              discount: quote.couponDiscount ?? quote.coupon.discount,
               expiresAt: new Date(now.getTime() + 35 * 60_000),
             },
           });
@@ -703,7 +790,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             data: {
               couponId: quote.couponId,
               orderId: order.id,
-              discount: quote.discount,
+              discount: quote.couponDiscount ?? quote.coupon.discount,
             },
           });
         }

@@ -35,6 +35,7 @@ interface ProductModalProps {
   isFavorite?: boolean;
   onFavoriteToggle?: () => void;
   cartItem?: CartItem;
+  promotionalPrice?: number | null;
 }
 
 export function ProductModal({
@@ -49,6 +50,7 @@ export function ProductModal({
   isFavorite = false,
   onFavoriteToggle,
   cartItem,
+  promotionalPrice,
 }: ProductModalProps) {
   const addItem = useCartStore((state) => state.addItem);
   const updateItem = useCartStore((state) => state.updateItem);
@@ -84,7 +86,8 @@ export function ProductModal({
 
   const allSelectedOptions = Array.from(selectedOptions.values()).flat();
   const optionsPrice = allSelectedOptions.reduce((sum, option) => sum + option.price, 0);
-  const unitPrice = resolvedProduct.basePrice + optionsPrice;
+  const effectiveBasePrice = promotionalPrice ?? resolvedProduct.basePrice;
+  const unitPrice = effectiveBasePrice + optionsPrice;
   const totalPrice = unitPrice * quantity;
   const hasProductImage = Boolean(resolvedProduct.imageAssetId || resolvedProduct.imageUrl);
   const favoriteFeedback = useFavoriteFeedback(isFavorite);
@@ -226,8 +229,16 @@ export function ProductModal({
                 </Dialog.Description>
               )}
               <p className="storefront-product-modal-price">
-                <span>A partir de</span>
-                {formatCurrency(resolvedProduct.basePrice)}
+                <span>{promotionalPrice != null ? 'Preço promocional' : 'A partir de'}</span>
+                {promotionalPrice != null ? (
+                  <>
+                    <s className="text-text-muted mr-2 text-sm">
+                      <span className="sr-only">Preço anterior: </span>
+                      {formatCurrency(resolvedProduct.basePrice)}
+                    </s>
+                    {formatCurrency(promotionalPrice)}
+                  </>
+                ) : formatCurrency(resolvedProduct.basePrice)}
               </p>
             </div>
             {!hasProductImage && modalActions}

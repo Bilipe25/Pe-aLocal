@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 
 import { storeAssetUrl } from '@/features/assets/urls';
+import { isOfferScheduleActive } from '@/domain/offers/schedule';
 import { validateCartItem } from '@/lib/checkout/cart-validator';
 import {
   MAX_POSTGRES_INTEGER_CENTS,
@@ -16,13 +17,21 @@ import { CheckoutError, DomainError } from '@/server/errors';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import type {
   CheckoutQuoteDto,
+  CheckoutQuoteAdjustmentDto,
   CheckoutQuoteIssueDto,
   CheckoutQuoteLineDto,
+  CheckoutQuoteOfferGroupDto,
 } from '@/types/storefront';
 
 type QuoteClient = Pick<
   Prisma.TransactionClient,
-  'store' | 'product' | 'deliveryZone' | 'deliveryZonePostalRange' | 'coupon'
+  | 'store'
+  | 'product'
+  | 'storeCombo'
+  | 'storeProductPromotion'
+  | 'deliveryZone'
+  | 'deliveryZonePostalRange'
+  | 'coupon'
 >;
 
 export interface ResolvedSavedCheckoutAddress {
@@ -136,6 +145,8 @@ function quoteFingerprint(input: {
   diningTableReference: string | null;
   postalCode: string | null;
   lines: CheckoutQuoteLineDto[];
+  offerGroups: CheckoutQuoteOfferGroupDto[];
+  adjustments: CheckoutQuoteAdjustmentDto[];
   subtotal: number;
   discount: number;
   deliveryFee: number;
@@ -168,7 +179,12 @@ function quoteFingerprint(input: {
           })),
           unitPrice: line.unitPrice,
           itemTotal: line.itemTotal,
+          sourceLineId: line.sourceLineId ?? null,
+          offerGroupLineId: line.offerGroupLineId ?? null,
+          offerComponentPosition: line.offerComponentPosition ?? null,
         })),
+        offerGroups: input.offerGroups,
+        adjustments: input.adjustments,
         issues: input.issues
           .map((issue) => ({
             code: issue.code,
@@ -212,6 +228,7 @@ export async function calculateCheckoutQuote(
       id: true,
       tenantId: true,
       slug: true,
+      timeZone: true,
       address: { select: { city: true, state: true } },
       settings: {
         select: {
@@ -222,7 +239,9 @@ export async function calculateCheckoutQuote(
           pickupEnabled: true,
         },
       },
-      entitlement: { select: { dineInQrEnabled: true } },
+      entitlement: {
+        select: { dineInQrEnabled: true, combosPromotionsEnabled: true },
+      },
     },
   });
   if (!store) return null;
@@ -271,7 +290,43 @@ export async function calculateCheckoutQuote(
     }
   }
 
-  const productIds = [...new Set(input.items.map((item) => item.productId))];
+  const productInputs = input.items.filter((item) => item.kind !== 'COMBO');
+  const comboInputs = input.items.filter((item) => item.kind === 'COMBO');
+  const comboIds = [...new Set(comboInputs.map((item) => item.comboId))];
+  const combos =
+    store.entitlement?.combosPromotionsEnabled && comboIds.length > 0
+      ? await client.storeCombo.findMany({
+          where: {
+            id: { in: comboIds },
+            tenantId: store.tenantId,
+            storeId: store.id,
+            archivedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            specialPrice: true,
+            isActive: true,
+            version: true,
+            startsOn: true,
+            endsOnExclusive: true,
+            weekdays: true,
+            startMinute: true,
+            endMinuteExclusive: true,
+            items: {
+              orderBy: [{ position: 'asc' }, { id: 'asc' }],
+              select: { id: true, productId: true, quantity: true, position: true },
+            },
+          },
+        })
+      : [];
+  const comboMap = new Map(combos.map((combo) => [combo.id, combo]));
+  const productIds = [
+    ...new Set([
+      ...productInputs.map((item) => item.productId),
+      ...combos.flatMap((combo) => combo.items.map((item) => item.productId)),
+    ]),
+  ];
   const products = await client.product.findMany({
     where: {
       id: { in: productIds },
@@ -320,12 +375,56 @@ export async function calculateCheckoutQuote(
     },
   });
   const productMap = new Map(products.map((product) => [product.id, product]));
+  const promotionCandidates =
+    store.entitlement?.combosPromotionsEnabled && productInputs.length > 0
+      ? await client.storeProductPromotion.findMany({
+          where: {
+            tenantId: store.tenantId,
+            storeId: store.id,
+            productId: { in: productInputs.map((item) => item.productId) },
+            isActive: true,
+            archivedAt: null,
+          },
+          select: {
+            id: true,
+            productId: true,
+            promotionalPrice: true,
+            version: true,
+            startsOn: true,
+            endsOnExclusive: true,
+            weekdays: true,
+            startMinute: true,
+            endMinuteExclusive: true,
+          },
+        })
+      : [];
+  const activePromotionByProduct = new Map(
+    promotionCandidates
+      .filter((promotion) => isOfferScheduleActive(promotion, store.timeZone, now))
+      .map((promotion) => [promotion.productId, promotion]),
+  );
   const semanticLines = new Set<string>();
   const lines: CheckoutQuoteLineDto[] = [];
+  const offerGroups: CheckoutQuoteOfferGroupDto[] = [];
+  const adjustments: CheckoutQuoteAdjustmentDto[] = [];
   let subtotal = 0;
+  let automaticDiscount = 0;
 
-  for (const item of input.items) {
-    const product = productMap.get(item.productId);
+  function resolveProductLine(
+    product: (typeof products)[number] | undefined,
+    item: {
+      lineId: string;
+      productId: string;
+      quantity: number;
+      notes: string;
+      optionIds: string[];
+    },
+    offerMetadata: Pick<
+      CheckoutQuoteLineDto,
+      'sourceLineId' | 'offerGroupLineId' | 'offerComponentPosition'
+    > = {},
+    reportedLineId = item.lineId,
+  ): CheckoutQuoteLineDto | null {
     if (
       !product ||
       !product.category.isActive ||
@@ -338,31 +437,16 @@ export async function calculateCheckoutQuote(
         message: product
           ? `${product.name} não está disponível no momento.`
           : 'Um produto do carrinho não está mais disponível.',
-        lineId: item.lineId,
+        lineId: reportedLineId,
       });
-      continue;
+      return null;
     }
-
-    const semanticFingerprint = JSON.stringify({
-      productId: item.productId,
-      optionIds: [...item.optionIds].sort(),
-      notes: item.notes,
-    });
-    if (semanticLines.has(semanticFingerprint)) {
-      issues.push({
-        code: 'CART_INVALID',
-        message: `${product.name} aparece em linhas repetidas. Una as quantidades para continuar.`,
-        lineId: item.lineId,
-      });
-      continue;
-    }
-    semanticLines.add(semanticFingerprint);
 
     try {
       validateCartItem(product, item);
     } catch (error) {
-      issues.push(issueFromError(error, item.lineId));
-      continue;
+      issues.push(issueFromError(error, reportedLineId));
+      return null;
     }
 
     const optionMap = new Map(
@@ -397,9 +481,9 @@ export async function calculateCheckoutQuote(
     const optionsTotal = resolvedOptions.reduce((sum, option) => safeAdd(sum, option.price), 0);
     const unitPrice = safeAdd(product.basePrice, optionsTotal);
     const itemTotal = safeMultiply(unitPrice, item.quantity);
-    subtotal = safeAdd(subtotal, itemTotal);
-    lines.push({
+    return {
       lineId: item.lineId,
+      ...offerMetadata,
       productId: product.id,
       productName: product.name,
       imageUrl: product.imageAssetId ? storeAssetUrl(product.imageAssetId, 192) : product.imageUrl,
@@ -417,6 +501,147 @@ export async function calculateCheckoutQuote(
       })),
       unitPrice,
       itemTotal,
+    };
+  }
+
+  for (const item of input.items) {
+    if (item.kind !== 'COMBO') {
+      const product = productMap.get(item.productId);
+      const semanticFingerprint = JSON.stringify({
+        productId: item.productId,
+        optionIds: [...item.optionIds].sort(),
+        notes: item.notes,
+      });
+      if (semanticLines.has(semanticFingerprint)) {
+        issues.push({
+          code: 'CART_INVALID',
+          message: `${product?.name ?? 'Este produto'} aparece em linhas repetidas. Una as quantidades para continuar.`,
+          lineId: item.lineId,
+        });
+        continue;
+      }
+      semanticLines.add(semanticFingerprint);
+      const line = resolveProductLine(product, item);
+      if (!line) continue;
+      lines.push(line);
+      subtotal = safeAdd(subtotal, line.itemTotal);
+
+      const promotion = activePromotionByProduct.get(item.productId);
+      if (promotion && product && promotion.promotionalPrice < product.basePrice) {
+        const amount = safeMultiply(product.basePrice - promotion.promotionalPrice, item.quantity);
+        automaticDiscount = safeAdd(automaticDiscount, amount);
+        adjustments.push({
+          type: 'PRODUCT_PROMOTION',
+          sourceId: promotion.id,
+          sourceVersion: promotion.version,
+          label: `Promoção: ${product.name}`,
+          amount,
+          lineId: line.lineId,
+        });
+      }
+      continue;
+    }
+
+    const combo = comboMap.get(item.comboId);
+    if (
+      !store.entitlement?.combosPromotionsEnabled ||
+      !combo ||
+      !combo.isActive ||
+      !isOfferScheduleActive(combo, store.timeZone, now)
+    ) {
+      issues.push({
+        code: 'OFFER_UNAVAILABLE',
+        message: combo
+          ? `${combo.name} não está disponível no momento.`
+          : 'Um combo do carrinho não está mais disponível.',
+        lineId: item.lineId,
+      });
+      continue;
+    }
+
+    const requestedComponents = new Map(
+      item.components.map((component) => [component.comboItemId, component]),
+    );
+    if (
+      requestedComponents.size !== combo.items.length ||
+      combo.items.some((component) => !requestedComponents.has(component.id))
+    ) {
+      issues.push({
+        code: 'OFFER_UNAVAILABLE',
+        message: `${combo.name} mudou. Revise as opções do combo para continuar.`,
+        lineId: item.lineId,
+      });
+      continue;
+    }
+
+    const groupLines: CheckoutQuoteLineDto[] = [];
+    let regularBaseAmount = 0;
+    for (const component of combo.items) {
+      const requested = requestedComponents.get(component.id)!;
+      const quantity = safeMultiply(component.quantity, item.quantity);
+      const product = productMap.get(component.productId);
+      const componentLineId = `${item.lineId}:${component.id}`;
+      const line = resolveProductLine(
+        product,
+        {
+          lineId: componentLineId,
+          productId: component.productId,
+          quantity,
+          notes: requested.notes,
+          optionIds: requested.optionIds,
+        },
+        {
+          sourceLineId: item.lineId,
+          offerGroupLineId: item.lineId,
+          offerComponentPosition: component.position,
+        },
+        item.lineId,
+      );
+      if (!line || !product) continue;
+      groupLines.push(line);
+      regularBaseAmount = safeAdd(
+        regularBaseAmount,
+        safeMultiply(product.basePrice, quantity),
+      );
+    }
+    if (groupLines.length !== combo.items.length) continue;
+
+    const offerBaseAmount = safeMultiply(combo.specialPrice, item.quantity);
+    if (regularBaseAmount <= offerBaseAmount) {
+      issues.push({
+        code: 'OFFER_UNAVAILABLE',
+        message: `${combo.name} está sendo atualizado e perdeu a economia.`,
+        lineId: item.lineId,
+      });
+      continue;
+    }
+    const discountAmount = regularBaseAmount - offerBaseAmount;
+    const group: CheckoutQuoteOfferGroupDto = {
+      lineId: item.lineId,
+      comboId: combo.id,
+      comboVersion: combo.version,
+      name: combo.name,
+      quantity: item.quantity,
+      regularBaseAmount,
+      offerBaseAmount,
+      discountAmount,
+      components: combo.items.map((component) => ({
+        lineId: `${item.lineId}:${component.id}`,
+        comboItemId: component.id,
+        position: component.position,
+      })),
+    };
+    lines.push(...groupLines);
+    offerGroups.push(group);
+    for (const line of groupLines) subtotal = safeAdd(subtotal, line.itemTotal);
+    automaticDiscount = safeAdd(automaticDiscount, discountAmount);
+    adjustments.push({
+      type: 'COMBO',
+      sourceId: combo.id,
+      sourceVersion: combo.version,
+      label: `Combo: ${combo.name}`,
+      amount: discountAmount,
+      offerGroupLineId: item.lineId,
     });
   }
 
@@ -607,7 +832,8 @@ export async function calculateCheckoutQuote(
 
   let couponId: string | null = null;
   let coupon: CheckoutQuoteDto['coupon'] = null;
-  let discount = 0;
+  let couponDiscount = 0;
+  const couponEligibleBase = subtotal - automaticDiscount;
   if (input.couponCode) {
     const candidate = await client.coupon.findFirst({
       where: {
@@ -641,7 +867,7 @@ export async function calculateCheckoutQuote(
       (candidate.expiresAt != null && candidate.expiresAt <= now) ||
       (candidate.maxUsages != null &&
         candidate.usageCount + candidate._count.reservations >= candidate.maxUsages) ||
-      (candidate.minOrderValue != null && subtotal < candidate.minOrderValue);
+      (candidate.minOrderValue != null && couponEligibleBase < candidate.minOrderValue);
     if (invalid || !candidate) {
       issues.push({
         code: 'COUPON_INVALID',
@@ -650,14 +876,28 @@ export async function calculateCheckoutQuote(
     } else {
       const calculated =
         candidate.type === 'PERCENTAGE'
-          ? Math.floor((subtotal * candidate.value) / 100)
+          ? Math.floor((couponEligibleBase * candidate.value) / 100)
           : candidate.value;
-      discount = Math.min(subtotal, candidate.maxDiscount ?? calculated, calculated);
+      couponDiscount = Math.min(
+        couponEligibleBase,
+        candidate.maxDiscount ?? calculated,
+        calculated,
+      );
       couponId = candidate.id;
-      coupon = { code: candidate.code, discount };
+      coupon = { code: candidate.code, discount: couponDiscount };
+      if (couponDiscount > 0) {
+        adjustments.push({
+          type: 'COUPON',
+          sourceId: candidate.id,
+          sourceVersion: null,
+          label: `Cupom ${candidate.code}`,
+          amount: couponDiscount,
+        });
+      }
     }
   }
 
+  const discount = safeAdd(automaticDiscount, couponDiscount);
   const total = safeAdd(subtotal - discount, deliveryFee);
   const fingerprint = quoteFingerprint({
     storeId: store.id,
@@ -668,6 +908,8 @@ export async function calculateCheckoutQuote(
         : null,
     postalCode: effectivePostalCode,
     lines,
+    offerGroups,
+    adjustments,
     subtotal,
     discount,
     deliveryFee,
@@ -686,7 +928,11 @@ export async function calculateCheckoutQuote(
     storeSlug: store.slug,
     tenantId: store.tenantId,
     lines,
+    offerGroups,
+    adjustments,
     subtotal,
+    automaticDiscount,
+    couponDiscount,
     discount,
     deliveryFee,
     total,

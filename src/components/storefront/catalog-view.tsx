@@ -20,6 +20,7 @@ import { ProductModal } from '@/components/storefront/product-modal';
 import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
+import { StorefrontOffers } from '@/components/storefront/storefront-offers';
 import { StorefrontSearch } from '@/components/storefront/storefront-search';
 import { storeAssetUrl } from '@/features/assets/urls';
 import {
@@ -37,11 +38,13 @@ import type {
   PublicStorefrontProductDetailDto,
   PublicStorefrontProductDetailResponseDto,
   PublicStorefrontProductSummaryDto,
+  PublicStorefrontOfferDto,
 } from '@/types/storefront';
 import { useFavoritesStore } from '@/stores/favorites-store';
 
 interface CatalogViewProps {
   categories: PublicStorefrontCategoryDto[];
+  offers?: PublicStorefrontOfferDto[];
   storeId: string;
   storeSlug: string;
   storeOpen: boolean;
@@ -92,6 +95,7 @@ function getProductDetailErrorMessage(payload: unknown, status: number) {
 
 export function CatalogView({
   categories,
+  offers = [],
   storeId,
   storeSlug,
   storeOpen,
@@ -117,6 +121,7 @@ export function CatalogView({
   const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductSummaryDto | null>(
     null,
   );
+  const [selectedPromotionalPrice, setSelectedPromotionalPrice] = useState<number | null>(null);
   const [productDetailState, setProductDetailState] = useState<ProductDetailState | null>(null);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<CatalogSort>('RELEVANCE');
@@ -285,11 +290,12 @@ export function CatalogView({
     }
   }
 
-  function openProduct(product: PublicStorefrontProductSummaryDto) {
+  function openProduct(product: PublicStorefrontProductSummaryDto, promotionalPrice?: number) {
     lastFocusedProductRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     selectedProductIdRef.current = product.id;
     setSelectedProduct(product);
+    setSelectedPromotionalPrice(promotionalPrice ?? null);
     void loadProductDetail(product);
   }
 
@@ -298,6 +304,7 @@ export function CatalogView({
     productDetailRequestRef.current?.abort();
     productDetailRequestRef.current = null;
     setSelectedProduct(null);
+    setSelectedPromotionalPrice(null);
     requestAnimationFrame(() => lastFocusedProductRef.current?.focus());
   }
 
@@ -613,6 +620,8 @@ export function CatalogView({
         </div>
       )}
 
+      <StorefrontOffers offers={offers} storeOpen={storeOpen} onProductClick={openProduct} />
+
       {customization.layout.sectionOrder.map((section) => (
         <Fragment key={section}>{renderSection(section)}</Fragment>
       ))}
@@ -628,6 +637,7 @@ export function CatalogView({
           storeOpen={storeOpen}
           isFavorite={favoriteProductIdSet.has(selectedProduct.id)}
           onFavoriteToggle={() => toggleFavorite(selectedProduct.id)}
+          promotionalPrice={selectedPromotionalPrice}
         />
       )}
 

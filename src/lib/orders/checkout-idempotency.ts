@@ -22,14 +22,29 @@ async function fingerprintPayload(payload: CheckoutFingerprintInput) {
     saveCustomerData: standard?.saveCustomerData ?? false,
     expectedQuoteFingerprint: payload.expectedQuoteFingerprint ?? null,
     items: payload.items
-      .map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        optionIds: [...item.optionIds].sort(),
-      }))
+      .map((item) =>
+        item.kind === 'COMBO'
+          ? {
+              kind: 'COMBO' as const,
+              id: item.comboId,
+              quantity: item.quantity,
+              selections: item.components
+                .map((component) => ({
+                  id: component.comboItemId,
+                  optionIds: [...component.optionIds].sort(),
+                }))
+                .sort((left, right) => left.id.localeCompare(right.id)),
+            }
+          : {
+              kind: 'PRODUCT' as const,
+              id: item.productId,
+              quantity: item.quantity,
+              selections: [...item.optionIds].sort(),
+            },
+      )
       .sort((left, right) =>
-        `${left.productId}:${left.optionIds.join(',')}`.localeCompare(
-          `${right.productId}:${right.optionIds.join(',')}`,
+        `${left.kind}:${left.id}:${JSON.stringify(left.selections)}`.localeCompare(
+          `${right.kind}:${right.id}:${JSON.stringify(right.selections)}`,
         ),
       ),
   });

@@ -15,6 +15,7 @@ export interface KdsOrderItemDTO {
   productName: string;
   quantity: number;
   notes: string | null;
+  offerGroup: { id: string; name: string } | null;
   options: KdsOrderItemOptionDTO[];
 }
 

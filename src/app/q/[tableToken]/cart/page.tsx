@@ -1,5 +1,6 @@
 import { CartView } from '@/components/storefront/cart-view';
 import { DineInUnavailable } from '@/components/storefront/dine-in-unavailable';
+import { getPublicOffers } from '@/server/queries/public-store';
 import { getDineInStorefrontContext } from '@/server/services/dine-in-storefront.service';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ export default async function DineInCartPage({
     return <DineInUnavailable state={context.state} storeName={context.store?.name} />;
   }
   const { store, table, cartScopeId } = context;
+  const offers = await getPublicOffers(store.id, store.tenantId, store.timeZone);
   return (
     <CartView
       storeId={cartScopeId}
@@ -31,6 +33,7 @@ export default async function DineInCartPage({
       contextLabel={`Você está na ${table.label}`}
       deliveryEnabled={false}
       pickupEnabled={false}
+      comboOffers={offers.filter((offer) => offer.kind === 'COMBO')}
     />
   );
 }

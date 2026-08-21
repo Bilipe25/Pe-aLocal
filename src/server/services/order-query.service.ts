@@ -1146,6 +1146,7 @@ export async function getOrderDetails(
             quantity: true,
             notes: true,
             itemTotal: true,
+            offerGroup: { select: { id: true, nameSnapshot: true, position: true } },
             options: {
               orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
               select: {
@@ -1155,6 +1156,15 @@ export async function getOrderDetails(
                 groupName: true,
               },
             },
+          },
+        },
+        priceAdjustments: {
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            adjustmentType: true,
+            labelSnapshot: true,
+            amount: true,
           },
         },
         payment: {
@@ -1263,6 +1273,13 @@ export async function getOrderDetails(
         quantity: item.quantity,
         notes: item.notes,
         itemTotal: item.itemTotal,
+        offerGroup: item.offerGroup
+          ? {
+              id: item.offerGroup.id,
+              name: item.offerGroup.nameSnapshot,
+              position: item.offerGroup.position,
+            }
+          : null,
         options: item.options.map((option) => ({
           id: option.id,
           name: option.optionName,
@@ -1275,6 +1292,12 @@ export async function getOrderDetails(
         discount: order.discount,
         deliveryFee: order.deliveryFee,
         total: order.total,
+        adjustments: (order.priceAdjustments ?? []).map((adjustment) => ({
+          id: adjustment.id,
+          type: adjustment.adjustmentType,
+          label: adjustment.labelSnapshot,
+          amount: adjustment.amount,
+        })),
       },
       payment: {
         method: order.paymentMethod,

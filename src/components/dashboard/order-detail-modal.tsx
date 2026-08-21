@@ -400,6 +400,11 @@ function OrderDetails({
               <div className="divide-border divide-y px-3">
                 {order.items.map((item) => (
                   <div key={item.id} className="py-2.5">
+                    {item.offerGroup ? (
+                      <p className="text-brand-700 mb-1 text-xs font-semibold">
+                        Combo: {item.offerGroup.name}
+                      </p>
+                    ) : null}
                     <div className="flex justify-between gap-3 text-sm">
                       <span className="text-text-primary min-w-0 font-semibold break-words">
                         {item.quantity}× {item.productName}
@@ -432,12 +437,21 @@ function OrderDetails({
                     <dd>{formatCurrency(order.totals.deliveryFee)}</dd>
                   </div>
                 ) : null}
-                {order.totals.discount > 0 ? (
-                  <div className="text-success col-span-2 flex justify-between gap-2">
-                    <dt>Desconto</dt>
-                    <dd>-{formatCurrency(order.totals.discount)}</dd>
-                  </div>
-                ) : null}
+                {order.totals.adjustments.length > 0
+                  ? order.totals.adjustments.map((adjustment) => (
+                      <div key={adjustment.id} className="text-success col-span-2 flex justify-between gap-2">
+                        <dt>{adjustment.label}</dt>
+                        <dd>-{formatCurrency(adjustment.amount)}</dd>
+                      </div>
+                    ))
+                  : order.totals.discount > 0
+                    ? (
+                        <div className="text-success col-span-2 flex justify-between gap-2">
+                          <dt>Desconto</dt>
+                          <dd>-{formatCurrency(order.totals.discount)}</dd>
+                        </div>
+                      )
+                    : null}
               </dl>
             </div>
           </section>

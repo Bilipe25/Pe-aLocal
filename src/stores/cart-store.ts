@@ -17,8 +17,20 @@ export interface SelectedOption {
   price: number;
 }
 
+export interface CartComboComponent {
+  comboItemId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  notes: string;
+  selectedOptions: SelectedOption[];
+}
+
 export interface CartItem {
   id: string;
+  kind?: 'PRODUCT' | 'COMBO';
+  comboId?: string;
+  comboComponents?: CartComboComponent[];
   productId: string;
   productName: string;
   basePrice: number;
@@ -122,9 +134,24 @@ export function getCartStorageKey(storeId: string) {
 }
 
 export function createCartLineFingerprint(
-  item: Pick<CartItem, 'productId' | 'selectedOptions' | 'notes'>,
+  item: Pick<
+    CartItem,
+    'kind' | 'comboId' | 'comboComponents' | 'productId' | 'selectedOptions' | 'notes'
+  >,
 ) {
+  if (item.kind === 'COMBO') {
+    return JSON.stringify({
+      kind: 'COMBO',
+      comboId: item.comboId,
+      components: item.comboComponents?.map((component) => ({
+        comboItemId: component.comboItemId,
+        optionIds: component.selectedOptions.map((option) => option.id).sort(),
+        notes: component.notes.trim(),
+      })),
+    });
+  }
   return JSON.stringify({
+    kind: 'PRODUCT',
     productId: item.productId,
     optionIds: item.selectedOptions.map((option) => option.id).sort(),
     notes: item.notes.trim(),
@@ -154,6 +181,10 @@ function cloneItems(items: CartItem[]) {
   return items.map((item) => ({
     ...item,
     selectedOptions: item.selectedOptions.map((option) => ({ ...option })),
+    comboComponents: item.comboComponents?.map((component) => ({
+      ...component,
+      selectedOptions: component.selectedOptions.map((option) => ({ ...option })),
+    })),
   }));
 }
 
@@ -163,6 +194,11 @@ function normalizeCartItemInput(item: Omit<CartItem, 'id'>): Omit<CartItem, 'id'
     quantity: Math.min(MAX_CART_ITEM_QUANTITY, Math.max(1, Math.trunc(item.quantity))),
     notes: item.notes.trim(),
     selectedOptions: item.selectedOptions.map((option) => ({ ...option })),
+    comboComponents: item.comboComponents?.map((component) => ({
+      ...component,
+      notes: component.notes.trim(),
+      selectedOptions: component.selectedOptions.map((option) => ({ ...option })),
+    })),
     imageUrl: item.imageUrl ?? null,
     imageAssetId: item.imageAssetId ?? null,
     imageAlt: item.imageAlt ?? item.productName,
@@ -191,6 +227,32 @@ function parseCartItem(value: unknown): CartItem | null {
   const imageUrl = optionalString(value.imageUrl, 2_048);
   const imageAssetId = optionalString(value.imageAssetId, 200);
   const imageAlt = optionalString(value.imageAlt, 300);
+  const kind = value.kind === 'COMBO' ? 'COMBO' : 'PRODUCT';
+  const comboComponents =
+    kind === 'COMBO' && Array.isArray(value.comboComponents)
+      ? value.comboComponents.map((component) => {
+          if (!isRecord(component) || !Array.isArray(component.selectedOptions)) return null;
+          const options = component.selectedOptions.map(parseSelectedOption);
+          if (
+            options.some((option) => option === null) ||
+            typeof component.comboItemId !== 'string' ||
+            typeof component.productId !== 'string' ||
+            typeof component.productName !== 'string' ||
+            !isFiniteInteger(component.quantity) ||
+            component.quantity < 1 ||
+            typeof component.notes !== 'string' ||
+            component.notes.length > 500
+          ) return null;
+          return {
+            comboItemId: component.comboItemId,
+            productId: component.productId,
+            productName: component.productName,
+            quantity: component.quantity,
+            notes: component.notes.trim(),
+            selectedOptions: options as SelectedOption[],
+          };
+        })
+      : undefined;
 
   if (
     typeof value.id !== 'string' ||
@@ -211,12 +273,17 @@ function parseCartItem(value: unknown): CartItem | null {
     (value.imageUrl !== undefined && imageUrl === undefined) ||
     (value.imageAssetId !== undefined && imageAssetId === undefined) ||
     (value.imageAlt !== undefined && imageAlt === undefined)
+    || (kind === 'COMBO' && (typeof value.comboId !== 'string' || !comboComponents || comboComponents.some((component) => component === null)))
   ) {
     return null;
   }
 
   return {
     id: value.id,
+    kind,
+    comboId: kind === 'COMBO' ? (value.comboId as string) : undefined,
+    comboComponents:
+      kind === 'COMBO' ? (comboComponents as CartComboComponent[]) : undefined,
     productId: value.productId,
     productName: value.productName,
     basePrice: value.basePrice,

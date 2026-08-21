@@ -13,6 +13,7 @@ import { couponCodeSchema } from '@/schemas/checkout';
 import {
   getPublicCatalog,
   getPublicDeliveryZones,
+  getPublicOffers,
   getPublicStoreBySlug,
 } from '@/server/queries/public-store';
 
@@ -46,9 +47,10 @@ export default async function StorePage({ params, searchParams }: StorePageProps
     );
   }
 
-  const [categories, deliveryZones] = await Promise.all([
+  const [categories, deliveryZones, offers] = await Promise.all([
     getPublicCatalog(store.id, store.tenantId, store.customization.categoryImages),
     store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
+    getPublicOffers(store.id, store.tenantId, store.timeZone),
   ]);
   const minDeliveryFee =
     deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
@@ -122,6 +124,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
 
       <CatalogView
         categories={categories}
+        offers={offers}
         storeId={store.id}
         storeSlug={store.slug}
         storeOpen={store.availability.acceptingOrders}

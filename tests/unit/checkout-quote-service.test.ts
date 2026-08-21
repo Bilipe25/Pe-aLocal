@@ -30,12 +30,20 @@ function input(overrides: Partial<CheckoutQuoteInput> = {}): CheckoutQuoteInput 
   };
 }
 
+function firstProductItem(value = input()) {
+  const item = value.items[0];
+  if (!item || item.kind === 'COMBO') throw new Error('Produto de teste ausente.');
+  return item;
+}
+
 function createClient() {
   const store = {
     findUnique: vi.fn().mockResolvedValue({
       id: 'store-a',
       tenantId: 'tenant-a',
       slug: 'loja-a',
+      timeZone: 'America/Fortaleza',
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: false },
       address: { city: 'São Paulo', state: 'SP' },
       settings: {
         minOrderValue: 0,
@@ -69,7 +77,17 @@ function createClient() {
   };
   const deliveryZonePostalRange = { count: vi.fn().mockResolvedValue(0) };
   const coupon = { findFirst: vi.fn().mockResolvedValue(null) };
-  return { store, product, deliveryZone, deliveryZonePostalRange, coupon };
+  const storeCombo = { findMany: vi.fn().mockResolvedValue([]) };
+  const storeProductPromotion = { findMany: vi.fn().mockResolvedValue([]) };
+  return {
+    store,
+    product,
+    storeCombo,
+    storeProductPromotion,
+    deliveryZone,
+    deliveryZonePostalRange,
+    coupon,
+  };
 }
 
 describe('cotação autoritativa do checkout', () => {
@@ -117,6 +135,167 @@ describe('cotação autoritativa do checkout', () => {
     });
 
     expect(changed?.total).toBe(5000);
+    expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
+  });
+
+  it('aplica promoção antes do cupom e preserva os ajustes separados', async () => {
+    const client = createClient();
+    client.store.findUnique.mockResolvedValueOnce({
+      ...(await client.store.findUnique()),
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    client.storeProductPromotion.findMany.mockResolvedValueOnce([
+      {
+        id: '50000000-0000-4000-8000-000000000001',
+        productId,
+        promotionalPrice: 1500,
+        version: 4,
+        startsOn: null,
+        endsOnExclusive: null,
+        weekdays: [],
+        startMinute: null,
+        endMinuteExclusive: null,
+      },
+    ]);
+    client.coupon.findFirst.mockResolvedValueOnce({
+      id: '60000000-0000-4000-8000-000000000001',
+      code: 'MENOS10',
+      type: 'PERCENTAGE',
+      value: 10,
+      minOrderValue: 3000,
+      maxDiscount: null,
+      maxUsages: null,
+      usageCount: 0,
+      isActive: true,
+      startsAt: null,
+      expiresAt: null,
+      _count: { reservations: 0 },
+    });
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({ couponCode: 'MENOS10' }),
+      { client: client as never, now },
+    );
+
+    expect(quote).toMatchObject({
+      subtotal: 4000,
+      automaticDiscount: 1000,
+      couponDiscount: 300,
+      discount: 1300,
+      total: 2700,
+      coupon: { code: 'MENOS10', discount: 300 },
+    });
+    expect((quote?.adjustments ?? []).map((adjustment) => adjustment.type)).toEqual([
+      'PRODUCT_PROMOTION',
+      'COUPON',
+    ]);
+  });
+
+  it('resolve componentes reais do combo, cobra adicionais e inclui a versão no fingerprint', async () => {
+    const client = createClient();
+    const secondProductId = '10000000-0000-4000-8000-000000000002';
+    const comboId = '70000000-0000-4000-8000-000000000001';
+    const comboItemA = '71000000-0000-4000-8000-000000000001';
+    const comboItemB = '71000000-0000-4000-8000-000000000002';
+    const optionId = '72000000-0000-4000-8000-000000000001';
+    const baseStore = await client.store.findUnique();
+    client.store.findUnique.mockResolvedValue({
+      ...baseStore,
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    const combo = {
+      id: comboId,
+      name: 'Combo da Casa',
+      specialPrice: 2500,
+      isActive: true,
+      version: 2,
+      startsOn: null,
+      endsOnExclusive: null,
+      weekdays: [],
+      startMinute: null,
+      endMinuteExclusive: null,
+      items: [
+        { id: comboItemA, productId, quantity: 1, position: 0 },
+        { id: comboItemB, productId: secondProductId, quantity: 1, position: 1 },
+      ],
+    };
+    client.storeCombo.findMany.mockResolvedValue([combo]);
+    const firstProduct = (await client.product.findMany())[0];
+    client.product.findMany.mockResolvedValue([
+      {
+        ...firstProduct,
+        optionGroups: [
+          {
+            id: '73000000-0000-4000-8000-000000000001',
+            title: 'Adicionais',
+            sortOrder: 0,
+            isRequired: false,
+            isMultiple: true,
+            minSelections: 0,
+            maxSelections: 2,
+            isActive: true,
+            archivedAt: null,
+            options: [
+              {
+                id: optionId,
+                name: 'Bacon',
+                price: 300,
+                sortOrder: 0,
+                isAvailable: true,
+                archivedAt: null,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        ...firstProduct,
+        id: secondProductId,
+        name: 'Batata',
+        basePrice: 1000,
+        optionGroups: [],
+      },
+    ]);
+    const comboInput = input({
+      items: [
+        {
+          kind: 'COMBO',
+          lineId: '74000000-0000-4000-8000-000000000001',
+          comboId,
+          quantity: 1,
+          components: [
+            { comboItemId: comboItemA, notes: '', optionIds: [optionId] },
+            { comboItemId: comboItemB, notes: '', optionIds: [] },
+          ],
+        },
+      ],
+    });
+
+    const first = await calculateCheckoutQuote('loja-a', comboInput, {
+      client: client as never,
+      now,
+    });
+    expect(first).toMatchObject({
+      subtotal: 3300,
+      automaticDiscount: 500,
+      discount: 500,
+      total: 2800,
+      offerGroups: [
+        {
+          comboId,
+          comboVersion: 2,
+          regularBaseAmount: 3000,
+          offerBaseAmount: 2500,
+          discountAmount: 500,
+        },
+      ],
+    });
+    client.storeCombo.findMany.mockResolvedValueOnce([{ ...combo, version: 3 }]);
+    const changed = await calculateCheckoutQuote('loja-a', comboInput, {
+      client: client as never,
+      now,
+    });
     expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
   });
 
@@ -197,7 +376,7 @@ describe('cotação autoritativa do checkout', () => {
     const quote = await calculateCheckoutQuote(
       'loja-a',
       input({
-        items: [{ ...input().items[0], quantity: 1, optionIds: [optionB, optionA2, optionA1] }],
+        items: [{ ...firstProductItem(), quantity: 1, optionIds: [optionB, optionA2, optionA1] }],
       }),
       { client: client as never, now },
     );
@@ -558,7 +737,7 @@ describe('cotação autoritativa do checkout', () => {
 
   it('rejeita linhas semanticamente duplicadas mesmo com lineId diferente', async () => {
     const client = createClient();
-    const first = input().items[0];
+    const first = firstProductItem();
 
     const quote = await calculateCheckoutQuote(
       'loja-a',

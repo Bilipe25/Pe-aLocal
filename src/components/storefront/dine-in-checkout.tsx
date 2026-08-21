@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DiningSessionActions } from '@/components/storefront/dining-session-actions';
 import { createDineInOrderAction } from '@/features/orders/actions';
 import { useCheckoutQuote } from '@/hooks/use-checkout-quote';
+import { cartItemToCheckoutLine } from '@/lib/checkout/cart-intent';
 import {
   clearCheckoutIdempotency,
   resolveCheckoutIdempotency,
@@ -80,13 +81,7 @@ export function DineInCheckout({
   const quoteInput = useMemo(
     () => ({
       couponCode: couponCode ?? undefined,
-      items: items.map((item) => ({
-        lineId: item.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        notes: item.notes,
-        optionIds: item.selectedOptions.map((option) => option.id),
-      })),
+      items: items.map(cartItemToCheckoutLine),
     }),
     [couponCode, items],
   );
@@ -225,6 +220,18 @@ export function DineInCheckout({
             </li>
           ))}
         </ul>
+        {(quote.quote?.automaticDiscount ?? 0) > 0 ? (
+          <div className="dine-in-checkout-total">
+            <span>Economia automática</span>
+            <strong>− {formatCurrency(quote.quote?.automaticDiscount ?? 0)}</strong>
+          </div>
+        ) : null}
+        {(quote.quote?.couponDiscount ?? 0) > 0 ? (
+          <div className="dine-in-checkout-total">
+            <span>Cupom {quote.quote?.coupon?.code}</span>
+            <strong>− {formatCurrency(quote.quote?.couponDiscount ?? 0)}</strong>
+          </div>
+        ) : null}
         <div className="dine-in-checkout-total">
           <span>Total</span>
           <strong>

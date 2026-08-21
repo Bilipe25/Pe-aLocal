@@ -100,6 +100,7 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
               productName: true,
               quantity: true,
               notes: true,
+              offerGroup: { select: { id: true, nameSnapshot: true } },
               options: {
                 orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
                 select: { id: true, optionName: true, groupName: true },
@@ -149,6 +150,9 @@ export async function getKdsSnapshot(context: KdsQueryContext): Promise<KdsSnaps
         productName: item.productName,
         quantity: item.quantity,
         notes: item.notes,
+        offerGroup: item.offerGroup
+          ? { id: item.offerGroup.id, name: item.offerGroup.nameSnapshot }
+          : null,
         options: item.options.map((option) => ({
           id: option.id,
           name: option.optionName,

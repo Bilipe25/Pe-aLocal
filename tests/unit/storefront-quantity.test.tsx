@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildCartCheckoutHref, CartView } from '@/components/storefront/cart-view';
 import { ProductModal } from '@/components/storefront/product-modal';
+import type { CartItem } from '@/stores/cart-store';
 
 const mocks = vi.hoisted(() => ({
   addItem: vi.fn(),
@@ -21,23 +22,25 @@ const mocks = vi.hoisted(() => ({
   getSnapshot: vi.fn(() => ({ items: [], couponCode: null, revision: 0 })),
 }));
 
+const initialCartItems: CartItem[] = [
+  {
+    id: 'item-1',
+    productId: 'product-1',
+    productName: 'Burger da casa',
+    basePrice: 2_500,
+    quantity: 99,
+    notes: '',
+    selectedOptions: [],
+    unitPrice: 2_500,
+  },
+];
+
 const cartState = {
   storeId: 'store-1',
   storeSlug: 'loja-1',
   couponCode: null,
   revision: 0,
-  items: [
-    {
-      id: 'item-1',
-      productId: 'product-1',
-      productName: 'Burger da casa',
-      basePrice: 2_500,
-      quantity: 99,
-      notes: '',
-      selectedOptions: [],
-      unitPrice: 2_500,
-    },
-  ],
+  items: structuredClone(initialCartItems),
   ...mocks,
 };
 
@@ -72,6 +75,7 @@ vi.mock('@/components/storefront/cart-recommendations', () => ({
 describe('limite de quantidade no storefront', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cartState.items = structuredClone(initialCartItems);
     mocks.updateItem.mockReturnValue({
       status: 'updated',
       itemId: 'item-1',
@@ -253,5 +257,101 @@ describe('limite de quantidade no storefront', () => {
 
     unmount();
     expect(mocks.storageCleanup).toHaveBeenCalledOnce();
+  });
+
+  it('reabre e atualiza as opções dos componentes de um combo na sacola', async () => {
+    const option = { id: 'option-zero', name: 'Coca Zero', price: 0 };
+    cartState.items = [
+      {
+        id: 'combo-line-1',
+        kind: 'COMBO',
+        comboId: 'combo-1',
+        comboComponents: [
+          {
+            comboItemId: 'combo-item-drink',
+            productId: 'product-drink',
+            productName: 'Refrigerante',
+            quantity: 1,
+            notes: '',
+            selectedOptions: [option],
+          },
+        ],
+        productId: 'combo-1',
+        productName: 'Combo da casa',
+        basePrice: 5_000,
+        quantity: 2,
+        notes: '',
+        selectedOptions: [option],
+        unitPrice: 4_500,
+      },
+    ];
+
+    render(
+      <CartView
+        storeId="store-1"
+        storeSlug="loja-1"
+        acceptingOrders
+        unavailableReason=""
+        comboOffers={[
+          {
+            kind: 'COMBO',
+            id: 'combo-1',
+            version: 1,
+            name: 'Combo da casa',
+            description: null,
+            regularPrice: 5_000,
+            offerPrice: 4_500,
+            savings: 500,
+            imageUrl: null,
+            imageAssetId: null,
+            components: [
+              {
+                comboItemId: 'combo-item-drink',
+                quantity: 1,
+                product: {
+                  id: 'product-drink',
+                  name: 'Refrigerante',
+                  description: null,
+                  imageUrl: null,
+                  imageAssetId: null,
+                  basePrice: 500,
+                  isFeatured: false,
+                  isSoldOut: false,
+                  allowNotes: false,
+                  optionGroups: [
+                    {
+                      id: 'drink-group',
+                      title: 'Escolha a bebida',
+                      description: null,
+                      isRequired: true,
+                      isMultiple: false,
+                      minSelections: 1,
+                      maxSelections: 1,
+                      options: [option],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar Combo da casa' }));
+    expect(screen.getByRole('heading', { name: 'Combo da casa' })).toBeVisible();
+    expect(screen.getByRole('radio', { name: /Coca Zero/ })).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /Atualizar/ }));
+
+    expect(mocks.updateItem).toHaveBeenCalledWith(
+      'combo-line-1',
+      expect.objectContaining({
+        kind: 'COMBO',
+        comboId: 'combo-1',
+        quantity: 2,
+        comboComponents: [expect.objectContaining({ selectedOptions: [option] })],
+      }),
+    );
   });
 });

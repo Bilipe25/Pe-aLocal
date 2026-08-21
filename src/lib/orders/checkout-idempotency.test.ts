@@ -23,6 +23,12 @@ const payload: CheckoutFingerprintInput = {
   ],
 };
 
+function firstProductItem() {
+  const item = payload.items[0];
+  if (!item || item.kind === 'COMBO') throw new Error('Produto de teste ausente.');
+  return item;
+}
+
 function createStorage() {
   const values = new Map<string, string>();
   return {
@@ -70,7 +76,7 @@ describe('checkout idempotency', () => {
       ...payload,
       items: [
         secondItem,
-        { ...payload.items[0], optionIds: [...payload.items[0].optionIds].reverse() },
+        { ...firstProductItem(), optionIds: [...firstProductItem().optionIds].reverse() },
       ],
     };
     const storage = createStorage();

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { cartItemToCheckoutLine } from '@/lib/checkout/cart-intent';
 import type { CartItem } from '@/stores/cart-store';
 import type { CheckoutQuoteDto } from '@/types/storefront';
 
@@ -50,13 +51,7 @@ export function useCartQuote({
     return {
       ...(modality === 'DINE_IN' ? {} : { modality }),
       couponCode: normalizedCouponCode || undefined,
-      items: items.map((item) => ({
-        lineId: item.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        notes: item.notes || undefined,
-        optionIds: item.selectedOptions.map((option) => option.id),
-      })),
+      items: items.map(cartItemToCheckoutLine),
     };
   }, [couponCode, items, modality]);
   const requestKey = useMemo(() => JSON.stringify(requestBody), [requestBody]);
