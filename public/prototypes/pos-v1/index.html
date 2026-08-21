@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>PedidoLocal — PDV / Novo pedido V1</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <!--
+      THESIS: uma bancada única mantém catálogo, contexto e comanda no mesmo campo de visão.
+      OWN-WORLD: Papel, Tinta, Pimenta, Kraft, Erva e Azulejo; linguagem de balcão e comanda.
+      STORY: modalidade primeiro, itens no centro, contexto sob demanda, revisão financeira no final.
+      FIRST VIEWPORT: desktop e tablet operacionais; mobile é fallback seguro, não uma segunda experiência.
+      DATA: todos os nomes, produtos, preços, clientes e pedidos deste protótipo são fictícios.
+    -->
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></symbol>
+      <symbol id="i-orders" viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+      <symbol id="i-pos" viewBox="0 0 24 24"><path d="M4 5h16v10H4z"/><path d="M7 19h10M9 15v4m6-4v4"/><path d="M8 9h3m2 0h3"/></symbol>
+      <symbol id="i-kds" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8M12 18v4M7 9h4m2 0h4M7 13h10"/></symbol>
+      <symbol id="i-catalog" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/></symbol>
+      <symbol id="i-location" viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+      <symbol id="i-table" viewBox="0 0 24 24"><path d="M4 9h16M6 9v11m12-11v11M3 5h18v4H3z"/></symbol>
+      <symbol id="i-bag" viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></symbol>
+      <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></symbol>
+      <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9h.01M18 15h.01"/></symbol>
+      <symbol id="i-pix" viewBox="0 0 24 24"><path d="m12 3 4 4-4 4-4-4 4-4Zm0 10 4 4-4 4-4-4 4-4ZM3 12l4-4 4 4-4 4-4-4Zm10 0 4-4 4 4-4 4-4-4Z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m2 2 20 20M8.5 8.7A10 10 0 0 1 20 10m-17 0a14 14 0 0 1 2.3-1.7M6 14a9 9 0 0 1 8.5-2M9.5 17.5a3.5 3.5 0 0 1 5 0M12 21h.01"/></symbol>
+    </svg>
+
+    <div id="pos" class="screen dashboard-shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="?screen=pos" aria-label="PedidoLocal"><span>PL</span><strong>PedidoLocal</strong></a>
+        <nav aria-label="Principal">
+          <a href="#"><svg><use href="#i-home"/></svg>Visão geral</a>
+          <a href="#"><svg><use href="#i-orders"/></svg>Central</a>
+          <a class="active" href="?screen=pos" aria-current="page"><svg><use href="#i-pos"/></svg>PDV</a>
+          <a href="?screen=kds"><svg><use href="#i-kds"/></svg>Cozinha</a>
+          <a href="#"><svg><use href="#i-catalog"/></svg>Cardápio</a>
+        </nav>
+        <div class="store-switcher"><span class="store-mark">XB</span><span><strong>Xis do Bairro</strong><small><i></i> Operação ativa</small></span></div>
+      </aside>
+
+      <div class="dashboard-main">
+        <header class="topbar">
+          <button class="icon-button menu-button" aria-label="Abrir menu"><svg><use href="#i-menu"/></svg></button>
+          <div><strong>Xis do Bairro</strong><small>Dados fictícios para validação</small></div>
+          <span class="shift"><svg><use href="#i-clock"/></svg>Hoje, 19:42</span>
+          <span class="avatar" aria-label="Conta de Maria">MS</span>
+        </header>
+
+        <main class="pos-workspace">
+          <section class="catalog-pane">
+            <header class="pos-heading">
+              <div><h1>Novo pedido</h1><p>Escolha o destino e monte a comanda.</p></div>
+              <button class="button subtle new-order"><svg><use href="#i-plus"/></svg>Limpar pedido</button>
+            </header>
+
+            <div class="modality-tabs" role="group" aria-label="Destino do pedido">
+              <button data-mode="delivery"><svg><use href="#i-location"/></svg><span>Entrega<small>Telefone ou atendimento</small></span></button>
+              <button class="selected" data-mode="pickup"><svg><use href="#i-bag"/></svg><span>Retirada<small>Balcão</small></span></button>
+              <button data-mode="table"><svg><use href="#i-table"/></svg><span>Mesa<small>Salão</small></span></button>
+            </div>
+
+            <div class="context-line pickup-context">
+              <span><svg><use href="#i-bag"/></svg><strong>Retirada no balcão</strong> · Cliente opcional</span>
+              <button>Adicionar cliente</button>
+            </div>
+
+            <label class="search-field">
+              <svg><use href="#i-search"/></svg>
+              <input id="product-search" type="search" placeholder="Buscar produto — experimente “x ba”" autocomplete="off" />
+              <kbd>F2</kbd>
+            </label>
+
+            <div class="category-strip" role="tablist" aria-label="Categorias">
+              <button class="selected" role="tab" aria-selected="true">Mais pedidos</button>
+              <button role="tab">Lanches</button><button role="tab">Combos</button><button role="tab">Porções</button><button role="tab">Bebidas</button>
+            </div>
+
+            <div class="catalog-status"><strong>Mais pedidos</strong><span>12 produtos · toque para adicionar</span></div>
+            <section class="product-grid" aria-label="Produtos">
+              <a class="product-tile featured" href="?screen=product" data-product="x-bacon">
+                <img src="../combos-promotions/combo-x-bacon.png" alt="X-Bacon ilustrativo" />
+                <span><strong>X-Bacon</strong><small>Pão, carne, bacon e queijo</small><b>R$ 24,90</b></span>
+                <em>Configurar</em>
+              </a>
+              <button class="product-tile quick-add" data-product="coca">
+                <span class="product-art drink">CO</span><span><strong>Coca-Cola lata</strong><small>350 ml · gelada</small><b>R$ 6,00</b></span><svg><use href="#i-plus"/></svg>
+              </button>
+              <button class="product-tile quick-add" data-product="batata">
+                <span class="product-art fries">BT</span><span><strong>Batata pequena</strong><small>Crocante · 180 g</small><b>R$ 12,00</b></span><svg><use href="#i-plus"/></svg>
+              </button>
+              <button class="product-tile quick-add" data-product="x-salada">
+                <span class="product-art burger">XS</span><span><strong>X-Salada</strong><small>Carne, queijo e salada</small><b>R$ 21,90</b></span><svg><use href="#i-plus"/></svg>
+              </button>
+              <button class="product-tile quick-add" data-product="suco">
+                <span class="product-art juice">SL</span><span><strong>Suco de laranja</strong><small>Natural · 400 ml</small><b>R$ 9,50</b></span><svg><use href="#i-plus"/></svg>
+              </button>
+              <button class="product-tile sold-out" disabled data-product="pudim">
+                <span class="product-art dessert">PD</span><span><strong>Pudim da casa</strong><small>Esgotado agora</small><b>R$ 8,00</b></span>
+              </button>
+            </section>
+          </section>
+
+          <aside class="order-rail" aria-label="Comanda atual">
+            <header><span><small>Comanda</small><h2>Pedido</h2></span><span class="order-count">3 itens</span></header>
+            <div class="order-destination"><svg><use href="#i-bag"/></svg><span><strong>Balcão</strong><small>Retirada · agora</small></span><button>Alterar</button></div>
+            <div class="order-lines">
+              <article><span class="line-quantity">2</span><div><strong>X-Bacon</strong><small>Ao ponto · + cheddar</small><button>Editar</button></div><b>R$ 53,80</b></article>
+              <article><span class="line-quantity">1</span><div><strong>Batata pequena</strong><small>Sem observações</small><button>Editar</button></div><b>R$ 12,00</b></article>
+            </div>
+            <button class="coupon-line"><span><svg><use href="#i-plus"/></svg>Adicionar cupom</span><svg><use href="#i-chevron"/></svg></button>
+            <dl class="price-summary"><div><dt>Subtotal</dt><dd>R$ 65,80</dd></div><div class="saving"><dt>Promoção do X-Bacon</dt><dd>− R$ 4,00</dd></div><div><dt>Entrega</dt><dd>—</dd></div><div class="total"><dt>Total</dt><dd>R$ 61,80</dd></div></dl>
+            <a class="button primary finalize" href="?screen=payment"><span>Revisar e finalizar</span><strong>R$ 61,80</strong></a>
+            <p class="quote-note"><svg><use href="#i-check"/></svg>Preço conferido agora pelo PedidoLocal</p>
+          </aside>
+        </main>
+        <a class="mobile-cart-bar" href="?screen=payment"><span><b>3</b> Ver pedido</span><strong>R$ 61,80</strong></a>
+      </div>
+    </div>
+
+    <div id="product" class="screen dashboard-shell product-screen" hidden>
+      <div class="prototype-underlay" aria-hidden="true"></div>
+      <section class="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-title">
+        <header><div><small>Personalizar item</small><h1 id="product-title">X-Bacon</h1><p>Pão, carne, bacon e queijo</p></div><a class="icon-button" href="?screen=pos" aria-label="Fechar"><svg><use href="#i-close"/></svg></a></header>
+        <div class="dialog-scroll">
+          <fieldset><legend>Ponto da carne <span>Obrigatório</span></legend><p>Escolha 1 opção</p>
+            <label class="option-row"><input type="radio" name="doneness" value="Mal passado"/><span><strong>Mal passado</strong></span></label>
+            <label class="option-row selected"><input type="radio" name="doneness" value="Ao ponto" checked/><span><strong>Ao ponto</strong></span><svg><use href="#i-check"/></svg></label>
+            <label class="option-row"><input type="radio" name="doneness" value="Bem passado"/><span><strong>Bem passado</strong></span></label>
+          </fieldset>
+          <fieldset><legend>Molho <span>Escolha até 1</span></legend>
+            <label class="option-row selected"><input type="radio" name="sauce" value="Molho da casa" checked/><span><strong>Molho da casa</strong><small>Incluído</small></span><svg><use href="#i-check"/></svg></label>
+            <label class="option-row"><input type="radio" name="sauce" value="Maionese verde"/><span><strong>Maionese verde</strong><small>+ R$ 2,00</small></span></label>
+          </fieldset>
+          <fieldset><legend>Adicionais <span>Até 3</span></legend>
+            <label class="option-row selected"><input type="checkbox" checked/><span><strong>Cheddar</strong><small>+ R$ 2,00</small></span><svg><use href="#i-check"/></svg></label>
+            <label class="option-row"><input type="checkbox"/><span><strong>Bacon extra</strong><small>+ R$ 4,00</small></span></label>
+          </fieldset>
+          <label class="notes-field"><span>Observação <small>Opcional</small></span><textarea maxlength="500" placeholder="Ex.: sem cebola">Sem cebola</textarea></label>
+        </div>
+        <footer><div class="stepper"><button aria-label="Diminuir quantidade"><svg><use href="#i-minus"/></svg></button><strong>2</strong><button aria-label="Aumentar quantidade"><svg><use href="#i-plus"/></svg></button></div><a class="button primary" href="?screen=pos"><span>Adicionar 2 ao pedido</span><strong>R$ 53,80</strong></a></footer>
+      </section>
+    </div>
+
+    <div id="delivery" class="screen flow-screen" hidden>
+      <header class="flow-topbar"><a class="brand compact" href="?screen=pos"><span>PL</span><strong>PedidoLocal</strong></a><span>PDV · Novo pedido</span><span class="avatar">MS</span></header>
+      <main class="flow-layout">
+        <section class="flow-content">
+          <a class="back-link" href="?screen=pos"><svg><use href="#i-back"/></svg>Voltar ao cardápio</a>
+          <header><h1>Entrega</h1><p>Confirme quem vai receber e onde devemos entregar.</p></header>
+          <div class="phone-lookup"><label><span>Telefone</span><div><input value="(11) 99999-4821"/><button>Buscar</button></div></label><span class="lookup-success"><svg><use href="#i-check"/></svg>Cliente encontrado</span></div>
+          <section class="customer-found"><span class="customer-avatar">GA</span><div><strong>Gabriel Alves</strong><small>3 pedidos anteriores · último há 12 dias</small></div><button>Trocar cliente</button></section>
+          <div class="section-heading"><div><h2>Escolha o endereço</h2><p>Nenhum endereço é selecionado automaticamente.</p></div><button class="button subtle"><svg><use href="#i-plus"/></svg>Novo endereço</button></div>
+          <div class="address-list">
+            <label class="address-option selected"><input type="radio" name="address" checked/><svg><use href="#i-home"/></svg><span><strong>Casa</strong><small>Rua das Flores, 125 · Centro</small><em>Usado recentemente</em></span><svg class="selected-check"><use href="#i-check"/></svg></label>
+            <label class="address-option"><input type="radio" name="address"/><svg><use href="#i-location"/></svg><span><strong>Trabalho</strong><small>Av. das Palmeiras, 300 · Jardim</small></span></label>
+          </div>
+          <section class="delivery-quote"><span class="quote-icon"><svg><use href="#i-location"/></svg></span><div><strong>Endereço atendido</strong><small>Centro · previsão de 35–50 min</small></div><span><small>Taxa calculada</small><b>R$ 9,90</b></span></section>
+          <label class="checkbox-line"><input type="checkbox" checked/>Confirmo este endereço para o pedido</label>
+        </section>
+        <aside class="flow-summary"><span class="mode-badge"><svg><use href="#i-location"/></svg>Entrega</span><h2>Pedido <small>3 itens</small></h2><div class="mini-lines"><p><span>2× X-Bacon</span><b>R$ 53,80</b></p><p><span>1× Batata pequena</span><b>R$ 12,00</b></p></div><dl class="price-summary"><div><dt>Subtotal</dt><dd>R$ 65,80</dd></div><div class="saving"><dt>Promoção</dt><dd>− R$ 4,00</dd></div><div><dt>Entrega</dt><dd>R$ 9,90</dd></div><div class="total"><dt>Total</dt><dd>R$ 71,70</dd></div></dl><a class="button primary wide" href="?screen=payment">Continuar para pagamento<svg><use href="#i-chevron"/></svg></a></aside>
+      </main>
+    </div>
+
+    <div id="table" class="screen flow-screen" hidden>
+      <header class="flow-topbar"><a class="brand compact" href="?screen=pos"><span>PL</span><strong>PedidoLocal</strong></a><span>PDV · Novo pedido</span><span class="avatar">MS</span></header>
+      <main class="flow-layout table-layout">
+        <section class="flow-content">
+          <a class="back-link" href="?screen=pos"><svg><use href="#i-back"/></svg>Voltar ao cardápio</a>
+          <header><h1>Escolha a mesa</h1><p>O pedido entra no atendimento aberto ou inicia uma nova sessão.</p></header>
+          <label class="search-field table-search"><svg><use href="#i-search"/></svg><input placeholder="Buscar mesa"/></label>
+          <div class="table-legend"><span><i class="free"></i>Livre</span><span><i class="open"></i>Em atendimento</span><span><i class="attention"></i>Precisa de atenção</span></div>
+          <section class="table-grid" aria-label="Mesas ativas">
+            <button class="selected"><span>Mesa</span><strong>01</strong><small><i class="free"></i>Livre</small><svg><use href="#i-check"/></svg></button>
+            <button><span>Mesa</span><strong>02</strong><small><i class="open"></i>Em atendimento</small><em>2 pedidos · R$ 84,50</em></button>
+            <button><span>Mesa</span><strong>03</strong><small><i class="free"></i>Livre</small></button>
+            <button><span>Mesa</span><strong>04</strong><small><i class="attention"></i>Conta solicitada</small><em>3 pedidos · R$ 126,20</em></button>
+            <button><span>Mesa</span><strong>05</strong><small><i class="open"></i>Em atendimento</small><em>1 pedido · R$ 34,90</em></button>
+            <button><span>Mesa</span><strong>06</strong><small><i class="free"></i>Livre</small></button>
+          </section>
+          <div class="table-note"><svg><use href="#i-check"/></svg><span><strong>Mesa 01 livre</strong><small>Uma sessão será aberta somente quando o pedido for criado.</small></span></div>
+        </section>
+        <aside class="flow-summary"><span class="mode-badge"><svg><use href="#i-table"/></svg>Mesa 01</span><h2>Pedido <small>3 itens</small></h2><div class="mini-lines"><p><span>2× X-Bacon</span><b>R$ 53,80</b></p><p><span>1× Batata pequena</span><b>R$ 12,00</b></p></div><dl class="price-summary"><div><dt>Subtotal</dt><dd>R$ 65,80</dd></div><div class="saving"><dt>Promoção</dt><dd>− R$ 4,00</dd></div><div><dt>Entrega</dt><dd>—</dd></div><div class="total"><dt>Total</dt><dd>R$ 61,80</dd></div></dl><a class="button primary wide" href="?screen=payment">Usar Mesa 01<svg><use href="#i-chevron"/></svg></a></aside>
+      </main>
+    </div>
+
+    <div id="payment" class="screen flow-screen payment-screen" hidden>
+      <header class="flow-topbar"><a class="brand compact" href="?screen=pos"><span>PL</span><strong>PedidoLocal</strong></a><span>PDV · Revisar pedido</span><span class="avatar">MS</span></header>
+      <main class="payment-layout">
+        <section class="review-column">
+          <a class="back-link" href="?screen=pos"><svg><use href="#i-back"/></svg>Voltar ao pedido</a>
+          <header><h1>Revisar e finalizar</h1><p>Confira a comanda e escolha como o pagamento será recebido.</p></header>
+          <section class="review-ticket"><header><span><small>Destino</small><strong>Balcão · Retirada</strong></span><button>Alterar</button></header><div class="ticket-line"><span>2×</span><div><strong>X-Bacon</strong><small>Ao ponto · cheddar · sem cebola</small></div><b>R$ 53,80</b></div><div class="ticket-line"><span>1×</span><div><strong>Batata pequena</strong><small>Sem observações</small></div><b>R$ 12,00</b></div><button class="add-more"><svg><use href="#i-plus"/></svg>Adicionar mais itens</button></section>
+          <section class="financial-breakdown"><div><span>Subtotal</span><b>R$ 65,80</b></div><div class="saving"><span>Promoção do X-Bacon</span><b>− R$ 4,00</b></div><div><span>Cupom</span><button>Adicionar</button></div><div><span>Entrega</span><b>—</b></div><div class="grand-total"><span>Total</span><b>R$ 61,80</b></div></section>
+        </section>
+        <section class="payment-column">
+          <header><h2>Pagamento</h2><p>Somente opções válidas para retirada.</p></header>
+          <div class="payment-methods" role="radiogroup" aria-label="Forma de pagamento">
+            <label class="selected"><input type="radio" name="payment" checked/><span class="payment-icon"><svg><use href="#i-card"/></svg></span><span><strong>Cartão presencial</strong><small>Débito ou crédito na maquininha</small></span><svg><use href="#i-check"/></svg></label>
+            <label><input type="radio" name="payment"/><span class="payment-icon"><svg><use href="#i-cash"/></svg></span><span><strong>Dinheiro</strong><small>Informe troco se necessário</small></span></label>
+            <label><input type="radio" name="payment"/><span class="payment-icon"><svg><use href="#i-pix"/></svg></span><span><strong>Pix manual</strong><small>Confirmado pela equipe, sem Mercado Pago</small></span></label>
+          </div>
+          <fieldset class="payment-timing"><legend>Quando receber?</legend><label class="selected"><input type="radio" name="timing" checked/><span><strong>Recebido agora</strong><small>Marcar pagamento como pago</small></span><svg><use href="#i-check"/></svg></label><label><input type="radio" name="timing"/><span><strong>Receber depois</strong><small>Pedido segue com pagamento pendente</small></span></label></fieldset>
+          <div class="permission-note"><svg><use href="#i-check"/></svg><span><strong>Você pode confirmar pagamentos manuais</strong><small>A ação ficará registrada no histórico do pedido.</small></span></div>
+          <div class="final-total"><span>Total a receber</span><strong>R$ 61,80</strong></div>
+          <a id="create-order" class="button primary wide create-order" href="?screen=success"><span>Criar pedido</span><strong>e enviar à cozinha</strong></a>
+          <p class="idempotency-note">Um clique cria um único pedido. Não feche a tela durante o envio.</p>
+        </section>
+      </main>
+    </div>
+
+    <div id="success" class="screen success-screen" hidden>
+      <header class="flow-topbar"><a class="brand compact" href="?screen=pos"><span>PL</span><strong>PedidoLocal</strong></a><span>PDV</span><span class="avatar">MS</span></header>
+      <main>
+        <div class="success-mark"><svg><use href="#i-check"/></svg></div>
+        <p class="success-status">Enviado para a operação</p>
+        <h1>Pedido <span>#315</span> criado</h1>
+        <p class="success-copy">Retirada no balcão · Cartão presencial<br/><strong>R$ 61,80</strong></p>
+        <section class="success-ticket"><div><span>Origem</span><strong>PDV</strong></div><div><span>Status</span><strong class="status-confirmed"><i></i> Confirmado</strong></div><div><span>Criado por</span><strong>Maria · 19:42</strong></div></section>
+        <div class="success-actions"><a class="button primary" href="?screen=pos"><svg><use href="#i-plus"/></svg>Novo pedido</a><a class="button secondary" href="#"><svg><use href="#i-orders"/></svg>Ver na Central</a><button class="button secondary"><svg><use href="#i-copy"/></svg>Copiar acompanhamento</button></div>
+        <a class="kds-link" href="?screen=kds">Ver como chegou na cozinha <svg><use href="#i-chevron"/></svg></a>
+      </main>
+    </div>
+
+    <div id="kds" class="screen kds-screen" hidden>
+      <header><a class="brand compact dark" href="?screen=pos"><span>PL</span><strong>PedidoLocal</strong></a><div><h1>Cozinha</h1><p>Pedidos em tempo real</p></div><span class="kds-clock">19:43</span><span class="kds-online"><i></i>Atualizando</span></header>
+      <main>
+        <section class="kds-lane"><header><span><i class="todo"></i>A fazer</span><b>3</b></header><article class="kds-card new"><header><span class="service-label">BALCÃO</span><strong>#315</strong><time>agora</time></header><div class="kds-items"><p><b>2×</b><span><strong>X-Bacon</strong><small>Ao ponto · cheddar<br/><em>Sem cebola</em></small></span></p><p><b>1×</b><span><strong>Batata pequena</strong></span></p></div><button>Iniciar preparo</button></article><article class="kds-card ghost"><header><span class="service-label delivery">ENTREGA</span><strong>#314</strong><time>3 min</time></header><p class="ghost-line"></p><p class="ghost-line short"></p></article></section>
+        <section class="kds-lane"><header><span><i class="making"></i>Em preparo</span><b>2</b></header><article class="kds-card ghost tall"><header><span class="service-label table">MESA 08</span><strong>#312</strong><time>8 min</time></header><p class="ghost-line"></p><p class="ghost-line short"></p><p class="ghost-line"></p></article></section>
+        <section class="kds-lane"><header><span><i class="ready"></i>Prontos</span><b>1</b></header><article class="kds-card ghost"><header><span class="service-label">BALCÃO</span><strong>#310</strong><time>12 min</time></header><p class="ghost-line"></p><p class="ghost-line short"></p></article></section>
+      </main>
+      <p class="kds-caption">O pedido do PDV usa o mesmo KDS e os mesmos estados. A cozinha vê apenas o necessário para preparar.</p>
+    </div>
+
+    <div class="prototype-toast" role="status" hidden><svg><use href="#i-check"/></svg>Item adicionado ao pedido</div>
+  </body>
+</html>
