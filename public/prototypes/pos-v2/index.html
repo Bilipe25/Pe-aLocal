@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>PedidoLocal — proposta PDV V2</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <!--
+      THESIS: o balcão inteiro permanece visível, enquanto retomadas e decisões excepcionais chegam em drawers breves, nunca como um ERP paralelo.
+      OWN-WORLD: Papel, Tinta, Kraft e Pimenta; planos de bancada, linhas de comanda e controles compactos com foco explícito.
+      STORY: identificar operador/terminal, recuperar ou iniciar, localizar o item, revisar a comanda e confirmar o preço atual.
+      FIRST VIEWPORT: catálogo ocupa o campo principal e a comanda fixa ocupa 400 px; favoritos e ações de retomada precedem a grade.
+      FORM: extensão precisa do mundo PedidoLocal, modo Operate, direção code-led conforme configuração do projeto.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+      DATA: nomes, produtos, clientes, terminais, valores e pedidos são inteiramente fictícios.
+    -->
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="i-home" viewBox="0 0 24 24">
+        <path d="m3 11 9-8 9 8" />
+        <path d="M5 10v10h14V10M9 20v-6h6v6" />
+      </symbol>
+      <symbol id="i-orders" viewBox="0 0 24 24">
+        <rect x="5" y="3" width="14" height="18" rx="2" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
+      </symbol>
+      <symbol id="i-pos" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="14" rx="2" />
+        <path d="M8 22h8M12 18v4M7 9h4m2 0h4M7 13h10" />
+      </symbol>
+      <symbol id="i-kds" viewBox="0 0 24 24">
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <path d="M8 7h8M8 11h8M8 15h4" />
+      </symbol>
+      <symbol id="i-catalog" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 10h16M9 10v9" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21c0-5 3-8 8-8s8 3 8 8" />
+      </symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="13" rx="2" />
+        <path d="M8 21h8M12 17v4M7 9h7M7 13h3" />
+      </symbol>
+      <symbol id="i-focus" viewBox="0 0 24 24">
+        <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+      </symbol>
+      <symbol id="i-help" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.8 9a2.4 2.4 0 1 1 3.2 2.3c-.7.3-1 1-1 1.7M12 17h.01" />
+      </symbol>
+      <symbol id="i-hold" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 8v8M14.5 8v8" />
+      </symbol>
+      <symbol id="i-history" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+        <path d="M3 3v5h5M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-bag" viewBox="0 0 24 24">
+        <path d="M6 8h12l-1 12H7L6 8Z" />
+        <path d="M9 9V6a3 3 0 0 1 6 0v3" />
+      </symbol>
+      <symbol id="i-location" viewBox="0 0 24 24">
+        <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </symbol>
+      <symbol id="i-table" viewBox="0 0 24 24">
+        <path d="M4 9h16M6 9v11m12-11v11M3 5h18v4H3z" />
+      </symbol>
+      <symbol id="i-star" viewBox="0 0 24 24">
+        <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+      </symbol>
+      <symbol id="i-discount" viewBox="0 0 24 24">
+        <path d="m4 4 16 16M8 7.5h.01M16 16.5h.01" />
+        <circle cx="8" cy="7.5" r="2.5" />
+        <circle cx="16" cy="16.5" r="2.5" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="8" y="8" width="11" height="11" rx="2" />
+        <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+      </symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24">
+        <path d="M12 3 2.5 20h19L12 3Z" />
+        <path d="M12 9v5M12 17h.01" />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell" id="workspace">
+      <aside class="sidebar">
+        <a class="brand" href="?screen=pos" aria-label="PedidoLocal"
+          ><span>PL</span><strong>PedidoLocal</strong></a
+        >
+        <nav aria-label="Principal">
+          <a href="#"
+            ><svg><use href="#i-home" /></svg><span>Visão geral</span></a
+          >
+          <a href="#"
+            ><svg><use href="#i-orders" /></svg><span>Central</span></a
+          >
+          <a class="active" href="?screen=pos" aria-current="page"
+            ><svg><use href="#i-pos" /></svg><span>PDV</span></a
+          >
+          <a href="#"
+            ><svg><use href="#i-kds" /></svg><span>Cozinha</span></a
+          >
+          <a href="#"
+            ><svg><use href="#i-catalog" /></svg><span>Cardápio</span></a
+          >
+        </nav>
+        <div class="store-card">
+          <span class="store-mark">XB</span
+          ><span
+            ><strong>Xis do Bairro</strong><small><i></i> Operação ativa</small></span
+          >
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <button class="icon-button menu-button" aria-label="Abrir navegação">
+            <svg><use href="#i-menu" /></svg>
+          </button>
+          <div class="operator">
+            <span class="avatar">MS</span>
+            <span><strong>Maria Silva</strong><small>Operadora · dados fictícios</small></span>
+          </div>
+          <div class="top-actions">
+            <a class="terminal-pill" href="?screen=terminal"
+              ><svg><use href="#i-terminal" /></svg
+              ><span><small>Terminal</small>Caixa principal</span
+              ><svg><use href="#i-chevron" /></svg
+            ></a>
+            <a class="icon-label focus-link" href="?screen=focus"
+              ><svg><use href="#i-focus" /></svg><span>Modo foco</span></a
+            >
+            <button class="icon-label help-toggle" aria-label="Ver atalhos">
+              <svg><use href="#i-help" /></svg>
+              <span>Atalhos</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="pos-layout">
+          <section class="catalog-pane">
+            <header class="workspace-heading">
+              <div>
+                <h1>Novo pedido</h1>
+                <p>Preço e disponibilidade são conferidos antes de confirmar.</p>
+              </div>
+              <div class="resume-actions">
+                <a class="button secondary" href="?screen=holds"
+                  ><svg><use href="#i-hold" /></svg>Em espera <b>2</b></a
+                >
+                <a class="button secondary" href="?screen=repeat"
+                  ><svg><use href="#i-history" /></svg>Recentes</a
+                >
+              </div>
+            </header>
+
+            <div class="mode-strip" role="radiogroup" aria-label="Modalidade do pedido">
+              <button role="radio" aria-checked="true" data-mode="pickup" class="selected">
+                <svg><use href="#i-bag" /></svg><span>Retirada<small>Alt+1</small></span>
+              </button>
+              <button role="radio" aria-checked="false" data-mode="delivery">
+                <svg><use href="#i-location" /></svg><span>Entrega<small>Alt+2</small></span>
+              </button>
+              <button role="radio" aria-checked="false" data-mode="table">
+                <svg><use href="#i-table" /></svg><span>Mesa<small>Alt+3</small></span>
+              </button>
+            </div>
+
+            <div class="context-bar">
+              <span
+                ><svg><use href="#i-bag" /></svg><strong>Retirada no balcão</strong
+                ><small>Cliente opcional</small></span
+              >
+              <a href="?screen=customer">Identificar cliente</a>
+            </div>
+
+            <label class="search-field">
+              <svg><use href="#i-search" /></svg>
+              <input
+                id="product-search"
+                type="search"
+                placeholder="Buscar produto"
+                autocomplete="off"
+              />
+              <kbd>/</kbd>
+            </label>
+
+            <section class="favorites" aria-labelledby="favorites-title">
+              <div class="section-heading">
+                <h2 id="favorites-title">
+                  <svg><use href="#i-star" /></svg>Favoritos
+                </h2>
+                <span>Atalhos da loja</span>
+              </div>
+              <div class="favorite-strip">
+                <button data-product="x-bacon">
+                  <span class="mini-art burger">XB</span
+                  ><span><strong>X-Bacon</strong><small>R$ 24,90</small></span
+                  ><svg><use href="#i-plus" /></svg>
+                </button>
+                <button data-product="coca">
+                  <span class="mini-art drink">CO</span
+                  ><span><strong>Coca-Cola</strong><small>R$ 6,00</small></span
+                  ><svg><use href="#i-plus" /></svg>
+                </button>
+                <button data-product="combo">
+                  <span class="mini-art combo">C2</span
+                  ><span><strong>Combo 2</strong><small>R$ 39,90</small></span
+                  ><svg><use href="#i-plus" /></svg>
+                </button>
+                <button class="unavailable" disabled data-product="pudim">
+                  <span class="mini-art muted">PD</span
+                  ><span><strong>Pudim</strong><small>Indisponível</small></span
+                  ><svg><use href="#i-warning" /></svg>
+                </button>
+              </div>
+            </section>
+
+            <div class="catalog-toolbar">
+              <div class="category-strip" role="tablist" aria-label="Categorias">
+                <button class="selected" role="tab" aria-selected="true">Mais usados</button>
+                <button role="tab" aria-selected="false">Lanches</button>
+                <button role="tab" aria-selected="false">Combos</button>
+                <button role="tab" aria-selected="false">Bebidas</button>
+              </div>
+              <span>Últimos 30 dias</span>
+            </div>
+
+            <section class="product-grid" aria-label="Produtos mais usados">
+              <button class="product-card hero-product" data-product="x-bacon">
+                <img
+                  src="../combos-promotions/combo-x-bacon.png"
+                  alt="X-Bacon com batata e bebida, imagem ilustrativa"
+                />
+                <span class="product-copy"
+                  ><strong>X-Bacon</strong><small>Pão, carne, bacon e queijo</small
+                  ><b>R$ 24,90</b></span
+                >
+                <span class="configure">Configurar</span>
+              </button>
+              <button class="product-card" data-product="coca">
+                <span class="product-art drink">CO</span
+                ><span class="product-copy"
+                  ><strong>Coca-Cola lata</strong><small>350 ml · gelada</small><b>R$ 6,00</b></span
+                ><span class="add"
+                  ><svg><use href="#i-plus" /></svg
+                ></span>
+              </button>
+              <button class="product-card" data-product="batata">
+                <span class="product-art fries">BT</span
+                ><span class="product-copy"
+                  ><strong>Batata pequena</strong><small>Crocante · 180 g</small
+                  ><b>R$ 12,00</b></span
+                ><span class="add"
+                  ><svg><use href="#i-plus" /></svg
+                ></span>
+              </button>
+              <button class="product-card" data-product="x-salada">
+                <span class="product-art salad">XS</span
+                ><span class="product-copy"
+                  ><strong>X-Salada</strong><small>Carne, queijo e salada</small
+                  ><b>R$ 21,90</b></span
+                ><span class="add"
+                  ><svg><use href="#i-plus" /></svg
+                ></span>
+              </button>
+              <button class="product-card" data-product="suco">
+                <span class="product-art juice">SL</span
+                ><span class="product-copy"
+                  ><strong>Suco de laranja</strong><small>Natural · 400 ml</small
+                  ><b>R$ 9,50</b></span
+                ><span class="add"
+                  ><svg><use href="#i-plus" /></svg
+                ></span>
+              </button>
+              <button class="product-card sold-out" disabled data-product="pudim">
+                <span class="product-art muted">PD</span
+                ><span class="product-copy"
+                  ><strong>Pudim da casa</strong><small>Esgotado agora</small><b>R$ 8,00</b></span
+                >
+              </button>
+            </section>
+          </section>
+
+          <aside class="order-rail" aria-label="Comanda atual">
+            <header class="rail-heading">
+              <div>
+                <span>Comanda atual</span>
+                <h2>Pedido</h2>
+              </div>
+              <button class="icon-button" aria-label="Limpar pedido">
+                <svg><use href="#i-trash" /></svg>
+              </button>
+            </header>
+            <a class="customer-row" href="?screen=customer"
+              ><span class="customer-icon"
+                ><svg><use href="#i-user" /></svg></span
+              ><span
+                ><strong>Cliente não identificado</strong><small>Retirada · opcional</small></span
+              ><b>Adicionar</b></a
+            >
+            <div class="draft-state">
+              <span><i></i> Salvo agora</span><small>Versão 7 · Caixa principal</small>
+            </div>
+
+            <ul class="order-lines">
+              <li>
+                <span class="qty">2</span
+                ><span
+                  ><strong>X-Bacon</strong><small>Ao ponto · + cheddar</small
+                  ><button>Editar</button></span
+                ><b>R$ 53,80</b>
+              </li>
+              <li>
+                <span class="qty">1</span
+                ><span
+                  ><strong>Batata pequena</strong><small>Sem observações</small
+                  ><button>Editar</button></span
+                ><b>R$ 12,00</b>
+              </li>
+            </ul>
+
+            <div class="rail-actions">
+              <a href="?screen=discount"
+                ><svg><use href="#i-discount" /></svg
+                ><span><strong>Desconto manual</strong><small>Gerente ou proprietário</small></span
+                ><svg><use href="#i-chevron" /></svg
+              ></a>
+              <button>
+                <svg><use href="#i-plus" /></svg
+                ><span><strong>Adicionar cupom</strong><small>Código promocional</small></span
+                ><svg><use href="#i-chevron" /></svg>
+              </button>
+            </div>
+
+            <div class="payment-compact">
+              <span><strong>Pagamento</strong><small>Dinheiro · receber depois</small></span
+              ><button>Alterar</button>
+            </div>
+            <div class="totals">
+              <div><span>Subtotal</span><b>R$ 65,80</b></div>
+              <div class="discount-line"><span>Promoção automática</span><b>− R$ 4,00</b></div>
+              <div class="total"><span>Total</span><b>R$ 61,80</b></div>
+            </div>
+            <button class="primary-action"><span>Finalizar pedido</span><b>R$ 61,80</b></button>
+            <p class="price-proof">
+              <svg><use href="#i-check" /></svg>Preço conferido agora pelo PedidoLocal
+            </p>
+          </aside>
+        </main>
+      </div>
+    </div>
+
+    <div class="mobile-order-bar">
+      <span><small>3 itens</small><strong>R$ 61,80</strong></span
+      ><button>Ver pedido</button>
+    </div>
+    <a class="exit-focus" href="?screen=pos"
+      ><svg><use href="#i-focus" /></svg>Sair do foco</a
+    >
+
+    <div class="shortcut-popover" hidden>
+      <header>
+        <strong>Atalhos do PDV</strong
+        ><button class="help-toggle" aria-label="Fechar atalhos">
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </header>
+      <dl>
+        <div>
+          <dt><kbd>/</kbd></dt>
+          <dd>Buscar produto</dd>
+        </div>
+        <div>
+          <dt><kbd>Alt</kbd> + <kbd>1–3</kbd></dt>
+          <dd>Trocar modalidade</dd>
+        </div>
+        <div>
+          <dt><kbd>Alt</kbd> + <kbd>H</kbd></dt>
+          <dd>Pedidos em espera</dd>
+        </div>
+        <div>
+          <dt><kbd>?</kbd></dt>
+          <dd>Abrir esta ajuda</dd>
+        </div>
+      </dl>
+      <p>Atalhos são ignorados enquanto você digita.</p>
+    </div>
+
+    <div class="overlay" data-layer="holds" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar pedidos em espera"></a>
+      <section class="drawer" role="dialog" aria-modal="true" aria-labelledby="holds-title">
+        <header class="drawer-header">
+          <div>
+            <h2 id="holds-title">Pedidos em espera</h2>
+            <p>Rascunhos da loja — expiram 12h após o último salvamento.</p>
+          </div>
+          <a class="icon-button" href="?screen=pos" aria-label="Fechar"
+            ><svg><use href="#i-close" /></svg
+          ></a>
+        </header>
+        <div class="sync-notice">
+          <svg><use href="#i-check" /></svg
+          ><span
+            ><strong>2 atendimentos protegidos no servidor</strong
+            ><small>Qualquer terminal desta loja pode retomar.</small></span
+          >
+        </div>
+        <article class="hold-card">
+          <div class="hold-top">
+            <span class="status open">Em espera</span><time>há 6 min</time>
+          </div>
+          <h3>Retirada · João</h3>
+          <p>3 itens · X-Bacon, Batata e Coca-Cola</p>
+          <dl>
+            <div>
+              <dt>Operadora</dt>
+              <dd>Maria Silva</dd>
+            </div>
+            <div>
+              <dt>Terminal</dt>
+              <dd>Caixa principal</dd>
+            </div>
+            <div>
+              <dt>Expira</dt>
+              <dd>em 11h 54min</dd>
+            </div>
+          </dl>
+          <div class="hold-actions">
+            <button class="button ghost">Descartar</button
+            ><button class="button primary">Retomar pedido</button>
+          </div>
+        </article>
+        <article class="hold-card conflict">
+          <div class="hold-top">
+            <span class="status editing">Em edição</span><time>há 2 min</time>
+          </div>
+          <h3>Entrega · (85) 99999-1048</h3>
+          <p>2 itens · endereço confirmado</p>
+          <div class="conflict-message">
+            <svg><use href="#i-warning" /></svg
+            ><span
+              ><strong>Atualizado no Caixa 2</strong
+              ><small>Carregue a versão mais recente antes de editar.</small></span
+            >
+          </div>
+          <div class="hold-actions">
+            <button class="button primary full">Carregar versão mais recente</button>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <div class="overlay" data-layer="repeat" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar pedidos recentes"></a>
+      <section class="drawer wide" role="dialog" aria-modal="true" aria-labelledby="recent-title">
+        <header class="drawer-header">
+          <div>
+            <h2 id="recent-title">Pedidos recentes</h2>
+            <p>Atalhos para consultar ou montar um novo pedido.</p>
+          </div>
+          <a class="icon-button" href="?screen=pos" aria-label="Fechar"
+            ><svg><use href="#i-close" /></svg
+          ></a>
+        </header>
+        <article class="recent-order selected-order">
+          <header>
+            <div>
+              <h3>Pedido <span>#1048</span></h3>
+              <p>Hoje, 19:18 · Retirada · João</p>
+            </div>
+            <strong>R$ 61,80</strong>
+          </header>
+          <p>2× X-Bacon · 1× Batata pequena</p>
+          <div class="recent-actions">
+            <button>Ver pedido</button><button>Copiar acompanhamento</button
+            ><button class="repeat-open">Repetir</button>
+          </div>
+        </article>
+        <div class="repeat-review">
+          <header>
+            <div>
+              <h3>Repetir #1048</h3>
+              <p>Um novo pedido será montado com o catálogo e os preços de agora.</p>
+            </div>
+            <span class="status review">Revisão necessária</span>
+          </header>
+          <ul>
+            <li>
+              <svg class="ok"><use href="#i-check" /></svg
+              ><span><strong>2× X-Bacon</strong><small>Disponível · opções mantidas</small></span
+              ><b>R$ 26,90 cada</b>
+            </li>
+            <li>
+              <svg class="warning"><use href="#i-warning" /></svg
+              ><span
+                ><strong>1× Batata pequena</strong
+                ><small>Tamanho anterior mudou; escolha novamente</small></span
+              ><button>Configurar</button>
+            </li>
+            <li class="unavailable-item">
+              <svg><use href="#i-warning" /></svg
+              ><span
+                ><strong>Molho especial</strong
+                ><small>Item não está mais disponível e não será adicionado.</small></span
+              ><button>Remover</button>
+            </li>
+          </ul>
+          <div class="current-price">
+            <span><small>Total anterior</small><s>R$ 61,80</s></span
+            ><span><small>Prévia atual</small><strong>R$ 65,80</strong></span>
+          </div>
+          <button class="button primary full">Revisar 3 itens no novo pedido</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="overlay" data-layer="customer" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar cliente"></a>
+      <section
+        class="drawer customer-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="customer-title"
+      >
+        <header class="drawer-header">
+          <div>
+            <h2 id="customer-title">Identificar cliente</h2>
+            <p>Busca exata pelo telefone. Dados disponíveis apenas para esta equipe.</p>
+          </div>
+          <a class="icon-button" href="?screen=pos" aria-label="Fechar"
+            ><svg><use href="#i-close" /></svg
+          ></a>
+        </header>
+        <label class="field-label"
+          >Telefone
+          <span class="lookup-field"
+            ><input value="(85) 99999-1048" inputmode="tel" /><button>
+              <svg><use href="#i-search" /></svg>Buscar
+            </button></span
+          >
+        </label>
+        <div class="found-customer">
+          <header>
+            <span class="avatar large">AC</span
+            ><span
+              ><small>Cliente encontrado</small>
+              <h3>Ana Costa</h3>
+              <p>Último pedido há 8 dias</p></span
+            ><svg class="ok"><use href="#i-check" /></svg>
+          </header>
+          <h4>Confirmar endereço para entrega</h4>
+          <label class="address-choice selected"
+            ><input type="radio" checked name="address" /><span
+              ><strong>Casa</strong><small>Rua das Flores, 120 · Aldeota</small
+              ><em>Zona Centro · R$ 7,00</em></span
+            ></label
+          >
+          <label class="address-choice"
+            ><input type="radio" name="address" /><span
+              ><strong>Trabalho</strong><small>Av. Santos Dumont, 4000 · Papicu</small
+              ><em>Zona Leste · revalidar</em></span
+            ></label
+          >
+          <div class="privacy-note">
+            <svg><use href="#i-lock" /></svg>O endereço será revalidado no preço e na confirmação.
+          </div>
+          <button class="button primary full">Usar cliente e endereço selecionado</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="overlay centered" data-layer="discount" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar desconto"></a>
+      <section
+        class="modal discount-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="discount-title"
+      >
+        <header class="drawer-header">
+          <div>
+            <h2 id="discount-title">Aplicar desconto manual</h2>
+            <p>Autorizado pela sessão atual de gerente.</p>
+          </div>
+          <a class="icon-button" href="?screen=pos" aria-label="Fechar"
+            ><svg><use href="#i-close" /></svg
+          ></a>
+        </header>
+        <div class="manager-proof">
+          <span class="avatar">MS</span
+          ><span><strong>Maria Silva</strong><small>Gerente · autorização registrada</small></span
+          ><svg class="ok"><use href="#i-check" /></svg>
+        </div>
+        <fieldset class="discount-type">
+          <legend>Formato do desconto</legend>
+          <label class="selected"
+            ><input type="radio" checked name="discount-type" />Valor (R$)</label
+          ><label><input type="radio" name="discount-type" />Percentual (%)</label>
+        </fieldset>
+        <label class="field-label"
+          >Valor<span class="money-field"><b>R$</b><input value="5,00" inputmode="decimal" /></span
+        ></label>
+        <label class="field-label"
+          >Motivo<select>
+            <option>Cortesia ao cliente</option>
+            <option>Ajuste operacional</option>
+            <option>Recuperação de atendimento</option>
+          </select></label
+        >
+        <label class="field-label"
+          >Observação opcional<textarea placeholder="Contexto curto para a auditoria"></textarea>
+        </label>
+        <dl class="discount-summary">
+          <div>
+            <dt>Base elegível após promoções</dt>
+            <dd>R$ 61,80</dd>
+          </div>
+          <div>
+            <dt>Desconto manual</dt>
+            <dd>− R$ 5,00</dd>
+          </div>
+          <div class="total">
+            <dt>Novo total</dt>
+            <dd>R$ 56,80</dd>
+          </div>
+        </dl>
+        <p class="rule-note">Não incide sobre entrega. Um único desconto manual por pedido.</p>
+        <div class="modal-actions">
+          <a class="button ghost" href="?screen=pos">Cancelar</a
+          ><button class="button primary">Aplicar R$ 5,00</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="overlay centered" data-layer="no-permission" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar aviso"></a>
+      <section
+        class="modal permission-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="permission-title"
+      >
+        <span class="lock-mark"
+          ><svg><use href="#i-lock" /></svg
+        ></span>
+        <h2 id="permission-title">Desconto não permitido neste acesso</h2>
+        <p>
+          O perfil de atendente não pode aplicar desconto manual. Para proteger a operação, não
+          usamos PIN compartilhado nem um aprovador escolhido na tela.
+        </p>
+        <div class="session-card">
+          <span class="avatar">JL</span
+          ><span><strong>João Lima</strong><small>Atendente · Caixa principal</small></span>
+        </div>
+        <div class="permission-guidance">
+          <strong>Como continuar</strong>
+          <p>
+            Um gerente ou proprietário deve entrar com a própria conta neste terminal e abrir
+            novamente o pedido em espera.
+          </p>
+        </div>
+        <a class="button primary full" href="?screen=pos">Entendi, voltar ao pedido</a>
+      </section>
+    </div>
+
+    <div class="overlay centered" data-layer="terminal" hidden>
+      <a class="scrim" href="?screen=pos" aria-label="Fechar terminais"></a>
+      <section
+        class="modal terminal-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="terminal-title"
+      >
+        <header class="drawer-header">
+          <div>
+            <h2 id="terminal-title">Identificar este terminal</h2>
+            <p>O terminal organiza a origem do atendimento; não altera permissões.</p>
+          </div>
+          <a class="icon-button" href="?screen=pos" aria-label="Fechar"
+            ><svg><use href="#i-close" /></svg
+          ></a>
+        </header>
+        <div class="terminal-list">
+          <label class="terminal-choice selected"
+            ><input type="radio" checked name="terminal" /><span class="terminal-icon"
+              ><svg><use href="#i-terminal" /></svg></span
+            ><span><strong>Caixa principal</strong><small>Ativo · usado agora</small></span
+            ><svg class="ok"><use href="#i-check" /></svg
+          ></label>
+          <label class="terminal-choice"
+            ><input type="radio" name="terminal" /><span class="terminal-icon"
+              ><svg><use href="#i-terminal" /></svg></span
+            ><span><strong>Caixa 2</strong><small>Ativo · usado há 2 min</small></span></label
+          >
+          <label class="terminal-choice"
+            ><input type="radio" name="terminal" /><span class="terminal-icon"
+              ><svg><use href="#i-terminal" /></svg></span
+            ><span
+              ><strong>Tablet do salão</strong><small>Ativo · usado há 18 min</small></span
+            ></label
+          >
+        </div>
+        <label class="remember-terminal"
+          ><input type="checkbox" checked />Lembrar este terminal neste navegador</label
+        >
+        <p class="privacy-note">
+          <svg><use href="#i-lock" /></svg>O servidor confirma loja e estado ativo em cada
+          atendimento.
+        </p>
+        <div class="modal-actions">
+          <a class="button ghost" href="?screen=pos">Cancelar</a
+          ><button class="button primary">Usar Caixa principal</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="success-screen" data-layer="success" hidden aria-labelledby="success-title">
+      <div class="success-card">
+        <span class="success-mark"
+          ><svg><use href="#i-check" /></svg
+        ></span>
+        <p class="success-context">Pedido confirmado</p>
+        <h1 id="success-title">Pedido <span>#1052</span> criado</h1>
+        <p>Entrou na fila da operação e já está visível na Central e na cozinha.</p>
+        <dl>
+          <div>
+            <dt>Total</dt>
+            <dd>R$ 56,80</dd>
+          </div>
+          <div>
+            <dt>Pagamento</dt>
+            <dd>Dinheiro · pendente</dd>
+          </div>
+          <div>
+            <dt>Origem</dt>
+            <dd>Maria · Caixa principal</dd>
+          </div>
+        </dl>
+        <div class="success-actions">
+          <a class="button primary" href="?screen=pos"
+            ><svg><use href="#i-plus" /></svg>Novo pedido</a
+          ><button class="button secondary">
+            <svg><use href="#i-orders" /></svg>Ver pedido</button
+          ><a class="button secondary" href="?screen=repeat"
+            ><svg><use href="#i-history" /></svg>Repetir</a
+          ><button class="button secondary copy-link">
+            <svg><use href="#i-copy" /></svg>Copiar acompanhamento
+          </button>
+        </div>
+        <p class="print-note">
+          Impressão não aparece nesta proposta porque o recurso ainda está em desenvolvimento.
+        </p>
+      </div>
+    </section>
+
+    <div class="prototype-toast" hidden role="status">Ação simulada no protótipo</div>
+  </body>
+</html>
