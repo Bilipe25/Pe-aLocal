@@ -29,6 +29,7 @@ import {
 } from '@/server/errors';
 import {
   calculateCheckoutQuote,
+  applyAuthorizedPosManualDiscount,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
 import {
@@ -100,6 +101,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
   const { input } = params;
   const dineIn = 'tableToken' in params;
   const pos = 'pos' in params;
+  const posMutationContext = pos ? params.pos : null;
   const standardInput = dineIn || pos ? null : (input as CheckoutInput);
   const dineInInput = dineIn ? (input as DineInCheckoutInput) : null;
   const posInput = pos ? (input as PosOrderInput) : null;
@@ -186,6 +188,24 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
+      const posTerminal =
+        pos && posInput!.posTerminalId
+          ? await tx.storePosTerminal.findFirst({
+              where: {
+                id: posInput!.posTerminalId,
+                tenantId: store.tenantId,
+                storeId: store.id,
+              },
+              select: { id: true, name: true, isActive: true },
+            })
+          : null;
+      if (pos && posInput!.posTerminalId && !posTerminal?.isActive) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'O terminal selecionado está inativo ou não pertence a esta loja.',
+          409,
+        );
+      }
       if (
         (dineIn || (pos && posInput!.modality === 'DINE_IN')) &&
         (!diningTable?.isActive ||
@@ -208,6 +228,56 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       `;
 
       const now = new Date();
+      let posDraft: {
+        id: string;
+        status: 'OPEN' | 'CONVERTED' | 'DISCARDED' | 'EXPIRED';
+        version: number;
+        expiresAt: Date;
+        convertedOrderId: string | null;
+      } | null = null;
+      if (pos && posInput!.draftId && posInput!.expectedDraftVersion != null) {
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "pos_drafts"
+          WHERE "id" = ${posInput!.draftId}
+            AND "tenantId" = ${store.tenantId}
+            AND "storeId" = ${store.id}
+          FOR UPDATE
+        `;
+        if (locked.length !== 1) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este pedido em espera não está mais disponível.',
+            409,
+          );
+        }
+        posDraft = await tx.posDraft.findFirst({
+          where: {
+            id: posInput!.draftId,
+            tenantId: store.tenantId,
+            storeId: store.id,
+          },
+          select: {
+            id: true,
+            status: true,
+            version: true,
+            expiresAt: true,
+            convertedOrderId: true,
+          },
+        });
+        if (
+          !posDraft ||
+          (posDraft.status === 'OPEN' &&
+            (posDraft.version !== posInput!.expectedDraftVersion || posDraft.expiresAt <= now)) ||
+          (posDraft.status !== 'OPEN' && posDraft.status !== 'CONVERTED')
+        ) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este pedido em espera foi alterado em outro terminal. Atualize a lista.',
+            409,
+          );
+        }
+      }
       const posCustomer =
         pos && posInput!.customerId
           ? await tx.customer.findFirst({
@@ -344,6 +414,38 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       });
       if (existing) {
         assertMatchingOrderFingerprint(existing.idempotencyFingerprint, idempotencyFingerprint);
+        if (posDraft?.status === 'CONVERTED' && posDraft.convertedOrderId !== existing.id) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este pedido em espera já foi finalizado em outro pedido.',
+            409,
+          );
+        }
+        if (posDraft?.status === 'OPEN') {
+          const converted = await tx.posDraft.updateMany({
+            where: {
+              id: posDraft.id,
+              tenantId: store.tenantId,
+              storeId: store.id,
+              status: 'OPEN',
+              version: posDraft.version,
+            },
+            data: {
+              status: 'CONVERTED',
+              version: { increment: 1 },
+              convertedOrderId: existing.id,
+              payloadCiphertext: '',
+              payloadIv: '',
+            },
+          });
+          if (converted.count !== 1) {
+            throw new CheckoutError(
+              'CART_INVALID',
+              'Este pedido em espera foi alterado em outro terminal. Atualize a lista.',
+              409,
+            );
+          }
+        }
         const remembered =
           standardInput?.saveCustomerData && existing.customerId && deviceTokenHash
             ? await persistDeviceRecognitionAfterOrder({
@@ -441,7 +543,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         : dineIn
           ? { ...dineInInput!, modality: 'DINE_IN' as const }
           : standardInput!;
-      const quote = await calculateCheckoutQuote(
+      const baseQuote = await calculateCheckoutQuote(
         dineIn || pos ? store.slug : params.storeSlug,
         quoteInput,
         {
@@ -475,7 +577,10 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           ...(pos ? { channel: 'POS' as const } : {}),
         },
       );
-      if (!quote) throw new NotFoundError('Loja');
+      if (!baseQuote) throw new NotFoundError('Loja');
+      const quote = pos
+        ? applyAuthorizedPosManualDiscount(baseQuote, posInput!.manualDiscount)
+        : baseQuote;
       const publicQuote = toPublicCheckoutQuote(quote);
 
       if (quote.quoteFingerprint !== input.expectedQuoteFingerprint) {
@@ -509,6 +614,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           subtotal: quote.subtotal,
           automaticDiscount: quote.automaticDiscount ?? 0,
           couponDiscount: quote.couponDiscount ?? 0,
+          manualDiscount: quote.manualDiscount ?? 0,
           discount: quote.discount,
           deliveryFee: quote.deliveryFee,
           total: quote.total,
@@ -819,6 +925,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           customerId: resolvedIdentity.customerId,
           createdById: pos ? params.pos.userId : null,
           origin: pos ? 'POS' : dineIn ? 'DINE_IN_QR' : 'STOREFRONT',
+          posTerminalId: posTerminal?.id ?? null,
+          posTerminalLabelSnapshot: posTerminal?.name ?? null,
           idempotencyKey: input.idempotencyKey,
           idempotencyFingerprint,
           quoteFingerprint: quote.quoteFingerprint,
@@ -1000,25 +1108,71 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         });
       }
       if (adjustments.length > 0) {
+        const adjustmentRows = adjustments.map((adjustment, position) => ({
+          id: crypto.randomUUID(),
+          tenantId: store.tenantId,
+          storeId: store.id,
+          orderId: order.id,
+          adjustmentType: adjustment.type,
+          sourceIdSnapshot: adjustment.sourceId,
+          sourceVersion: adjustment.sourceVersion,
+          labelSnapshot: adjustment.label,
+          amount: adjustment.amount,
+          orderItemId: adjustment.lineId
+            ? (orderItemIdByLineId.get(adjustment.lineId) ?? null)
+            : null,
+          orderOfferGroupId: adjustment.offerGroupLineId
+            ? (offerGroupIdByLineId.get(adjustment.offerGroupLineId) ?? null)
+            : null,
+          position,
+        }));
         await tx.orderPriceAdjustment.createMany({
-          data: adjustments.map((adjustment, position) => ({
-            tenantId: store.tenantId,
-            storeId: store.id,
-            orderId: order.id,
-            adjustmentType: adjustment.type,
-            sourceIdSnapshot: adjustment.sourceId,
-            sourceVersion: adjustment.sourceVersion,
-            labelSnapshot: adjustment.label,
-            amount: adjustment.amount,
-            orderItemId: adjustment.lineId
-              ? (orderItemIdByLineId.get(adjustment.lineId) ?? null)
-              : null,
-            orderOfferGroupId: adjustment.offerGroupLineId
-              ? (offerGroupIdByLineId.get(adjustment.offerGroupLineId) ?? null)
-              : null,
-            position,
-          })),
+          data: adjustmentRows,
         });
+        if (posInput?.manualDiscount) {
+          const manualRow = adjustmentRows.find(
+            (adjustment) => adjustment.adjustmentType === 'MANUAL_DISCOUNT',
+          );
+          if (!manualRow) throw new OrderPaymentConsistencyError();
+          const eligibleBase =
+            quote.subtotal - (quote.automaticDiscount ?? 0) - (quote.couponDiscount ?? 0);
+          await tx.posManualDiscountLedger.create({
+            data: {
+              tenantId: store.tenantId,
+              storeId: store.id,
+              orderId: order.id,
+              adjustmentId: manualRow.id,
+              appliedById: posMutationContext!.userId,
+              authorizedById: posMutationContext!.userId,
+              mode: posInput.manualDiscount.mode,
+              requestedValue: posInput.manualDiscount.value,
+              eligibleBase,
+              amount: manualRow.amount,
+              reasonCode: posInput.manualDiscount.reasonCode,
+              reasonNote: posInput.manualDiscount.reasonNote ?? null,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              tenantId: store.tenantId,
+              storeId: store.id,
+              userId: posMutationContext!.userId,
+              action: 'POS_MANUAL_DISCOUNT_APPLIED',
+              entity: 'Order',
+              entityId: order.id,
+              metadata: {
+                orderId: order.id,
+                actorUserId: posMutationContext!.userId,
+                authorizedByUserId: posMutationContext!.userId,
+                mode: posInput.manualDiscount.mode,
+                requestedValue: posInput.manualDiscount.value,
+                eligibleBase,
+                amount: manualRow.amount,
+                reasonCode: posInput.manualDiscount.reasonCode,
+              },
+            },
+          });
+        }
       }
       if (diningSession) {
         await touchDiningSessionAfterOrder(tx, diningSession.id, now);
@@ -1165,6 +1319,32 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               expectedVersion: posAccepted!.version,
             })
           : null;
+
+      if (posDraft?.status === 'OPEN') {
+        const converted = await tx.posDraft.updateMany({
+          where: {
+            id: posDraft.id,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            status: 'OPEN',
+            version: posDraft.version,
+          },
+          data: {
+            status: 'CONVERTED',
+            version: { increment: 1 },
+            convertedOrderId: order.id,
+            payloadCiphertext: '',
+            payloadIv: '',
+          },
+        });
+        if (converted.count !== 1) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este pedido em espera foi alterado em outro terminal. Atualize a lista.',
+            409,
+          );
+        }
+      }
 
       return {
         id: order.id,

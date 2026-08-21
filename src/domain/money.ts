@@ -61,6 +61,7 @@ export function assertCheckoutFinancialInvariants(input: {
   subtotal: number;
   automaticDiscount: number;
   couponDiscount: number;
+  manualDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;
@@ -69,7 +70,10 @@ export function assertCheckoutFinancialInvariants(input: {
   offerGroups: Array<{ lineId: string; discountAmount: number }>;
 }): void {
   const adjustmentTotal = sumCents(input.adjustments.map((adjustment) => adjustment.amount));
-  const computedDiscount = addCents(input.automaticDiscount, input.couponDiscount);
+  const computedDiscount = addCents(
+    addCents(input.automaticDiscount, input.couponDiscount),
+    input.manualDiscount ?? 0,
+  );
   const computedTotal = addCents(input.subtotal - input.discount, input.deliveryFee);
   const comboAdjustmentByGroup = new Map(
     input.adjustments

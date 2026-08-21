@@ -265,7 +265,8 @@ export type CheckoutQuoteAdjustmentType =
   | 'BOGO'
   | 'CART_DISCOUNT'
   | 'FREE_DELIVERY'
-  | 'COUPON';
+  | 'COUPON'
+  | 'MANUAL_DISCOUNT';
 
 export interface CheckoutQuoteAdjustmentDto {
   type: CheckoutQuoteAdjustmentType;
@@ -292,6 +293,7 @@ export interface CheckoutQuoteDto {
   subtotal: number;
   automaticDiscount?: number;
   couponDiscount?: number;
+  manualDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;

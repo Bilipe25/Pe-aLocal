@@ -46,4 +46,25 @@ describe('aritmética monetária', () => {
       }),
     ).toThrow(MoneyArithmeticError);
   });
+
+  it('mantém Order.discount e Payment.amount consistentes com desconto manual', () => {
+    expect(() =>
+      assertCheckoutFinancialInvariants({
+        subtotal: 5_000,
+        automaticDiscount: 500,
+        couponDiscount: 200,
+        manualDiscount: 430,
+        discount: 1_130,
+        deliveryFee: 300,
+        total: 4_170,
+        paymentAmount: 4_170,
+        adjustments: [
+          { type: 'COMBO', amount: 500, offerGroupLineId: 'combo-a' },
+          { type: 'COUPON', amount: 200 },
+          { type: 'MANUAL_DISCOUNT', amount: 430 },
+        ],
+        offerGroups: [{ lineId: 'combo-a', discountAmount: 500 }],
+      }),
+    ).not.toThrow();
+  });
 });

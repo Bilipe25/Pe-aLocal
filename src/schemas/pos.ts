@@ -12,6 +12,38 @@ import {
 
 const trimmed = (max: number) => z.string().trim().max(max);
 
+export const posManualDiscountSchema = z
+  .object({
+    mode: z.enum(['FIXED', 'PERCENTAGE']),
+    value: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS),
+    reasonCode: z.enum(['COURTESY', 'SERVICE_RECOVERY', 'NEGOTIATED', 'OTHER']),
+    reasonNote: trimmed(200).optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.mode === 'PERCENTAGE' && data.value > 10_000) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'O percentual deve ser de no máximo 100%.',
+        path: ['value'],
+      });
+    }
+    if (data.reasonCode === 'OTHER' && (!data.reasonNote || data.reasonNote.length < 3)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Descreva o motivo do desconto em pelo menos 3 caracteres.',
+        path: ['reasonNote'],
+      });
+    }
+    if (data.reasonCode !== 'OTHER' && data.reasonNote) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A observação é permitida somente para o motivo Outro.',
+        path: ['reasonNote'],
+      });
+    }
+  });
+
 export const posDeliveryAddressSchema = z
   .object({
     customerAddressId: z.guid().optional(),
@@ -54,6 +86,7 @@ const baseShape = {
     .min(1, 'O pedido deve ter pelo menos 1 item.')
     .max(MAX_CHECKOUT_LINES),
   couponCode: couponCodeSchema.optional(),
+  manualDiscount: posManualDiscountSchema.optional(),
   notes: trimmed(500).optional().default(''),
 } as const;
 
@@ -163,12 +196,97 @@ export const posOrderSchema = addPosRefinements(
       paidNow: z.boolean().default(false),
       changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
       saveCustomerData: z.boolean().default(false),
+      posTerminalId: z.guid().optional(),
+      draftId: z.guid().optional(),
+      expectedDraftVersion: z.number().int().min(0).optional(),
       expectedQuoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
       idempotencyKey: z.uuid(),
     })
     .strict(),
+).superRefine((data, ctx) => {
+  if (Boolean(data.draftId) !== (data.expectedDraftVersion != null)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A versão do pedido em espera é obrigatória.',
+      path: ['expectedDraftVersion'],
+    });
+  }
+});
+
+export const posDraftIntentSchema = addPosRefinements(
+  z
+    .object({
+      ...baseShape,
+      paymentMethod: z.enum(['PIX', 'CASH', 'CARD_ON_DELIVERY', 'CARD_IN_PERSON']).optional(),
+      paidNow: z.boolean().default(false),
+      changeFor: z.number().int().min(1).max(MAX_POSTGRES_INTEGER_CENTS).optional(),
+      saveCustomerData: z.boolean().default(false),
+    })
+    .strict(),
 );
+
+export const savePosDraftSchema = z
+  .object({
+    draftId: z.guid().optional(),
+    expectedVersion: z.number().int().min(0).optional(),
+    terminalId: z.guid().optional(),
+    intent: posDraftIntentSchema,
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.expectedVersion != null && !data.draftId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A versão do pedido em espera é obrigatória.',
+        path: ['expectedVersion'],
+      });
+    }
+  });
+
+export const mutatePosDraftSchema = z
+  .object({ draftId: z.guid(), expectedVersion: z.number().int().min(0) })
+  .strict();
+
+export const posTerminalSchema = z
+  .object({
+    id: z.guid().optional(),
+    name: trimmed(80).min(1, 'Informe o nome do terminal.'),
+    expectedVersion: z.number().int().min(0).optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.id && data.expectedVersion == null) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A versão do terminal é obrigatória.',
+        path: ['expectedVersion'],
+      });
+    }
+  });
+
+export const mutatePosTerminalSchema = z
+  .object({ id: z.guid(), expectedVersion: z.number().int().min(0) })
+  .strict();
+
+export const posShortcutSchema = z
+  .object({
+    productId: z.guid().optional(),
+    offerId: z.guid().optional(),
+  })
+  .strict()
+  .refine((data) => Boolean(data.productId) !== Boolean(data.offerId), {
+    message: 'Selecione exatamente um produto ou uma oferta.',
+  });
+
+export const reorderPosShortcutsSchema = z
+  .object({ shortcutIds: z.array(z.guid()).max(24) })
+  .strict();
+
+export const deletePosShortcutSchema = z.object({ id: z.guid() }).strict();
 
 export type PosQuoteInput = z.output<typeof posQuoteSchema>;
 export type PosOrderInput = z.output<typeof posOrderSchema>;
 export type PosDeliveryAddressInput = z.output<typeof posDeliveryAddressSchema>;
+export type PosManualDiscountInput = z.output<typeof posManualDiscountSchema>;
+export type PosDraftIntentInput = z.output<typeof posDraftIntentSchema>;
+export type SavePosDraftInput = z.output<typeof savePosDraftSchema>;
