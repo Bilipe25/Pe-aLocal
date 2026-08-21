@@ -5,9 +5,15 @@ import type { Prisma } from '@prisma/client';
 
 import { storeAssetUrl } from '@/features/assets/urls';
 import { isOfferScheduleActive } from '@/domain/offers/schedule';
+import {
+  addCents,
+  assertCheckoutFinancialInvariants,
+  MoneyArithmeticError,
+  multiplyCents,
+} from '@/domain/money';
 import { validateCartItem } from '@/lib/checkout/cart-validator';
 import {
-  MAX_POSTGRES_INTEGER_CENTS,
+  MAX_CHECKOUT_TOTAL_UNITS,
   type CheckoutInput,
   type CheckoutQuoteInput,
   type DineInCheckoutQuoteInput,
@@ -29,6 +35,7 @@ type QuoteClient = Pick<
   | 'product'
   | 'storeCombo'
   | 'storeProductPromotion'
+  | 'storeOffer'
   | 'deliveryZone'
   | 'deliveryZonePostalRange'
   | 'coupon'
@@ -54,6 +61,10 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   couponId: string | null;
   estimatedMinMinutes: number;
   estimatedMaxMinutes: number;
+  automaticDiscount: number;
+  couponDiscount: number;
+  adjustments: CheckoutQuoteAdjustmentDto[];
+  offerGroups: CheckoutQuoteOfferGroupDto[];
 }
 
 type CheckoutQuoteCalculationInput =
@@ -70,35 +81,48 @@ export interface ResolvedDiningTableQuoteContext {
 }
 
 function safeAdd(left: number, right: number) {
-  const result = left + right;
-  if (
-    left < 0 ||
-    right < 0 ||
-    !Number.isSafeInteger(result) ||
-    result > MAX_POSTGRES_INTEGER_CENTS
-  ) {
+  try {
+    return addCents(left, right);
+  } catch (error) {
+    if (!(error instanceof MoneyArithmeticError)) throw error;
     throw new CheckoutError(
       'CART_INVALID',
       'O valor do carrinho excede o limite permitido. Revise as quantidades.',
     );
   }
-  return result;
 }
 
 function safeMultiply(left: number, right: number) {
-  const result = left * right;
-  if (
-    left < 0 ||
-    right < 0 ||
-    !Number.isSafeInteger(result) ||
-    result > MAX_POSTGRES_INTEGER_CENTS
-  ) {
+  try {
+    return multiplyCents(left, right);
+  } catch (error) {
+    if (!(error instanceof MoneyArithmeticError)) throw error;
     throw new CheckoutError(
       'CART_INVALID',
       'O valor do carrinho excede o limite permitido. Revise as quantidades.',
     );
   }
-  return result;
+}
+
+export function assertQuoteFinancialInvariants(quote: {
+  subtotal: number;
+  automaticDiscount: number;
+  couponDiscount: number;
+  discount: number;
+  deliveryFee: number;
+  total: number;
+  adjustments: CheckoutQuoteAdjustmentDto[];
+  offerGroups: CheckoutQuoteOfferGroupDto[];
+}): void {
+  try {
+    assertCheckoutFinancialInvariants(quote);
+  } catch (error) {
+    if (!(error instanceof MoneyArithmeticError)) throw error;
+    throw new CheckoutError(
+      'CART_INVALID',
+      'Não foi possível validar os totais do pedido. Atualize o carrinho e tente novamente.',
+    );
+  }
 }
 
 const DEFAULT_ESTIMATED_MIN_MINUTES = 30;
@@ -293,6 +317,11 @@ export async function calculateCheckoutQuote(
   const productInputs = input.items.filter((item) => item.kind !== 'COMBO');
   const comboInputs = input.items.filter((item) => item.kind === 'COMBO');
   const comboIds = [...new Set(comboInputs.map((item) => item.comboId))];
+  const requestedComboChoiceIds = [
+    ...new Set(
+      comboInputs.flatMap((item) => item.components.map((component) => component.comboItemId)),
+    ),
+  ];
   const combos =
     store.entitlement?.combosPromotionsEnabled && comboIds.length > 0
       ? await client.storeCombo.findMany({
@@ -321,10 +350,82 @@ export async function calculateCheckoutQuote(
         })
       : [];
   const comboMap = new Map(combos.map((combo) => [combo.id, combo]));
+  const flexibleCombos =
+    store.entitlement?.combosPromotionsEnabled && comboIds.length > 0
+      ? await client.storeOffer.findMany({
+          where: {
+            id: { in: comboIds },
+            tenantId: store.tenantId,
+            storeId: store.id,
+            kind: 'COMBO_FLEXIBLE',
+            archivedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            version: true,
+            modalities: true,
+            startsOn: true,
+            endsOnExclusive: true,
+            weekdays: true,
+            startMinute: true,
+            endMinuteExclusive: true,
+            combo: {
+              select: {
+                fixedPrice: true,
+                groups: {
+                  orderBy: [{ position: 'asc' }, { id: 'asc' }],
+                  select: {
+                    id: true,
+                    quantity: true,
+                    position: true,
+                    choices: {
+                      where: { id: { in: requestedComboChoiceIds } },
+                      select: { id: true, productId: true, priceDelta: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        })
+      : [];
+  const flexibleComboMap = new Map(flexibleCombos.map((combo) => [combo.id, combo]));
+  let expandedUnits = 0;
+  for (const item of input.items) {
+    if (item.kind !== 'COMBO') {
+      expandedUnits = safeAdd(expandedUnits, item.quantity);
+      continue;
+    }
+    const combo = comboMap.get(item.comboId);
+    const flexibleCombo = flexibleComboMap.get(item.comboId);
+    if (!combo && !flexibleCombo?.combo) continue;
+    const unitsPerCombo = combo
+      ? combo.items.reduce((total, component) => safeAdd(total, component.quantity), 0)
+      : flexibleCombo!.combo!.groups.reduce((total, group) => safeAdd(total, group.quantity), 0);
+    expandedUnits = safeAdd(expandedUnits, safeMultiply(unitsPerCombo, item.quantity));
+  }
+  if (expandedUnits > MAX_CHECKOUT_TOTAL_UNITS) {
+    console.warn('[CHECKOUT_EXPANDED_UNIT_LIMIT]', {
+      storeId: store.id,
+      expandedUnits,
+      limit: MAX_CHECKOUT_TOTAL_UNITS,
+    });
+    issues.push({
+      code: 'CART_INVALID',
+      message: `O pedido deve ter no máximo ${MAX_CHECKOUT_TOTAL_UNITS} unidades após expandir os combos.`,
+    });
+  }
   const productIds = [
     ...new Set([
       ...productInputs.map((item) => item.productId),
       ...combos.flatMap((combo) => combo.items.map((item) => item.productId)),
+      ...flexibleCombos.flatMap(
+        (offer) =>
+          offer.combo?.groups.flatMap((group) => group.choices.map((choice) => choice.productId)) ??
+          [],
+      ),
     ]),
   ];
   const products = await client.product.findMany({
@@ -375,8 +476,55 @@ export async function calculateCheckoutQuote(
     },
   });
   const productMap = new Map(products.map((product) => [product.id, product]));
+  const canonicalOfferCandidates = store.entitlement?.combosPromotionsEnabled
+    ? await client.storeOffer.findMany({
+        where: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          isActive: true,
+          archivedAt: null,
+          kind: {
+            in: [
+              'PRODUCT_FIXED_PRICE',
+              'QUANTITY_FIXED_PRICE',
+              'BOGO',
+              'CART_FIXED_DISCOUNT',
+              'FREE_DELIVERY',
+            ],
+          },
+          OR: [{ modalities: { isEmpty: true } }, { modalities: { has: input.modality } }],
+        },
+        select: {
+          id: true,
+          kind: true,
+          name: true,
+          version: true,
+          startsOn: true,
+          endsOnExclusive: true,
+          weekdays: true,
+          startMinute: true,
+          endMinuteExclusive: true,
+          maxApplicationsPerOrder: true,
+          productPrice: { select: { productId: true, fixedPrice: true } },
+          quantityPrice: {
+            select: { productId: true, requiredQuantity: true, groupFixedPrice: true },
+          },
+          bogo: { select: { productId: true, buyQuantity: true, getQuantity: true } },
+          cartDiscount: {
+            select: { discountType: true, value: true, minSubtotal: true, maxDiscount: true },
+          },
+          freeDelivery: { select: { minSubtotal: true } },
+        },
+        orderBy: [{ id: 'asc' }],
+      })
+    : [];
+  const activeCanonicalOffers = canonicalOfferCandidates.filter((offer) =>
+    isOfferScheduleActive(offer, store.timeZone, now),
+  );
   const promotionCandidates =
-    store.entitlement?.combosPromotionsEnabled && productInputs.length > 0
+    store.entitlement?.combosPromotionsEnabled &&
+    activeCanonicalOffers.length === 0 &&
+    productInputs.length > 0
       ? await client.storeProductPromotion.findMany({
           where: {
             tenantId: store.tenantId,
@@ -398,11 +546,70 @@ export async function calculateCheckoutQuote(
           },
         })
       : [];
-  const activePromotionByProduct = new Map(
-    promotionCandidates
-      .filter((promotion) => isOfferScheduleActive(promotion, store.timeZone, now))
-      .map((promotion) => [promotion.productId, promotion]),
-  );
+  const activePromotionByProduct = new Map<string, (typeof promotionCandidates)[number]>();
+  const conflictingPromotionProducts = new Set<string>();
+  for (const promotion of promotionCandidates) {
+    if (!isOfferScheduleActive(promotion, store.timeZone, now)) continue;
+    if (activePromotionByProduct.has(promotion.productId)) {
+      conflictingPromotionProducts.add(promotion.productId);
+      activePromotionByProduct.delete(promotion.productId);
+      continue;
+    }
+    if (!conflictingPromotionProducts.has(promotion.productId)) {
+      activePromotionByProduct.set(promotion.productId, promotion);
+    }
+  }
+  if (conflictingPromotionProducts.size > 0) {
+    console.error('[OFFER_CONFLICT_LEGACY_PRODUCT]', {
+      storeId: store.id,
+      productIds: [...conflictingPromotionProducts].sort(),
+    });
+    issues.push({
+      code: 'CART_INVALID',
+      message:
+        'Uma promoção do carrinho está com configuração conflitante. Tente novamente em instantes.',
+    });
+  }
+  const canonicalItemOfferByProduct = new Map<string, (typeof activeCanonicalOffers)[number]>();
+  const conflictingCanonicalProducts = new Set<string>();
+  const cartOffers: (typeof activeCanonicalOffers)[number][] = [];
+  const freeDeliveryOffers: (typeof activeCanonicalOffers)[number][] = [];
+  for (const offer of activeCanonicalOffers) {
+    const productId =
+      offer.productPrice?.productId ??
+      offer.quantityPrice?.productId ??
+      offer.bogo?.productId ??
+      null;
+    if (productId) {
+      if (canonicalItemOfferByProduct.has(productId)) {
+        canonicalItemOfferByProduct.delete(productId);
+        conflictingCanonicalProducts.add(productId);
+      } else if (!conflictingCanonicalProducts.has(productId)) {
+        canonicalItemOfferByProduct.set(productId, offer);
+      }
+    } else if (offer.cartDiscount) {
+      cartOffers.push(offer);
+    } else if (offer.freeDelivery) {
+      freeDeliveryOffers.push(offer);
+    }
+  }
+  if (
+    conflictingCanonicalProducts.size > 0 ||
+    cartOffers.length > 1 ||
+    freeDeliveryOffers.length > 1
+  ) {
+    console.error('[OFFER_CONFLICT_CANONICAL]', {
+      storeId: store.id,
+      productIds: [...conflictingCanonicalProducts].sort(),
+      cartOfferIds: cartOffers.map((offer) => offer.id),
+      freeDeliveryOfferIds: freeDeliveryOffers.map((offer) => offer.id),
+    });
+    issues.push({
+      code: 'CART_INVALID',
+      message:
+        'As ofertas automáticas estão com configuração conflitante. Tente novamente em instantes.',
+    });
+  }
   const semanticLines = new Set<string>();
   const lines: CheckoutQuoteLineDto[] = [];
   const offerGroups: CheckoutQuoteOfferGroupDto[] = [];
@@ -539,10 +746,183 @@ export async function calculateCheckoutQuote(
           lineId: line.lineId,
         });
       }
+      const canonicalOffer = canonicalItemOfferByProduct.get(item.productId);
+      if (canonicalOffer && product) {
+        let amount = 0;
+        let applications = 0;
+        let type: CheckoutQuoteAdjustmentDto['type'] | null = null;
+        if (
+          canonicalOffer.productPrice &&
+          canonicalOffer.productPrice.fixedPrice < product.basePrice
+        ) {
+          applications = Math.min(item.quantity, canonicalOffer.maxApplicationsPerOrder);
+          amount = safeMultiply(
+            product.basePrice - canonicalOffer.productPrice.fixedPrice,
+            applications,
+          );
+          type = 'PRODUCT_PROMOTION';
+        } else if (canonicalOffer.quantityPrice) {
+          applications = Math.min(
+            Math.floor(item.quantity / canonicalOffer.quantityPrice.requiredQuantity),
+            canonicalOffer.maxApplicationsPerOrder,
+          );
+          const regularGroupPrice = safeMultiply(
+            product.basePrice,
+            canonicalOffer.quantityPrice.requiredQuantity,
+          );
+          if (canonicalOffer.quantityPrice.groupFixedPrice < regularGroupPrice) {
+            amount = safeMultiply(
+              regularGroupPrice - canonicalOffer.quantityPrice.groupFixedPrice,
+              applications,
+            );
+            type = 'QUANTITY_PROMOTION';
+          }
+        } else if (canonicalOffer.bogo) {
+          const groupQuantity = safeAdd(
+            canonicalOffer.bogo.buyQuantity,
+            canonicalOffer.bogo.getQuantity,
+          );
+          applications = Math.min(
+            Math.floor(item.quantity / groupQuantity),
+            canonicalOffer.maxApplicationsPerOrder,
+          );
+          amount = safeMultiply(
+            safeMultiply(product.basePrice, canonicalOffer.bogo.getQuantity),
+            applications,
+          );
+          type = 'BOGO';
+        }
+        if (type && amount > 0 && applications > 0) {
+          automaticDiscount = safeAdd(automaticDiscount, amount);
+          adjustments.push({
+            type,
+            sourceId: canonicalOffer.id,
+            sourceVersion: canonicalOffer.version,
+            label: canonicalOffer.name,
+            amount,
+            lineId: line.lineId,
+          });
+        }
+      }
       continue;
     }
 
     const combo = comboMap.get(item.comboId);
+    const flexibleCombo = flexibleComboMap.get(item.comboId);
+    if (!combo && flexibleCombo?.combo) {
+      const modalityAllowed =
+        flexibleCombo.modalities.length === 0 || flexibleCombo.modalities.includes(input.modality);
+      if (
+        !flexibleCombo.isActive ||
+        !modalityAllowed ||
+        !isOfferScheduleActive(flexibleCombo, store.timeZone, now)
+      ) {
+        issues.push({
+          code: 'OFFER_UNAVAILABLE',
+          message: `${flexibleCombo.name} não está disponível para este pedido.`,
+          lineId: item.lineId,
+        });
+        continue;
+      }
+
+      const requestedComponents = new Map(
+        item.components.map((component) => [component.comboItemId, component]),
+      );
+      const validSelection =
+        flexibleCombo.combo.groups.length >= 2 &&
+        requestedComponents.size === flexibleCombo.combo.groups.length &&
+        flexibleCombo.combo.groups.every(
+          (group) => group.choices.length === 1 && requestedComponents.has(group.choices[0]!.id),
+        );
+      if (!validSelection) {
+        console.warn('[FLEXIBLE_COMBO_INVALID_SELECTION]', {
+          storeId: store.id,
+          offerId: flexibleCombo.id,
+          requestedChoiceCount: requestedComponents.size,
+        });
+        issues.push({
+          code: 'OFFER_UNAVAILABLE',
+          message: `${flexibleCombo.name} mudou. Faça novamente as escolhas do combo.`,
+          lineId: item.lineId,
+        });
+        continue;
+      }
+
+      const groupLines: CheckoutQuoteLineDto[] = [];
+      let regularBaseAmount = 0;
+      let priceDeltaPerCombo = 0;
+      for (const group of flexibleCombo.combo.groups) {
+        const choice = group.choices[0]!;
+        const requested = requestedComponents.get(choice.id)!;
+        const quantity = safeMultiply(group.quantity, item.quantity);
+        const product = productMap.get(choice.productId);
+        const componentLineId = `${item.lineId}:${choice.id}`;
+        const line = resolveProductLine(
+          product,
+          {
+            lineId: componentLineId,
+            productId: choice.productId,
+            quantity,
+            notes: requested.notes,
+            optionIds: requested.optionIds,
+          },
+          {
+            sourceLineId: item.lineId,
+            offerGroupLineId: item.lineId,
+            offerComponentPosition: group.position,
+          },
+          item.lineId,
+        );
+        if (!line || !product) continue;
+        groupLines.push(line);
+        regularBaseAmount = safeAdd(regularBaseAmount, safeMultiply(product.basePrice, quantity));
+        priceDeltaPerCombo = safeAdd(
+          priceDeltaPerCombo,
+          safeMultiply(choice.priceDelta, group.quantity),
+        );
+      }
+      if (groupLines.length !== flexibleCombo.combo.groups.length) continue;
+
+      const offerUnitBaseAmount = safeAdd(flexibleCombo.combo.fixedPrice, priceDeltaPerCombo);
+      const offerBaseAmount = safeMultiply(offerUnitBaseAmount, item.quantity);
+      if (regularBaseAmount <= offerBaseAmount) {
+        issues.push({
+          code: 'OFFER_UNAVAILABLE',
+          message: `${flexibleCombo.name} está sendo atualizado e perdeu a economia.`,
+          lineId: item.lineId,
+        });
+        continue;
+      }
+      const discountAmount = regularBaseAmount - offerBaseAmount;
+      const group: CheckoutQuoteOfferGroupDto = {
+        lineId: item.lineId,
+        comboId: flexibleCombo.id,
+        comboVersion: flexibleCombo.version,
+        name: flexibleCombo.name,
+        quantity: item.quantity,
+        regularBaseAmount,
+        offerBaseAmount,
+        discountAmount,
+        components: flexibleCombo.combo.groups.map((comboGroup) => ({
+          lineId: `${item.lineId}:${comboGroup.choices[0]!.id}`,
+          comboItemId: comboGroup.choices[0]!.id,
+          position: comboGroup.position,
+        })),
+      };
+      lines.push(...groupLines);
+      offerGroups.push(group);
+      for (const line of groupLines) subtotal = safeAdd(subtotal, line.itemTotal);
+      automaticDiscount = safeAdd(automaticDiscount, discountAmount);
+      adjustments.push({
+        type: 'COMBO',
+        sourceId: flexibleCombo.id,
+        sourceVersion: flexibleCombo.version,
+        label: `Combo: ${flexibleCombo.name}`,
+        amount: discountAmount,
+        offerGroupLineId: item.lineId,
+      });
+      continue;
+    }
     if (
       !store.entitlement?.combosPromotionsEnabled ||
       !combo ||
@@ -599,10 +979,7 @@ export async function calculateCheckoutQuote(
       );
       if (!line || !product) continue;
       groupLines.push(line);
-      regularBaseAmount = safeAdd(
-        regularBaseAmount,
-        safeMultiply(product.basePrice, quantity),
-      );
+      regularBaseAmount = safeAdd(regularBaseAmount, safeMultiply(product.basePrice, quantity));
     }
     if (groupLines.length !== combo.items.length) continue;
 
@@ -821,6 +1198,46 @@ export async function calculateCheckoutQuote(
     }
   }
 
+  const itemNetBeforeCart = subtotal - automaticDiscount;
+  const cartOffer = cartOffers.length === 1 ? cartOffers[0] : null;
+  if (cartOffer?.cartDiscount && itemNetBeforeCart >= cartOffer.cartDiscount.minSubtotal) {
+    const calculated =
+      cartOffer.cartDiscount.discountType === 'PERCENTAGE'
+        ? Math.floor(safeMultiply(itemNetBeforeCart, cartOffer.cartDiscount.value) / 100)
+        : cartOffer.cartDiscount.value;
+    const cartDiscount = Math.min(
+      itemNetBeforeCart,
+      cartOffer.cartDiscount.maxDiscount ?? calculated,
+      calculated,
+    );
+    if (cartDiscount > 0) {
+      automaticDiscount = safeAdd(automaticDiscount, cartDiscount);
+      adjustments.push({
+        type: 'CART_DISCOUNT',
+        sourceId: cartOffer.id,
+        sourceVersion: cartOffer.version,
+        label: cartOffer.name,
+        amount: cartDiscount,
+      });
+    }
+  }
+  const merchandiseBeforeCoupon = subtotal - automaticDiscount;
+  const freeDeliveryOffer = freeDeliveryOffers.length === 1 ? freeDeliveryOffers[0] : null;
+  if (
+    freeDeliveryOffer?.freeDelivery &&
+    deliveryFee > 0 &&
+    merchandiseBeforeCoupon >= freeDeliveryOffer.freeDelivery.minSubtotal
+  ) {
+    automaticDiscount = safeAdd(automaticDiscount, deliveryFee);
+    adjustments.push({
+      type: 'FREE_DELIVERY',
+      sourceId: freeDeliveryOffer.id,
+      sourceVersion: freeDeliveryOffer.version,
+      label: freeDeliveryOffer.name,
+      amount: deliveryFee,
+    });
+  }
+
   const minOrderValue = Math.max(store.settings?.minOrderValue ?? 0, zoneMinOrderValue);
   const missingForMinimum = Math.max(0, minOrderValue - subtotal);
   if (missingForMinimum > 0) {
@@ -833,7 +1250,7 @@ export async function calculateCheckoutQuote(
   let couponId: string | null = null;
   let coupon: CheckoutQuoteDto['coupon'] = null;
   let couponDiscount = 0;
-  const couponEligibleBase = subtotal - automaticDiscount;
+  const couponEligibleBase = merchandiseBeforeCoupon;
   if (input.couponCode) {
     const candidate = await client.coupon.findFirst({
       where: {
@@ -899,6 +1316,16 @@ export async function calculateCheckoutQuote(
 
   const discount = safeAdd(automaticDiscount, couponDiscount);
   const total = safeAdd(subtotal - discount, deliveryFee);
+  assertQuoteFinancialInvariants({
+    subtotal,
+    automaticDiscount,
+    couponDiscount,
+    discount,
+    deliveryFee,
+    total,
+    adjustments,
+    offerGroups,
+  });
   const fingerprint = quoteFingerprint({
     storeId: store.id,
     modality: input.modality,

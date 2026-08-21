@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>PedidoLocal — Combos e Promoções V2</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <!--
+      THESIS: Uma única central transforma regras comerciais complexas em ofertas compreensíveis; recusa o painel de cards genéricos por tipo.
+      OWN-WORLD: Papel, Tinta, Pimenta, Kraft, Erva e Azulejo; listas operacionais, preços monoespaçados e superfícies de balcão.
+      STORY: O lojista escolhe uma mecânica, prevê seus efeitos e publica; o cliente entende a vantagem antes de adicionar e no total.
+      FIRST VIEWPORT: Desktop abre na fila unificada; tablet divide configuração e prévia; mobile mantém oferta, escolha e total em uma coluna.
+      FORM: Extensão do Balcão Digital do Bairro, forma direta definida pelo brief V2; seed: established-world-v2-offers.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+      <symbol id="i-bag" viewBox="0 0 24 24">
+        <path d="M6 8h12l-1 12H7L6 8Z" />
+        <path d="M9 9V6a3 3 0 0 1 6 0v3" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="m4 20 4.5-1L19 8.5 15.5 5 5 15.5 4 20Z" />
+        <path d="m13.5 7 3.5 3.5" />
+      </symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10m-7 6h4" /></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24">
+        <path d="M4 10h16v10H4V10Zm-1-4h18v4H3V6Z" />
+        <path
+          d="M12 6v14M8.5 6C6 6 5 2.5 7.5 2.5 10 2.5 12 6 12 6m3.5 0C18 6 19 2.5 16.5 2.5 14 2.5 12 6 12 6"
+        />
+      </symbol>
+      <symbol id="i-home" viewBox="0 0 24 24">
+        <path d="m3 11 9-8 9 8" />
+        <path d="M5 10v10h14V10M9 20v-6h6v6" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v6m0-10h.01" />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+        <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24">
+        <path d="m12 2 1.4 5.6L19 9l-5.6 1.4L12 16l-1.4-5.6L5 9l5.6-1.4L12 2Z" />
+        <path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z" />
+      </symbol>
+      <symbol id="i-store" viewBox="0 0 24 24">
+        <path d="M4 9h16l-2-6H6L4 9Z" />
+        <path d="M5 9v11h14V9M9 20v-6h6v6" />
+        <path d="M4 9c0 2 3 2 4 0 1 2 3 2 4 0 1 2 3 2 4 0 1 2 4 2 4 0" />
+      </symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24">
+        <path d="M3 12V4h8l10 10-7 7L3 12Z" />
+        <circle cx="8" cy="8" r="1.5" />
+      </symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24">
+        <path d="M3 5h11v12H3V5Zm11 5h4l3 3v4h-7v-7Z" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 20c0-4 2.5-6 6-6s6 2 6 6" />
+        <circle cx="17" cy="9" r="2" />
+        <path d="M16 15c3.5 0 5 1.5 5 5" />
+      </symbol>
+    </svg>
+
+    <div id="merchant" class="screen dashboard-screen" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="?screen=merchant" aria-label="PedidoLocal"
+          ><span>PL</span><strong>PedidoLocal</strong></a
+        >
+        <nav aria-label="Principal">
+          <a href="#"
+            ><svg><use href="#i-home" /></svg>Visão geral</a
+          >
+          <a href="#"
+            ><svg><use href="#i-bag" /></svg>Pedidos</a
+          >
+          <a class="active" href="?screen=merchant" aria-current="page"
+            ><svg><use href="#i-tag" /></svg>Ofertas</a
+          >
+          <a href="#"
+            ><svg><use href="#i-store" /></svg>Cardápio</a
+          >
+          <a href="#"
+            ><svg><use href="#i-users" /></svg>Clientes</a
+          >
+        </nav>
+        <div class="store-switcher">
+          <span class="store-mark">XB</span
+          ><span><strong>Xis do Bairro</strong><small>Loja aberta</small></span
+          ><svg><use href="#i-arrow" /></svg>
+        </div>
+      </aside>
+      <div class="dashboard-main">
+        <header class="dashboard-topbar">
+          <button class="square-button sidebar-button" aria-label="Abrir menu">
+            <svg><use href="#i-menu" /></svg>
+          </button>
+          <div class="topbar-store">
+            <strong>Xis do Bairro</strong><small>Gestão de ofertas</small>
+          </div>
+          <a class="button secondary" href="?screen=storefront"
+            ><svg><use href="#i-eye" /></svg>Ver vitrine</a
+          >
+          <span class="avatar" aria-label="Conta de Maria">MS</span>
+        </header>
+        <main class="offer-workspace">
+          <header class="page-heading">
+            <div>
+              <h1>Ofertas</h1>
+              <p>
+                Combos e promoções em uma única fila, com as mesmas regras no balcão e no checkout.
+              </p>
+            </div>
+            <a class="button primary" href="?screen=builder"
+              ><svg><use href="#i-plus" /></svg>Nova oferta</a
+            >
+          </header>
+
+          <section class="health-strip" aria-label="Resumo das ofertas">
+            <div><span>Ativas agora</span><strong>5</strong><small>2 terminam hoje</small></div>
+            <div>
+              <span>Pedidos com oferta</span><strong>84</strong><small>últimos 30 dias</small>
+            </div>
+            <div>
+              <span>Descontos concedidos</span><strong>R$ 486,50</strong
+              ><small>vendas de R$ 3.904</small>
+            </div>
+            <a href="#"
+              ><svg><use href="#i-spark" /></svg
+              ><span
+                ><strong>2 sugestões prontas</strong
+                ><small>Baseadas em pedidos concluídos</small></span
+              ><svg><use href="#i-arrow" /></svg
+            ></a>
+          </section>
+
+          <div class="toolbar">
+            <div class="search-field">
+              <svg><use href="#i-search" /></svg
+              ><input aria-label="Buscar ofertas" placeholder="Buscar oferta" />
+            </div>
+            <div class="filter-tabs" role="group" aria-label="Filtrar por status">
+              <button class="selected" data-filter="all">Todas <b>8</b></button>
+              <button data-filter="active">Ativas <b>5</b></button>
+              <button data-filter="scheduled">Agendadas <b>2</b></button>
+              <button data-filter="paused">Pausadas <b>1</b></button>
+            </div>
+            <button class="button secondary filter-button">
+              <svg><use href="#i-filter" /></svg>Tipo
+            </button>
+          </div>
+
+          <section class="offer-list" aria-label="Lista de ofertas">
+            <div class="offer-list-head">
+              <span>Oferta</span><span>Benefício</span><span>Quando</span><span>Uso em 30 dias</span
+              ><span>Status</span><span></span>
+            </div>
+            <article class="offer-row" data-status="active">
+              <div class="offer-identity">
+                <span class="type-mark combo"
+                  ><svg><use href="#i-gift" /></svg></span
+                ><span
+                  ><strong>Monte seu Xis</strong
+                  ><small>Combo flexível · 2 grupos de escolha</small></span
+                >
+              </div>
+              <div class="benefit">
+                <strong>R$ 29,90</strong><small>até R$ 7,00 de economia</small>
+              </div>
+              <div class="schedule">
+                <svg><use href="#i-clock" /></svg
+                ><span>Todos os dias<small>18:00–23:00</small></span>
+              </div>
+              <div class="usage">
+                <strong>31 pedidos</strong><span><i style="--usage: 68%"></i></span>
+              </div>
+              <div><span class="status-badge active">Ativa</span></div>
+              <div class="row-actions">
+                <a href="?screen=builder" aria-label="Editar Monte seu Xis"
+                  ><svg><use href="#i-edit" /></svg></a
+                ><button aria-label="Mais ações">
+                  <svg><use href="#i-more" /></svg>
+                </button>
+              </div>
+            </article>
+            <article class="offer-row" data-status="active">
+              <div class="offer-identity">
+                <span class="type-mark quantity"><b>3×</b></span
+                ><span
+                  ><strong>3 Refrigerantes por R$ 15</strong
+                  ><small>Quantidade por preço</small></span
+                >
+              </div>
+              <div class="benefit">
+                <strong>3 por R$ 15,00</strong><small>economia de R$ 3,00</small>
+              </div>
+              <div class="schedule">
+                <svg><use href="#i-clock" /></svg><span>Até 31 ago.<small>o dia todo</small></span>
+              </div>
+              <div class="usage">
+                <strong>22 pedidos</strong><span><i style="--usage: 51%"></i></span>
+              </div>
+              <div><span class="status-badge active">Ativa</span></div>
+              <div class="row-actions">
+                <button aria-label="Editar promoção">
+                  <svg><use href="#i-edit" /></svg></button
+                ><button aria-label="Mais ações">
+                  <svg><use href="#i-more" /></svg>
+                </button>
+              </div>
+            </article>
+            <article class="offer-row" data-status="scheduled">
+              <div class="offer-identity">
+                <span class="type-mark delivery"
+                  ><svg><use href="#i-truck" /></svg></span
+                ><span
+                  ><strong>Entrega por nossa conta</strong
+                  ><small>Frete grátis acima de R$ 35</small></span
+                >
+              </div>
+              <div class="benefit">
+                <strong>Frete grátis</strong><small>somente delivery</small>
+              </div>
+              <div class="schedule">
+                <svg><use href="#i-clock" /></svg><span>Sáb. e dom.<small>11:00–15:00</small></span>
+              </div>
+              <div class="usage">
+                <strong>Começa sábado</strong><span class="empty-meter"></span>
+              </div>
+              <div><span class="status-badge scheduled">Agendada</span></div>
+              <div class="row-actions">
+                <button aria-label="Editar frete grátis">
+                  <svg><use href="#i-edit" /></svg></button
+                ><button aria-label="Mais ações">
+                  <svg><use href="#i-more" /></svg>
+                </button>
+              </div>
+            </article>
+            <article class="offer-row" data-status="paused">
+              <div class="offer-identity">
+                <span class="type-mark bogo"><b>2=1</b></span
+                ><span
+                  ><strong>Leve 2, pague 1 porção P</strong><small>Leve X, pague Y</small></span
+                >
+              </div>
+              <div class="benefit">
+                <strong>2 pelo preço de 1</strong><small>economia de R$ 9,00</small>
+              </div>
+              <div class="schedule">
+                <svg><use href="#i-clock" /></svg
+                ><span>Sem data final<small>terça-feira</small></span>
+              </div>
+              <div class="usage">
+                <strong>9 pedidos</strong><span><i style="--usage: 26%"></i></span>
+              </div>
+              <div><span class="status-badge paused">Pausada</span></div>
+              <div class="row-actions">
+                <button aria-label="Editar promoção">
+                  <svg><use href="#i-edit" /></svg></button
+                ><button aria-label="Mais ações">
+                  <svg><use href="#i-more" /></svg>
+                </button>
+              </div>
+            </article>
+          </section>
+          <p class="result-note">Mostrando 4 de 8 ofertas · Valores ilustrativos</p>
+        </main>
+      </div>
+    </div>
+
+    <div id="builder" class="screen builder-screen" hidden>
+      <header class="builder-topbar">
+        <a class="brand compact" href="?screen=merchant"
+          ><span>PL</span><strong>PedidoLocal</strong></a
+        >
+        <div class="builder-title">
+          <strong>Nova oferta</strong><small>Rascunho salvo agora</small>
+        </div>
+        <a class="button secondary" href="?screen=merchant">Cancelar</a>
+        <button class="button primary" id="publish-offer">Publicar oferta</button>
+      </header>
+      <main class="builder-layout">
+        <section class="builder-form">
+          <a class="back-link" href="?screen=merchant"
+            ><svg><use href="#i-back" /></svg>Voltar para ofertas</a
+          >
+          <div class="builder-heading">
+            <h1>Monte seu Xis</h1>
+            <span class="status-badge draft">Rascunho</span>
+            <p>
+              Configure o que o cliente escolhe. Cada seleção continua sendo um produto real na
+              cozinha.
+            </p>
+          </div>
+
+          <section class="form-block">
+            <header>
+              <span class="step">1</span>
+              <div>
+                <h2>Como funciona</h2>
+                <p>Uma oferta, uma mecânica. O cálculo e a apresentação se adaptam ao tipo.</p>
+              </div>
+            </header>
+            <div class="mechanic-select">
+              <span class="type-mark combo"
+                ><svg><use href="#i-gift" /></svg></span
+              ><span
+                ><strong>Combo flexível</strong
+                ><small>O cliente escolhe itens dentro de grupos definidos</small></span
+              ><button>Alterar</button>
+            </div>
+          </section>
+
+          <section class="form-block">
+            <header>
+              <span class="step">2</span>
+              <div>
+                <h2>O que o cliente escolhe</h2>
+                <p>Grupos obrigatórios aparecem na ordem abaixo.</p>
+              </div>
+            </header>
+            <article class="choice-group-card">
+              <div class="choice-group-head">
+                <span
+                  ><strong>Escolha seu acompanhamento</strong
+                  ><small>Escolher exatamente 1</small></span
+                ><button aria-label="Editar grupo">
+                  <svg><use href="#i-edit" /></svg>
+                </button>
+              </div>
+              <div class="choice-option-row">
+                <span class="food-thumb fries"></span
+                ><span><strong>Batata frita P</strong><small>Sem acréscimo</small></span
+                ><span>incluído</span>
+              </div>
+              <div class="choice-option-row">
+                <span class="food-thumb rings"></span
+                ><span><strong>Onion rings P</strong><small>Acréscimo sugerido</small></span
+                ><span>+ R$ 2,00</span>
+              </div>
+              <button class="text-action">
+                <svg><use href="#i-plus" /></svg>Adicionar opção
+              </button>
+            </article>
+            <article class="choice-group-card">
+              <div class="choice-group-head">
+                <span><strong>Escolha sua bebida</strong><small>Escolher exatamente 1</small></span
+                ><button aria-label="Editar grupo">
+                  <svg><use href="#i-edit" /></svg>
+                </button>
+              </div>
+              <div class="choice-option-row">
+                <span class="food-thumb cola"></span
+                ><span
+                  ><strong>Refrigerante lata</strong><small>Coca-Cola, Guaraná ou zero</small></span
+                ><span>incluído</span>
+              </div>
+              <div class="choice-option-row">
+                <span class="food-thumb juice"></span
+                ><span><strong>Suco de laranja</strong><small>300 ml</small></span
+                ><span>+ R$ 3,00</span>
+              </div>
+              <button class="text-action">
+                <svg><use href="#i-plus" /></svg>Adicionar opção
+              </button>
+            </article>
+            <button class="add-group">
+              <svg><use href="#i-plus" /></svg>Adicionar grupo de escolha
+            </button>
+          </section>
+
+          <section class="form-block price-block">
+            <header>
+              <span class="step">3</span>
+              <div>
+                <h2>Preço e disponibilidade</h2>
+                <p>Adicionais escolhidos dentro dos produtos continuam cobrados normalmente.</p>
+              </div>
+            </header>
+            <div class="field-grid">
+              <label
+                ><span>Preço base do combo</span
+                ><span class="money-field"><b>R$</b><input value="29,90" /></span></label
+              ><label
+                ><span>Limite total de usos <em>opcional</em></span
+                ><input value="100"
+              /></label>
+            </div>
+            <fieldset>
+              <legend>Disponível em</legend>
+              <label><input type="checkbox" checked /> Delivery</label
+              ><label><input type="checkbox" checked /> Retirada</label
+              ><label><input type="checkbox" /> Salão</label>
+            </fieldset>
+          </section>
+        </section>
+
+        <aside class="offer-preview">
+          <div class="preview-heading">
+            <span>Prévia para o cliente</span
+            ><button>
+              <svg><use href="#i-eye" /></svg>Vitrine
+            </button>
+          </div>
+          <div class="preview-paper">
+            <span class="preview-label">COMBO FLEXÍVEL</span>
+            <h2>Monte seu Xis</h2>
+            <p>1 xis + 1 acompanhamento + 1 bebida</p>
+            <dl>
+              <div>
+                <dt>Preço a partir de</dt>
+                <dd>R$ 29,90</dd>
+              </div>
+              <div>
+                <dt>Economia estimada</dt>
+                <dd class="green">até R$ 7,00</dd>
+              </div>
+            </dl>
+            <div class="preview-groups">
+              <span
+                ><svg><use href="#i-check" /></svg>Acompanhamento: 1 escolha</span
+              ><span
+                ><svg><use href="#i-check" /></svg>Bebida: 1 escolha</span
+              >
+            </div>
+            <button class="button primary wide">Escolher itens</button>
+          </div>
+          <div class="rule-note">
+            <svg><use href="#i-info" /></svg
+            ><span
+              ><strong>Sem surpresas no preço</strong
+              ><small
+                >O checkout recalcula a oferta com as versões atuais antes de criar o pedido.</small
+              ></span
+            >
+          </div>
+        </aside>
+      </main>
+      <div class="prototype-toast" role="status" hidden>
+        Oferta pronta para publicar após aprovação.
+      </div>
+    </div>
+
+    <div id="storefront" class="screen phone-screen" hidden>
+      <div class="phone-shell">
+        <header class="storefront-header">
+          <span class="store-logo">XB</span
+          ><span
+            ><strong>Xis do Bairro</strong><small><i></i> Aberto · 30–45 min</small></span
+          ><a class="round-action" href="?screen=cart" aria-label="Abrir sacola"
+            ><svg><use href="#i-bag" /></svg><b>3</b></a
+          >
+        </header>
+        <main>
+          <section class="store-intro">
+            <h1>Feito no bairro,<br />do seu jeito.</h1>
+            <p>Escolha uma oferta ou monte seu pedido.</p>
+          </section>
+          <nav class="category-bar" aria-label="Categorias">
+            <a class="active" href="#offers">Ofertas</a><a href="#">Xis</a><a href="#">Porções</a
+            ><a href="#">Bebidas</a>
+          </nav>
+          <section id="offers" class="store-offer-section">
+            <header>
+              <h2>Ofertas para agora</h2>
+              <span>4 disponíveis</span>
+            </header>
+            <article class="hero-offer">
+              <img
+                src="../combos-promotions/combo-x-bacon.png"
+                alt="Xis com batata e refrigerante"
+              />
+              <div>
+                <span class="store-badge"
+                  ><svg><use href="#i-spark" /></svg>Monte do seu jeito</span
+                >
+                <h3>Monte seu Xis</h3>
+                <p>1 xis + 1 acompanhamento + 1 bebida</p>
+                <div class="hero-price">
+                  <span><s>até R$ 36,90</s><strong>a partir de R$ 29,90</strong></span
+                  ><small>até R$ 7,00 de economia</small>
+                </div>
+                <a class="button primary wide" href="?screen=flexible"
+                  >Escolher itens<svg><use href="#i-arrow" /></svg
+                ></a>
+              </div>
+            </article>
+            <div class="compact-offer-list">
+              <article>
+                <span class="compact-symbol">3×</span>
+                <div>
+                  <span class="store-badge blue">Leve mais</span>
+                  <h3>3 refrigerantes</h3>
+                  <p>Por R$ 15,00 · economize R$ 3,00</p>
+                </div>
+                <button aria-label="Adicionar 3 refrigerantes">
+                  <svg><use href="#i-plus" /></svg>
+                </button>
+              </article>
+              <article>
+                <span class="compact-symbol delivery"
+                  ><svg><use href="#i-truck" /></svg
+                ></span>
+                <div>
+                  <span class="store-badge green">Delivery</span>
+                  <h3>Frete grátis</h3>
+                  <p>Em pedidos a partir de R$ 35,00</p>
+                </div>
+                <span class="auto-label">automático</span>
+              </article>
+            </div>
+          </section>
+          <section class="product-tease">
+            <header>
+              <h2>Mais pedidos</h2>
+              <span>Ver todos</span>
+            </header>
+            <div>
+              <article>
+                <span class="food-card one"></span><strong>X-Bacon</strong><small>R$ 24,90</small>
+              </article>
+              <article>
+                <span class="food-card two"></span><strong>Batata grande</strong
+                ><small>R$ 19,00</small>
+              </article>
+            </div>
+          </section>
+        </main>
+        <a class="bag-bar" href="?screen=cart"
+          ><span
+            ><svg><use href="#i-bag" /></svg><b>3 itens</b></span
+          ><span>Ver sacola <strong>R$ 47,90</strong></span></a
+        >
+      </div>
+    </div>
+
+    <div id="flexible" class="screen phone-screen" hidden>
+      <div class="phone-shell product-configurator">
+        <header class="mobile-nav">
+          <a href="?screen=storefront" aria-label="Voltar"
+            ><svg><use href="#i-back" /></svg></a
+          ><strong>Monte seu combo</strong><span></span>
+        </header>
+        <main>
+          <section class="config-intro">
+            <span class="store-badge"
+              ><svg><use href="#i-spark" /></svg>Combo flexível</span
+            >
+            <h1>Monte seu Xis</h1>
+            <p>Escolha uma opção em cada grupo. Adicionais aparecem antes de confirmar.</p>
+            <div>
+              <span><s>até R$ 36,90</s><strong>R$ 29,90</strong></span
+              ><small>economize até R$ 7,00</small>
+            </div>
+          </section>
+          <section class="required-group" data-group="side">
+            <header>
+              <span
+                ><h2>1. Acompanhamento</h2>
+                <p>Escolha 1 opção</p></span
+              ><b>Obrigatório</b>
+            </header>
+            <label class="option-row selected"
+              ><span class="food-thumb fries"></span
+              ><span><strong>Batata frita P</strong><small>crocante e sequinha</small></span
+              ><span
+                ><em>incluído</em
+                ><input type="radio" name="side" value="Batata frita P" checked /></span></label
+            ><label class="option-row"
+              ><span class="food-thumb rings"></span
+              ><span><strong>Onion rings P</strong><small>6 unidades</small></span
+              ><span
+                ><em>+ R$ 2,00</em
+                ><input type="radio" name="side" value="Onion rings P" data-extra="200" /></span
+            ></label>
+          </section>
+          <section class="required-group" data-group="drink">
+            <header>
+              <span
+                ><h2>2. Bebida</h2>
+                <p>Escolha 1 opção</p></span
+              ><b>Obrigatório</b>
+            </header>
+            <label class="option-row selected"
+              ><span class="food-thumb cola"></span
+              ><span><strong>Refrigerante lata</strong><small>escolha o sabor depois</small></span
+              ><span
+                ><em>incluído</em
+                ><input type="radio" name="drink" value="Refrigerante lata" checked /></span></label
+            ><label class="option-row"
+              ><span class="food-thumb juice"></span
+              ><span><strong>Suco de laranja</strong><small>300 ml</small></span
+              ><span
+                ><em>+ R$ 3,00</em
+                ><input type="radio" name="drink" value="Suco de laranja" data-extra="300" /></span
+            ></label>
+          </section>
+          <section class="selection-summary">
+            <svg><use href="#i-check" /></svg
+            ><span
+              ><strong id="choice-summary">Batata frita P · Refrigerante lata</strong
+              ><small>2 de 2 escolhas concluídas</small></span
+            >
+          </section>
+        </main>
+        <div class="sticky-add">
+          <span><small>2 escolhas concluídas</small><strong id="combo-total">R$ 29,90</strong></span
+          ><a class="button primary" href="?screen=cart">Adicionar à sacola</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="cart" class="screen phone-screen" hidden>
+      <div class="phone-shell cart-shell">
+        <header class="mobile-nav">
+          <a href="?screen=storefront" aria-label="Voltar"
+            ><svg><use href="#i-back" /></svg></a
+          ><strong>Sua sacola</strong><button>Limpar</button>
+        </header>
+        <main>
+          <section class="cart-heading">
+            <h1>Revise seu pedido</h1>
+            <p>As vantagens aplicadas estão detalhadas no total.</p>
+          </section>
+          <section class="cart-items">
+            <article class="cart-combo">
+              <header>
+                <span class="type-mark combo"
+                  ><svg><use href="#i-gift" /></svg></span
+                ><span><strong>Monte seu Xis</strong><small>Combo flexível</small></span
+                ><strong>R$ 29,90</strong>
+              </header>
+              <ul>
+                <li>1× X-Bacon</li>
+                <li>1× Batata frita P</li>
+                <li>1× Refrigerante lata · Coca-Cola</li>
+              </ul>
+              <div>
+                <button>−</button><b>1</b><button>+</button
+                ><a href="?screen=flexible">Editar escolhas</a>
+              </div>
+            </article>
+            <article class="cart-line">
+              <span class="food-thumb rings"></span
+              ><span
+                ><strong>Onion rings P</strong><small>2 unidades · leve 2, pague 1</small
+                ><span class="applied-offer"
+                  ><svg><use href="#i-tag" /></svg>Oferta aplicada</span
+                ></span
+              ><span><strong>R$ 9,00</strong><s>R$ 18,00</s></span>
+            </article>
+          </section>
+          <section class="threshold-message reached">
+            <svg><use href="#i-truck" /></svg
+            ><span
+              ><strong>Você ganhou frete grátis</strong
+              ><small>Seu pedido passou de R$ 35,00 após as ofertas.</small></span
+            ><svg><use href="#i-check" /></svg>
+          </section>
+          <button class="coupon-row">
+            <span
+              ><svg><use href="#i-tag" /></svg
+              ><span
+                ><strong>Cupom BEMVINDO5</strong
+                ><small>Aplicado depois das ofertas automáticas</small></span
+              ></span
+            ><b>− R$ 5,00</b>
+          </button>
+          <section class="price-breakdown">
+            <h2>Resumo do valor</h2>
+            <dl>
+              <div>
+                <dt>Subtotal dos itens</dt>
+                <dd>R$ 54,90</dd>
+              </div>
+              <div class="saving">
+                <dt>Economia no combo</dt>
+                <dd>− R$ 7,00</dd>
+              </div>
+              <div class="saving">
+                <dt>Leve 2, pague 1</dt>
+                <dd>− R$ 9,00</dd>
+              </div>
+              <div>
+                <dt>Entrega</dt>
+                <dd><s>R$ 6,00</s></dd>
+              </div>
+              <div class="saving">
+                <dt>Frete grátis</dt>
+                <dd>− R$ 6,00</dd>
+              </div>
+              <div class="saving">
+                <dt>Cupom</dt>
+                <dd>− R$ 5,00</dd>
+              </div>
+            </dl>
+            <div class="cart-total">
+              <span><strong>Total</strong><small>Você economizou R$ 27,00</small></span
+              ><strong>R$ 33,90</strong>
+            </div>
+            <p>
+              <svg><use href="#i-info" /></svg>O preço é validado novamente antes de criar o pedido.
+            </p>
+          </section>
+        </main>
+        <div class="sticky-add checkout-action">
+          <span><small>Total</small><strong>R$ 33,90</strong></span
+          ><button class="button primary">Continuar</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

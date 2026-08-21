@@ -6,6 +6,8 @@ import type {
   PaymentStatus,
 } from '@prisma/client';
 
+import type { CheckoutQuoteAdjustmentType } from '@/types/storefront';
+
 export interface OrderQueueFilters {
   date?: string;
   status?: OrderStatus;
@@ -228,7 +230,7 @@ export interface OrderDetailsDTO {
     total: number;
     adjustments: Array<{
       id: string;
-      type: 'COMBO' | 'PRODUCT_PROMOTION' | 'COUPON';
+      type: CheckoutQuoteAdjustmentType;
       label: string;
       amount: number;
     }>;

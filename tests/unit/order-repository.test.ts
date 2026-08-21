@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => {
     orderOfferGroup: { createMany: vi.fn() },
     orderItem: { create: vi.fn() },
     orderPriceAdjustment: { createMany: vi.fn() },
+    storeOffer: { findMany: vi.fn() },
+    storeOfferUsage: { count: vi.fn(), createMany: vi.fn() },
     coupon: { findUnique: vi.fn(), update: vi.fn() },
     couponUsage: { create: vi.fn() },
     couponReservation: { create: vi.fn() },
@@ -190,6 +192,9 @@ describe('OrderRepository checkout v2', () => {
     mocks.tx.orderOfferGroup.createMany.mockResolvedValue({ count: 1 });
     mocks.tx.orderItem.create.mockResolvedValue({ id: 'item-a' });
     mocks.tx.orderPriceAdjustment.createMany.mockResolvedValue({ count: 1 });
+    mocks.tx.storeOffer.findMany.mockResolvedValue([]);
+    mocks.tx.storeOfferUsage.count.mockResolvedValue(0);
+    mocks.tx.storeOfferUsage.createMany.mockResolvedValue({ count: 0 });
     mocks.tx.coupon.update.mockResolvedValue({ id: 'coupon-a' });
     mocks.tx.coupon.findUnique.mockResolvedValue({
       maxUsages: 100,
@@ -534,9 +539,7 @@ describe('OrderRepository checkout v2', () => {
           regularBaseAmount: 2000,
           offerBaseAmount: 1500,
           discountAmount: 500,
-          components: [
-            { lineId: quote.lines[0].lineId, comboItemId: 'combo-item-a', position: 0 },
-          ],
+          components: [{ lineId: quote.lines[0].lineId, comboItemId: 'combo-item-a', position: 0 }],
         },
       ],
       adjustments: [
@@ -713,8 +716,20 @@ describe('OrderRepository checkout v2', () => {
       ...quote,
       couponId: 'coupon-a',
       coupon: { code: 'BEMVINDO10', discount: 200 },
+      automaticDiscount: 0,
+      couponDiscount: 200,
       discount: 200,
       total: 1800,
+      offerGroups: [],
+      adjustments: [
+        {
+          type: 'COUPON',
+          sourceId: 'coupon-a',
+          sourceVersion: null,
+          label: 'Cupom BEMVINDO10',
+          amount: 200,
+        },
+      ],
     });
 
     await createOrder({ ...params, input: { ...input, couponCode: 'BEMVINDO10' } });

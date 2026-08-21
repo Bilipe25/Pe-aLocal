@@ -2,15 +2,22 @@
 
 import { revalidatePath, updateTag } from 'next/cache';
 
-import type { ComboAdminInput, ProductPromotionAdminInput } from '@/schemas/offers';
+import type {
+  CanonicalOfferAdminInput,
+  ComboAdminInput,
+  ProductPromotionAdminInput,
+} from '@/schemas/offers';
 import { CACHE_TAGS } from '@/server/cache';
 import { actionError, actionSuccess, type ActionResult, ValidationError } from '@/server/errors';
 import {
   archiveComboForActiveStore,
+  archiveCanonicalOfferForActiveStore,
   archiveProductPromotionForActiveStore,
   createComboForActiveStore,
+  createCanonicalOfferForActiveStore,
   createProductPromotionForActiveStore,
   setComboActiveForActiveStore,
+  setCanonicalOfferActiveForActiveStore,
   setProductPromotionActiveForActiveStore,
   updateComboForActiveStore,
   updateProductPromotionForActiveStore,
@@ -27,6 +34,16 @@ function parseComboItems(formData: FormData) {
     return JSON.parse(raw) as unknown;
   } catch {
     throw new ValidationError('Os componentes do combo são inválidos.');
+  }
+}
+
+function parseFlexibleGroups(formData: FormData) {
+  const raw = formData.get('groups');
+  if (typeof raw !== 'string' || !raw) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new ValidationError('Os grupos do combo flexível são inválidos.');
   }
 }
 
@@ -59,6 +76,37 @@ function promotionInput(formData: FormData): ProductPromotionAdminInput {
   } as ProductPromotionAdminInput;
 }
 
+function optionalFormValue(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function canonicalOfferInput(formData: FormData): CanonicalOfferAdminInput {
+  return {
+    kind: formData.get('kind'),
+    name: formData.get('name'),
+    description: formData.get('description'),
+    isActive: formData.getAll('isActive').includes('true'),
+    modalities: formData.getAll('modalities').map(String),
+    productId: optionalFormValue(formData, 'productId'),
+    fixedPrice: optionalFormValue(formData, 'fixedPrice'),
+    requiredQuantity: optionalFormValue(formData, 'requiredQuantity'),
+    buyQuantity: optionalFormValue(formData, 'buyQuantity'),
+    getQuantity: optionalFormValue(formData, 'getQuantity'),
+    discountValue: optionalFormValue(formData, 'discountValue'),
+    minSubtotal: optionalFormValue(formData, 'minSubtotal'),
+    maxApplicationsPerOrder: optionalFormValue(formData, 'maxApplicationsPerOrder') ?? 1,
+    maxTotalUses: optionalFormValue(formData, 'maxTotalUses'),
+    maxUsesPerCustomer: optionalFormValue(formData, 'maxUsesPerCustomer'),
+    groups: parseFlexibleGroups(formData),
+    startsOn: formData.get('startsOn'),
+    endsOnExclusive: formData.get('endsOnExclusive'),
+    weekdays: selectedWeekdays(formData),
+    startTime: formData.get('startTime'),
+    endTimeExclusive: formData.get('endTimeExclusive'),
+  } as CanonicalOfferAdminInput;
+}
+
 function invalidateOffers(storeId: string, storeSlug: string) {
   updateTag(CACHE_TAGS.offers(storeId));
   updateTag(CACHE_TAGS.catalog(storeId));
@@ -73,6 +121,18 @@ export async function createComboAction(formData: FormData): Promise<ActionResul
     const result = await createComboForActiveStore(comboInput(formData));
     invalidateOffers(result.storeId, result.storeSlug);
     return actionSuccess({ id: result.combo.id });
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function createCanonicalOfferAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const result = await createCanonicalOfferForActiveStore(canonicalOfferInput(formData));
+    invalidateOffers(result.storeId, result.storeSlug);
+    return actionSuccess({ id: result.offer.id });
   } catch (error) {
     return actionError(error);
   }
@@ -146,7 +206,7 @@ export async function archiveProductPromotionAction(
 }
 
 export async function setOfferActiveAction(
-  kind: 'COMBO' | 'PRODUCT_PROMOTION',
+  kind: 'COMBO' | 'PRODUCT_PROMOTION' | 'CANONICAL',
   id: string,
   version: number,
   isActive: boolean,
@@ -155,7 +215,22 @@ export async function setOfferActiveAction(
     const result =
       kind === 'COMBO'
         ? await setComboActiveForActiveStore(id, version, isActive)
-        : await setProductPromotionActiveForActiveStore(id, version, isActive);
+        : kind === 'PRODUCT_PROMOTION'
+          ? await setProductPromotionActiveForActiveStore(id, version, isActive)
+          : await setCanonicalOfferActiveForActiveStore(id, version, isActive);
+    invalidateOffers(result.storeId, result.storeSlug);
+    return actionSuccess(undefined);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function archiveCanonicalOfferAction(
+  id: string,
+  version: number,
+): Promise<ActionResult> {
+  try {
+    const result = await archiveCanonicalOfferForActiveStore(id, version);
     invalidateOffers(result.storeId, result.storeSlug);
     return actionSuccess(undefined);
   } catch (error) {

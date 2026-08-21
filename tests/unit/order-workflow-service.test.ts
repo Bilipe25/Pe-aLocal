@@ -17,6 +17,12 @@ const mocks = vi.hoisted(() => {
     payment: {
       updateMany: vi.fn(),
     },
+    couponReservation: {
+      updateMany: vi.fn(),
+    },
+    storeOfferUsage: {
+      updateMany: vi.fn(),
+    },
     paymentStatusHistory: {
       create: vi.fn(),
     },
@@ -87,7 +93,9 @@ function orderSnapshot(
       status: snapshot.paymentStatus,
       method: snapshot.paymentMethod,
       amount: 2500,
+      provider: null,
     },
+    couponReservation: null,
   };
 }
 
@@ -96,6 +104,8 @@ describe('OrderWorkflowService', () => {
     vi.clearAllMocks();
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.payment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.couponReservation.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.storeOfferUsage.updateMany.mockResolvedValue({ count: 0 });
     mocks.tx.paymentStatusHistory.create.mockResolvedValue({ id: 'payment-history-a' });
     mocks.tx.orderStatusHistory.create.mockResolvedValue({ id: 'history-new' });
     mocks.tx.auditLog.create.mockResolvedValue({ id: 'audit-new' });
@@ -234,6 +244,10 @@ describe('OrderWorkflowService', () => {
     expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
     expect(result.outboxEventIds).toEqual(['outbox-order', 'outbox-payment']);
     expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledTimes(2);
+    expect(mocks.tx.storeOfferUsage.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-a', status: 'RESERVED' },
+      data: { status: 'CONSUMED', consumedAt: expect.any(Date), expiresAt: null },
+    });
   });
 
   it('não cria histórico quando a atualização financeira concorrente falha', async () => {
@@ -280,6 +294,10 @@ describe('OrderWorkflowService', () => {
     expect(mocks.tx.auditLog.create).toHaveBeenCalledTimes(2);
     expect(result.outboxEventIds).toEqual(['outbox-order', 'outbox-payment']);
     expect(mocks.tx.orderOutboxEvent.create).toHaveBeenCalledTimes(2);
+    expect(mocks.tx.storeOfferUsage.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-a', status: 'RESERVED' },
+      data: { status: 'RELEASED', releasedAt: expect.any(Date) },
+    });
   });
 
   it('bloqueia cancelamento de pedido pago', async () => {
@@ -295,6 +313,44 @@ describe('OrderWorkflowService', () => {
       }),
     ).rejects.toThrow('precisa ser reembolsado');
     expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia cancelamento local enquanto o Pix do provedor ainda pode ser pago', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...orderSnapshot({ status: 'PENDING', paymentStatus: 'PENDING' }),
+      payment: {
+        ...orderSnapshot().payment,
+        provider: 'MERCADO_PAGO',
+      },
+    });
+
+    await expect(
+      cancelOrder(context, {
+        orderId: 'order-a',
+        expectedVersion: 0,
+        reasonCode: 'CUSTOMER_REQUEST',
+      }),
+    ).rejects.toThrow('precisa ser cancelado ou expirar no provedor');
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.couponReservation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('libera a reserva de cupom somente ao concluir um cancelamento local', async () => {
+    mocks.tx.order.findFirst.mockResolvedValue({
+      ...orderSnapshot(),
+      couponReservation: { id: 'reservation-a', status: 'ACTIVE' },
+    });
+
+    await cancelOrder(context, {
+      orderId: 'order-a',
+      expectedVersion: 0,
+      reasonCode: 'CUSTOMER_REQUEST',
+    });
+
+    expect(mocks.tx.couponReservation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'reservation-a', orderId: 'order-a', status: 'ACTIVE' },
+      data: { status: 'RELEASED', releasedAt: expect.any(Date) },
+    });
   });
 
   it('desfaz somente a última transição reversível do mesmo usuário', async () => {

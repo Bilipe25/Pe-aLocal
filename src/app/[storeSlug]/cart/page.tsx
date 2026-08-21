@@ -32,16 +32,16 @@ export default async function CartPage({ params }: { params: Promise<{ storeSlug
 
   return (
     <CartView
-        storeId={store.id}
-        storeSlug={store.slug}
-        storeName={store.name}
-        logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
+      storeId={store.id}
+      storeSlug={store.slug}
+      storeName={store.name}
+      logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
       logoImageAssetId={store.customization.assets.logo?.id ?? null}
       acceptingOrders={store.availability.acceptingOrders}
       unavailableReason={store.availability.reason}
       deliveryEnabled={Boolean(store.settings?.deliveryEnabled)}
       pickupEnabled={Boolean(store.settings?.pickupEnabled)}
-      comboOffers={offers.filter((offer) => offer.kind === 'COMBO')}
+      comboOffers={offers.filter((offer) => offer.kind !== 'PRODUCT_PROMOTION')}
     />
   );
 }

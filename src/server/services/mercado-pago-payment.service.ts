@@ -505,6 +505,15 @@ export async function reconcileMercadoPagoOrder(
         });
       }
     }
+    if (nextPaymentStatus === 'FAILED' || nextPaymentStatus === 'CANCELLED') {
+      await tx.storeOfferUsage.updateMany({
+        where: { orderId: current.id, status: 'RESERVED' },
+        data: {
+          status: reasonCode === 'PROVIDER_EXPIRED' ? 'EXPIRED' : 'RELEASED',
+          releasedAt: now,
+        },
+      });
+    }
     const providerAudit = await writeProviderAudit(tx, {
       tenantId: current.tenantId,
       storeId: current.storeId,
@@ -875,6 +884,10 @@ async function failCreation(
         data: { status: 'RELEASED', releasedAt: now },
       });
     }
+    await tx.storeOfferUsage.updateMany({
+      where: { orderId: local.order.id, status: 'RESERVED' },
+      data: { status: 'RELEASED', releasedAt: now },
+    });
     const audit = await writeProviderAudit(tx, {
       tenantId: local.order.tenantId,
       storeId: local.order.storeId,
@@ -925,10 +938,29 @@ export async function ensureMercadoPagoPixCreated(
   const local = await getDb().mercadoPagoPayment.findUnique({
     where: { id: mercadoPagoPaymentId },
     include: {
-      order: { select: { total: true } },
+      order: { select: { total: true, status: true, paymentStatus: true } },
+      payment: { select: { status: true, provider: true } },
     },
   });
   if (!local) throw new NotFoundError('Pagamento Mercado Pago');
+
+  const canCreateProviderCharge = () =>
+    local.order.status === 'AWAITING_PAYMENT' &&
+    local.order.paymentStatus === 'PENDING' &&
+    local.payment.status === 'PENDING' &&
+    local.payment.provider === 'MERCADO_PAGO';
+
+  if (!local.providerOrderId && !canCreateProviderCharge()) {
+    console.info('[MP_ORDER_CREATE_SKIPPED_LOCAL_FINAL_STATE]', {
+      mercadoPagoPaymentId: local.id,
+      orderId: local.orderId,
+      orderStatus: local.order.status,
+      orderPaymentStatus: local.order.paymentStatus,
+      paymentStatus: local.payment.status,
+    });
+    return null;
+  }
+
   let credential = await getMercadoPagoOrdersCredential(local.connectionId, {
     allowReconciliation: true,
   });
@@ -980,6 +1012,25 @@ export async function ensureMercadoPagoPixCreated(
 
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const current = await getDb().order.findFirst({
+      where: {
+        id: local.orderId,
+        tenantId: local.tenantId,
+        storeId: local.storeId,
+        status: 'AWAITING_PAYMENT',
+        paymentStatus: 'PENDING',
+        payment: { status: 'PENDING', provider: 'MERCADO_PAGO' },
+      },
+      select: { id: true },
+    });
+    if (!current) {
+      console.info('[MP_ORDER_CREATE_SKIPPED_STATE_CHANGED]', {
+        mercadoPagoPaymentId: local.id,
+        orderId: local.orderId,
+      });
+      return null;
+    }
+
     let createdOrder: MercadoPagoCreatedOrder;
     try {
       createdOrder = await createMercadoPagoPixOrder({

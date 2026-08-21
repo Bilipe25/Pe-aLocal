@@ -79,11 +79,13 @@ function createClient() {
   const coupon = { findFirst: vi.fn().mockResolvedValue(null) };
   const storeCombo = { findMany: vi.fn().mockResolvedValue([]) };
   const storeProductPromotion = { findMany: vi.fn().mockResolvedValue([]) };
+  const storeOffer = { findMany: vi.fn().mockResolvedValue([]) };
   return {
     store,
     product,
     storeCombo,
     storeProductPromotion,
+    storeOffer,
     deliveryZone,
     deliveryZonePostalRange,
     coupon,
@@ -172,11 +174,10 @@ describe('cotação autoritativa do checkout', () => {
       _count: { reservations: 0 },
     });
 
-    const quote = await calculateCheckoutQuote(
-      'loja-a',
-      input({ couponCode: 'MENOS10' }),
-      { client: client as never, now },
-    );
+    const quote = await calculateCheckoutQuote('loja-a', input({ couponCode: 'MENOS10' }), {
+      client: client as never,
+      now,
+    });
 
     expect(quote).toMatchObject({
       subtotal: 4000,
@@ -189,6 +190,105 @@ describe('cotação autoritativa do checkout', () => {
     expect((quote?.adjustments ?? []).map((adjustment) => adjustment.type)).toEqual([
       'PRODUCT_PROMOTION',
       'COUPON',
+    ]);
+  });
+
+  it('falha fechado quando existem promoções ativas duplicadas para o mesmo produto', async () => {
+    const client = createClient();
+    client.store.findUnique.mockResolvedValueOnce({
+      ...(await client.store.findUnique()),
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    const promotion = {
+      productId,
+      promotionalPrice: 1500,
+      version: 1,
+      startsOn: null,
+      endsOnExclusive: null,
+      weekdays: [],
+      startMinute: null,
+      endMinuteExclusive: null,
+    };
+    client.storeProductPromotion.findMany.mockResolvedValueOnce([
+      { ...promotion, id: '50000000-0000-4000-8000-000000000001' },
+      { ...promotion, id: '50000000-0000-4000-8000-000000000002' },
+    ]);
+
+    const quote = await calculateCheckoutQuote('loja-a', input(), {
+      client: client as never,
+      now,
+    });
+
+    expect(quote?.canCheckout).toBe(false);
+    expect(quote?.automaticDiscount).toBe(0);
+    expect(quote?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'CART_INVALID',
+          message: expect.stringContaining('conflitante'),
+        }),
+      ]),
+    );
+  });
+
+  it('aplica promoção por quantidade e desconto de carrinho na ordem canônica V2', async () => {
+    const client = createClient();
+    client.store.findUnique.mockResolvedValueOnce({
+      ...(await client.store.findUnique()),
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    const schedule = {
+      startsOn: null,
+      endsOnExclusive: null,
+      weekdays: [],
+      startMinute: null,
+      endMinuteExclusive: null,
+    };
+    client.storeOffer.findMany.mockResolvedValueOnce([
+      {
+        id: '81000000-0000-4000-8000-000000000001',
+        kind: 'QUANTITY_FIXED_PRICE',
+        name: 'Leve 3 por R$ 45',
+        version: 1,
+        maxApplicationsPerOrder: 5,
+        productPrice: null,
+        quantityPrice: { productId, requiredQuantity: 3, groupFixedPrice: 4500 },
+        bogo: null,
+        cartDiscount: null,
+        freeDelivery: null,
+        ...schedule,
+      },
+      {
+        id: '81000000-0000-4000-8000-000000000002',
+        kind: 'CART_FIXED_DISCOUNT',
+        name: 'R$ 5 no carrinho',
+        version: 1,
+        maxApplicationsPerOrder: 1,
+        productPrice: null,
+        quantityPrice: null,
+        bogo: null,
+        cartDiscount: { discountType: 'FIXED', value: 500, minSubtotal: 8000, maxDiscount: null },
+        freeDelivery: null,
+        ...schedule,
+      },
+    ]);
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({ items: [{ ...firstProductItem(), quantity: 5 }] }),
+      { client: client as never, now },
+    );
+
+    expect(quote).toMatchObject({
+      subtotal: 10_000,
+      automaticDiscount: 2_000,
+      discount: 2_000,
+      total: 8_000,
+      canCheckout: true,
+    });
+    expect(quote?.adjustments.map((adjustment) => adjustment.type)).toEqual([
+      'QUANTITY_PROMOTION',
+      'CART_DISCOUNT',
     ]);
   });
 
@@ -297,6 +397,181 @@ describe('cotação autoritativa do checkout', () => {
       now,
     });
     expect(changed?.quoteFingerprint).not.toBe(first?.quoteFingerprint);
+  });
+
+  it('conta unidades expandidas do combo no limite autoritativo do pedido', async () => {
+    const client = createClient();
+    const secondProductId = '10000000-0000-4000-8000-000000000002';
+    const comboId = '70000000-0000-4000-8000-000000000001';
+    const comboItemA = '71000000-0000-4000-8000-000000000001';
+    const comboItemB = '71000000-0000-4000-8000-000000000002';
+    client.store.findUnique.mockResolvedValue({
+      ...(await client.store.findUnique()),
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    client.storeCombo.findMany.mockResolvedValue([
+      {
+        id: comboId,
+        name: 'Combo grande',
+        specialPrice: 2500,
+        isActive: true,
+        version: 1,
+        startsOn: null,
+        endsOnExclusive: null,
+        weekdays: [],
+        startMinute: null,
+        endMinuteExclusive: null,
+        items: [
+          { id: comboItemA, productId, quantity: 2, position: 0 },
+          { id: comboItemB, productId: secondProductId, quantity: 1, position: 1 },
+        ],
+      },
+    ]);
+    const firstProduct = (await client.product.findMany())[0];
+    client.product.findMany.mockResolvedValue([
+      firstProduct,
+      { ...firstProduct, id: secondProductId, name: 'Batata', basePrice: 1000 },
+    ]);
+
+    const quote = await calculateCheckoutQuote(
+      'loja-a',
+      input({
+        items: [
+          {
+            kind: 'COMBO',
+            lineId: '74000000-0000-4000-8000-000000000001',
+            comboId,
+            quantity: 99,
+            components: [
+              { comboItemId: comboItemA, notes: '', optionIds: [] },
+              { comboItemId: comboItemB, notes: '', optionIds: [] },
+            ],
+          },
+        ],
+      }),
+      { client: client as never, now },
+    );
+
+    expect(quote?.canCheckout).toBe(false);
+    expect(quote?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'CART_INVALID',
+          message: expect.stringContaining('após expandir os combos'),
+        }),
+      ]),
+    );
+  });
+
+  it('resolve combo flexível no servidor e rejeita escolha adulterada', async () => {
+    const client = createClient();
+    const comboId = '70000000-0000-4000-8000-000000000010';
+    const groupA = '71000000-0000-4000-8000-000000000010';
+    const groupB = '71000000-0000-4000-8000-000000000011';
+    const choiceA = '72000000-0000-4000-8000-000000000010';
+    const choiceB = '72000000-0000-4000-8000-000000000011';
+    const secondProductId = '10000000-0000-4000-8000-000000000002';
+    client.store.findUnique.mockResolvedValue({
+      ...(await client.store.findUnique()),
+      entitlement: { dineInQrEnabled: false, combosPromotionsEnabled: true },
+    });
+    const flexibleCombo = {
+      id: comboId,
+      name: 'Monte seu combo',
+      isActive: true,
+      version: 3,
+      modalities: [],
+      startsOn: null,
+      endsOnExclusive: null,
+      weekdays: [],
+      startMinute: null,
+      endMinuteExclusive: null,
+      combo: {
+        fixedPrice: 3000,
+        groups: [
+          {
+            id: groupA,
+            quantity: 1,
+            position: 0,
+            choices: [{ id: choiceA, productId, priceDelta: 0 }],
+          },
+          {
+            id: groupB,
+            quantity: 1,
+            position: 1,
+            choices: [{ id: choiceB, productId: secondProductId, priceDelta: 300 }],
+          },
+        ],
+      },
+    };
+    client.storeOffer.findMany.mockImplementation((args: { where?: { kind?: string } }) =>
+      Promise.resolve(args.where?.kind === 'COMBO_FLEXIBLE' ? [flexibleCombo] : []),
+    );
+    const firstProduct = (await client.product.findMany())[0];
+    client.product.findMany.mockResolvedValue([
+      firstProduct,
+      {
+        ...firstProduct,
+        id: secondProductId,
+        name: 'Batata',
+        basePrice: 1500,
+      },
+    ]);
+    const validInput = input({
+      items: [
+        {
+          kind: 'COMBO',
+          lineId: '20000000-0000-4000-8000-000000000010',
+          comboId,
+          quantity: 1,
+          components: [
+            { comboItemId: choiceA, notes: '', optionIds: [] },
+            { comboItemId: choiceB, notes: '', optionIds: [] },
+          ],
+        },
+      ],
+    });
+
+    const quote = await calculateCheckoutQuote('loja-a', validInput, {
+      client: client as never,
+      now,
+    });
+    expect(quote).toMatchObject({
+      subtotal: 3500,
+      automaticDiscount: 200,
+      total: 3300,
+      canCheckout: true,
+    });
+    expect(quote?.adjustments).toEqual([
+      expect.objectContaining({ type: 'COMBO', sourceId: comboId, amount: 200 }),
+    ]);
+
+    const tampered = await calculateCheckoutQuote(
+      'loja-a',
+      input({
+        items: [
+          {
+            kind: 'COMBO',
+            lineId: '20000000-0000-4000-8000-000000000010',
+            comboId,
+            quantity: 1,
+            components: [
+              { comboItemId: choiceA, notes: '', optionIds: [] },
+              {
+                comboItemId: '72000000-0000-4000-8000-000000000099',
+                notes: '',
+                optionIds: [],
+              },
+            ],
+          },
+        ],
+      }),
+      { client: client as never, now },
+    );
+    expect(tampered?.canCheckout).toBe(false);
+    expect(tampered?.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'OFFER_UNAVAILABLE' })]),
+    );
   });
 
   it('preserva grupo e ordem comercial das opções no snapshot da cotação', async () => {

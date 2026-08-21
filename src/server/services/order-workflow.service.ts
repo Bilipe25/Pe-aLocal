@@ -53,6 +53,11 @@ interface OrderSnapshot {
     status: PaymentStatus;
     method: PaymentMethodType;
     amount: number;
+    provider: 'MERCADO_PAGO' | null;
+  } | null;
+  couponReservation: {
+    id: string;
+    status: 'ACTIVE' | 'CONSUMED' | 'RELEASED' | 'EXPIRED';
   } | null;
 }
 
@@ -102,6 +107,13 @@ async function getOrderSnapshot(
           status: true,
           method: true,
           amount: true,
+          provider: true,
+        },
+      },
+      couponReservation: {
+        select: {
+          id: true,
+          status: true,
         },
       },
     },
@@ -291,6 +303,13 @@ async function transitionOrder(
       if (paymentUpdated.count !== 1) conflict();
     }
 
+    if (targetStatus === 'DELIVERED' && nextPaymentStatus === 'PAID') {
+      await tx.storeOfferUsage.updateMany({
+        where: { orderId: order.id, status: 'RESERVED' },
+        data: { status: 'CONSUMED', consumedAt: changedAt, expiresAt: null },
+      });
+    }
+
     await createStatusHistory(tx, context, {
       orderId: order.id,
       fromStatus: order.status,
@@ -410,6 +429,12 @@ export async function cancelOrder(
       throw new BusinessRuleError('Um pedido pago precisa ser reembolsado antes do cancelamento.');
     }
 
+    if (order.payment?.provider) {
+      throw new BusinessRuleError(
+        'O pagamento online precisa ser cancelado ou expirar no provedor antes de cancelar o pedido.',
+      );
+    }
+
     const changedAt = new Date();
     const cancelPayment = ['PENDING', 'CUSTOMER_REPORTED_PAID', 'FAILED'].includes(
       order.paymentStatus,
@@ -477,6 +502,22 @@ export async function cancelOrder(
       });
       if (paymentUpdated.count !== 1) conflict();
     }
+
+    if (order.couponReservation?.status === 'ACTIVE') {
+      const reservationUpdated = await tx.couponReservation.updateMany({
+        where: {
+          id: order.couponReservation.id,
+          orderId: order.id,
+          status: 'ACTIVE',
+        },
+        data: { status: 'RELEASED', releasedAt: changedAt },
+      });
+      if (reservationUpdated.count !== 1) conflict();
+    }
+    await tx.storeOfferUsage.updateMany({
+      where: { orderId: order.id, status: 'RESERVED' },
+      data: { status: 'RELEASED', releasedAt: changedAt },
+    });
 
     await createStatusHistory(tx, context, {
       orderId: order.id,

@@ -28,7 +28,10 @@ import { toast } from 'sonner';
 import { ProductImage } from '@/components/storefront/product-image';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
-import { ComboConfigurator } from '@/components/storefront/storefront-offers';
+import {
+  ComboConfigurator,
+  FlexibleComboConfigurator,
+} from '@/components/storefront/storefront-offers';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCartQuote, type CartFulfillmentModality } from '@/hooks/use-cart-quote';
@@ -69,7 +72,7 @@ interface CartViewProps {
   quoteEndpoint?: string;
   quoteModality?: CartFulfillmentModality;
   contextLabel?: string;
-  comboOffers?: Array<Extract<PublicStorefrontOfferDto, { kind: 'COMBO' }>>;
+  comboOffers?: Array<Extract<PublicStorefrontOfferDto, { kind: 'COMBO' | 'FLEXIBLE_COMBO' }>>;
 }
 
 export function buildCartCheckoutHref(storeSlug: string) {
@@ -133,8 +136,7 @@ export function CartView({
   }, [setStore, storeId, storeSlug]);
 
   const quoteModality: CartFulfillmentModality =
-    quoteModalityOverride ??
-    (pickupEnabled ? 'PICKUP' : deliveryEnabled ? 'DELIVERY' : 'PICKUP');
+    quoteModalityOverride ?? (pickupEnabled ? 'PICKUP' : deliveryEnabled ? 'DELIVERY' : 'PICKUP');
   const quoteState = useCartQuote({
     storeSlug,
     items,
@@ -197,7 +199,7 @@ export function CartView({
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
   const editingCombo =
     editingItem?.kind === 'COMBO'
-      ? comboOffers.find((offer) => offer.id === editingItem.comboId) ?? null
+      ? (comboOffers.find((offer) => offer.id === editingItem.comboId) ?? null)
       : null;
 
   useEffect(() => {
@@ -405,9 +407,10 @@ export function CartView({
             <div className="storefront-cart-lines">
               {items.map((item, index) => {
                 const quotedLine = quoteLines.get(item.id);
-                const productPromotionAdjustment = quoteState.quote?.adjustments?.find(
+                const itemOfferAdjustment = quoteState.quote?.adjustments?.find(
                   (adjustment) =>
-                    adjustment.type === 'PRODUCT_PROMOTION' && adjustment.lineId === item.id,
+                    ['PRODUCT_PROMOTION', 'QUANTITY_PROMOTION', 'BOGO'].includes(adjustment.type) &&
+                    adjustment.lineId === item.id,
                 );
                 const issues = lineIssues.get(item.id) ?? [];
                 const displayName = quotedLine?.productName ?? item.productName;
@@ -419,10 +422,10 @@ export function CartView({
                     : (quotedLine?.options ?? item.selectedOptions);
                 const displayUnitPrice = quotedLine
                   ? quotedLine.unitPrice -
-                    Math.floor((productPromotionAdjustment?.amount ?? 0) / quotedLine.quantity)
+                    Math.floor((itemOfferAdjustment?.amount ?? 0) / quotedLine.quantity)
                   : item.unitPrice;
                 const displayTotal = quotedLine
-                  ? quotedLine.itemTotal - (productPromotionAdjustment?.amount ?? 0)
+                  ? quotedLine.itemTotal - (itemOfferAdjustment?.amount ?? 0)
                   : item.unitPrice * item.quantity;
                 const priceChanged = Boolean(quotedLine && displayUnitPrice !== item.unitPrice);
 
@@ -444,7 +447,8 @@ export function CartView({
                     issues={issues}
                     onRemove={() => handleRemoveItem(item.id, displayName)}
                     onEdit={
-                      item.kind !== 'COMBO' || comboOffers.some((offer) => offer.id === item.comboId)
+                      item.kind !== 'COMBO' ||
+                      comboOffers.some((offer) => offer.id === item.comboId)
                         ? (trigger) => {
                             editingTriggerRef.current = trigger;
                             setEditingItemId(item.id);
@@ -673,8 +677,17 @@ export function CartView({
           onClose={closeItemEditor}
         />
       )}
-      {editingItem && editingCombo && (
+      {editingItem && editingCombo?.kind === 'COMBO' && (
         <ComboConfigurator
+          key={editingItem.id}
+          offer={editingCombo}
+          storeOpen={acceptingOrders}
+          cartItem={editingItem}
+          onClose={closeItemEditor}
+        />
+      )}
+      {editingItem && editingCombo?.kind === 'FLEXIBLE_COMBO' && (
+        <FlexibleComboConfigurator
           key={editingItem.id}
           offer={editingCombo}
           storeOpen={acceptingOrders}

@@ -2,6 +2,8 @@ import 'server-only';
 
 import { Prisma } from '@prisma/client';
 
+import { addCents, assertCheckoutFinancialInvariants, MoneyArithmeticError } from '@/domain/money';
+
 import { normalizePhone, validatePixKey } from '@/lib/brazil';
 import {
   getMercadoPagoConfig,
@@ -352,6 +354,22 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           [{ quote: publicQuote }],
         );
       }
+      try {
+        assertCheckoutFinancialInvariants({
+          subtotal: quote.subtotal,
+          automaticDiscount: quote.automaticDiscount ?? 0,
+          couponDiscount: quote.couponDiscount ?? 0,
+          discount: quote.discount,
+          deliveryFee: quote.deliveryFee,
+          total: quote.total,
+          paymentAmount: quote.total,
+          adjustments: quote.adjustments ?? [],
+          offerGroups: quote.offerGroups ?? [],
+        });
+      } catch (error) {
+        if (!(error instanceof MoneyArithmeticError)) throw error;
+        throw new OrderPaymentConsistencyError();
+      }
 
       const settings = store.settings;
       if (!settings) {
@@ -520,6 +538,67 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         : null;
       const offerGroups = quote.offerGroups ?? [];
       const adjustments = quote.adjustments ?? [];
+      const adjustmentSourceIds = [
+        ...new Set(
+          adjustments.flatMap((adjustment) =>
+            adjustment.type !== 'COUPON' && adjustment.sourceId ? [adjustment.sourceId] : [],
+          ),
+        ),
+      ].sort();
+      const canonicalOffers =
+        adjustmentSourceIds.length > 0
+          ? await tx.storeOffer.findMany({
+              where: {
+                id: { in: adjustmentSourceIds },
+                tenantId: store.tenantId,
+                storeId: store.id,
+              },
+              select: {
+                id: true,
+                maxTotalUses: true,
+                maxUsesPerCustomer: true,
+              },
+              orderBy: { id: 'asc' },
+            })
+          : [];
+      if (canonicalOffers.length > 0) {
+        await tx.$queryRaw`
+          SELECT "id" FROM "store_offers"
+          WHERE "id" IN (${Prisma.join(canonicalOffers.map((offer) => offer.id))})
+            AND "tenantId" = ${store.tenantId}
+            AND "storeId" = ${store.id}
+          ORDER BY "id"
+          FOR UPDATE
+        `;
+        for (const offer of canonicalOffers) {
+          const totalUsageCount = await tx.storeOfferUsage.count({
+            where: { offerId: offer.id, status: { in: ['RESERVED', 'CONSUMED'] } },
+          });
+          if (offer.maxTotalUses != null && totalUsageCount >= offer.maxTotalUses) {
+            throw new CheckoutError(
+              'CART_INVALID',
+              'Uma oferta acabou de atingir o limite de usos.',
+              409,
+            );
+          }
+          if (offer.maxUsesPerCustomer != null && resolvedIdentity.customerId) {
+            const customerUsageCount = await tx.storeOfferUsage.count({
+              where: {
+                offerId: offer.id,
+                customerId: resolvedIdentity.customerId,
+                status: { in: ['RESERVED', 'CONSUMED'] },
+              },
+            });
+            if (customerUsageCount >= offer.maxUsesPerCustomer) {
+              throw new CheckoutError(
+                'CART_INVALID',
+                'Esta oferta já atingiu seu limite por cliente.',
+                409,
+              );
+            }
+          }
+        }
+      }
       const requiresSeparatedItems =
         offerGroups.length > 0 || adjustments.some((adjustment) => adjustment.lineId != null);
       const offerGroupIdByLineId = new Map(
@@ -631,6 +710,30 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
+
+      if (canonicalOffers.length > 0) {
+        await tx.storeOfferUsage.createMany({
+          data: canonicalOffers.map((offer) => {
+            const offerAdjustments = adjustments.filter(
+              (adjustment) => adjustment.sourceId === offer.id,
+            );
+            return {
+              tenantId: store.tenantId,
+              storeId: store.id,
+              offerId: offer.id,
+              orderId: order.id,
+              customerId: resolvedIdentity.customerId,
+              status: 'RESERVED' as const,
+              applicationCount: offerAdjustments.length,
+              discountAmount: offerAdjustments.reduce(
+                (total, adjustment) => addCents(total, adjustment.amount),
+                0,
+              ),
+              expiresAt: onlinePayment ? new Date(now.getTime() + 30 * 60_000) : null,
+            };
+          }),
+        });
+      }
 
       if (offerGroups.length > 0) {
         await tx.orderOfferGroup.createMany({

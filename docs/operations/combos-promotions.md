@@ -97,6 +97,70 @@ Ofertas e produtos são carregados em lote por loja; não existe consulta por pr
 
 O PWA não é autoridade de preço. Mesmo com uma tela ou carrinho antigos, a próxima cotação no servidor revalida disponibilidade, agenda, versões e total.
 
+## V2 — modelo canônico de ofertas
+
+A V2 evolui a mesma capability `combosPromotionsEnabled`. A migration aditiva
+`20260821073000_offers_v2_hardening` cria `StoreOffer` como raiz canônica e subtipos explícitos:
+
+- `COMBO_FIXED` e `COMBO_FLEXIBLE`;
+- `PRODUCT_FIXED_PRICE`;
+- `QUANTITY_FIXED_PRICE` (N unidades por preço fixo);
+- `BOGO` (compre X e ganhe Y do mesmo produto);
+- `CART_FIXED_DISCOUNT`;
+- `FREE_DELIVERY`.
+
+Combos e promoções V1 são preservados e recebem uma representação canônica com o mesmo ID. As ações V1 fazem dual-write transacional; pedidos antigos e suas tabelas de snapshot não são reescritos.
+
+### Combo flexível
+
+Um combo flexível tem preço-base e dois ou mais grupos ordenados. Cada grupo informa quantas unidades o cliente escolhe e contém escolhas de produtos com `priceDelta` em centavos. O navegador envia somente o ID da escolha, observações e IDs de adicionais. O quote:
+
+1. carrega a oferta no tenant e na loja corretos;
+2. exige exatamente uma escolha pertencente a cada grupo;
+3. resolve produto, disponibilidade, adicionais e `priceDelta` no banco;
+4. expande os escolhidos em `OrderItem` reais;
+5. persiste grupo, versão, preços e desconto em snapshots.
+
+IDs de outra loja, escolhas repetidas/inexistentes, produtos arquivados ou indisponíveis e deltas adulterados falham fechados. O KDS recebe somente os produtos efetivamente escolhidos.
+
+### Pipeline e stacking V2
+
+A ordem canônica é:
+
+1. preços vigentes de produto e adicionais;
+2. combo (fixo ou flexível), sem promoção individual nos componentes;
+3. uma promoção de item por produto: preço fixo, quantidade ou BOGO;
+4. no máximo uma promoção de subtotal, usando mercadorias líquidas dos ajustes anteriores;
+5. cupom sobre mercadorias após descontos automáticos;
+6. taxa de entrega;
+7. frete grátis elegível, registrado como ajuste explícito.
+
+`PRODUCT_FIXED_PRICE`, `QUANTITY_FIXED_PRICE` e `BOGO` são mutuamente exclusivos para o mesmo produto em agendas sobrepostas. Promoções de carrinho e frete grátis também falham fechadas quando há mais de uma candidata. Não existe prioridade configurável nem loop de elegibilidade.
+
+O invariante financeiro permanece:
+
+`subtotal - automaticDiscount - couponDiscount + deliveryFee = total`
+
+`FREE_DELIVERY` integra `automaticDiscount`, preserva a taxa calculada em `deliveryFee` e registra um ajuste de mesmo valor. Assim o motivo fica auditável e `Payment.amount` continua igual a `Order.total`.
+
+### Modalidades, limites e concorrência
+
+`StoreOffer.modalities=[]` significa todas as modalidades. Caso contrário, o quote compara a modalidade server-side. Frete grátis só pode ser cadastrado para `DELIVERY`.
+
+`maxApplicationsPerOrder` limita grupos de quantidade/BOGO aplicados em um pedido. `maxTotalUses`, quando definido, é protegido no checkout por lock da oferta e ledger `StoreOfferUsage`, único por oferta/pedido. Quote e visualização não consomem uso. O uso nasce `RESERVED`, vira `CONSUMED` quando a venda é entregue e paga, e é liberado de forma idempotente em cancelamento/falha/expiração anterior à venda. Refund posterior não devolve uso automaticamente.
+
+### Métricas e oportunidades
+
+A tela de ofertas deriva métricas de pedidos `DELIVERED` e `PAID`, em Hoje/7/30 dias segundo `Store.timeZone`: pedidos, valor bruto, desconto concedido e ticket médio. Os cálculos são agregados no PostgreSQL e usam os IDs preservados nos ajustes.
+
+Oportunidades são somente sugestões. Uma consulta de 90 dias considera produtos avulsos de pedidos entregues e pagos, exige amostra mínima de 20 pedidos no produto-âncora, pelo menos 5 coocorrências e afinidade mínima de 25%. Ela não publica nem define preço; apenas pré-seleciona os produtos no editor de combo, deixando o preço vazio.
+
+### Observabilidade e kill switch
+
+Falhas fechadas registram apenas IDs técnicos e contagens, sem PII: conflito de ofertas, seleção inválida de combo, limite de unidades expandidas, limite de uso, divergência de pricing e divergência entre pagamento e pedido.
+
+O kill switch continua sendo `combosPromotionsEnabled=false`. Ele remove ofertas de novas leituras/quotes sem alterar pedidos persistidos. Um subtipo com problema também pode ser pausado individualmente.
+
 ## Rollout
 
 1. revisar e aplicar a migration aditiva em ambiente controlado;
@@ -109,7 +173,8 @@ O PWA não é autoridade de preço. Mesmo com uma tela ou carrinho antigos, a pr
 
 Definir `combosPromotionsEnabled=false` para a loja. Novas cotações deixam de aplicar e expor ofertas; pedidos já criados permanecem íntegros. Não remover tabelas nem reverter snapshots durante rollback funcional.
 
-## Migration
+## Migrations
 
 A migration `20260821010000_combos_promotions_v1` é aditiva e cria enums, tabelas, relações, índices, constraints e políticas RLS. Ela não deve ser aplicada com `db push`, `migrate reset` ou diretamente em produção sem revisão.
 
+A migration `20260821073000_offers_v2_hardening` também é aditiva, inclui backfill compatível das definições V1, relações compostas de tenant/loja, índices e RLS. Aplicação deve ocorrer somente em ambiente controlado com backup e observação de locks. O rollback funcional recomendado é o kill switch/pausa; não remover tabelas enquanto a aplicação ou pedidos puderem referenciar snapshots V2.

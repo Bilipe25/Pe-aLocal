@@ -33,7 +33,7 @@ export default async function DineInCartPage({
       contextLabel={`Você está na ${table.label}`}
       deliveryEnabled={false}
       pickupEnabled={false}
-      comboOffers={offers.filter((offer) => offer.kind === 'COMBO')}
+      comboOffers={offers.filter((offer) => offer.kind !== 'PRODUCT_PROMOTION')}
     />
   );
 }
