@@ -3,6 +3,42 @@ import { describe, expect, it } from 'vitest';
 import { canonicalOfferAdminInputSchema, comboAdminInputSchema } from '@/schemas/offers';
 
 describe('schemas de ofertas', () => {
+  it('aceita IDs GUID legados do catálogo ao criar combo e promoção', () => {
+    const legacyProductIds = [
+      '00000000-0000-0000-0002-000000000001',
+      '00000000-0000-0000-0002-000000000005',
+    ];
+    const combo = comboAdminInputSchema.safeParse({
+      name: 'Combo legado',
+      description: '',
+      specialPrice: 30,
+      isActive: true,
+      sortOrder: 0,
+      startsOn: null,
+      endsOnExclusive: null,
+      startTime: null,
+      endTimeExclusive: null,
+      items: legacyProductIds.map((productId) => ({ productId, quantity: 1 })),
+    });
+    const promotion = canonicalOfferAdminInputSchema.safeParse({
+      kind: 'PRODUCT_FIXED_PRICE',
+      name: 'Preço especial legado',
+      description: '',
+      isActive: true,
+      modalities: [],
+      productId: legacyProductIds[0],
+      fixedPrice: 10,
+      maxApplicationsPerOrder: 99,
+      startsOn: null,
+      endsOnExclusive: null,
+      startTime: null,
+      endTimeExclusive: null,
+    });
+
+    expect(combo.success).toBe(true);
+    expect(promotion.success).toBe(true);
+  });
+
   it('limita a quantidade total de componentes de um combo', () => {
     const parsed = comboAdminInputSchema.safeParse({
       name: 'Combo excessivo',

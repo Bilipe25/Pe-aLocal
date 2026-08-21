@@ -93,7 +93,9 @@ function validateSchedule(
 
 const comboItemSchema = z
   .object({
-    productId: z.uuid('Selecione um produto válido.'),
+    // O catálogo possui IDs GUID legados que são válidos no PostgreSQL, mas
+    // não carregam os bits RFC exigidos por z.uuid().
+    productId: z.guid('Selecione um produto válido.'),
     quantity: z.coerce
       .number()
       .int('A quantidade deve ser inteira.')
@@ -135,7 +137,7 @@ export const comboAdminInputSchema = z
 
 export const productPromotionAdminInputSchema = z
   .object({
-    productId: z.uuid('Selecione um produto válido.'),
+    productId: z.guid('Selecione um produto válido.'),
     promotionalPrice: currencyReaisSchema,
     isActive: formBooleanSchema.default(true),
     ...scheduleShape,
