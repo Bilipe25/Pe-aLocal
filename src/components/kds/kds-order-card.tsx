@@ -85,6 +85,9 @@ export function KdsOrderCard({
                 <span className="kds-item-quantity">{item.quantity}×</span>
                 <div className="kds-item-copy">
                   <p className="kds-item-name">{item.productName}</p>
+                  {item.offerGroup ? (
+                    <p className="kds-item-options">Combo: {item.offerGroup.name}</p>
+                  ) : null}
                   {options ? <p className="kds-item-options">{options}</p> : null}
                   {item.notes ? (
                     <p className="kds-item-note">

@@ -63,10 +63,15 @@ import {
   resolveCheckoutIdempotency,
   type CheckoutIdempotencyRecord,
 } from '@/lib/orders/checkout-idempotency';
+import { cartItemToCheckoutLine } from '@/lib/checkout/cart-intent';
 import { storePaymentReportToken } from '@/lib/orders/payment-report-token-memory';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { CheckoutQuoteInput } from '@/schemas/checkout';
-import { selectCartCouponCode, subscribeToCartStorage, useCartStore } from '@/stores/cart-store';
+import {
+  selectCartCouponCode,
+  subscribeToCartStorage,
+  useCartStore,
+} from '@/stores/cart-store';
 import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type {
   CustomerRecognitionConfirmationResult,
@@ -344,6 +349,12 @@ function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
         {quote.lines.map((line) => (
           <div key={line.lineId} className="flex items-start justify-between gap-3 text-sm">
             <div className="min-w-0">
+              {line.offerGroupLineId ? (
+                <span className="text-brand-700 block text-xs font-semibold">
+                  Combo:{' '}
+                  {quote.offerGroups?.find((group) => group.lineId === line.offerGroupLineId)?.name}
+                </span>
+              ) : null}
               <p className="text-tinta font-medium">
                 {line.quantity}× {line.productName}
               </p>
@@ -364,10 +375,20 @@ function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
           <dt className="text-text-muted">Subtotal</dt>
           <dd className="text-tinta font-mono">{formatCurrency(quote.subtotal)}</dd>
         </div>
-        {quote.discount > 0 && (
+        {(quote.automaticDiscount ?? 0) > 0 && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-success">Economia automática</dt>
+            <dd className="text-success font-mono">
+              − {formatCurrency(quote.automaticDiscount ?? 0)}
+            </dd>
+          </div>
+        )}
+        {(quote.couponDiscount ?? quote.coupon?.discount ?? 0) > 0 && (
           <div className="flex justify-between gap-3">
             <dt className="text-success">Desconto {quote.coupon?.code}</dt>
-            <dd className="text-success font-mono">− {formatCurrency(quote.discount)}</dd>
+            <dd className="text-success font-mono">
+              − {formatCurrency(quote.couponDiscount ?? quote.coupon?.discount ?? 0)}
+            </dd>
           </div>
         )}
         {quote.deliveryFee > 0 && (
@@ -746,13 +767,7 @@ export function CheckoutForm({
       savedAddressReference:
         modality === 'DELIVERY' && savedAddressReference ? savedAddressReference : undefined,
       couponCode: couponCode.trim() || undefined,
-      items: items.map((item) => ({
-        lineId: item.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        notes: item.notes,
-        optionIds: item.selectedOptions.map((option) => option.id),
-      })),
+      items: items.map(cartItemToCheckoutLine),
     };
   }, [
     activeStoreId,

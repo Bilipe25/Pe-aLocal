@@ -31,6 +31,7 @@ export interface AdminStoreEntitlementItem {
   advancedReportsEnabled: boolean;
   orderPrintingEnabled: boolean;
   dineInQrEnabled: boolean;
+  combosPromotionsEnabled: boolean;
 }
 
 export function StoreEntitlementsForm({

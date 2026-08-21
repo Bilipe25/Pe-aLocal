@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { ProductImage } from '@/components/storefront/product-image';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
+import { ComboConfigurator } from '@/components/storefront/storefront-offers';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCartQuote, type CartFulfillmentModality } from '@/hooks/use-cart-quote';
@@ -38,6 +39,7 @@ import {
   subscribeToCartStorage,
   useCartStore,
 } from '@/stores/cart-store';
+import type { PublicStorefrontOfferDto } from '@/types/storefront';
 
 const CartItemEditor = dynamic(
   () => import('@/components/storefront/cart-item-editor').then((module) => module.CartItemEditor),
@@ -67,6 +69,7 @@ interface CartViewProps {
   quoteEndpoint?: string;
   quoteModality?: CartFulfillmentModality;
   contextLabel?: string;
+  comboOffers?: Array<Extract<PublicStorefrontOfferDto, { kind: 'COMBO' }>>;
 }
 
 export function buildCartCheckoutHref(storeSlug: string) {
@@ -88,6 +91,7 @@ export function CartView({
   quoteEndpoint,
   quoteModality: quoteModalityOverride,
   contextLabel,
+  comboOffers = [],
 }: CartViewProps) {
   const items = useCartStore((state) => state.items);
   const activeStoreId = useCartStore((state) => state.storeId);
@@ -178,12 +182,23 @@ export function CartView({
     Boolean(couponCode) && (quoteState.status === 'waiting' || quoteState.status === 'loading');
   const couponPanelOpen = couponExpanded || Boolean(couponCode && couponIssue);
   const subtotal = quoteState.quote?.subtotal ?? localTotal;
+  const automaticDiscount =
+    quoteState.quote?.automaticDiscount ??
+    quoteState.quote?.adjustments
+      ?.filter((adjustment) => adjustment.type !== 'COUPON')
+      .reduce((sum, adjustment) => sum + adjustment.amount, 0) ??
+    0;
+  const couponDiscount = quoteState.quote?.couponDiscount ?? appliedCoupon?.discount ?? 0;
   const discount = quoteState.quote?.discount ?? 0;
   const total = quoteState.quote?.total ?? subtotal;
   const canCheckout =
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
   const checkoutHref = checkoutHrefOverride ?? buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
+  const editingCombo =
+    editingItem?.kind === 'COMBO'
+      ? comboOffers.find((offer) => offer.id === editingItem.comboId) ?? null
+      : null;
 
   useEffect(() => {
     let active = true;
@@ -390,12 +405,26 @@ export function CartView({
             <div className="storefront-cart-lines">
               {items.map((item, index) => {
                 const quotedLine = quoteLines.get(item.id);
+                const productPromotionAdjustment = quoteState.quote?.adjustments?.find(
+                  (adjustment) =>
+                    adjustment.type === 'PRODUCT_PROMOTION' && adjustment.lineId === item.id,
+                );
                 const issues = lineIssues.get(item.id) ?? [];
                 const displayName = quotedLine?.productName ?? item.productName;
-                const displayOptions = quotedLine?.options ?? item.selectedOptions;
-                const displayUnitPrice = quotedLine?.unitPrice ?? item.unitPrice;
-                const displayTotal = quotedLine?.itemTotal ?? item.unitPrice * item.quantity;
-                const priceChanged = Boolean(quotedLine && quotedLine.unitPrice !== item.unitPrice);
+                const displayOptions =
+                  item.kind === 'COMBO' && item.comboComponents
+                    ? item.comboComponents.map((component) => ({
+                        name: `${component.quantity}× ${component.productName}`,
+                      }))
+                    : (quotedLine?.options ?? item.selectedOptions);
+                const displayUnitPrice = quotedLine
+                  ? quotedLine.unitPrice -
+                    Math.floor((productPromotionAdjustment?.amount ?? 0) / quotedLine.quantity)
+                  : item.unitPrice;
+                const displayTotal = quotedLine
+                  ? quotedLine.itemTotal - (productPromotionAdjustment?.amount ?? 0)
+                  : item.unitPrice * item.quantity;
+                const priceChanged = Boolean(quotedLine && displayUnitPrice !== item.unitPrice);
 
                 return (
                   <CartLineItem
@@ -414,10 +443,14 @@ export function CartView({
                     priceChanged={priceChanged}
                     issues={issues}
                     onRemove={() => handleRemoveItem(item.id, displayName)}
-                    onEdit={(trigger) => {
-                      editingTriggerRef.current = trigger;
-                      setEditingItemId(item.id);
-                    }}
+                    onEdit={
+                      item.kind !== 'COMBO' || comboOffers.some((offer) => offer.id === item.comboId)
+                        ? (trigger) => {
+                            editingTriggerRef.current = trigger;
+                            setEditingItemId(item.id);
+                          }
+                        : undefined
+                    }
                     onQuantityChange={(qty) => updateQuantity(item.id, qty)}
                   />
                 );
@@ -564,10 +597,16 @@ export function CartView({
               <dt>Subtotal dos itens</dt>
               <dd>{formatCurrency(subtotal)}</dd>
             </div>
-            {appliedCoupon && discount > 0 && (
+            {automaticDiscount > 0 && (
+              <div className="is-discount">
+                <dt>Economia automática</dt>
+                <dd>− {formatCurrency(automaticDiscount)}</dd>
+              </div>
+            )}
+            {appliedCoupon && couponDiscount > 0 && (
               <div className="is-discount">
                 <dt>Cupom {appliedCoupon.code}</dt>
-                <dd>− {formatCurrency(discount)}</dd>
+                <dd>− {formatCurrency(couponDiscount)}</dd>
               </div>
             )}
             <div className="is-total">
@@ -625,12 +664,21 @@ export function CartView({
           </p>
         </aside>
       </div>
-      {editingItem && (
+      {editingItem && editingItem.kind !== 'COMBO' && (
         <CartItemEditor
           key={editingItem.id}
           storeSlug={storeSlug}
           item={editingItem}
           storeOpen={acceptingOrders}
+          onClose={closeItemEditor}
+        />
+      )}
+      {editingItem && editingCombo && (
+        <ComboConfigurator
+          key={editingItem.id}
+          offer={editingCombo}
+          storeOpen={acceptingOrders}
+          cartItem={editingItem}
           onClose={closeItemEditor}
         />
       )}
@@ -670,7 +718,7 @@ function CartLineItem({
   priceChanged: boolean;
   issues: string[];
   onRemove: () => void;
-  onEdit: (trigger: HTMLButtonElement) => void;
+  onEdit?: (trigger: HTMLButtonElement) => void;
   onQuantityChange: (qty: number) => void;
 }) {
   return (
@@ -688,11 +736,23 @@ function CartLineItem({
       </div>
 
       <div className="storefront-cart-line-body">
-        <button
-          type="button"
+        <div
           className="storefront-cart-line-row"
-          aria-label={`Editar ${displayName}`}
-          onClick={(event) => onEdit(event.currentTarget)}
+          {...(onEdit
+            ? {
+                role: 'button',
+                tabIndex: 0,
+                'aria-label': `Editar ${displayName}`,
+                onClick: (event: React.MouseEvent<HTMLDivElement>) =>
+                  onEdit(event.currentTarget as unknown as HTMLButtonElement),
+                onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onEdit(event.currentTarget as unknown as HTMLButtonElement);
+                  }
+                },
+              }
+            : {})}
         >
           <div className="storefront-cart-line-info">
             <h3>{displayName}</h3>
@@ -710,7 +770,7 @@ function CartLineItem({
               </span>
             )}
           </div>
-        </button>
+        </div>
 
         <div className="storefront-cart-line-controls">
           <div className="storefront-cart-quantity">

@@ -218,6 +218,7 @@ export interface OrderDetailsDTO {
     quantity: number;
     notes: string | null;
     itemTotal: number;
+    offerGroup: { id: string; name: string; position: number } | null;
     options: Array<{ id: string; name: string; price: number; groupName: string | null }>;
   }>;
   totals: {
@@ -225,6 +226,12 @@ export interface OrderDetailsDTO {
     discount: number;
     deliveryFee: number;
     total: number;
+    adjustments: Array<{
+      id: string;
+      type: 'COMBO' | 'PRODUCT_PROMOTION' | 'COUPON';
+      label: string;
+      amount: number;
+    }>;
   };
   payment: {
     method: PaymentMethodType;

@@ -71,6 +71,8 @@ export const Permission = {
   OPERATE_DINING_ROOM: 'OPERATE_DINING_ROOM',
   VIEW_COUPONS: 'VIEW_COUPONS',
   MANAGE_COUPONS: 'MANAGE_COUPONS',
+  VIEW_OFFERS: 'VIEW_OFFERS',
+  MANAGE_OFFERS: 'MANAGE_OFFERS',
   VIEW_REPORTS: 'VIEW_REPORTS',
   VIEW_BASIC_REPORTS: 'VIEW_BASIC_REPORTS',
 } as const;
@@ -136,6 +138,8 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.OPERATE_DINING_ROOM,
     Permission.VIEW_COUPONS,
     Permission.MANAGE_COUPONS,
+    Permission.VIEW_OFFERS,
+    Permission.MANAGE_OFFERS,
     Permission.VIEW_REPORTS,
     Permission.VIEW_BASIC_REPORTS,
   ]),
@@ -173,6 +177,8 @@ const TENANT_PERMISSIONS: Record<TenantRole, Set<Permission>> = {
     Permission.VIEW_DINING_ROOM,
     Permission.OPERATE_DINING_ROOM,
     Permission.VIEW_COUPONS,
+    Permission.VIEW_OFFERS,
+    Permission.MANAGE_OFFERS,
     Permission.VIEW_BASIC_REPORTS,
   ]),
   [TenantRole.ATTENDANT]: new Set([

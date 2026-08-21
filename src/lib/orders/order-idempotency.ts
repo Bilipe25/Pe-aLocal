@@ -1,8 +1,10 @@
 import type { CheckoutInput, DineInCheckoutInput } from '@/schemas/checkout';
 
-type CheckoutFingerprintItem = Omit<CheckoutInput['items'][number], 'notes' | 'lineId'> & {
-  notes?: string;
-};
+export type CheckoutFingerprintItem<
+  T = CheckoutInput['items'][number],
+> = T extends CheckoutInput['items'][number]
+  ? Omit<T, 'notes' | 'lineId'> & { notes?: string }
+  : never;
 
 type CheckoutFingerprintInputFor<T extends CheckoutInput | DineInCheckoutInput> =
   T extends CheckoutInput | DineInCheckoutInput
@@ -35,12 +37,28 @@ export function canonicalizeCheckoutForIdempotency(
 ) {
   const items = input.items
     .map((item) =>
-      JSON.stringify({
-        productId: item.productId,
-        quantity: item.quantity,
-        notes: item.notes ?? '',
-        optionIds: [...item.optionIds].sort(),
-      }),
+      JSON.stringify(
+        item.kind === 'COMBO'
+          ? {
+              kind: 'COMBO',
+              comboId: item.comboId,
+              quantity: item.quantity,
+              components: item.components
+                .map((component) => ({
+                  comboItemId: component.comboItemId,
+                  notes: component.notes ?? '',
+                  optionIds: [...component.optionIds].sort(),
+                }))
+                .sort((left, right) => left.comboItemId.localeCompare(right.comboItemId)),
+            }
+          : {
+              kind: 'PRODUCT',
+              productId: item.productId,
+              quantity: item.quantity,
+              notes: item.notes ?? '',
+              optionIds: [...item.optionIds].sort(),
+            },
+      ),
     )
     .sort();
 

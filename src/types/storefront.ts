@@ -133,6 +133,36 @@ export interface PublicStorefrontCategoryDto {
   products: PublicStorefrontProductSummaryDto[];
 }
 
+export interface PublicStorefrontComboComponentDto {
+  comboItemId: string;
+  quantity: number;
+  product: PublicStorefrontProductDetailDto;
+}
+
+export type PublicStorefrontOfferDto =
+  | {
+      kind: 'COMBO';
+      id: string;
+      version: number;
+      name: string;
+      description: string | null;
+      regularPrice: number;
+      offerPrice: number;
+      savings: number;
+      imageUrl: string | null;
+      imageAssetId: string | null;
+      components: PublicStorefrontComboComponentDto[];
+    }
+  | {
+      kind: 'PRODUCT_PROMOTION';
+      id: string;
+      version: number;
+      regularPrice: number;
+      offerPrice: number;
+      savings: number;
+      product: PublicStorefrontProductSummaryDto;
+    };
+
 export interface PublicStorefrontBannerDto {
   id: string;
   title: string;
@@ -156,6 +186,7 @@ export interface PublicDeliveryZoneDto {
 export type CheckoutQuoteIssueCode =
   | 'STORE_UNAVAILABLE'
   | 'PRODUCT_UNAVAILABLE'
+  | 'OFFER_UNAVAILABLE'
   | 'CART_INVALID'
   | 'OUTSIDE_DELIVERY_AREA'
   | 'DELIVERY_ZONE_REQUIRED'
@@ -171,6 +202,7 @@ export interface CheckoutQuoteIssueDto {
 
 export interface CheckoutQuoteLineDto {
   lineId: string;
+  sourceLineId?: string;
   productId: string;
   productName: string;
   imageUrl: string | null;
@@ -180,6 +212,36 @@ export interface CheckoutQuoteLineDto {
   options: CheckoutQuoteOptionDto[];
   unitPrice: number;
   itemTotal: number;
+  offerGroupLineId?: string;
+  offerComponentPosition?: number;
+}
+
+export interface CheckoutQuoteOfferGroupDto {
+  lineId: string;
+  comboId: string;
+  comboVersion: number;
+  name: string;
+  quantity: number;
+  regularBaseAmount: number;
+  offerBaseAmount: number;
+  discountAmount: number;
+  components: Array<{
+    lineId: string;
+    comboItemId: string;
+    position: number;
+  }>;
+}
+
+export type CheckoutQuoteAdjustmentType = 'COMBO' | 'PRODUCT_PROMOTION' | 'COUPON';
+
+export interface CheckoutQuoteAdjustmentDto {
+  type: CheckoutQuoteAdjustmentType;
+  sourceId: string | null;
+  sourceVersion: number | null;
+  label: string;
+  amount: number;
+  lineId?: string;
+  offerGroupLineId?: string;
 }
 
 export interface CheckoutQuoteCouponDto {
@@ -192,7 +254,11 @@ export interface CheckoutQuoteDto {
   storeId: string;
   storeSlug: string;
   lines: CheckoutQuoteLineDto[];
+  offerGroups?: CheckoutQuoteOfferGroupDto[];
+  adjustments?: CheckoutQuoteAdjustmentDto[];
   subtotal: number;
+  automaticDiscount?: number;
+  couponDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;

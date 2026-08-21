@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
 import { CartView } from '@/components/storefront/cart-view';
-import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+import { getPublicOffers, getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
 
 export async function generateMetadata({
   params,
@@ -28,6 +28,7 @@ export default async function CartPage({ params }: { params: Promise<{ storeSlug
   const store = await getPublicPurchaseStoreBySlug(storeSlug);
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/cart`);
+  const offers = await getPublicOffers(store.id, store.tenantId, store.timeZone);
 
   return (
     <CartView
@@ -40,6 +41,7 @@ export default async function CartPage({ params }: { params: Promise<{ storeSlug
       unavailableReason={store.availability.reason}
       deliveryEnabled={Boolean(store.settings?.deliveryEnabled)}
       pickupEnabled={Boolean(store.settings?.pickupEnabled)}
+      comboOffers={offers.filter((offer) => offer.kind === 'COMBO')}
     />
   );
 }

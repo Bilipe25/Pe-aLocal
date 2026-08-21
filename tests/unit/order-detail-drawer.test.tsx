@@ -46,7 +46,7 @@ const details = {
     postalCode: null,
   },
   items: [],
-  totals: { subtotal: 6_890, discount: 0, deliveryFee: 0, total: 6_890 },
+  totals: { subtotal: 6_890, discount: 0, deliveryFee: 0, total: 6_890, adjustments: [] },
   payment: {
     method: 'PIX',
     status: 'PENDING',
@@ -225,6 +225,7 @@ describe('OrderDetailModal', () => {
             quantity: 2,
             notes: 'Cortar ao meio',
             itemTotal: 6_580,
+            offerGroup: null,
             options: [
               {
                 id: 'option-1',

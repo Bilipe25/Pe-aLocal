@@ -26,6 +26,7 @@ export const couponCodeSchema = z
 
 export const checkoutItemSchema = z
   .object({
+    kind: z.literal('PRODUCT').optional(),
     lineId: z.uuid(),
     productId: z.guid(),
     quantity: z.number().int().min(1).max(MAX_CHECKOUT_ITEM_QUANTITY),
@@ -38,10 +39,42 @@ export const checkoutItemSchema = z
     path: ['optionIds'],
   });
 
+export const checkoutComboItemSchema = z
+  .object({
+    kind: z.literal('COMBO'),
+    lineId: z.uuid(),
+    comboId: z.guid(),
+    quantity: z.number().int().min(1).max(MAX_CHECKOUT_ITEM_QUANTITY),
+    components: z
+      .array(
+        z
+          .object({
+            comboItemId: z.guid(),
+            notes: boundedTrimmedString(500).optional().default(''),
+            optionIds: z.array(z.guid()).max(MAX_CHECKOUT_OPTIONS_PER_LINE).default([]),
+          })
+          .strict()
+          .refine((component) => new Set(component.optionIds).size === component.optionIds.length, {
+            message: 'O componente possui adicionais repetidos.',
+            path: ['optionIds'],
+          }),
+      )
+      .min(2, 'O combo deve ter pelo menos dois componentes.')
+      .max(MAX_CHECKOUT_LINES)
+      .refine(
+        (components) =>
+          new Set(components.map((component) => component.comboItemId)).size === components.length,
+        { message: 'O combo possui componentes repetidos.' },
+      ),
+  })
+  .strict();
+
+export const checkoutCartLineSchema = z.union([checkoutItemSchema, checkoutComboItemSchema]);
+
 const checkoutCartShape = {
   couponCode: couponCodeSchema.optional(),
   items: z
-    .array(checkoutItemSchema)
+    .array(checkoutCartLineSchema)
     .min(1, 'O pedido deve ter pelo menos 1 item.')
     .max(MAX_CHECKOUT_LINES, `O pedido deve ter no máximo ${MAX_CHECKOUT_LINES} itens.`),
 } as const;
@@ -303,4 +336,6 @@ export type DineInCheckoutQuoteInput = z.infer<typeof dineInCheckoutQuoteSchema>
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type DineInCheckoutInput = z.infer<typeof dineInCheckoutSchema>;
 export type CheckoutItemInput = z.infer<typeof checkoutItemSchema>;
+export type CheckoutComboItemInput = z.infer<typeof checkoutComboItemSchema>;
+export type CheckoutCartLineInput = z.infer<typeof checkoutCartLineSchema>;
 export type CheckoutDeliveryAddressInput = z.infer<typeof checkoutDeliveryAddressSchema>;

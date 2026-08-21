@@ -14,6 +14,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   CalendarDays,
   Bell,
+  BadgePercent,
   ChartNoAxesCombined,
   ChefHat,
   ChevronDown,
@@ -55,6 +56,7 @@ interface DashboardShellProps {
   activeStoreTimeZone: string | null;
   initialNowIso: string;
   canViewCoupons?: boolean;
+  canViewOffers?: boolean;
   canViewKds?: boolean;
   canViewDiningRoom?: boolean;
   canViewReports?: boolean;
@@ -104,6 +106,7 @@ function Navigation({
   pathname,
   activeStoreId,
   canViewCoupons = false,
+  canViewOffers = false,
   canViewKds = false,
   canViewDiningRoom = false,
   canViewReports = false,
@@ -113,6 +116,7 @@ function Navigation({
   pathname: string;
   activeStoreId: string | null;
   canViewCoupons: boolean;
+  canViewOffers: boolean;
   canViewKds: boolean;
   canViewDiningRoom: boolean;
   canViewReports: boolean;
@@ -148,6 +152,12 @@ function Navigation({
       href: activeStoreId ? '/dashboard/catalog' : fallbackHref,
       label: 'Catálogo',
       icon: UtensilsCrossed,
+    },
+    {
+      href: activeStoreId ? '/dashboard/offers' : fallbackHref,
+      label: 'Ofertas',
+      icon: BadgePercent,
+      hidden: !canViewOffers,
     },
     {
       href: activeStoreId ? '/dashboard/coupons' : fallbackHref,
@@ -455,6 +465,7 @@ export function DashboardShell({
   activeStoreTimeZone,
   initialNowIso,
   canViewCoupons = false,
+  canViewOffers = false,
   canViewKds = false,
   canViewDiningRoom = false,
   canViewReports = false,
@@ -509,6 +520,7 @@ export function DashboardShell({
             pathname={pathname}
             activeStoreId={activeStore?.id ?? null}
             canViewCoupons={canViewCoupons}
+            canViewOffers={canViewOffers}
             canViewKds={canViewKds}
             canViewDiningRoom={canViewDiningRoom}
             canViewReports={canViewReports}
@@ -731,6 +743,7 @@ export function DashboardShell({
                       pathname={pathname}
                       activeStoreId={activeStore?.id ?? null}
                       canViewCoupons={canViewCoupons}
+                      canViewOffers={canViewOffers}
                       canViewKds={canViewKds}
                       canViewDiningRoom={canViewDiningRoom}
                       canViewReports={canViewReports}

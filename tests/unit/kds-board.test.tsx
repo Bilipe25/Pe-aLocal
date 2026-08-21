@@ -99,6 +99,7 @@ function order(status: KdsOrderDTO['status'], id = `order-${status}`): KdsOrderD
         productName: 'Smash Bacon',
         quantity: 2,
         notes: 'Bem passado',
+        offerGroup: null,
         options: [{ id: 'option-a', name: 'Cheddar', groupName: 'Queijo' }],
       },
     ],
