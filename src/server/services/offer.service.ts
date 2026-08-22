@@ -744,13 +744,13 @@ export async function createComboForActiveStore(rawInput: ComboAdminInput) {
       sortOrder: input.sortOrder,
       ...scheduleWriteData(input),
       items: {
-        create: input.items.map((item, position) => ({
-          tenantId: session.tenantId,
-          storeId: store.id,
-          productId: item.productId,
-          quantity: item.quantity,
-          position,
-        })),
+        createMany: {
+          data: input.items.map((item, position) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            position,
+          })),
+        },
       },
     });
     await tx.storeOffer.create({
@@ -822,8 +822,6 @@ export async function updateComboForActiveStore(
         ...scheduleWriteData(input),
       },
       input.items.map((item, position) => ({
-        tenantId: session.tenantId,
-        storeId: store.id,
         productId: item.productId,
         quantity: item.quantity,
         position,

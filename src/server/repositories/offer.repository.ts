@@ -184,13 +184,7 @@ export async function replaceScopedCombo(
   client: OfferClient,
   comboId: string,
   data: Prisma.StoreComboUncheckedUpdateInput,
-  items: Array<{
-    tenantId: string;
-    storeId: string;
-    productId: string;
-    quantity: number;
-    position: number;
-  }>,
+  items: Prisma.StoreComboItemCreateManyComboInput[],
 ) {
   await client.storeComboItem.deleteMany({ where: { comboId } });
   return client.storeCombo.update({
