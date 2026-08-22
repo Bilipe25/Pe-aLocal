@@ -36,23 +36,32 @@ const publicTokenNotNullMigration = readFileSync(
 );
 
 describe('checkout v2 foundation migration', () => {
-  it('não repete nomes de constraints já adicionados pela cadeia de migrations', () => {
-    const constraintMigrations = new Map<string, string[]>();
+  it('não adiciona uma constraint já ativa na cadeia de migrations', () => {
+    const activeConstraints = new Map<string, string>();
+    const duplicateAdds: Array<[string, string, string]> = [];
     const migrationsRoot = join(process.cwd(), 'prisma/migrations');
 
-    for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
+    const entries = readdirSync(migrationsRoot, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const sql = readFileSync(join(migrationsRoot, entry.name, 'migration.sql'), 'utf8');
-      for (const match of sql.matchAll(/ADD CONSTRAINT\s+"([^"]+)"/g)) {
-        const owners = constraintMigrations.get(match[1]) ?? [];
-        owners.push(entry.name);
-        constraintMigrations.set(match[1], owners);
+      for (const match of sql.matchAll(
+        /\b(ADD|DROP)\s+CONSTRAINT(?:\s+IF\s+EXISTS)?\s+"([^"]+)"/g,
+      )) {
+        const [, operation, constraint] = match;
+        if (operation === 'DROP') {
+          activeConstraints.delete(constraint);
+          continue;
+        }
+        const owner = activeConstraints.get(constraint);
+        if (owner) duplicateAdds.push([constraint, owner, entry.name]);
+        activeConstraints.set(constraint, entry.name);
       }
     }
 
-    expect([...constraintMigrations.entries()].filter(([, owners]) => owners.length > 1)).toEqual(
-      [],
-    );
+    expect(duplicateAdds).toEqual([]);
   });
 
   it('é atômica, limitada e preserva compatibilidade operacional', () => {
