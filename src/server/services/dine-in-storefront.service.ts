@@ -23,10 +23,10 @@ export async function getDineInStorefrontContext(tableToken: string) {
 
   const onlinePixAvailable = Boolean(
     isMercadoPagoEnabled() &&
-      isMercadoPagoOrdersCredentialReady() &&
-      table.store.entitlement?.onlinePaymentsEnabled &&
-      table.store.settings?.paymentMode === 'ONLINE' &&
-      table.store.paymentProviderConnections.length > 0,
+    isMercadoPagoOrdersCredentialReady() &&
+    table.store.entitlement?.onlinePaymentsEnabled &&
+    table.store.settings?.paymentMode === 'ONLINE' &&
+    table.store.paymentProviderConnections.length > 0,
   );
   const onlinePix = onlinePixAvailable
     ? ({
@@ -39,9 +39,7 @@ export async function getDineInStorefrontContext(tableToken: string) {
     : null;
   const paymentMethods = [
     onlinePix ?? null,
-    table.store.settings?.acceptsCash
-      ? ({ method: 'CASH', processing: 'MANUAL' } as const)
-      : null,
+    table.store.settings?.acceptsCash ? ({ method: 'CASH', processing: 'MANUAL' } as const) : null,
     table.store.settings?.acceptsCardInPerson
       ? ({ method: 'CARD_IN_PERSON', processing: 'MANUAL' } as const)
       : null,

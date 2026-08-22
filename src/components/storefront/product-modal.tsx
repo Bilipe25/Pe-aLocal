@@ -238,7 +238,9 @@ export function ProductModal({
                     </s>
                     {formatCurrency(promotionalPrice)}
                   </>
-                ) : formatCurrency(resolvedProduct.basePrice)}
+                ) : (
+                  formatCurrency(resolvedProduct.basePrice)
+                )}
               </p>
             </div>
             {!hasProductImage && modalActions}

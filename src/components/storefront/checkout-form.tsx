@@ -67,11 +67,7 @@ import { cartItemToCheckoutLine } from '@/lib/checkout/cart-intent';
 import { storePaymentReportToken } from '@/lib/orders/payment-report-token-memory';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { CheckoutQuoteInput } from '@/schemas/checkout';
-import {
-  selectCartCouponCode,
-  subscribeToCartStorage,
-  useCartStore,
-} from '@/stores/cart-store';
+import { selectCartCouponCode, subscribeToCartStorage, useCartStore } from '@/stores/cart-store';
 import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 import type {
   CustomerRecognitionConfirmationResult,
@@ -671,8 +667,7 @@ export function CheckoutForm({
       paymentConfig.methods
         .map((method) => method.method)
         .filter(
-          (method): method is 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' =>
-            method !== 'CARD_IN_PERSON',
+          (method): method is 'PIX' | 'CASH' | 'CARD_ON_DELIVERY' => method !== 'CARD_IN_PERSON',
         ),
     [paymentConfig.methods],
   );

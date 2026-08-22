@@ -9,9 +9,6 @@ describe('Pusher store channels', () => {
   });
 
   it('inclui canal público somente durante rollout explícito', () => {
-    expect(storeEventChannels('store-a', true)).toEqual([
-      'private-store-store-a',
-      'store-store-a',
-    ]);
+    expect(storeEventChannels('store-a', true)).toEqual(['private-store-store-a', 'store-store-a']);
   });
 });

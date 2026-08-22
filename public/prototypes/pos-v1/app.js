@@ -1,4 +1,12 @@
-const allowedScreens = new Set(['pos', 'product', 'delivery', 'table', 'payment', 'success', 'kds']);
+const allowedScreens = new Set([
+  'pos',
+  'product',
+  'delivery',
+  'table',
+  'payment',
+  'success',
+  'kds',
+]);
 const params = new URLSearchParams(window.location.search);
 const requested = params.get('screen') ?? 'pos';
 const activeScreen = allowedScreens.has(requested) ? requested : 'pos';
@@ -26,7 +34,10 @@ search?.addEventListener('input', () => {
   const terms = search.value.toLocaleLowerCase('pt-BR').trim().split(/\s+/).filter(Boolean);
   for (const tile of document.querySelectorAll('.product-tile')) {
     const searchable = tile.textContent.toLocaleLowerCase('pt-BR');
-    tile.classList.toggle('is-filtered', terms.length > 0 && !terms.every((term) => searchable.includes(term)));
+    tile.classList.toggle(
+      'is-filtered',
+      terms.length > 0 && !terms.every((term) => searchable.includes(term)),
+    );
   }
 });
 
@@ -42,7 +53,9 @@ for (const button of document.querySelectorAll('.quick-add')) {
   button.addEventListener('click', () => {
     if (!toast) return;
     toast.hidden = false;
-    window.setTimeout(() => { toast.hidden = true; }, 1800);
+    window.setTimeout(() => {
+      toast.hidden = true;
+    }, 1800);
   });
 }
 

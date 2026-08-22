@@ -40,9 +40,8 @@ export default async function DineInOrderPage({
   const channelName = await privateCustomerOrderChannel(order.publicToken);
 
   const config = store.customization.config;
-  const activeSession = order.diningTableSession?.status === 'OPEN'
-    ? order.diningTableSession
-    : null;
+  const activeSession =
+    order.diningTableSession?.status === 'OPEN' ? order.diningTableSession : null;
   const effectiveTableLabel = activeSession?.diningTable.label ?? order.diningTableLabelSnapshot;
   return (
     <div
@@ -59,7 +58,9 @@ export default async function DineInOrderPage({
       />
       <div className="dine-in-context-banner" role="status">
         <Utensils aria-hidden="true" />
-        <span>Pedido para <strong>{effectiveTableLabel}</strong></span>
+        <span>
+          Pedido para <strong>{effectiveTableLabel}</strong>
+        </span>
       </div>
       <main className="storefront-tracking-main">
         <CustomerOrderTracking
@@ -91,7 +92,9 @@ export default async function DineInOrderPage({
             sessionToken={activeSession.publicToken}
             continueOrderingHref={`/q/s/${activeSession.publicToken}/menu`}
             continueVariant="outline"
-            assistanceRequested={activeSession.serviceRequests.some((request) => request.type === 'ASSISTANCE')}
+            assistanceRequested={activeSession.serviceRequests.some(
+              (request) => request.type === 'ASSISTANCE',
+            )}
             billRequested={activeSession.serviceRequests.some((request) => request.type === 'BILL')}
             publicOperationsEnabled={activeSession.store.entitlement?.dineInQrEnabled === true}
           />

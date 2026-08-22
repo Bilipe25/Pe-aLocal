@@ -8,14 +8,18 @@ const mocks = vi.hoisted(() => {
   const connectionHandlers = new Map<string, (value: { current: string }) => void>();
   const channel = {
     subscribed: false,
-    bind: vi.fn((event: string, handler: (value?: unknown) => void) => channelHandlers.set(event, handler)),
+    bind: vi.fn((event: string, handler: (value?: unknown) => void) =>
+      channelHandlers.set(event, handler),
+    ),
     unbind: vi.fn((event: string) => channelHandlers.delete(event)),
   };
   const client = {
     subscribe: vi.fn(() => channel),
     unsubscribe: vi.fn(),
     connection: {
-      bind: vi.fn((event: string, handler: (value: { current: string }) => void) => connectionHandlers.set(event, handler)),
+      bind: vi.fn((event: string, handler: (value: { current: string }) => void) =>
+        connectionHandlers.set(event, handler),
+      ),
       unbind: vi.fn((event: string) => connectionHandlers.delete(event)),
     },
   };
@@ -39,10 +43,13 @@ describe('useOrderRealtime', () => {
     const onNewOrder = vi.fn();
     const onOrderUpdated = vi.fn();
     const onPaymentUpdated = vi.fn();
-    const { result, unmount } = renderHook(() => useOrderRealtime(
-      '4da03571-bffd-45ef-8c44-20686c487838',
-      { onNewOrder, onOrderUpdated, onPaymentUpdated },
-    ));
+    const { result, unmount } = renderHook(() =>
+      useOrderRealtime('4da03571-bffd-45ef-8c44-20686c487838', {
+        onNewOrder,
+        onOrderUpdated,
+        onPaymentUpdated,
+      }),
+    );
 
     expect(mocks.client.subscribe).toHaveBeenCalledOnce();
     expect(mocks.client.subscribe).toHaveBeenCalledWith(
@@ -64,10 +71,13 @@ describe('useOrderRealtime', () => {
 
   it('expõe modo degradado quando a assinatura falha', () => {
     const handler = vi.fn();
-    const { result } = renderHook(() => useOrderRealtime(
-      '4da03571-bffd-45ef-8c44-20686c487838',
-      { onNewOrder: handler, onOrderUpdated: handler, onPaymentUpdated: handler },
-    ));
+    const { result } = renderHook(() =>
+      useOrderRealtime('4da03571-bffd-45ef-8c44-20686c487838', {
+        onNewOrder: handler,
+        onOrderUpdated: handler,
+        onPaymentUpdated: handler,
+      }),
+    );
 
     act(() => mocks.channelHandlers.get('pusher:subscription_error')?.());
 

@@ -97,7 +97,11 @@ export async function archiveOptionGroup(
 }
 
 /** Restaura um grupo arquivado. */
-export async function restoreOptionGroup(id: string, productId: string, tx?: Prisma.TransactionClient) {
+export async function restoreOptionGroup(
+  id: string,
+  productId: string,
+  tx?: Prisma.TransactionClient,
+) {
   const db = tx ?? getDb();
 
   const last = await db.productOptionGroup.findFirst({
@@ -165,7 +169,11 @@ export async function updateOption(
 }
 
 /** Arquiva (soft-delete) uma opção. */
-export async function archiveOption(id: string, archivedById: string, tx?: Prisma.TransactionClient) {
+export async function archiveOption(
+  id: string,
+  archivedById: string,
+  tx?: Prisma.TransactionClient,
+) {
   const db = tx ?? getDb();
   return db.productOption.update({
     where: { id },

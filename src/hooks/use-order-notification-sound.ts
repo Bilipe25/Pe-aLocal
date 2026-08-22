@@ -24,7 +24,8 @@ export function writeOrderSoundPreference(
 
 function getAudioContext() {
   if (audioContext) return audioContext;
-  const AudioContextClass = window.AudioContext ??
+  const AudioContextClass =
+    window.AudioContext ??
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) throw new Error('Áudio não suportado.');
   audioContext = new AudioContextClass();
@@ -86,9 +87,7 @@ export function useOrderNotificationSound(scope: string) {
     },
     () => false,
   );
-  const enabled = memoryPreference?.scope === scope
-    ? memoryPreference.enabled
-    : persistedEnabled;
+  const enabled = memoryPreference?.scope === scope ? memoryPreference.enabled : persistedEnabled;
   const error = soundError?.scope === scope ? soundError.message : null;
 
   function persistPreference(nextEnabled: boolean) {
@@ -104,12 +103,14 @@ export function useOrderNotificationSound(scope: string) {
   useEffect(() => {
     if (!enabled) return;
     const unlock = () => {
-      void ensureAudioReady().then(() => setSoundError(null)).catch(() => {
-        setSoundError({
-          scope,
-          message: 'O navegador bloqueou o som. Clique em “Som ligado” para testar novamente.',
+      void ensureAudioReady()
+        .then(() => setSoundError(null))
+        .catch(() => {
+          setSoundError({
+            scope,
+            message: 'O navegador bloqueou o som. Clique em “Som ligado” para testar novamente.',
+          });
         });
-      });
     };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });

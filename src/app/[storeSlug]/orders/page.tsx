@@ -43,16 +43,10 @@ export default async function OrdersPage({ params }: { params: Promise<{ storeSl
       />
 
       <main className="storefront-orders-main">
-        <PublicOrderHistory
-          storeId={store.id}
-          storeSlug={store.slug}
-        />
+        <PublicOrderHistory storeId={store.id} storeSlug={store.slug} />
       </main>
 
-      <StorefrontBottomNav
-        storeId={store.id}
-        storeSlug={store.slug}
-      />
+      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </div>
   );
 }

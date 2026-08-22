@@ -5,10 +5,7 @@ import { toast } from 'sonner';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  restoreCategoryAction,
-  restoreProductAction,
-} from '@/features/catalog/actions';
+import { restoreCategoryAction, restoreProductAction } from '@/features/catalog/actions';
 import { formatCurrency } from '@/lib/utils';
 
 function relativeTime(date: Date | null): string {
@@ -78,7 +75,7 @@ export function ArchivedCatalogPanel({ categories, products }: ArchivedCatalogPa
 
   if (!hasItems) {
     return (
-      <div className="text-text-secondary flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
+      <div className="text-text-secondary border-border flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center">
         <RotateCcw className="h-8 w-8 opacity-30" />
         <p className="text-sm font-medium">Nenhum item arquivado</p>
         <p className="text-xs">Categorias e produtos arquivados aparecem aqui.</p>
@@ -91,7 +88,7 @@ export function ArchivedCatalogPanel({ categories, products }: ArchivedCatalogPa
       {/* Categorias Arquivadas */}
       {categories.length > 0 && (
         <section>
-          <h2 className="text-text-secondary mb-3 text-sm font-semibold uppercase tracking-wide">
+          <h2 className="text-text-secondary mb-3 text-sm font-semibold tracking-wide uppercase">
             Categorias ({categories.length})
           </h2>
           <div className="divide-border bg-surface divide-y rounded-xl border">
@@ -138,7 +135,7 @@ export function ArchivedCatalogPanel({ categories, products }: ArchivedCatalogPa
       {/* Produtos Arquivados */}
       {products.length > 0 && (
         <section>
-          <h2 className="text-text-secondary mb-3 text-sm font-semibold uppercase tracking-wide">
+          <h2 className="text-text-secondary mb-3 text-sm font-semibold tracking-wide uppercase">
             Produtos ({products.length})
           </h2>
           <div className="divide-border bg-surface divide-y rounded-xl border">

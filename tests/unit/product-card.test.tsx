@@ -24,10 +24,7 @@ describe('imagem responsiva do produto', () => {
 
     const image = container.querySelector('img');
     expect(image).not.toBeNull();
-    expect(image).toHaveAttribute(
-      'src',
-      `/api/store-assets/${ASSET_ID}?width=384`,
-    );
+    expect(image).toHaveAttribute('src', `/api/store-assets/${ASSET_ID}?width=384`);
     expect(image).toHaveAttribute(
       'srcset',
       expect.stringContaining(`/api/store-assets/${ASSET_ID}?width=96 96w`),

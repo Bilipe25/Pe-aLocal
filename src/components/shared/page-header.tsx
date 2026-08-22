@@ -16,16 +16,14 @@ export function PageHeader({ title, description, backHref, actions }: PageHeader
           <Link
             href={backHref}
             aria-label={`Voltar: ${title}`}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+            className="text-text-secondary hover:bg-surface-secondary hover:text-text-primary flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
         )}
         <div className="min-w-0">
-          <h1 className="text-balance text-2xl font-bold text-text-primary">{title}</h1>
-          {description && (
-            <p className="mt-1 text-sm text-text-secondary">{description}</p>
-          )}
+          <h1 className="text-text-primary text-2xl font-bold text-balance">{title}</h1>
+          {description && <p className="text-text-secondary mt-1 text-sm">{description}</p>}
         </div>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}

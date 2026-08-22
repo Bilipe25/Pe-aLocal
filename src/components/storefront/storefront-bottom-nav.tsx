@@ -20,7 +20,11 @@ interface StorefrontBottomNavProps {
   showFavorites?: boolean;
 }
 
-export function StorefrontBottomNav({ storeId, storeSlug, showFavorites = false }: StorefrontBottomNavProps) {
+export function StorefrontBottomNav({
+  storeId,
+  storeSlug,
+  showFavorites = false,
+}: StorefrontBottomNavProps) {
   const pathname = usePathname();
   const activeCartStoreId = useCartStore(selectCartStoreId);
   const cartItemCount = useCartStore(selectCartItemCount);
@@ -59,22 +63,47 @@ export function StorefrontBottomNav({ storeId, storeSlug, showFavorites = false 
 
   const navItems = useMemo(() => {
     const items = [
-      { key: 'catalog', href: catalogPath, label: 'Cardápio', icon: BookOpen, active: isCatalogActive },
+      {
+        key: 'catalog',
+        href: catalogPath,
+        label: 'Cardápio',
+        icon: BookOpen,
+        active: isCatalogActive,
+      },
       { key: 'cart', href: cartPath, label: 'Carrinho', icon: ShoppingBag, active: isCartActive },
     ];
     if (showFavorites) {
-      items.push({ key: 'favorites', href: favoritesPath, label: 'Favoritos', icon: Heart, active: isFavoritesActive });
+      items.push({
+        key: 'favorites',
+        href: favoritesPath,
+        label: 'Favoritos',
+        icon: Heart,
+        active: isFavoritesActive,
+      });
     }
-    items.push({ key: 'order', href: ordersPath, label: 'Meu pedido', icon: ReceiptText, active: isOrderActive });
+    items.push({
+      key: 'order',
+      href: ordersPath,
+      label: 'Meu pedido',
+      icon: ReceiptText,
+      active: isOrderActive,
+    });
     return items;
-  }, [catalogPath, cartPath, favoritesPath, isCartActive, isCatalogActive, isFavoritesActive, isOrderActive, ordersPath, showFavorites]);
+  }, [
+    catalogPath,
+    cartPath,
+    favoritesPath,
+    isCartActive,
+    isCatalogActive,
+    isFavoritesActive,
+    isOrderActive,
+    ordersPath,
+    showFavorites,
+  ]);
 
   return (
     <nav className="storefront-bottom-nav" aria-label="Navegação da loja">
-      <div
-        className="storefront-bottom-nav-inner"
-        data-nav-items={navItems.length}
-      >
+      <div className="storefront-bottom-nav-inner" data-nav-items={navItems.length}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isCartItem = item.key === 'cart';

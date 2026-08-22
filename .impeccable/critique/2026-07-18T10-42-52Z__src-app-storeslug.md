@@ -6,23 +6,24 @@ p1_count: 2
 timestamp: 2026-07-18T10-42-52Z
 slug: src-app-storeslug
 ---
+
 # Crítica de design — vitrine pública PedidoLocal
 
 ## Design Health Score
 
-| # | Heurística | Nota | Questão principal |
-|---|---|---:|---|
-| 1 | Visibilidade do estado | 3 | Status da loja e total são claros; adicionar um item não produz confirmação explícita. |
-| 2 | Correspondência com o mundo real | 3 | Linguagem natural, mas “30–50 min” é ambíguo e “Checkout” destoa do balcão local. |
-| 3 | Controle e liberdade | 2 | Modal tem boa saída, porém limpar a sacola não oferece confirmação nem desfazer. |
-| 4 | Consistência e padrões | 3 | Sistema coeso; alguns trechos do fluxo ainda parecem genéricos diante da promessa white-label. |
-| 5 | Prevenção de erros | 2 | Obrigatoriedade de complementos é prevenida, mas perda da sacola e loja fechada têm lacunas. |
-| 6 | Reconhecimento em vez de memória | 3 | Produtos e categorias são claros; condições comerciais precisam ser lembradas ou descobertas depois. |
-| 7 | Flexibilidade e eficiência | 2 | Busca, navegação sticky e FAB ajudam; faltam recuperação e edição rápida em pontos críticos. |
-| 8 | Estética e minimalismo | 3 | Limpa e escaneável, embora previsível para a categoria e repetitiva entre destaques e catálogo. |
-| 9 | Recuperação de erros | 2 | Busca vazia e ação destrutiva oferecem pouca orientação de recuperação. |
-| 10 | Ajuda e documentação | 1 | Falta ajuda contextual sobre entrega, retirada, taxas, mínimo e horários. |
-| **Total** |  | **24/40** | **Aceitável — base sólida, mas ainda há quebras de confiança importantes.** |
+| #         | Heurística                       |      Nota | Questão principal                                                                                    |
+| --------- | -------------------------------- | --------: | ---------------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado           |         3 | Status da loja e total são claros; adicionar um item não produz confirmação explícita.               |
+| 2         | Correspondência com o mundo real |         3 | Linguagem natural, mas “30–50 min” é ambíguo e “Checkout” destoa do balcão local.                    |
+| 3         | Controle e liberdade             |         2 | Modal tem boa saída, porém limpar a sacola não oferece confirmação nem desfazer.                     |
+| 4         | Consistência e padrões           |         3 | Sistema coeso; alguns trechos do fluxo ainda parecem genéricos diante da promessa white-label.       |
+| 5         | Prevenção de erros               |         2 | Obrigatoriedade de complementos é prevenida, mas perda da sacola e loja fechada têm lacunas.         |
+| 6         | Reconhecimento em vez de memória |         3 | Produtos e categorias são claros; condições comerciais precisam ser lembradas ou descobertas depois. |
+| 7         | Flexibilidade e eficiência       |         2 | Busca, navegação sticky e FAB ajudam; faltam recuperação e edição rápida em pontos críticos.         |
+| 8         | Estética e minimalismo           |         3 | Limpa e escaneável, embora previsível para a categoria e repetitiva entre destaques e catálogo.      |
+| 9         | Recuperação de erros             |         2 | Busca vazia e ação destrutiva oferecem pouca orientação de recuperação.                              |
+| 10        | Ajuda e documentação             |         1 | Falta ajuda contextual sobre entrega, retirada, taxas, mínimo e horários.                            |
+| **Total** |                                  | **24/40** | **Aceitável — base sólida, mas ainda há quebras de confiança importantes.**                          |
 
 ## Anti-Patterns Verdict
 

@@ -8,10 +8,7 @@ import { z } from 'zod';
  * Schema de login.
  */
 export const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'E-mail é obrigatório.')
-    .email('E-mail inválido.'),
+  email: z.string().min(1, 'E-mail é obrigatório.').email('E-mail inválido.'),
   password: z
     .string()
     .min(1, 'Senha é obrigatória.')
@@ -24,14 +21,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
  * Schema de registro de usuário (uso interno / seed).
  */
 export const createUserSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'E-mail é obrigatório.')
-    .email('E-mail inválido.'),
-  name: z
-    .string()
-    .min(2, 'Nome deve ter pelo menos 2 caracteres.')
-    .max(100, 'Nome muito longo.'),
+  email: z.string().min(1, 'E-mail é obrigatório.').email('E-mail inválido.'),
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(100, 'Nome muito longo.'),
   password: z
     .string()
     .min(8, 'Senha deve ter pelo menos 8 caracteres.')

@@ -35,8 +35,7 @@ export interface SortParams {
  * Resultado de uma operação de mutação (para Server Actions).
  */
 export type MutationResult<T = void> =
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
+  { success: true; data: T } | { success: false; error: { code: string; message: string } };
 
 /**
  * Modalidades de atendimento.
@@ -65,21 +64,10 @@ export type OrderStatus =
  * Status do pagamento.
  */
 export type PaymentStatus =
-  | 'PENDING'
-  | 'CUSTOMER_REPORTED_PAID'
-  | 'PAID'
-  | 'FAILED'
-  | 'CANCELLED'
-  | 'REFUNDED';
+  'PENDING' | 'CUSTOMER_REPORTED_PAID' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
 
 /**
  * Dias da semana (para horários de funcionamento).
  */
 export type DayOfWeek =
-  | 'MONDAY'
-  | 'TUESDAY'
-  | 'WEDNESDAY'
-  | 'THURSDAY'
-  | 'FRIDAY'
-  | 'SATURDAY'
-  | 'SUNDAY';
+  'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';

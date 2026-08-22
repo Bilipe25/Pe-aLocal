@@ -23,13 +23,7 @@ try {
 
   result = spawnSync(
     process.execPath,
-    [
-      wrangler,
-      'types',
-      '--env-interface',
-      'CloudflareEnv',
-      'cloudflare-env.d.ts',
-    ],
+    [wrangler, 'types', '--env-interface', 'CloudflareEnv', 'cloudflare-env.d.ts'],
     {
       env: {
         ...process.env,

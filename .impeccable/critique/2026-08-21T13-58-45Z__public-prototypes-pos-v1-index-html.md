@@ -2,29 +2,30 @@
 target: PedidoLocal — PDV / Novo Pedido V1
 total_score: 30
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 0
 p1_count: 1
 timestamp: 2026-08-21T13-58-45Z
 slug: public-prototypes-pos-v1-index-html
 ---
+
 ⚠️ DEGRADED: single-context (sub-agents were not authorized for this execution)
 
 # Design Health Score
 
-| # | Heurística | Nota | Questão principal |
-|---|---|---:|---|
-| 1 | Visibilidade do estado | 3/4 | Seleções, cotação e sucesso são claros; loading, requote e offline ainda não aparecem. |
-| 2 | Correspondência com o mundo real | 4/4 | Balcão, comanda, mesa e “receber agora/depois” falam a língua da operação. |
-| 3 | Controle e liberdade | 3/4 | Voltar, editar e limpar estão visíveis; limpar uma comanda cheia ainda precisa confirmação/undo. |
-| 4 | Consistência e padrões | 4/4 | PDV, entrega, mesa, pagamento e KDS compartilham vocabulário e sistema visual. |
-| 5 | Prevenção de erros | 3/4 | Métodos válidos, produto esgotado e endereço confirmado previnem erros; faltam estados stale/offline. |
-| 6 | Reconhecimento em vez de memória | 4/4 | Destino, produtos, opções e total permanecem reconhecíveis e próximos da decisão. |
-| 7 | Flexibilidade e eficiência | 2/4 | Busca local, quick add e F2 aceleram; faltam favoritos/recentes e mais atalhos de teclado. |
-| 8 | Estética e minimalismo | 4/4 | A bancada é densa sem parecer ERP; Pimenta fica reservada à ação principal. |
-| 9 | Diagnóstico e recuperação | 1/4 | O protótipo não prova recuperação de requote, produto esgotado durante a criação ou queda de rede. |
-| 10 | Ajuda e documentação | 2/4 | Microcopy contextual existe, mas não há ajuda para casos de exceção. |
-| **Total** |  | **30/40** | **Boa; direção forte, recuperação operacional precisa fechar na implementação.** |
+| #         | Heurística                       |      Nota | Questão principal                                                                                     |
+| --------- | -------------------------------- | --------: | ----------------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado           |       3/4 | Seleções, cotação e sucesso são claros; loading, requote e offline ainda não aparecem.                |
+| 2         | Correspondência com o mundo real |       4/4 | Balcão, comanda, mesa e “receber agora/depois” falam a língua da operação.                            |
+| 3         | Controle e liberdade             |       3/4 | Voltar, editar e limpar estão visíveis; limpar uma comanda cheia ainda precisa confirmação/undo.      |
+| 4         | Consistência e padrões           |       4/4 | PDV, entrega, mesa, pagamento e KDS compartilham vocabulário e sistema visual.                        |
+| 5         | Prevenção de erros               |       3/4 | Métodos válidos, produto esgotado e endereço confirmado previnem erros; faltam estados stale/offline. |
+| 6         | Reconhecimento em vez de memória |       4/4 | Destino, produtos, opções e total permanecem reconhecíveis e próximos da decisão.                     |
+| 7         | Flexibilidade e eficiência       |       2/4 | Busca local, quick add e F2 aceleram; faltam favoritos/recentes e mais atalhos de teclado.            |
+| 8         | Estética e minimalismo           |       4/4 | A bancada é densa sem parecer ERP; Pimenta fica reservada à ação principal.                           |
+| 9         | Diagnóstico e recuperação        |       1/4 | O protótipo não prova recuperação de requote, produto esgotado durante a criação ou queda de rede.    |
+| 10        | Ajuda e documentação             |       2/4 | Microcopy contextual existe, mas não há ajuda para casos de exceção.                                  |
+| **Total** |                                  | **30/40** | **Boa; direção forte, recuperação operacional precisa fechar na implementação.**                      |
 
 # Design Specificity Verdict
 

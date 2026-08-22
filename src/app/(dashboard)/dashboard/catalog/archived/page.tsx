@@ -17,9 +17,7 @@ export default async function ArchivedCatalogPage() {
         backHref="/dashboard/catalog"
         actions={
           <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/catalog">
-              ← Voltar ao catálogo
-            </Link>
+            <Link href="/dashboard/catalog">← Voltar ao catálogo</Link>
           </Button>
         }
       />

@@ -9,8 +9,12 @@ import {
 describe('offer schedule', () => {
   it('uses an inclusive start and exclusive end in the store time zone', () => {
     const schedule = { startMinute: 10 * 60, endMinuteExclusive: 11 * 60 };
-    expect(isOfferScheduleActive(schedule, 'America/Fortaleza', new Date('2026-08-20T13:00:00Z'))).toBe(true);
-    expect(isOfferScheduleActive(schedule, 'America/Fortaleza', new Date('2026-08-20T14:00:00Z'))).toBe(false);
+    expect(
+      isOfferScheduleActive(schedule, 'America/Fortaleza', new Date('2026-08-20T13:00:00Z')),
+    ).toBe(true);
+    expect(
+      isOfferScheduleActive(schedule, 'America/Fortaleza', new Date('2026-08-20T14:00:00Z')),
+    ).toBe(false);
   });
 
   it('keeps wall-clock semantics through the spring DST transition', () => {
@@ -19,9 +23,15 @@ describe('offer schedule', () => {
       startMinute: 90,
       endMinuteExclusive: 210,
     };
-    expect(isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T06:45:00Z'))).toBe(true);
-    expect(isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T07:15:00Z'))).toBe(true);
-    expect(isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T07:30:00Z'))).toBe(false);
+    expect(
+      isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T06:45:00Z')),
+    ).toBe(true);
+    expect(
+      isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T07:15:00Z')),
+    ).toBe(true);
+    expect(
+      isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-03-08T07:30:00Z')),
+    ).toBe(false);
   });
 
   it('treats both repeated fall DST wall-clock hours as active', () => {
@@ -30,8 +40,12 @@ describe('offer schedule', () => {
       startMinute: 60,
       endMinuteExclusive: 120,
     };
-    expect(isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-11-01T05:30:00Z'))).toBe(true);
-    expect(isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-11-01T06:30:00Z'))).toBe(true);
+    expect(
+      isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-11-01T05:30:00Z')),
+    ).toBe(true);
+    expect(
+      isOfferScheduleActive(schedule, 'America/New_York', new Date('2026-11-01T06:30:00Z')),
+    ).toBe(true);
   });
 
   it('attaches an overnight window to its starting weekday and date', () => {

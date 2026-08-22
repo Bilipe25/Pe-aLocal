@@ -1,28 +1,29 @@
 ---
-target: "área do SUPER_ADMIN: shell, dashboard, tenants e personalização, desktop e mobile"
+target: 'área do SUPER_ADMIN: shell, dashboard, tenants e personalização, desktop e mobile'
 total_score: 20
 p0_count: 0
 p1_count: 3
 timestamp: 2026-07-19T11-21-13Z
 slug: src-app-admin-admin
 ---
+
 Method: dual-agent (A: superadmin_design_review · B: superadmin_detector_evidence)
 
 ## Design Health Score
 
-| # | Heurística | Nota | Principal questão |
-|---|---|---:|---|
-| 1 | Visibilidade do estado do sistema | 3/4 | Rascunho, publicação e auditoria são claros; operações secundárias variam no feedback. |
-| 2 | Correspondência com o mundo real | 2/4 | “Tenants” e “memberships” expõem a taxonomia técnica da plataforma. |
-| 3 | Controle e liberdade | 2/4 | Há restauração e descarte, mas o editor longo não oferece navegação local ou saída compacta. |
-| 4 | Consistência e padrões | 2/4 | Status e hierarquia cromática variam entre dashboard, listagem e publicação. |
-| 5 | Prevenção de erros | 3/4 | Contraste bloqueia publicação e ações destrutivas pedem confirmação. |
-| 6 | Reconhecimento em vez de memorização | 2/4 | A navegação principal é clara; a personalização exige lembrar onde cada ajuste está. |
-| 7 | Flexibilidade e eficiência | 1/4 | Não há busca, filtros, ordenação, paginação ou aceleradores para tenants e auditoria. |
-| 8 | Estética e design minimalista | 2/4 | A paleta é contida, mas cards repetidos e dez seções simultâneas criam monotonia. |
-| 9 | Reconhecimento e recuperação de erros | 2/4 | Há feedback global, porém pouco diagnóstico local nos gerenciadores complexos. |
-| 10 | Ajuda e documentação | 1/4 | A ajuda contextual é insuficiente para recursos técnicos e controles desabilitados. |
-| **Total** |  | **20/40** | **Aceitável — a base é confiável, mas a experiência ainda exige melhorias significativas.** |
+| #         | Heurística                            |      Nota | Principal questão                                                                            |
+| --------- | ------------------------------------- | --------: | -------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado do sistema     |       3/4 | Rascunho, publicação e auditoria são claros; operações secundárias variam no feedback.       |
+| 2         | Correspondência com o mundo real      |       2/4 | “Tenants” e “memberships” expõem a taxonomia técnica da plataforma.                          |
+| 3         | Controle e liberdade                  |       2/4 | Há restauração e descarte, mas o editor longo não oferece navegação local ou saída compacta. |
+| 4         | Consistência e padrões                |       2/4 | Status e hierarquia cromática variam entre dashboard, listagem e publicação.                 |
+| 5         | Prevenção de erros                    |       3/4 | Contraste bloqueia publicação e ações destrutivas pedem confirmação.                         |
+| 6         | Reconhecimento em vez de memorização  |       2/4 | A navegação principal é clara; a personalização exige lembrar onde cada ajuste está.         |
+| 7         | Flexibilidade e eficiência            |       1/4 | Não há busca, filtros, ordenação, paginação ou aceleradores para tenants e auditoria.        |
+| 8         | Estética e design minimalista         |       2/4 | A paleta é contida, mas cards repetidos e dez seções simultâneas criam monotonia.            |
+| 9         | Reconhecimento e recuperação de erros |       2/4 | Há feedback global, porém pouco diagnóstico local nos gerenciadores complexos.               |
+| 10        | Ajuda e documentação                  |       1/4 | A ajuda contextual é insuficiente para recursos técnicos e controles desabilitados.          |
+| **Total** |                                       | **20/40** | **Aceitável — a base é confiável, mas a experiência ainda exige melhorias significativas.**  |
 
 ## Veredito de anti-padrões
 

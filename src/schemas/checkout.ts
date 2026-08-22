@@ -147,16 +147,19 @@ export const cartQuoteSchema = addQuoteRefinements(z.object(checkoutQuoteShape).
   requireDeliverySelection: false,
 });
 
-export const dineInCheckoutQuoteSchema = z.object(checkoutCartShape).strict().superRefine((data, ctx) => {
-  const totalUnits = data.items.reduce((sum, item) => sum + item.quantity, 0);
-  if (totalUnits > MAX_CHECKOUT_TOTAL_UNITS) {
-    ctx.addIssue({
-      code: 'custom',
-      message: `O pedido deve ter no máximo ${MAX_CHECKOUT_TOTAL_UNITS} unidades.`,
-      path: ['items'],
-    });
-  }
-});
+export const dineInCheckoutQuoteSchema = z
+  .object(checkoutCartShape)
+  .strict()
+  .superRefine((data, ctx) => {
+    const totalUnits = data.items.reduce((sum, item) => sum + item.quantity, 0);
+    if (totalUnits > MAX_CHECKOUT_TOTAL_UNITS) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `O pedido deve ter no máximo ${MAX_CHECKOUT_TOTAL_UNITS} unidades.`,
+        path: ['items'],
+      });
+    }
+  });
 
 export const checkoutDeliveryAddressSchema = z
   .object({
@@ -316,7 +319,9 @@ export const dineInCheckoutSchema = z
       .max(254)
       .optional(),
     notes: boundedTrimmedString(500).optional().default(''),
-    expectedQuoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),
+    expectedQuoteFingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/i, 'A cotação do pedido é inválida.'),
     idempotencyKey: z.uuid(),
   })
   .strict()

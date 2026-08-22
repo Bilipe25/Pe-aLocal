@@ -31,11 +31,18 @@ export default async function EditComboPage({ params }: { params: Promise<{ comb
     weekdays: details.combo.weekdays,
     startMinute: details.combo.startMinute,
     endMinuteExclusive: details.combo.endMinuteExclusive,
-    items: details.combo.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+    items: details.combo.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    })),
   };
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Editar combo" description="Uma alteração publicada incrementa a versão usada no checkout." backHref="/dashboard/offers" />
+      <PageHeader
+        title="Editar combo"
+        description="Uma alteração publicada incrementa a versão usada no checkout."
+        backHref="/dashboard/offers"
+      />
       <ComboForm products={products} combo={combo} />
     </div>
   );

@@ -1,16 +1,16 @@
 import { z } from 'zod';
 
 import { privateStoreChannel } from '@/lib/pusher/channels';
-import {
-  authorizePusherChannel,
-  isPusherServerConfigured,
-} from '@/lib/pusher/server';
+import { authorizePusherChannel, isPusherServerConfigured } from '@/lib/pusher/server';
 import { errorToResponse, TenantAccessError, ValidationError } from '@/server/errors';
 import { Permission } from '@/server/permissions';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
 const authorizationSchema = z.object({
-  socketId: z.string().regex(/^\d+\.\d+$/).max(100),
+  socketId: z
+    .string()
+    .regex(/^\d+\.\d+$/)
+    .max(100),
   channelName: z.string().max(200),
 });
 
@@ -34,10 +34,9 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json(
-      authorizePusherChannel(parsed.data.socketId, parsed.data.channelName),
-      { headers: { 'Cache-Control': 'private, no-store' } },
-    );
+    return Response.json(authorizePusherChannel(parsed.data.socketId, parsed.data.channelName), {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (error) {
     return errorToResponse(error);
   }

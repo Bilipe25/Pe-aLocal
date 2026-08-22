@@ -21,7 +21,10 @@ interface CatalogSortableListProps {
   children?: (item: SortableItem, index: number) => React.ReactNode;
 }
 
-const reorderActions: Record<ReorderKind, (ids: string[]) => Promise<{ success: boolean; error?: { message: string } }>> = {
+const reorderActions: Record<
+  ReorderKind,
+  (ids: string[]) => Promise<{ success: boolean; error?: { message: string } }>
+> = {
   category: reorderCategoriesAction,
   product: reorderProductsAction,
 };
@@ -37,7 +40,6 @@ export function CatalogSortableList({ items, kind, label, children }: CatalogSor
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const dragIndexRef = useRef<number | null>(null);
   const isSaving = useRef(false);
-
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number, id: string) => {
     dragIndexRef.current = index;
@@ -113,7 +115,7 @@ export function CatalogSortableList({ items, kind, label, children }: CatalogSor
             onDragEnd={handleDragEnd}
             className={`group flex items-center gap-2 transition-all ${
               isDragging ? 'opacity-40' : ''
-            } ${isOver ? 'border-t-2 border-brand-500' : ''}`}
+            } ${isOver ? 'border-brand-500 border-t-2' : ''}`}
           >
             {/* Handle de drag */}
             <button
@@ -127,7 +129,11 @@ export function CatalogSortableList({ items, kind, label, children }: CatalogSor
 
             {/* Conteúdo customizável */}
             <div className="min-w-0 flex-1">
-              {children ? children(item, index) : <span className="text-text-primary text-sm">{item.name}</span>}
+              {children ? (
+                children(item, index)
+              ) : (
+                <span className="text-text-primary text-sm">{item.name}</span>
+              )}
             </div>
           </li>
         );
