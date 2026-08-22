@@ -75,12 +75,7 @@ export function CategoryForm({ category }: CategoryFormProps) {
         message={error}
         action={
           isConcurrencyError ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => router.refresh()}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>
               Recarregar página
             </Button>
           ) : undefined
@@ -88,9 +83,7 @@ export function CategoryForm({ category }: CategoryFormProps) {
       />
 
       {/* Versão para controle de concorrência otimista */}
-      {isEditing && (
-        <input type="hidden" name="version" value={category.version} />
-      )}
+      {isEditing && <input type="hidden" name="version" value={category.version} />}
 
       <div className="space-y-2">
         <Label htmlFor="name">Nome</Label>
@@ -115,7 +108,7 @@ export function CategoryForm({ category }: CategoryFormProps) {
       </div>
 
       <input type="hidden" name="sortOrder" value={category?.sortOrder ?? 0} />
-      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+      <div className="border-border flex items-center justify-between rounded-lg border p-3">
         <div className="space-y-0.5">
           <Label htmlFor="isActive">Categoria ativa</Label>
           <p className="text-text-secondary text-xs">
@@ -152,9 +145,7 @@ export function CategoryForm({ category }: CategoryFormProps) {
         ) : (
           <div />
         )}
-        <FormSubmitButton>
-          {isEditing ? 'Salvar categoria' : 'Criar categoria'}
-        </FormSubmitButton>
+        <FormSubmitButton>{isEditing ? 'Salvar categoria' : 'Criar categoria'}</FormSubmitButton>
       </div>
     </form>
   );

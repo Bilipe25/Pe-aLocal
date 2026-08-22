@@ -242,17 +242,22 @@ const SAFE_UNEXPECTED_ERROR_KINDS = new Map<string, UnexpectedErrorKind>([
  */
 function logUnexpectedError(scope: '[UNEXPECTED_ERROR]' | '[ACTION_ERROR]', error: unknown) {
   let kind: UnexpectedErrorKind = 'non_error';
+  let databaseCode: string | undefined;
 
   if (error instanceof Error) {
     kind = 'error';
     try {
       kind = SAFE_UNEXPECTED_ERROR_KINDS.get(error.name) ?? kind;
+      const code = Reflect.get(error, 'code');
+      if (kind === 'database_known_error' && typeof code === 'string' && /^P\d{4}$/u.test(code)) {
+        databaseCode = code;
+      }
     } catch {
-      // Um Error customizado pode expor `name` por getter. Não o serializamos.
+      // Um Error customizado pode expor `name` ou `code` por getter. Não os serializamos.
     }
   }
 
-  console.error(scope, { kind });
+  console.error(scope, databaseCode ? { kind, databaseCode } : { kind });
 }
 
 // =============================================================================

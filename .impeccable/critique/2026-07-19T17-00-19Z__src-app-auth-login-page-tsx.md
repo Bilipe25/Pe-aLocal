@@ -6,23 +6,24 @@ p1_count: 1
 timestamp: 2026-07-19T17-00-19Z
 slug: src-app-auth-login-page-tsx
 ---
+
 Method: dual-agent (A: /root/login_design_review · B: /root/login_detector_evidence)
 
 ## Design Health Score
 
-| # | Heurística | Nota | Questão principal |
-|---|---|---:|---|
-| 1 | Visibilidade do estado do sistema | 3/4 | Loading, busy e erros estão claros; anúncio durante o redirecionamento ainda merece validação assistiva. |
-| 2 | Correspondência com o mundo real | 4/4 | Linguagem familiar e português direto. |
-| 3 | Controle e liberdade | 3/4 | Há saída para home e recuperação de senha, mas não para problemas de acesso/provisionamento. |
-| 4 | Consistência e padrões | 3/4 | Controles coerentes; a identidade tipográfica do sistema quase não aparece. |
-| 5 | Prevenção de erros | 3/4 | Schema, autocomplete e bloqueio de envio duplicado; validação ainda é majoritariamente reativa. |
-| 6 | Reconhecimento em vez de memorização | 4/4 | Rótulos persistentes, ações visíveis e ícones nomeados. |
-| 7 | Flexibilidade e eficiência | 3/4 | Enter, autocomplete e visibilidade da senha ajudam; não há rota alternativa de acesso. |
-| 8 | Estética e design minimalista | 3/4 | Foco excelente, mas composição genérica e subtítulo redundante. |
-| 9 | Reconhecimento e recuperação de erros | 3/4 | Erros inline preservam os campos; falta escalada contextual para suporte. |
-| 10 | Ajuda e documentação | 1/4 | Existe recuperação de senha, mas nenhuma orientação para conta sem acesso. |
-| **Total** |  | **30/40** | **Bom — base sólida, com lacunas relevantes antes do acabamento final.** |
+| #         | Heurística                            |      Nota | Questão principal                                                                                        |
+| --------- | ------------------------------------- | --------: | -------------------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado do sistema     |       3/4 | Loading, busy e erros estão claros; anúncio durante o redirecionamento ainda merece validação assistiva. |
+| 2         | Correspondência com o mundo real      |       4/4 | Linguagem familiar e português direto.                                                                   |
+| 3         | Controle e liberdade                  |       3/4 | Há saída para home e recuperação de senha, mas não para problemas de acesso/provisionamento.             |
+| 4         | Consistência e padrões                |       3/4 | Controles coerentes; a identidade tipográfica do sistema quase não aparece.                              |
+| 5         | Prevenção de erros                    |       3/4 | Schema, autocomplete e bloqueio de envio duplicado; validação ainda é majoritariamente reativa.          |
+| 6         | Reconhecimento em vez de memorização  |       4/4 | Rótulos persistentes, ações visíveis e ícones nomeados.                                                  |
+| 7         | Flexibilidade e eficiência            |       3/4 | Enter, autocomplete e visibilidade da senha ajudam; não há rota alternativa de acesso.                   |
+| 8         | Estética e design minimalista         |       3/4 | Foco excelente, mas composição genérica e subtítulo redundante.                                          |
+| 9         | Reconhecimento e recuperação de erros |       3/4 | Erros inline preservam os campos; falta escalada contextual para suporte.                                |
+| 10        | Ajuda e documentação                  |       1/4 | Existe recuperação de senha, mas nenhuma orientação para conta sem acesso.                               |
+| **Total** |                                       | **30/40** | **Bom — base sólida, com lacunas relevantes antes do acabamento final.**                                 |
 
 ## Anti-Patterns Verdict
 

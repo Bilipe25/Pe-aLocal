@@ -126,4 +126,27 @@ describe('Action Results', () => {
       consoleError.mockRestore();
     }
   });
+
+  it('registra somente o código allowlisted de um erro conhecido do Prisma', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const databaseError = Object.assign(new Error('constraint com telefone=85999999999'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2003',
+        meta: { database_error: 'telefone=85999999999' },
+      });
+
+      const result = actionError(databaseError);
+
+      expect(result.success).toBe(false);
+      expect(consoleError).toHaveBeenCalledWith('[ACTION_ERROR]', {
+        kind: 'database_known_error',
+        databaseCode: 'P2003',
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('85999999999');
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('database_error');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });

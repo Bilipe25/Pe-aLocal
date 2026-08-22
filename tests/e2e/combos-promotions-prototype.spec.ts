@@ -1,9 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 
-const screenshotDirectory = path.resolve(
-  'public/prototypes/combos-promotions/screenshots',
-);
+const screenshotDirectory = path.resolve('public/prototypes/combos-promotions/screenshots');
 
 async function openPrototype(
   page: Page,

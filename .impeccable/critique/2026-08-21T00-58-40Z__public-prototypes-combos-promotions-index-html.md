@@ -2,27 +2,28 @@
 target: Combos e Promoções V1
 total_score: 21
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 0
 p1_count: 3
 timestamp: 2026-08-21T00-58-40Z
 slug: public-prototypes-combos-promotions-index-html
 ---
+
 # Design Health Score
 
-| # | Heurística | Score | Questão principal |
-|---|---|---:|---|
-| 1 | Visibilidade do estado | 2/4 | Estados principais aparecem, mas o fluxo não especifica loading e falha. |
-| 2 | Sistema e mundo real | 3/4 | Linguagem de cardápio é natural; timezone técnica foi um ruído. |
-| 3 | Controle e liberdade | 2/4 | Há voltar/cancelar/editar; remoção mobile estava escondida. |
-| 4 | Consistência e padrões | 3/4 | Sistema visual forte; salvar/rascunho e ações de produto divergiam. |
-| 5 | Prevenção de erros | 2/4 | Preço tinha guardrail; agenda e conflitos não. |
-| 6 | Reconhecimento, não memória | 2/4 | Preview preserva contexto; sidebar tablet perde rótulos visuais. |
-| 7 | Flexibilidade e eficiência | 1/4 | Sem atalhos, duplicação ou ações em lote. |
-| 8 | Estética e minimalismo | 3/4 | Foco e hierarquia bons, com microtexto excessivo. |
-| 9 | Diagnóstico e recuperação | 1/4 | Happy path dominante; poucos erros têm recuperação desenhada. |
-| 10 | Ajuda e documentação | 2/4 | Microcopy ajuda, mas falta contexto para conflito e publicação. |
-| **Total** |  | **21/40** | **Aceitável; fundação visual sólida, estados ainda incompletos.** |
+| #         | Heurística                  |     Score | Questão principal                                                        |
+| --------- | --------------------------- | --------: | ------------------------------------------------------------------------ |
+| 1         | Visibilidade do estado      |       2/4 | Estados principais aparecem, mas o fluxo não especifica loading e falha. |
+| 2         | Sistema e mundo real        |       3/4 | Linguagem de cardápio é natural; timezone técnica foi um ruído.          |
+| 3         | Controle e liberdade        |       2/4 | Há voltar/cancelar/editar; remoção mobile estava escondida.              |
+| 4         | Consistência e padrões      |       3/4 | Sistema visual forte; salvar/rascunho e ações de produto divergiam.      |
+| 5         | Prevenção de erros          |       2/4 | Preço tinha guardrail; agenda e conflitos não.                           |
+| 6         | Reconhecimento, não memória |       2/4 | Preview preserva contexto; sidebar tablet perde rótulos visuais.         |
+| 7         | Flexibilidade e eficiência  |       1/4 | Sem atalhos, duplicação ou ações em lote.                                |
+| 8         | Estética e minimalismo      |       3/4 | Foco e hierarquia bons, com microtexto excessivo.                        |
+| 9         | Diagnóstico e recuperação   |       1/4 | Happy path dominante; poucos erros têm recuperação desenhada.            |
+| 10        | Ajuda e documentação        |       2/4 | Microcopy ajuda, mas falta contexto para conflito e publicação.          |
+| **Total** |                             | **21/40** | **Aceitável; fundação visual sólida, estados ainda incompletos.**        |
 
 # Design Specificity Verdict
 

@@ -20,9 +20,9 @@ vi.mock('next/image', () => {
 
   function buildSrcSet(loaderSrc: string, sizes?: string): string | undefined {
     if (!sizes) return undefined;
-    return STOREFRONT_IMAGE_DEVICE_SIZES.map(
-      (w) => `${buildLoaderUrl(loaderSrc, w)} ${w}w`,
-    ).join(', ');
+    return STOREFRONT_IMAGE_DEVICE_SIZES.map((w) => `${buildLoaderUrl(loaderSrc, w)} ${w}w`).join(
+      ', ',
+    );
   }
 
   type MockImageProps = React.ImgHTMLAttributes<HTMLImageElement> & {
@@ -49,14 +49,20 @@ vi.mock('next/image', () => {
     className,
     ...rest
   }: MockImageProps) {
-    const resolvedSrc = loader
-      ? loader({ src, width: 384, quality })
-      : buildLoaderUrl(src, 384);
+    const resolvedSrc = loader ? loader({ src, width: 384, quality }) : buildLoaderUrl(src, 384);
     const srcSet = loader
-      ? STOREFRONT_IMAGE_DEVICE_SIZES.map((w) => `${loader({ src, width: w, quality })} ${w}w`).join(', ')
+      ? STOREFRONT_IMAGE_DEVICE_SIZES.map(
+          (w) => `${loader({ src, width: w, quality })} ${w}w`,
+        ).join(', ')
       : buildSrcSet(src, sizes);
     const style = fill
-      ? { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' as const }
+      ? {
+          position: 'absolute' as const,
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover' as const,
+        }
       : width && height
         ? { width, height }
         : undefined;

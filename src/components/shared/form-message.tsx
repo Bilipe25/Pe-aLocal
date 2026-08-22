@@ -30,7 +30,6 @@ export function FormMessage({ message, fieldErrors = {}, action }: FormMessagePr
   );
 }
 
-
 export function FieldMessage({ id, errors }: { id: string; errors?: string[] }) {
   if (!errors?.length) return null;
   return (

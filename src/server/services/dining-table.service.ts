@@ -37,7 +37,9 @@ function generateDiningTableToken() {
 }
 
 function parseOrThrow<T>(
-  result: { success: true; data: T } | { success: false; error: { issues: Array<{ path: PropertyKey[]; message: string }> } },
+  result:
+    | { success: true; data: T }
+    | { success: false; error: { issues: Array<{ path: PropertyKey[]; message: string }> } },
 ) {
   if (result.success) return result.data;
   throw new ValidationError(
@@ -61,10 +63,7 @@ async function requireDiningTableEntitlement(
 }
 
 export async function getDiningTablesPage(storeId: string) {
-  const { session, store } = await requireTenantStoreAccess(
-    storeId,
-    Permission.VIEW_DINING_TABLES,
-  );
+  const { session, store } = await requireTenantStoreAccess(storeId, Permission.VIEW_DINING_TABLES);
   const [entitlement, tables] = await Promise.all([
     getDb().storeEntitlement.findFirst({
       where: { tenantId: session.tenantId, storeId: store.id },
@@ -202,7 +201,11 @@ export async function renameDiningTable(storeId: string, input: RenameDiningTabl
         action: 'UPDATE',
         entity: 'StoreDiningTable',
         entityId: parsed.tableId,
-        metadata: { changedFields: ['label'], previousLabel: current.label, nextLabel: parsed.label },
+        metadata: {
+          changedFields: ['label'],
+          previousLabel: current.label,
+          nextLabel: parsed.label,
+        },
       },
       tx,
     );
@@ -251,10 +254,7 @@ export async function setDiningTableActive(storeId: string, input: SetDiningTabl
   });
 }
 
-export async function rotateDiningTableToken(
-  storeId: string,
-  input: RotateDiningTableTokenInput,
-) {
+export async function rotateDiningTableToken(storeId: string, input: RotateDiningTableTokenInput) {
   const { session, store } = await requireTenantStoreAccess(
     storeId,
     Permission.MANAGE_DINING_TABLES,

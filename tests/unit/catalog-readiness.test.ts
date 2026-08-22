@@ -25,9 +25,7 @@ describe('analyzeCatalogReadiness', () => {
   });
 
   it('detecta categoria ativa sem produtos disponíveis', async () => {
-    mockDb.category.findMany.mockResolvedValue([
-      { id: 'cat-1', name: 'Hambúrgueres' },
-    ]);
+    mockDb.category.findMany.mockResolvedValue([{ id: 'cat-1', name: 'Hambúrgueres' }]);
     mockDb.product.findMany.mockResolvedValue([]);
 
     const issues = await analyzeCatalogReadiness('tenant-1', 'store-1');
@@ -70,9 +68,7 @@ describe('analyzeCatalogReadiness', () => {
       {
         id: 'prod-1',
         name: 'Prato A',
-        optionGroups: [
-          { id: 'g-1', title: 'Tamanho', _count: { options: 0 } },
-        ],
+        optionGroups: [{ id: 'g-1', title: 'Tamanho', _count: { options: 0 } }],
       },
     ]);
 
@@ -86,9 +82,7 @@ describe('analyzeCatalogReadiness', () => {
       {
         id: 'prod-1',
         name: 'X-Burguer',
-        optionGroups: [
-          { id: 'g-1', title: 'Molho', _count: { options: 3 } },
-        ],
+        optionGroups: [{ id: 'g-1', title: 'Molho', _count: { options: 3 } }],
       },
     ]);
 

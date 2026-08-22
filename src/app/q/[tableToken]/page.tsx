@@ -32,7 +32,9 @@ export default async function DineInMenuPage({
       <NetworkStatus />
       <div className="dine-in-context-banner" role="status">
         <Utensils aria-hidden="true" />
-        <span>Você está na <strong>{table.label}</strong></span>
+        <span>
+          Você está na <strong>{table.label}</strong>
+        </span>
       </div>
       {!store.availability.acceptingOrders ? (
         <StoreClosedBanner availability={store.availability} />

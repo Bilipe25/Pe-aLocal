@@ -22,11 +22,7 @@ interface Product {
   category: { id: string };
 }
 
-function filterCatalog(
-  categories: Category[],
-  products: Product[],
-  query: string,
-) {
+function filterCatalog(categories: Category[], products: Product[], query: string) {
   const q = normalize(query.trim());
   if (!q) return { categories, products };
 

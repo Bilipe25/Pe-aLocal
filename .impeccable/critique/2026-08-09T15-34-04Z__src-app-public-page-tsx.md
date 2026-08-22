@@ -6,21 +6,22 @@ p1_count: 2
 timestamp: 2026-08-09T15-34-04Z
 slug: src-app-public-page-tsx
 ---
+
 ## Design Health Score
 
-| # | Heurística | Score | Observação |
-|---|---|---:|---|
-| 1 | Visibilidade do estado | 3/4 | A página orienta bem os próximos links, mas não explica o que acontece após solicitar acesso. |
-| 2 | Correspondência com o mundo real | 2/4 | “Lanchonete”, “marketplace” e “Mobile-first” estreitam ou tecnificam a proposta. |
-| 3 | Controle e liberdade | 3/4 | Há navegação simples e retorno à home, mas não há rota clara para consumidores. |
-| 4 | Consistência e padrões | 3/4 | Tokens, espaçamento e alvos de toque são coerentes; o CTA de login é duplicado. |
-| 5 | Prevenção de erros | 2/4 | Solicitar acesso não informa elegibilidade, prazo ou próximos passos. |
-| 6 | Reconhecimento em vez de memória | 2/4 | Ícones e claims exigem inferência; faltam demonstração e prova concreta. |
-| 7 | Flexibilidade e eficiência | 2/4 | Não há caminhos explícitos por público nem atalho de compra. |
-| 8 | Estética minimalista | 3/4 | Composição limpa e legível, porém esparsa e baseada em um template conhecido. |
-| 9 | Diagnóstico e recuperação | 1/4 | Não há suporte, FAQ ou recuperação visível na home. |
-| 10 | Ajuda e documentação | 1/4 | O footer não oferece documentação, termos, privacidade ou contexto comercial. |
-| **Total** |  | **22/40** | **Aceitável; a fundação visual é boa, mas a arquitetura de entrada precisa evoluir.** |
+| #         | Heurística                       |     Score | Observação                                                                                    |
+| --------- | -------------------------------- | --------: | --------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado           |       3/4 | A página orienta bem os próximos links, mas não explica o que acontece após solicitar acesso. |
+| 2         | Correspondência com o mundo real |       2/4 | “Lanchonete”, “marketplace” e “Mobile-first” estreitam ou tecnificam a proposta.              |
+| 3         | Controle e liberdade             |       3/4 | Há navegação simples e retorno à home, mas não há rota clara para consumidores.               |
+| 4         | Consistência e padrões           |       3/4 | Tokens, espaçamento e alvos de toque são coerentes; o CTA de login é duplicado.               |
+| 5         | Prevenção de erros               |       2/4 | Solicitar acesso não informa elegibilidade, prazo ou próximos passos.                         |
+| 6         | Reconhecimento em vez de memória |       2/4 | Ícones e claims exigem inferência; faltam demonstração e prova concreta.                      |
+| 7         | Flexibilidade e eficiência       |       2/4 | Não há caminhos explícitos por público nem atalho de compra.                                  |
+| 8         | Estética minimalista             |       3/4 | Composição limpa e legível, porém esparsa e baseada em um template conhecido.                 |
+| 9         | Diagnóstico e recuperação        |       1/4 | Não há suporte, FAQ ou recuperação visível na home.                                           |
+| 10        | Ajuda e documentação             |       1/4 | O footer não oferece documentação, termos, privacidade ou contexto comercial.                 |
+| **Total** |                                  | **22/40** | **Aceitável; a fundação visual é boa, mas a arquitetura de entrada precisa evoluir.**         |
 
 ## Anti-patterns
 

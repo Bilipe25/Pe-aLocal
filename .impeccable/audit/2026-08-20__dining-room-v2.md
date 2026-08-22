@@ -10,14 +10,14 @@ Build path: code
 
 ## Audit Health Score
 
-| # | Dimensão | Nota | Evidência principal |
-|---|---|---:|---|
-| 1 | Acessibilidade | 3/4 | HTML semântico, nomes específicos por mesa, foco Radix, alvos de 44 px e estados textuais; axe/browser real ficou pendente até a migration existir em ambiente de teste. |
-| 2 | Performance | 3/4 | Snapshot único sem N+1 e DTO mínimo; sessões excepcionalmente longas ainda materializam os Orders para derivar a conta. |
-| 3 | Responsividade | 3/4 | Estrutura mobile-first, grids por breakpoint, labels quebráveis, drawer de largura limitada e lista compacta; inspeção real pós-migration pendente. |
-| 4 | Theming | 4/4 | Tokens Papel, Tinta, Pimenta, Kraft, Erva e estados sem cores locais arbitrárias. |
-| 5 | Integridade de implementação | 4/4 | Detector limpo, shared components, TanStack Query/Pusher oficiais e nenhuma infraestrutura paralela. |
-| **Total** |  | **17/20 — Good** | Sem P0/P1. |
+| #         | Dimensão                     |             Nota | Evidência principal                                                                                                                                                      |
+| --------- | ---------------------------- | ---------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1         | Acessibilidade               |              3/4 | HTML semântico, nomes específicos por mesa, foco Radix, alvos de 44 px e estados textuais; axe/browser real ficou pendente até a migration existir em ambiente de teste. |
+| 2         | Performance                  |              3/4 | Snapshot único sem N+1 e DTO mínimo; sessões excepcionalmente longas ainda materializam os Orders para derivar a conta.                                                  |
+| 3         | Responsividade               |              3/4 | Estrutura mobile-first, grids por breakpoint, labels quebráveis, drawer de largura limitada e lista compacta; inspeção real pós-migration pendente.                      |
+| 4         | Theming                      |              4/4 | Tokens Papel, Tinta, Pimenta, Kraft, Erva e estados sem cores locais arbitrárias.                                                                                        |
+| 5         | Integridade de implementação |              4/4 | Detector limpo, shared components, TanStack Query/Pusher oficiais e nenhuma infraestrutura paralela.                                                                     |
+| **Total** |                              | **17/20 — Good** | Sem P0/P1.                                                                                                                                                               |
 
 ## Executive Summary
 

@@ -1,5 +1,15 @@
 import Link from 'next/link';
-import { ArrowRight, Clock, CreditCard, Eye, MapPin, QrCode, Settings, Store, Truck } from 'lucide-react';
+import {
+  ArrowRight,
+  Clock,
+  CreditCard,
+  Eye,
+  MapPin,
+  QrCode,
+  Settings,
+  Store,
+  Truck,
+} from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';

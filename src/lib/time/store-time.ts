@@ -90,10 +90,7 @@ function dateKey({ year, month, day }: LocalDateParts): number {
   return year * 372 + month * 31 + day;
 }
 
-function getFormattedDateParts(
-  date: Date,
-  formatter: Intl.DateTimeFormat,
-): LocalDateParts {
+function getFormattedDateParts(date: Date, formatter: Intl.DateTimeFormat): LocalDateParts {
   const parts = formatter.formatToParts(date);
   const yearPart = parts.find((part) => part.type === 'year')?.value;
   const monthPart = parts.find((part) => part.type === 'month')?.value;
@@ -119,10 +116,7 @@ function utcTimestamp({ year, month, day }: LocalDateParts): number {
   return date.getTime();
 }
 
-function findStartOfLocalDate(
-  localDate: LocalDateParts,
-  formatter: Intl.DateTimeFormat,
-): Date {
+function findStartOfLocalDate(localDate: LocalDateParts, formatter: Intl.DateTimeFormat): Date {
   const targetKey = dateKey(localDate);
   const nominalMidnight = utcTimestamp(localDate);
   let low = nominalMidnight - BOUNDARY_SEARCH_WINDOW_IN_MS;
@@ -153,10 +147,7 @@ export function getStoreLocalDate(date: Date, timeZone: string): string {
   return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
-export function getStoreDayRangeUtc(
-  localDate: string,
-  timeZone: string,
-): StoreDayRangeUtc {
+export function getStoreDayRangeUtc(localDate: string, timeZone: string): StoreDayRangeUtc {
   const parsedDate = parseLocalDate(localDate);
   const formatter = createStoreDateFormatter(timeZone);
 

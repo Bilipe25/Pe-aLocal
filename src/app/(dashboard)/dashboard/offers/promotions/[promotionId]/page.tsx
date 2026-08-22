@@ -39,7 +39,11 @@ export default async function EditPromotionPage({
   };
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Editar promoção" description="Preço e agenda são revalidados de forma autoritativa." backHref="/dashboard/offers" />
+      <PageHeader
+        title="Editar promoção"
+        description="Preço e agenda são revalidados de forma autoritativa."
+        backHref="/dashboard/offers"
+      />
       <PromotionForm products={products} promotion={promotion} />
     </div>
   );

@@ -1,28 +1,29 @@
 ---
-target: "painel administrativo completo do tenant: shell do /dashboard, navegação e todas as subpáginas operacionais"
+target: 'painel administrativo completo do tenant: shell do /dashboard, navegação e todas as subpáginas operacionais'
 total_score: 26
 p0_count: 0
 p1_count: 3
 timestamp: 2026-07-19T02-07-54Z
 slug: src-app-dashboard
 ---
+
 Method: dual-agent (A: critique_dashboard_design_fast · B: critique_dashboard_evidence)
 
 ## Design Health Score
 
-| # | Heurística | Nota | Principal problema |
-|---|---|---:|---|
-| 1 | Visibilidade do estado do sistema | 3 | O painel comunica loading, conexão e resultados, mas as métricas mudam junto com o filtro sem explicar o novo universo. |
-| 2 | Correspondência com o mundo real | 3 | A maior parte da linguagem é natural, porém `slug`, ordem numérica e min/max expõem o modelo interno. |
-| 3 | Controle e liberdade | 3 | Há retorno, fechamento e confirmações destrutivas, mas transições operacionais importantes não oferecem desfazer. |
-| 4 | Consistência e padrões | 2 | Componentes são coerentes, mas cores de status/ação, capitalização e títulos divergem em pontos importantes. |
-| 5 | Prevenção de erros | 3 | Exclusões e cancelamentos são protegidos; concluir pedido e regras contraditórias de adicionais ainda dependem de correção posterior. |
-| 6 | Reconhecimento em vez de memorização | 2 | A navegação é explícita, mas ordenação numérica e regras de adicionais exigem conhecimento prévio. |
-| 7 | Flexibilidade e eficiência | 3 | A operação básica é direta, porém faltam busca, agrupamento por etapa e caminhos rápidos para filas grandes. |
-| 8 | Estética e design minimalista | 2 | A interface é contida, mas repete cards, wrappers e cabeçalhos, tornando áreas operacionais mais genéricas e longas. |
-| 9 | Recuperação de erros | 3 | Existem mensagens e confirmações, mas faltam erros por campo, foco na correção, histórico e undo. |
-| 10 | Ajuda e documentação | 2 | Empty states ajudam, mas adicionais, Pix, slug e ordenação não têm orientação contextual suficiente. |
-| **Total** |  | **26/40** | **Aceitável — base sólida, melhorias operacionais significativas ainda necessárias** |
+| #         | Heurística                           |      Nota | Principal problema                                                                                                                    |
+| --------- | ------------------------------------ | --------: | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1         | Visibilidade do estado do sistema    |         3 | O painel comunica loading, conexão e resultados, mas as métricas mudam junto com o filtro sem explicar o novo universo.               |
+| 2         | Correspondência com o mundo real     |         3 | A maior parte da linguagem é natural, porém `slug`, ordem numérica e min/max expõem o modelo interno.                                 |
+| 3         | Controle e liberdade                 |         3 | Há retorno, fechamento e confirmações destrutivas, mas transições operacionais importantes não oferecem desfazer.                     |
+| 4         | Consistência e padrões               |         2 | Componentes são coerentes, mas cores de status/ação, capitalização e títulos divergem em pontos importantes.                          |
+| 5         | Prevenção de erros                   |         3 | Exclusões e cancelamentos são protegidos; concluir pedido e regras contraditórias de adicionais ainda dependem de correção posterior. |
+| 6         | Reconhecimento em vez de memorização |         2 | A navegação é explícita, mas ordenação numérica e regras de adicionais exigem conhecimento prévio.                                    |
+| 7         | Flexibilidade e eficiência           |         3 | A operação básica é direta, porém faltam busca, agrupamento por etapa e caminhos rápidos para filas grandes.                          |
+| 8         | Estética e design minimalista        |         2 | A interface é contida, mas repete cards, wrappers e cabeçalhos, tornando áreas operacionais mais genéricas e longas.                  |
+| 9         | Recuperação de erros                 |         3 | Existem mensagens e confirmações, mas faltam erros por campo, foco na correção, histórico e undo.                                     |
+| 10        | Ajuda e documentação                 |         2 | Empty states ajudam, mas adicionais, Pix, slug e ordenação não têm orientação contextual suficiente.                                  |
+| **Total** |                                      | **26/40** | **Aceitável — base sólida, melhorias operacionais significativas ainda necessárias**                                                  |
 
 ## Veredito de anti-patterns
 

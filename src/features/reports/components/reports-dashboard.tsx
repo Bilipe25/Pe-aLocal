@@ -671,9 +671,7 @@ function OperationSection({ data }: { data: AdvancedReportsDTO }) {
                   </dd>
                 </div>
               </dl>
-              <p className="text-text-secondary text-xs">
-                {data.operation.sla.comparison.label}
-              </p>
+              <p className="text-text-secondary text-xs">{data.operation.sla.comparison.label}</p>
             </div>
           ) : null}
         </div>

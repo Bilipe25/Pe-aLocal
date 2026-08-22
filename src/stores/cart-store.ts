@@ -242,7 +242,8 @@ function parseCartItem(value: unknown): CartItem | null {
             component.quantity < 1 ||
             typeof component.notes !== 'string' ||
             component.notes.length > 500
-          ) return null;
+          )
+            return null;
           return {
             comboItemId: component.comboItemId,
             productId: component.productId,
@@ -272,8 +273,11 @@ function parseCartItem(value: unknown): CartItem | null {
     new Set(optionIds).size !== optionIds.length ||
     (value.imageUrl !== undefined && imageUrl === undefined) ||
     (value.imageAssetId !== undefined && imageAssetId === undefined) ||
-    (value.imageAlt !== undefined && imageAlt === undefined)
-    || (kind === 'COMBO' && (typeof value.comboId !== 'string' || !comboComponents || comboComponents.some((component) => component === null)))
+    (value.imageAlt !== undefined && imageAlt === undefined) ||
+    (kind === 'COMBO' &&
+      (typeof value.comboId !== 'string' ||
+        !comboComponents ||
+        comboComponents.some((component) => component === null)))
   ) {
     return null;
   }
@@ -282,8 +286,7 @@ function parseCartItem(value: unknown): CartItem | null {
     id: value.id,
     kind,
     comboId: kind === 'COMBO' ? (value.comboId as string) : undefined,
-    comboComponents:
-      kind === 'COMBO' ? (comboComponents as CartComboComponent[]) : undefined,
+    comboComponents: kind === 'COMBO' ? (comboComponents as CartComboComponent[]) : undefined,
     productId: value.productId,
     productName: value.productName,
     basePrice: value.basePrice,

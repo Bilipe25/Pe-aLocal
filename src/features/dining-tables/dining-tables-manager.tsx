@@ -37,7 +37,12 @@ function downloadBlob(content: BlobPart, type: string, filename: string) {
 }
 
 function safeFilename(value: string) {
-  return value.normalize('NFKD').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || 'mesa';
+  return (
+    value
+      .normalize('NFKD')
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/^-|-$/g, '') || 'mesa'
+  );
 }
 
 async function downloadPng(svg: string, filename: string) {
@@ -87,7 +92,9 @@ export function DiningTablesManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [printTarget, setPrintTarget] = useState<string | 'ALL' | null>(null);
-  const [rotationReceipt, setRotationReceipt] = useState<{ tableId: string; at: Date } | null>(null);
+  const [rotationReceipt, setRotationReceipt] = useState<{ tableId: string; at: Date } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const printableTables = useMemo(() => tables.filter((table) => table.isActive), [tables]);
 
@@ -188,11 +195,40 @@ export function DiningTablesManager({
             <p>Comece com 12 mesas ou ajuste a sequência ao seu salão.</p>
           </div>
           <div className="dining-tables-batch-fields">
-            <label>Prefixo<input value={prefix} onChange={(event) => setPrefix(event.target.value)} maxLength={40} /></label>
-            <label>Primeiro número<input type="number" min={1} max={9999} value={start} onChange={(event) => setStart(Number(event.target.value))} /></label>
-            <label>Quantidade<input type="number" min={1} max={100} value={count} onChange={(event) => setCount(Number(event.target.value))} /></label>
+            <label>
+              Prefixo
+              <input
+                value={prefix}
+                onChange={(event) => setPrefix(event.target.value)}
+                maxLength={40}
+              />
+            </label>
+            <label>
+              Primeiro número
+              <input
+                type="number"
+                min={1}
+                max={9999}
+                value={start}
+                onChange={(event) => setStart(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              Quantidade
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={count}
+                onChange={(event) => setCount(Number(event.target.value))}
+              />
+            </label>
             <ConfirmDialog
-              trigger={<Button type="button" disabled={isPending}><Plus aria-hidden="true" /> Criar {count} mesas</Button>}
+              trigger={
+                <Button type="button" disabled={isPending}>
+                  <Plus aria-hidden="true" /> Criar {count} mesas
+                </Button>
+              }
               title={`Criar ${count} mesas?`}
               description={`Serão criadas ${prefix} ${String(start).padStart(2, '0')} até ${prefix} ${String(start + count - 1).padStart(2, '0')}. Revise a sequência antes de confirmar.`}
               confirmLabel={`Criar ${count} mesas`}
@@ -204,14 +240,27 @@ export function DiningTablesManager({
       ) : null}
 
       <header className="dining-tables-list-header">
-        <div><h2>Mesas cadastradas</h2><p>{tables.length} no total · {printableTables.length} ativas</p></div>
-        <Button type="button" variant="outline" disabled={!printableTables.length} onClick={() => print('ALL')}>
+        <div>
+          <h2>Mesas cadastradas</h2>
+          <p>
+            {tables.length} no total · {printableTables.length} ativas
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!printableTables.length}
+          onClick={() => print('ALL')}
+        >
           <Printer aria-hidden="true" /> Imprimir todos
         </Button>
       </header>
 
       {tables.length === 0 ? (
-        <div className="dining-tables-empty"><p>Nenhuma mesa cadastrada.</p><span>Crie a primeira sequência acima.</span></div>
+        <div className="dining-tables-empty">
+          <p>Nenhuma mesa cadastrada.</p>
+          <span>Crie a primeira sequência acima.</span>
+        </div>
       ) : (
         <ul className="dining-tables-list">
           {tables.map((table) => {
@@ -231,29 +280,82 @@ export function DiningTablesManager({
                   </div>
                   <div className="dining-table-actions">
                     <details>
-                      <summary><Eye aria-hidden="true" /> Ver QR</summary>
+                      <summary>
+                        <Eye aria-hidden="true" /> Ver QR
+                      </summary>
                       <div className="dining-table-qr-panel">
-                        <div className="dining-table-qr" dangerouslySetInnerHTML={{ __html: svg }} />
+                        <div
+                          className="dining-table-qr"
+                          dangerouslySetInnerHTML={{ __html: svg }}
+                        />
                         <p>{url}</p>
                         <div>
-                          <Button type="button" variant="outline" size="sm" onClick={() => downloadBlob(svg, 'image/svg+xml', `${safeFilename(table.label)}.svg`)}><Download aria-hidden="true" /> SVG</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => void downloadPng(svg, `${safeFilename(table.label)}.png`)}><Download aria-hidden="true" /> PNG</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => print(table.id)}><Printer aria-hidden="true" /> Cartão A6</Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              downloadBlob(svg, 'image/svg+xml', `${safeFilename(table.label)}.svg`)
+                            }
+                          >
+                            <Download aria-hidden="true" /> SVG
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void downloadPng(svg, `${safeFilename(table.label)}.png`)
+                            }
+                          >
+                            <Download aria-hidden="true" /> PNG
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => print(table.id)}
+                          >
+                            <Printer aria-hidden="true" /> Cartão A6
+                          </Button>
                         </div>
                       </div>
                     </details>
                     {canManage ? (
                       <>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingId(table.id); setEditingLabel(table.label); }}><Pencil aria-hidden="true" /> Renomear</Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingId(table.id);
+                            setEditingLabel(table.label);
+                          }}
+                        >
+                          <Pencil aria-hidden="true" /> Renomear
+                        </Button>
                         <ConfirmDialog
-                          trigger={<Button type="button" variant="ghost" size="sm"><ToggleLeft aria-hidden="true" /> {table.isActive ? 'Desativar' : 'Reativar'}</Button>}
+                          trigger={
+                            <Button type="button" variant="ghost" size="sm">
+                              <ToggleLeft aria-hidden="true" />{' '}
+                              {table.isActive ? 'Desativar' : 'Reativar'}
+                            </Button>
+                          }
                           title={`${table.isActive ? 'Desativar' : 'Reativar'} ${table.label}?`}
-                          description={table.isActive ? 'O QR deixará de aceitar novos pedidos. Pedidos existentes continuam intactos.' : 'O QR atual voltará a aceitar novos pedidos.'}
+                          description={
+                            table.isActive
+                              ? 'O QR deixará de aceitar novos pedidos. Pedidos existentes continuam intactos.'
+                              : 'O QR atual voltará a aceitar novos pedidos.'
+                          }
                           confirmLabel={table.isActive ? 'Desativar mesa' : 'Reativar mesa'}
                           onConfirm={() => toggle(table)}
                         />
                         <ConfirmDialog
-                          trigger={<Button type="button" variant="ghost" size="sm"><RefreshCw aria-hidden="true" /> Rotacionar QR</Button>}
+                          trigger={
+                            <Button type="button" variant="ghost" size="sm">
+                              <RefreshCw aria-hidden="true" /> Rotacionar QR
+                            </Button>
+                          }
                           title={`Rotacionar o QR de ${table.label}?`}
                           description="O QR impresso anteriormente deixará de funcionar imediatamente. Será necessário imprimir o novo cartão."
                           confirmLabel="Rotacionar QR"
@@ -265,23 +367,58 @@ export function DiningTablesManager({
                   </div>
                 </div>
                 {editingId === table.id ? (
-                  <form className="dining-table-rename" onSubmit={(event) => { event.preventDefault(); rename(table); }}>
+                  <form
+                    className="dining-table-rename"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      rename(table);
+                    }}
+                  >
                     <label htmlFor={`rename-${table.id}`}>Novo nome</label>
-                    <input id={`rename-${table.id}`} value={editingLabel} onChange={(event) => setEditingLabel(event.target.value)} maxLength={80} autoFocus />
-                    <Button type="submit" size="sm" disabled={isPending}>Salvar</Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
+                    <input
+                      id={`rename-${table.id}`}
+                      value={editingLabel}
+                      onChange={(event) => setEditingLabel(event.target.value)}
+                      maxLength={80}
+                      autoFocus
+                    />
+                    <Button type="submit" size="sm" disabled={isPending}>
+                      Salvar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancelar
+                    </Button>
                   </form>
                 ) : null}
                 {rotationReceipt?.tableId === table.id ? (
                   <div className="dining-table-rotation-receipt" role="status">
-                    <div><strong>Novo QR ativo</strong><span>Rotacionado às {rotationReceipt.at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. O anterior foi invalidado.</span></div>
-                    <Button type="button" size="sm" onClick={() => print(table.id)}><Printer aria-hidden="true" /> Imprimir e substituir cartão</Button>
+                    <div>
+                      <strong>Novo QR ativo</strong>
+                      <span>
+                        Rotacionado às{' '}
+                        {rotationReceipt.at.toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        . O anterior foi invalidado.
+                      </span>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => print(table.id)}>
+                      <Printer aria-hidden="true" /> Imprimir e substituir cartão
+                    </Button>
                   </div>
                 ) : null}
                 <article className="dining-table-print-card" aria-hidden="true">
-                  <p>{storeName}</p><h3>{table.label}</h3>
+                  <p>{storeName}</p>
+                  <h3>{table.label}</h3>
                   <div dangerouslySetInnerHTML={{ __html: svg }} />
-                  <strong>Escaneie para pedir</strong><span>Cardápio, pedido e acompanhamento no seu celular.</span>
+                  <strong>Escaneie para pedir</strong>
+                  <span>Cardápio, pedido e acompanhamento no seu celular.</span>
                 </article>
               </li>
             );

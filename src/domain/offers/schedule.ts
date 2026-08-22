@@ -164,7 +164,10 @@ export function offerSchedulesOverlap(left: OfferSchedule, right: OfferSchedule)
   const rightStart = dateOnly(right.startsOn);
   const leftEnd = dateOnly(left.endsOnExclusive);
   const rightEnd = dateOnly(right.endsOnExclusive);
-  const occurrenceStart = [leftStart, rightStart].filter((value): value is string => Boolean(value)).sort().at(-1);
+  const occurrenceStart = [leftStart, rightStart]
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1);
   const occurrenceEnds = [
     leftEnd ? addDays(leftEnd, scheduleHasOvernightWindow(left) ? 1 : 0) : null,
     rightEnd ? addDays(rightEnd, scheduleHasOvernightWindow(right) ? 1 : 0) : null,
@@ -177,7 +180,16 @@ export function offerSchedulesOverlap(left: OfferSchedule, right: OfferSchedule)
 
   const scanStart = occurrenceStart ?? '2000-01-03';
   const scanDays = occurrenceEnd
-    ? Math.min(15, Math.max(0, Math.ceil((Date.parse(`${occurrenceEnd}T00:00:00Z`) - Date.parse(`${scanStart}T00:00:00Z`)) / 86_400_000)))
+    ? Math.min(
+        15,
+        Math.max(
+          0,
+          Math.ceil(
+            (Date.parse(`${occurrenceEnd}T00:00:00Z`) - Date.parse(`${scanStart}T00:00:00Z`)) /
+              86_400_000,
+          ),
+        ),
+      )
     : 15;
 
   for (let dayOffset = 0; dayOffset < scanDays; dayOffset += 1) {

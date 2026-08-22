@@ -89,9 +89,9 @@ describe('máquina de estados de pedidos', () => {
       expect(canTransitionOrder(dineIn, 'OUT_FOR_DELIVERY')).toBe(false);
       expect(canTransitionOrder(dineIn, 'DELIVERED')).toBe(false);
       expect(getNextOperationalAction(dineIn)).toBe('CONFIRM_PAYMENT');
-      expect(
-        getNextOperationalAction({ ...dineIn, paymentStatus: 'PAID' }),
-      ).toBe('COMPLETE_DINE_IN');
+      expect(getNextOperationalAction({ ...dineIn, paymentStatus: 'PAID' })).toBe(
+        'COMPLETE_DINE_IN',
+      );
     });
 
     it('assert aceita todas as transições válidas sem efeitos colaterais', () => {

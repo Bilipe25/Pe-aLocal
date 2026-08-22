@@ -1,23 +1,21 @@
 import type { CheckoutInput, DineInCheckoutInput } from '@/schemas/checkout';
 
-export type CheckoutFingerprintItem<
-  T = CheckoutInput['items'][number],
-> = T extends CheckoutInput['items'][number]
-  ? Omit<T, 'notes' | 'lineId'> & { notes?: string }
-  : never;
-
-type CheckoutFingerprintInputFor<T extends CheckoutInput | DineInCheckoutInput> =
-  T extends CheckoutInput | DineInCheckoutInput
-    ? Omit<T, 'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'> & {
-        notes?: string;
-        expectedQuoteFingerprint?: string;
-        items: CheckoutFingerprintItem[];
-      }
+export type CheckoutFingerprintItem<T = CheckoutInput['items'][number]> =
+  T extends CheckoutInput['items'][number]
+    ? Omit<T, 'notes' | 'lineId'> & { notes?: string }
     : never;
 
+type CheckoutFingerprintInputFor<T extends CheckoutInput | DineInCheckoutInput> = T extends
+  CheckoutInput | DineInCheckoutInput
+  ? Omit<T, 'idempotencyKey' | 'notes' | 'items' | 'expectedQuoteFingerprint'> & {
+      notes?: string;
+      expectedQuoteFingerprint?: string;
+      items: CheckoutFingerprintItem[];
+    }
+  : never;
+
 export type CheckoutFingerprintInput =
-  | CheckoutFingerprintInputFor<CheckoutInput>
-  | CheckoutFingerprintInputFor<DineInCheckoutInput>;
+  CheckoutFingerprintInputFor<CheckoutInput> | CheckoutFingerprintInputFor<DineInCheckoutInput>;
 
 export interface ResolvedCheckoutFingerprintIdentity {
   customerId: string;

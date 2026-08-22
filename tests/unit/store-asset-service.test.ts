@@ -149,9 +149,7 @@ describe('StoreAssetService', () => {
     ).rejects.toBeInstanceOf(ConflictError);
 
     expect(mocks.assetCreate).not.toHaveBeenCalled();
-    expect(mocks.bucketDelete).toHaveBeenCalledWith(
-      'tenants/tenant-1/stores/store-1/logo/new.png',
-    );
+    expect(mocks.bucketDelete).toHaveBeenCalledWith('tenants/tenant-1/stores/store-1/logo/new.png');
   });
 
   it('não permite substituir um asset ausente no escopo tenant/store', async () => {

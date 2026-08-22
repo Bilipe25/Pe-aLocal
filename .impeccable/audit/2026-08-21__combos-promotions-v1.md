@@ -8,14 +8,14 @@ O detector estático encontrou 252 alertas no `src`. A verificação contextual 
 
 ## Audit Health Score
 
-| # | Dimension | Score | Key finding |
-|---|---|---:|---|
-| 1 | Accessibility | 4 | Foco, nomes acessíveis e relações de preço foram verificados |
-| 2 | Performance | 4 | Consultas em lote, cache por loja e imagem otimizada |
-| 3 | Responsive Design | 4 | Fluxos móveis primeiro, grids progressivos e alvos de 44 px |
-| 4 | Theming | 3 | A V1 usa tokens; o detector confirma drift histórico no CSS/presets globais |
-| 5 | Implementation Integrity | 4 | Sistema específico e coerente; nenhum atalho verificado na V1 |
-| **Total** | | **19/20** | **Excellent — minor polish** |
+| #         | Dimension                |     Score | Key finding                                                                 |
+| --------- | ------------------------ | --------: | --------------------------------------------------------------------------- |
+| 1         | Accessibility            |         4 | Foco, nomes acessíveis e relações de preço foram verificados                |
+| 2         | Performance              |         4 | Consultas em lote, cache por loja e imagem otimizada                        |
+| 3         | Responsive Design        |         4 | Fluxos móveis primeiro, grids progressivos e alvos de 44 px                 |
+| 4         | Theming                  |         3 | A V1 usa tokens; o detector confirma drift histórico no CSS/presets globais |
+| 5         | Implementation Integrity |         4 | Sistema específico e coerente; nenhum atalho verificado na V1               |
+| **Total** |                          | **19/20** | **Excellent — minor polish**                                                |
 
 ## Executive Summary
 

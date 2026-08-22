@@ -12,13 +12,7 @@ export default defineConfig({
     exclude: ['tests/e2e/**'],
     coverage: {
       reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'tests/',
-        '**/*.d.ts',
-        '**/*.config.*',
-        'prisma/',
-      ],
+      exclude: ['node_modules/', 'tests/', '**/*.d.ts', '**/*.config.*', 'prisma/'],
     },
   },
   resolve: {

@@ -7,10 +7,9 @@ const migrationDirectories = [
   '20260722014000_order_number_counter_backfill',
   '20260722015000_order_number_counter_cutover',
 ] as const;
-const migrations = migrationDirectories.map((directory) => readFileSync(
-  join(process.cwd(), `prisma/migrations/${directory}/migration.sql`),
-  'utf8',
-));
+const migrations = migrationDirectories.map((directory) =>
+  readFileSync(join(process.cwd(), `prisma/migrations/${directory}/migration.sql`), 'utf8'),
+);
 const migration = migrations.join('\n');
 
 describe('order number counter migration', () => {
@@ -52,7 +51,9 @@ describe('order number counter migration', () => {
   it('keeps the internal counter unavailable through the Data API', () => {
     expect(migration).toContain('ENABLE ROW LEVEL SECURITY');
     expect(migration).toContain('REVOKE ALL ON TABLE public.store_order_counters FROM anon');
-    expect(migration).toContain('REVOKE ALL ON TABLE public.store_order_counters FROM authenticated');
+    expect(migration).toContain(
+      'REVOKE ALL ON TABLE public.store_order_counters FROM authenticated',
+    );
   });
 
   it('documents a rollback with the quoted mixed-case constraint', () => {

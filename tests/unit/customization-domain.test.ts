@@ -83,10 +83,7 @@ describe('domínio de personalização', () => {
       .map((issue) => issue.pair);
 
     expect(criticalPairs).toEqual(
-      expect.arrayContaining([
-        'Texto secundário sobre fundo',
-        'Ação outline sobre cartão',
-      ]),
+      expect.arrayContaining(['Texto secundário sobre fundo', 'Ação outline sobre cartão']),
     );
   });
 

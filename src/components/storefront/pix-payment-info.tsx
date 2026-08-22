@@ -255,7 +255,7 @@ export function PixPaymentInfo({
       </div>
 
       {pixInstructions && (
-        <div className="bg-kraft/40 text-tinta/90 mt-3 rounded-lg border border-tinta/10 p-2.5 text-xs break-words font-medium">
+        <div className="bg-kraft/40 text-tinta/90 border-tinta/10 mt-3 rounded-lg border p-2.5 text-xs font-medium break-words">
           {pixInstructions}
         </div>
       )}

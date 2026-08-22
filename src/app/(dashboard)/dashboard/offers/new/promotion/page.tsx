@@ -16,7 +16,11 @@ export default async function NewPromotionPage() {
   }));
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Criar promoção" description="Preço promocional do produto-base com agenda simples." backHref="/dashboard/offers/new" />
+      <PageHeader
+        title="Criar promoção"
+        description="Preço promocional do produto-base com agenda simples."
+        backHref="/dashboard/offers/new"
+      />
       <PromotionForm products={products} />
     </div>
   );
