@@ -10,6 +10,7 @@ const UPDATE_TOAST_ID = 'pedidolocal-pwa-update';
 
 export function isPwaUpdateSafePath(pathname: string): boolean {
   if (/^\/(?:dashboard|admin|auth)(?:\/|$)/.test(pathname)) return false;
+  if (/^\/q(?:\/|$)/.test(pathname)) return false;
   if (/^\/(?:login|forgot-password|reset-password)(?:\/|$)/.test(pathname)) return false;
   return !/^\/[^/]+\/(?:cart|checkout|orders|order)(?:\/|$)/.test(pathname);
 }
@@ -65,9 +66,24 @@ export async function registerProductionServiceWorker({
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     reportWaiting();
 
+    let lastUpdateCheckAt = 0;
+    const checkForUpdate = () => {
+      const now = Date.now();
+      if (now - lastUpdateCheckAt < 5 * 60 * 1000) return;
+      lastUpdateCheckAt = now;
+      void registration.update().catch(() => undefined);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    };
+    window.addEventListener('online', checkForUpdate);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       registration.removeEventListener('updatefound', handleUpdateFound);
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      window.removeEventListener('online', checkForUpdate);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   } catch (error) {
     onError(error instanceof DOMException ? error.name : 'UnknownError');

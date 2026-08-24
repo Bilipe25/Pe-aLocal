@@ -48,7 +48,9 @@ export async function middleware(request: NextRequest) {
 
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', `${pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(loginUrl);
+    const redirect = NextResponse.redirect(loginUrl);
+    redirect.headers.set('Cache-Control', 'private, no-store, max-age=0');
+    return redirect;
   }
 
   response.headers.set('X-Frame-Options', 'DENY');

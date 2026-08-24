@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ asse
       return new Response('Asset não encontrado.', { status: 404 });
     }
 
-    return serveStoreAsset(request, asset, 'private, max-age=86400, immutable');
+    return serveStoreAsset(request, asset, 'private, no-store, max-age=0');
   } catch (error) {
     return errorToResponse(error);
   }

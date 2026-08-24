@@ -4,11 +4,16 @@ import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 import { config as loadEnvironmentFile } from 'dotenv';
 
 const HYPERDRIVE_LOCAL_CONNECTION_ENV = 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE';
+const HYPERDRIVE_FRESH_LOCAL_CONNECTION_ENV =
+  'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_FRESH';
 
 if (process.env.NODE_ENV === 'development') {
   loadEnvironmentFile({ path: '.env.local', override: false, quiet: true });
   if (process.env.DATABASE_URL && !process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV]) {
     process.env[HYPERDRIVE_LOCAL_CONNECTION_ENV] = process.env.DATABASE_URL;
+  }
+  if (process.env.DATABASE_URL && !process.env[HYPERDRIVE_FRESH_LOCAL_CONNECTION_ENV]) {
+    process.env[HYPERDRIVE_FRESH_LOCAL_CONNECTION_ENV] = process.env.DATABASE_URL;
   }
 }
 
@@ -109,6 +114,17 @@ const nextConfig: NextConfig = {
       {
         source: '/auth/:path*',
         headers: [{ key: 'Cache-Control', value: 'private, no-store, max-age=0' }],
+      },
+      {
+        source: '/api/auth/:path*',
+        headers: [{ key: 'Cache-Control', value: 'private, no-store, max-age=0' }],
+      },
+      {
+        source: '/q/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+        ],
       },
       {
         source: '/login',

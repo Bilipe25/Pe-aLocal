@@ -56,10 +56,32 @@
       "remote": true,
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler",
+      },
+      {
+        "name": "NEXT_TAG_CACHE_DO_SHARDED",
+        "class_name": "DOShardedTagCache",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1-opennext-cache",
+      "new_sqlite_classes": ["DOQueueHandler", "DOShardedTagCache"],
+    },
+  ],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
       "id": "db9213cd1b214074928647719ddff805",
+    },
+    {
+      "binding": "HYPERDRIVE_FRESH",
+      "id": "8efb30a2a2eb4a9b87fa25e0509c4709",
     },
   ],
   "queues": {
@@ -136,10 +158,32 @@
           "remote": true,
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "NEXT_CACHE_DO_QUEUE",
+            "class_name": "DOQueueHandler",
+          },
+          {
+            "name": "NEXT_TAG_CACHE_DO_SHARDED",
+            "class_name": "DOShardedTagCache",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1-opennext-cache",
+          "new_sqlite_classes": ["DOQueueHandler", "DOShardedTagCache"],
+        },
+      ],
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
           "id": "db9213cd1b214074928647719ddff805",
+        },
+        {
+          "binding": "HYPERDRIVE_FRESH",
+          "id": "8efb30a2a2eb4a9b87fa25e0509c4709",
         },
       ],
       "queues": {
@@ -181,6 +225,7 @@
     "production": {
       "name": "pedidolocal-production",
       "vars": {
+        "APP_URL": "https://pedidolocal-production.gabriellion97.workers.dev",
         "APP_ENV": "production",
         "ORDER_EVENT_PUBLISH_MODE": "direct",
         "WEB_PUSH_ENABLED": "false",
@@ -210,10 +255,32 @@
           "bucket_name": "pedidolocal-production-store-assets",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "NEXT_CACHE_DO_QUEUE",
+            "class_name": "DOQueueHandler",
+          },
+          {
+            "name": "NEXT_TAG_CACHE_DO_SHARDED",
+            "class_name": "DOShardedTagCache",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1-opennext-cache",
+          "new_sqlite_classes": ["DOQueueHandler", "DOShardedTagCache"],
+        },
+      ],
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
           "id": "4e8ea7785f6443a682350235f432d380",
+        },
+        {
+          "binding": "HYPERDRIVE_FRESH",
+          "id": "5073a982b5594aa88a80a87f7cbf9520",
         },
       ],
       "queues": {

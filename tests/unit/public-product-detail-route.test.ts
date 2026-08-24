@@ -58,16 +58,14 @@ describe('GET /api/storefront/:storeSlug/products/:productId', () => {
     mocks.getPublicProductDetail.mockResolvedValue(product);
   });
 
-  it('retorna o detalhe público escopado com cache compartilhado seguro', async () => {
+  it('retorna o detalhe público escopado sem cachear estado mutável', async () => {
     const response = await request({ storeSlug, productId });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ product });
     expect(mocks.getPublicStoreScopeBySlug).toHaveBeenCalledWith(storeSlug);
     expect(mocks.getPublicProductDetail).toHaveBeenCalledWith('store-1', 'tenant-1', productId);
-    expect(response.headers.get('cache-control')).toBe(
-      'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
-    );
+    expect(response.headers.get('cache-control')).toBe('no-store, max-age=0');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(JSON.stringify(product)).not.toContain('tenantId');

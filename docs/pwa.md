@@ -19,13 +19,13 @@ As associações de logo, favicon e imagens de categoria pertencem ao fluxo rasc
 
 ## Política do Service Worker
 
-O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v3`. Alterações no conteúdo do shell exigem incremento explícito da versão.
+O arquivo `/sw.js` controla a origem inteira e usa o cache `pedidolocal-shell-v5`. Alterações no conteúdo do shell exigem incremento explícito da versão.
 
 | Requisição                                              | Estratégia                                 | CacheStorage    |
 | ------------------------------------------------------- | ------------------------------------------ | --------------- |
 | `/offline.html` e quatro ícones versionados             | Cache First após precache validado         | Sim             |
 | Navegação pública `/` e `/{storeSlug}`                  | Network First com fallback `/offline.html` | Não guarda HTML |
-| Carrinho, checkout, pedidos e acompanhamento            | Network Only                               | Não             |
+| Carrinho, checkout, pedidos, acompanhamento e `/q/**`   | Network Only                               | Não             |
 | Dashboard, admin e autenticação                         | Network Only                               | Não             |
 | `/api/**`, inclusive assets da loja                     | Network Only                               | Não             |
 | Métodos diferentes de GET                               | Pass-through/Network Only                  | Não             |
@@ -71,4 +71,4 @@ pnpm test:workerd
 
 O gate definitivo usa Linux e Node.js 22. O teste E2E de controle offline é executado em `next start` ou workerd, pois o registro é intencionalmente desativado em `next dev`.
 
-O cache próprio está em `pedidolocal-shell-v4`. A versão `v4` reconhece `reminderStage` e não limpa o badge administrativo ao clicar em reminders do SLA; o clique de um Push inicial continua com o comportamento anterior. Essa mudança não amplia a allowlist nem a política de CacheStorage.
+O cache próprio está em `pedidolocal-shell-v5`. A versão `v5` mantém `/q/**` estritamente Network Only, consulta somente o cache nominal no fallback e executa `skipWaiting` dentro do lifecycle do evento. A política continua sem HTML dinâmico, API ou PII no CacheStorage.

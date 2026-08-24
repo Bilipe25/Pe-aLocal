@@ -8,7 +8,7 @@ type Handler = (event: Record<string, unknown>) => void;
 
 function loadServiceWorker() {
   const handlers = new Map<string, Handler>();
-  const cache = { put: vi.fn() };
+  const cache = { put: vi.fn(), match: vi.fn().mockResolvedValue(new Response('offline')) };
   const caches = {
     open: vi.fn().mockResolvedValue(cache),
     keys: vi
@@ -17,10 +17,10 @@ function loadServiceWorker() {
         'pedidolocal-shell-v0',
         'pedidolocal-shell-v1',
         'pedidolocal-shell-v2',
+        'pedidolocal-shell-v4',
         'cache-de-outra-aplicacao',
       ]),
     delete: vi.fn().mockResolvedValue(true),
-    match: vi.fn().mockResolvedValue(new Response('offline')),
   };
   const fetchMock = vi
     .fn()
@@ -82,6 +82,9 @@ describe('Service Worker PedidoLocal', () => {
     '/loja/cart',
     '/loja/checkout',
     `/q/s/${'S'.repeat(43)}`,
+    `/q/${'a'.repeat(43)}/cart`,
+    `/q/${'a'.repeat(43)}/checkout`,
+    `/q/${'a'.repeat(43)}/order/00000000-0000-4000-8000-000000000001`,
   ])('mantém %s em Network Only', async (pathname) => {
     const { handlers, fetchMock, caches } = loadServiceWorker();
     const respondWith = vi.fn();
@@ -95,11 +98,11 @@ describe('Service Worker PedidoLocal', () => {
     expect(respondWith).toHaveBeenCalledOnce();
     await respondWith.mock.calls[0][0];
     expect(fetchMock).toHaveBeenCalledWith(request);
-    expect(caches.match).not.toHaveBeenCalled();
+    expect(caches.open).not.toHaveBeenCalled();
   });
 
   it('usa somente o fallback offline quando uma navegação pública falha', async () => {
-    const { handlers, fetchMock, caches } = loadServiceWorker();
+    const { handlers, fetchMock, caches, cache } = loadServiceWorker();
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     const respondWith = vi.fn();
     const request = {
@@ -110,7 +113,8 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('fetch')?.({ request, respondWith });
 
     await expect(respondWith.mock.calls[0][0]).resolves.toBeInstanceOf(Response);
-    expect(caches.match).toHaveBeenCalledWith('/offline.html');
+    expect(caches.open).toHaveBeenCalledWith('pedidolocal-shell-v5');
+    expect(cache.match).toHaveBeenCalledWith('/offline.html');
   });
 
   it('recusa precache private/no-store', async () => {
@@ -131,10 +135,21 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('activate')?.({ waitUntil });
     await waitUntil.mock.calls[0][0];
 
-    expect(caches.delete).toHaveBeenCalledTimes(3);
+    expect(caches.delete).toHaveBeenCalledTimes(4);
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v0');
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v1');
     expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v2');
+    expect(caches.delete).toHaveBeenCalledWith('pedidolocal-shell-v4');
+  });
+
+  it('mantém skipWaiting dentro do lifecycle do evento', async () => {
+    const { handlers, self } = loadServiceWorker();
+    const waitUntil = vi.fn();
+    handlers.get('message')?.({ data: { type: 'SKIP_WAITING' }, waitUntil });
+
+    expect(waitUntil).toHaveBeenCalledOnce();
+    await waitUntil.mock.calls[0][0];
+    expect(self.skipWaiting).toHaveBeenCalledOnce();
   });
 
   it('exibe Push válido sem incluir o token no título ou corpo', async () => {
