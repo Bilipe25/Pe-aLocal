@@ -4,16 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getKdsSnapshotAction } from '@/features/kds/actions';
 import type { OrderRealtimeState } from '@/hooks/use-order-realtime';
+import { kdsQueryKeys } from '@/lib/query/keys/kds';
 import type { KdsSnapshotDTO } from '@/types/kds';
 
-export const kdsQueryKeys = {
-  snapshot: (storeId: string, authorizationScope: string) =>
-    ['kds-orders', storeId, authorizationScope] as const,
-  store: (storeId: string) => ['kds-orders', storeId] as const,
-};
+export { kdsQueryKeys } from '@/lib/query/keys/kds';
 
 export function kdsPollingInterval(state: OrderRealtimeState) {
-  return state === 'connected' ? 60_000 : 20_000;
+  return state === 'connected' ? 25_000 : 15_000;
 }
 
 function actionData(result: Awaited<ReturnType<typeof getKdsSnapshotAction>>): KdsSnapshotDTO {

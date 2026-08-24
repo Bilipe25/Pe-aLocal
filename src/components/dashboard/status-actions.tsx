@@ -37,7 +37,7 @@ import type {
   RefundPaymentInput,
 } from '@/features/orders/schemas';
 import { CancelOrderDialog } from './cancel-order-dialog';
-import { orderQueryKeys } from '@/hooks/use-orders';
+import { invalidateOperationalOrderData } from '@/lib/query/invalidation';
 import { PaymentDecisionDialog } from './payment-decision-dialog';
 import { ORDER_ACTION_PRESENTATION } from './order-action-presentation';
 
@@ -53,27 +53,12 @@ type OrderMutation = (input: {
   expectedVersion: number;
 }) => Promise<ActionResult<OrderActionData>>;
 
-export function StatusActions({
-  order,
-  storeId,
-  authorizationScope,
-  onOrderChanged,
-}: StatusActionsProps) {
+export function StatusActions({ order, storeId, onOrderChanged }: StatusActionsProps) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
 
   function refreshOrderData() {
-    return Promise.all([
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
-      queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.history(storeId, authorizationScope, order.id),
-      }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) }),
-    ]);
+    return invalidateOperationalOrderData(queryClient, { storeId, orderId: order.id });
   }
 
   async function handleMutation(mutation: OrderMutation, successMessage: string, allowUndo = true) {

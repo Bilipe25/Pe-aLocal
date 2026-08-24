@@ -61,9 +61,11 @@ describe('useOrderRealtime', () => {
     act(() => mocks.channelHandlers.get('new-order')?.({ orderId: 'order-a', orderNumber: 12 }));
     act(() => mocks.channelHandlers.get('order-updated')?.({ orderId: 'order-a' }));
     act(() => mocks.channelHandlers.get('payment-updated')?.({ orderId: 'order-a' }));
-    expect(onNewOrder).toHaveBeenCalledWith({ orderId: 'order-a', orderNumber: 12 });
-    expect(onOrderUpdated).toHaveBeenCalledWith({ orderId: 'order-a' });
-    expect(onPaymentUpdated).toHaveBeenCalledWith({ orderId: 'order-a' });
+    expect(onNewOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: 'order-a', orderNumber: 12 }),
+    );
+    expect(onOrderUpdated).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'order-a' }));
+    expect(onPaymentUpdated).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'order-a' }));
 
     unmount();
     expect(mocks.client.unsubscribe).toHaveBeenCalledOnce();
@@ -82,5 +84,35 @@ describe('useOrderRealtime', () => {
     act(() => mocks.channelHandlers.get('pusher:subscription_error')?.());
 
     expect(result.current).toBe('degraded');
+  });
+
+  it('deduplica envelopes e exige reconciliação depois de reconectar', () => {
+    const onOrderUpdated = vi.fn();
+    const onReconcileRequired = vi.fn();
+    renderHook(() =>
+      useOrderRealtime('4da03571-bffd-45ef-8c44-20686c487838', {
+        onNewOrder: vi.fn(),
+        onOrderUpdated,
+        onPaymentUpdated: vi.fn(),
+        onReconcileRequired,
+      }),
+    );
+
+    act(() => mocks.channelHandlers.get('pusher:subscription_succeeded')?.());
+    const event = {
+      eventId: 'event-a',
+      schemaVersion: 1,
+      storeId: '4da03571-bffd-45ef-8c44-20686c487838',
+      orderId: 'order-a',
+      version: 3,
+      timestamp: 123,
+    };
+    act(() => mocks.channelHandlers.get('order-updated')?.(event));
+    act(() => mocks.channelHandlers.get('order-updated')?.(event));
+    expect(onOrderUpdated).toHaveBeenCalledOnce();
+
+    act(() => mocks.connectionHandlers.get('state_change')?.({ current: 'disconnected' }));
+    act(() => mocks.channelHandlers.get('pusher:subscription_succeeded')?.());
+    expect(onReconcileRequired).toHaveBeenCalledOnce();
   });
 });

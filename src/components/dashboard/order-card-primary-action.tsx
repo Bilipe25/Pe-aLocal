@@ -17,7 +17,7 @@ import {
   undoLastOrderTransitionAction,
   type OrderActionData,
 } from '@/features/orders/admin-actions';
-import { orderQueryKeys } from '@/hooks/use-orders';
+import { invalidateOperationalOrderData } from '@/lib/query/invalidation';
 import {
   getNextOperationalAction,
   type OrderOperationalAction,
@@ -51,7 +51,6 @@ function needsConfirmation(action: OrderOperationalAction) {
 export function OrderCardPrimaryAction({
   order,
   storeId,
-  authorizationScope,
   onChanged,
   onOrderChanged,
 }: {
@@ -74,14 +73,7 @@ export function OrderCardPrimaryAction({
   const mutation = action ? ACTIONS[action] : null;
 
   async function refresh() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
-      queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.details(storeId, authorizationScope, order.id),
-      }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) }),
-    ]);
+    await invalidateOperationalOrderData(queryClient, { storeId, orderId: order.id });
   }
 
   async function undo(expectedVersion: number) {

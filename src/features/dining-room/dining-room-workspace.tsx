@@ -25,12 +25,12 @@ import {
   resolveDiningServiceRequestAction,
   transferDiningSessionAction,
 } from '@/features/dining-room/actions';
-import {
-  diningRoomQueryKeys,
-  useDiningRoom,
-  useDiningSessionDetail,
-} from '@/hooks/use-dining-room';
+import { useDiningRoom, useDiningSessionDetail } from '@/hooks/use-dining-room';
 import { useOrderRealtime } from '@/hooks/use-order-realtime';
+import {
+  invalidateDiningRoomData,
+  invalidateOperationalOrderData,
+} from '@/lib/query/invalidation';
 import { formatCurrency } from '@/lib/utils';
 import type { DiningRoomSnapshotDto, DiningRoomTableDto } from '@/types/dining-room';
 
@@ -162,20 +162,17 @@ export function DiningRoomWorkspace({
   const [confirmingTransfer, setConfirmingTransfer] = useState(false);
 
   const invalidateRoom = () => {
-    void queryClient.invalidateQueries({ queryKey: diningRoomQueryKeys.store(storeId) });
-    void queryClient.invalidateQueries({ queryKey: ['order-board', storeId] });
-    void queryClient.invalidateQueries({ queryKey: ['kds-orders', storeId] });
-    if (selectedSessionId) {
-      void queryClient.invalidateQueries({
-        queryKey: diningRoomQueryKeys.detail(storeId, authorizationScope, selectedSessionId),
-      });
-    }
+    void invalidateDiningRoomData(queryClient, storeId);
+  };
+  const invalidateOperationalData = () => {
+    void invalidateOperationalOrderData(queryClient, { storeId });
   };
   const realtimeState = useOrderRealtime(storeId, {
-    onNewOrder: invalidateRoom,
-    onOrderUpdated: invalidateRoom,
-    onPaymentUpdated: invalidateRoom,
+    onNewOrder: invalidateOperationalData,
+    onOrderUpdated: invalidateOperationalData,
+    onPaymentUpdated: invalidateOperationalData,
     onDiningRoomUpdated: invalidateRoom,
+    onReconcileRequired: invalidateOperationalData,
   });
   const room = useDiningRoom(storeId, authorizationScope, initialSnapshot, realtimeState);
   const detail = useDiningSessionDetail(storeId, authorizationScope, selectedSessionId);
@@ -202,60 +199,78 @@ export function DiningRoomWorkspace({
   async function resolveRequest(table: DiningRoomTableDto) {
     if (!table.openRequest) return;
     setBusyId(table.openRequest.id);
-    const result = await resolveDiningServiceRequestAction(storeId, {
-      requestId: table.openRequest.id,
-      expectedVersion: table.openRequest.version,
-    });
-    setBusyId(null);
-    if (!result.success) {
-      toast.error(result.error.message);
+    try {
+      const result = await resolveDiningServiceRequestAction(storeId, {
+        requestId: table.openRequest.id,
+        expectedVersion: table.openRequest.version,
+      });
+      if (!result.success) {
+        toast.error(result.error.message);
+        invalidateRoom();
+        return;
+      }
+      toast.success(
+        table.openRequest.type === 'ASSISTANCE'
+          ? 'Chamado atendido.'
+          : 'Pedido de conta reconhecido.',
+      );
       invalidateRoom();
-      return;
+    } catch {
+      toast.error('Não foi possível atualizar a solicitação. Tente novamente.');
+      invalidateRoom();
+    } finally {
+      setBusyId(null);
     }
-    toast.success(
-      table.openRequest.type === 'ASSISTANCE'
-        ? 'Chamado atendido.'
-        : 'Pedido de conta reconhecido.',
-    );
-    invalidateRoom();
   }
 
   async function closeSession() {
     if (!detail.data) return;
     setBusyId(`close:${detail.data.sessionId}`);
-    const result = await closeDiningSessionAction(storeId, {
-      sessionId: detail.data.sessionId,
-      expectedVersion: detail.data.version,
-    });
-    setBusyId(null);
-    if (!result.success) {
-      toast.error(result.error.message);
+    try {
+      const result = await closeDiningSessionAction(storeId, {
+        sessionId: detail.data.sessionId,
+        expectedVersion: detail.data.version,
+      });
+      if (!result.success) {
+        toast.error(result.error.message);
+        invalidateRoom();
+        return;
+      }
+      toast.success('Mesa fechada e disponível para um novo atendimento.');
+      setSelectedSessionId(null);
       invalidateRoom();
-      return;
+    } catch {
+      toast.error('Não foi possível fechar a mesa. Tente novamente.');
+      invalidateRoom();
+    } finally {
+      setBusyId(null);
     }
-    toast.success('Mesa fechada e disponível para um novo atendimento.');
-    setSelectedSessionId(null);
-    invalidateRoom();
   }
 
   async function transferSession() {
     if (!detail.data || !destinationTableId) return;
     setBusyId(`transfer:${detail.data.sessionId}`);
-    const result = await transferDiningSessionAction(storeId, {
-      sessionId: detail.data.sessionId,
-      destinationTableId,
-      expectedVersion: detail.data.version,
-    });
-    setBusyId(null);
-    if (!result.success) {
-      toast.error(result.error.message);
+    try {
+      const result = await transferDiningSessionAction(storeId, {
+        sessionId: detail.data.sessionId,
+        destinationTableId,
+        expectedVersion: detail.data.version,
+      });
+      if (!result.success) {
+        toast.error(result.error.message);
+        setConfirmingTransfer(false);
+        invalidateRoom();
+        return;
+      }
+      toast.success(`Atendimento transferido para ${result.data.tableLabel}.`);
       setConfirmingTransfer(false);
       invalidateRoom();
-      return;
+    } catch {
+      toast.error('Não foi possível transferir a mesa. Tente novamente.');
+      invalidateRoom();
+    } finally {
+      setBusyId(null);
     }
-    toast.success(`Atendimento transferido para ${result.data.tableLabel}.`);
-    setConfirmingTransfer(false);
-    invalidateRoom();
   }
 
   const showAttention = filter === 'ALL' || filter === 'ATTENTION';

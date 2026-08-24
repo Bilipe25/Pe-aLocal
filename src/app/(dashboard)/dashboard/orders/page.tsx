@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query';
 
 import { OrdersPanel } from '@/components/dashboard/orders-panel';
 import { ORDER_ACTIVE_STATUSES } from '@/features/orders/query-constants';
 import { getStoreLocalDate } from '@/lib/time/store-time';
+import { orderQueryKeys } from '@/lib/query/keys/orders';
 import { Permission } from '@/server/permissions';
 import { getOrderBoardBootstrap } from '@/server/services/order-query.service';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
@@ -29,17 +31,29 @@ export default async function OrdersPage() {
     localDate: initialLocalDate,
     statuses: ORDER_ACTIVE_STATUSES,
   });
+  const authorizationScope = `${context.session.userId}:${context.session.tenantRole}`;
+  const initialFilters = {
+    localDate: initialLocalDate,
+    statuses: [...ORDER_ACTIVE_STATUSES],
+  };
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(
+    orderQueryKeys.board(context.store.id, authorizationScope, initialFilters),
+    initialBoard,
+  );
 
   return (
-    <OrdersPanel
-      storeId={context.store.id}
-      storeName={context.store.name}
-      storeSlug={context.store.slug}
-      timeZone={context.store.timeZone}
-      initialLocalDate={initialLocalDate}
-      authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
-      notificationBaseline={notificationBaseline}
-      initialBoard={initialBoard}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <OrdersPanel
+        storeId={context.store.id}
+        storeName={context.store.name}
+        storeSlug={context.store.slug}
+        timeZone={context.store.timeZone}
+        initialLocalDate={initialLocalDate}
+        authorizationScope={authorizationScope}
+        notificationBaseline={notificationBaseline}
+        initialBoard={initialBoard}
+      />
+    </HydrationBoundary>
   );
 }

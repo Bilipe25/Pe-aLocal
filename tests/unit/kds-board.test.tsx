@@ -242,7 +242,7 @@ describe('Tela da cozinha', () => {
 
     act(() => mocks.realtimeHandlers?.onOrderUpdated({ orderId: 'order-CONFIRMED' }));
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kds-orders', 'store-a'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kds', 'store-a'] });
   });
 
   it('move e remove cards quando o snapshot autoritativo muda, sem refresh manual', () => {

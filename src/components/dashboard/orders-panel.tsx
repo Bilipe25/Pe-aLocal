@@ -19,6 +19,7 @@ import {
 import { useOrderNotificationSound } from '@/hooks/use-order-notification-sound';
 import { useOrderRealtime } from '@/hooks/use-order-realtime';
 import { collectOrderSignals, type IncomingOrderSignal } from '@/lib/orders/order-notifications';
+import { invalidateOperationalOrderData } from '@/lib/query/invalidation';
 import { getNextStoreMidnight, getStoreLocalDate } from '@/lib/time/store-time';
 import { cn } from '@/lib/utils';
 import { getOrderBoardLaneAction } from '@/features/orders/query-actions';
@@ -322,21 +323,11 @@ export function OrdersPanel({
     const orderIds = [...pendingRefreshIds.current];
     pendingRefreshIds.current.clear();
     refreshTimeout.current = null;
-    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) });
-    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) });
-    void queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) });
-    for (const orderId of orderIds) {
-      void queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.history(storeId, authorizationScope, orderId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.internalNotes(storeId, authorizationScope, orderId),
-      });
-    }
-  }, [authorizationScope, queryClient, storeId]);
+    void invalidateOperationalOrderData(queryClient, {
+      storeId,
+      orderId: orderIds[0],
+    });
+  }, [queryClient, storeId]);
 
   const resetChangedPagination = useCallback(
     (orderIds: string[]) => {
@@ -351,13 +342,14 @@ export function OrdersPanel({
   );
 
   const scheduleRefresh = useCallback(
-    (orderIds: string[] = []) => {
+    (orderIds: string[] = [], resetAllPages = false) => {
       orderIds.forEach((orderId) => pendingRefreshIds.current.add(orderId));
-      resetChangedPagination(orderIds);
+      if (resetAllPages) setLanePagination(emptyLanePagination(filterRevision));
+      else resetChangedPagination(orderIds);
       if (refreshTimeout.current !== null) return;
       refreshTimeout.current = window.setTimeout(flushRefresh, 500);
     },
-    [flushRefresh, resetChangedPagination],
+    [filterRevision, flushRefresh, resetChangedPagination, setLanePagination],
   );
 
   const processSignals = useCallback(
@@ -385,7 +377,8 @@ export function OrdersPanel({
     onNewOrder: (event) => processSignals([{ ...event, isNew: true }]),
     onOrderUpdated: (event) => scheduleRefresh([event.orderId]),
     onPaymentUpdated: (event) => scheduleRefresh([event.orderId]),
-    onDiningRoomUpdated: () => scheduleRefresh(),
+    onDiningRoomUpdated: () => scheduleRefresh([], true),
+    onReconcileRequired: () => scheduleRefresh([], true),
   });
   const pollingInterval = orderPollingInterval(connectionState);
   useOrderNotificationSignals(
@@ -394,7 +387,7 @@ export function OrdersPanel({
     notificationBaseline,
     pollingInterval,
     processSignals,
-    scheduleRefresh,
+    () => scheduleRefresh([], true),
   );
 
   const refresh = useCallback(async () => {

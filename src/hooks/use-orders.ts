@@ -14,72 +14,21 @@ import {
 } from '@/features/orders/query-actions';
 import { ORDER_NOTIFICATION_SEEN_EVENT_LIMIT } from '@/features/orders/query-constants';
 import type { OrderRealtimeState } from '@/hooks/use-order-realtime';
+import { orderQueryKeys, safeOrderBoardFilterKey } from '@/lib/query/keys/orders';
 import type {
   OrderBoardFilters,
   OrderBoardSnapshotDTO,
   OrderNotificationSignalsDTO,
   OrderQueueFilters,
 } from '@/types/order-query';
-import { useEffect, useEffectEvent } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 
 const NOTIFICATION_CLIENT_EVENT_WINDOW = 200;
 
-export const orderQueryKeys = {
-  board: (
-    storeId: string | null,
-    authorizationScope: string,
-    filters: OrderBoardFilters,
-    searchToken = 'none',
-  ) =>
-    ['order-board', storeId, authorizationScope, safeBoardFilterKey(filters), searchToken] as const,
-  boardStore: (storeId: string | null) => ['order-board', storeId] as const,
-  boardTemporalSummary: (
-    storeId: string | null,
-    authorizationScope: string,
-    filters: OrderBoardFilters,
-    searchToken = 'none',
-  ) =>
-    [
-      'order-board-temporal-summary',
-      storeId,
-      authorizationScope,
-      safeBoardFilterKey(filters),
-      searchToken,
-    ] as const,
-  queue: (
-    storeId: string | null,
-    authorizationScope: string,
-    filters: Omit<OrderQueueFilters, 'cursor'>,
-    searchToken = 'none',
-  ) => ['order-queue', storeId, authorizationScope, safeFilterKey(filters), searchToken] as const,
-  queueStore: (storeId: string | null) => ['order-queue', storeId] as const,
-  details: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
-    ['order-details', storeId, authorizationScope, orderId] as const,
-  history: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
-    ['order-history', storeId, authorizationScope, orderId] as const,
-  internalNotes: (storeId: string | null, authorizationScope: string, orderId: string | null) =>
-    ['order-internal-notes', storeId, authorizationScope, orderId] as const,
-  metrics: (storeId: string | null, authorizationScope: string, localDate: string) =>
-    ['order-metrics', storeId, authorizationScope, localDate] as const,
-  metricsStore: (storeId: string | null) => ['order-metrics', storeId] as const,
-  notifications: (storeId: string | null, authorizationScope: string) =>
-    ['order-notification-signals', storeId, authorizationScope] as const,
-};
-
-function safeBoardFilterKey(filters: OrderBoardFilters) {
-  const safeFilters = { ...filters };
-  delete safeFilters.query;
-  return safeFilters;
-}
+export { orderQueryKeys } from '@/lib/query/keys/orders';
 
 export function orderPollingInterval(state: OrderRealtimeState) {
-  return state === 'connected' ? 60_000 : 20_000;
-}
-
-function safeFilterKey(filters: Omit<OrderQueueFilters, 'cursor'>) {
-  const safeFilters = { ...filters };
-  delete safeFilters.query;
-  return safeFilters;
+  return state === 'connected' ? 25_000 : 15_000;
 }
 
 function actionData<T>(
@@ -123,8 +72,8 @@ export function useOrderBoard(
 ) {
   const initialMatches =
     initial &&
-    JSON.stringify(safeBoardFilterKey(initial.filters)) ===
-      JSON.stringify(safeBoardFilterKey(filters)) &&
+    JSON.stringify(safeOrderBoardFilterKey(initial.filters)) ===
+      JSON.stringify(safeOrderBoardFilterKey(filters)) &&
     !filters.query;
 
   return useQuery({
@@ -192,6 +141,7 @@ export function useOrderNotificationSignals(
   const reconcile = useEffectEvent(onReconcileRequired);
   const getPollingInterval = useEffectEvent(() => pollingInterval);
   const getInitialBaseline = useEffectEvent(() => initialBaseline);
+  const rescheduleRef = useRef<((interval: number) => void) | null>(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -202,6 +152,7 @@ export function useOrderNotificationSignals(
     let running = false;
     let consecutiveFailures = 0;
     let timeout: number | undefined;
+    let nextPollAt: number | undefined;
     const processedEventIds = new Map(
       baseline.processedEventIds
         .slice(-NOTIFICATION_CLIENT_EVENT_WINDOW)
@@ -213,6 +164,7 @@ export function useOrderNotificationSignals(
       if (timeout !== undefined) {
         window.clearTimeout(timeout);
         timeout = undefined;
+        nextPollAt = undefined;
       }
       running = true;
       const pendingSignals: Array<{
@@ -252,6 +204,7 @@ export function useOrderNotificationSignals(
           pages += 1;
         } while (hasMore && pages < 10 && !stopped);
         if (hasMore && !stopped) {
+          nextPollAt = Date.now();
           timeout = window.setTimeout(poll, 0);
           return;
         }
@@ -266,7 +219,9 @@ export function useOrderNotificationSignals(
         running = false;
         if (!stopped && pendingSignals.length) emitSignals(pendingSignals);
         if (!stopped && timeout === undefined) {
-          timeout = window.setTimeout(poll, getPollingInterval());
+          const interval = getPollingInterval();
+          nextPollAt = Date.now() + interval;
+          timeout = window.setTimeout(poll, interval);
         }
       }
     };
@@ -274,16 +229,28 @@ export function useOrderNotificationSignals(
     const pollWhenVisible = () => {
       if (document.visibilityState === 'visible') void poll();
     };
+    rescheduleRef.current = (interval) => {
+      const proposedPollAt = Date.now() + interval;
+      if (nextPollAt !== undefined && nextPollAt <= proposedPollAt) return;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      nextPollAt = proposedPollAt;
+      timeout = window.setTimeout(poll, interval);
+    };
     void poll();
     window.addEventListener('focus', pollWhenVisible);
     document.addEventListener('visibilitychange', pollWhenVisible);
     return () => {
       stopped = true;
+      rescheduleRef.current = null;
       if (timeout !== undefined) window.clearTimeout(timeout);
       window.removeEventListener('focus', pollWhenVisible);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
   }, [authorizationScope, storeId]);
+
+  useEffect(() => {
+    rescheduleRef.current?.(pollingInterval);
+  }, [pollingInterval]);
 }
 
 export function useOrderDetails(

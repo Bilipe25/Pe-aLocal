@@ -102,8 +102,8 @@ describe('acompanhamento automático do cliente', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reduz o polling de segurança quando o tempo real está conectado', () => {
-    expect(customerTrackingPollInterval('connected')).toBe(120_000);
+  it('mantém reconciliação de segurança em até trinta segundos', () => {
+    expect(customerTrackingPollInterval('connected')).toBe(30_000);
     expect(customerTrackingPollInterval('connecting')).toBe(30_000);
     expect(customerTrackingPollInterval('degraded')).toBe(20_000);
     expect(customerTrackingPollInterval('unavailable')).toBe(20_000);
