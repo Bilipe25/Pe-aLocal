@@ -61,6 +61,21 @@ describe('offer schedule', () => {
     expect(isOfferScheduleActiveAtLocal(schedule, '2026-08-18', 2 * 60)).toBe(false);
   });
 
+  it('accepts database dates after the Next cache serializes them', () => {
+    const cachedSchedule = JSON.parse(
+      JSON.stringify({
+        startsOn: new Date('2026-08-21T00:00:00.000Z'),
+        endsOnExclusive: new Date('2026-08-31T00:00:00.000Z'),
+        weekdays: [],
+        startMinute: null,
+        endMinuteExclusive: null,
+      }),
+    );
+
+    expect(isOfferScheduleActiveAtLocal(cachedSchedule, '2026-08-24', 12 * 60)).toBe(true);
+    expect(isOfferScheduleActiveAtLocal(cachedSchedule, '2026-08-31', 0)).toBe(false);
+  });
+
   it('detects overlap without confusing adjacent exclusive windows', () => {
     expect(
       offerSchedulesOverlap(
