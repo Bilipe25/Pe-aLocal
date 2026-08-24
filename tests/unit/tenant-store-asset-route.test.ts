@@ -54,7 +54,7 @@ describe('GET /api/tenant/assets/:assetId', () => {
     expect(mocks.serveStoreAsset).toHaveBeenCalledWith(
       expect.any(Request),
       asset,
-      'private, max-age=86400, immutable',
+      'private, no-store, max-age=0',
     );
   });
 

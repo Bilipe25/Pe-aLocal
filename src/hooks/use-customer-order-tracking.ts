@@ -16,7 +16,7 @@ const TRACKING_POLL_INTERVAL_MS: Record<CustomerTrackingConnection, number> = {
   unavailable: 20_000,
   degraded: 20_000,
   connecting: 30_000,
-  connected: 120_000,
+  connected: 30_000,
 };
 
 export function customerTrackingPollInterval(connection: CustomerTrackingConnection) {

@@ -10,17 +10,20 @@ export async function GET() {
   try {
     const session = await requireAuthenticatedUser();
 
-    return Response.json({
-      user: {
-        id: session.userId,
-        email: session.email,
-        name: session.name,
+    return Response.json(
+      {
+        user: {
+          id: session.userId,
+          email: session.email,
+          name: session.name,
+        },
+        platformRole: session.platformRole,
+        tenantRole: session.tenantRole,
+        tenantId: session.tenantId,
+        storeId: session.storeId,
       },
-      platformRole: session.platformRole,
-      tenantRole: session.tenantRole,
-      tenantId: session.tenantId,
-      storeId: session.storeId,
-    });
+      { headers: { 'Cache-Control': 'private, no-store, max-age=0' } },
+    );
   } catch (error) {
     return errorToResponse(error);
   }

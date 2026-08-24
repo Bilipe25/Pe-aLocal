@@ -269,8 +269,12 @@ function logUnexpectedError(scope: '[UNEXPECTED_ERROR]' | '[ACTION_ERROR]', erro
  * Para uso em Route Handlers.
  */
 export function errorToResponse(error: unknown): Response {
+  const responseInit = {
+    headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+  } as const;
+
   if (error instanceof DomainError) {
-    return Response.json(error.toJSON(), { status: error.statusCode });
+    return Response.json(error.toJSON(), { ...responseInit, status: error.statusCode });
   }
 
   // Erro inesperado — log interno, resposta genérica
@@ -283,7 +287,7 @@ export function errorToResponse(error: unknown): Response {
       message: 'Ocorreu um erro interno. Tente novamente mais tarde.',
       details: [],
     },
-    { status: 500 },
+    { ...responseInit, status: 500 },
   );
 }
 

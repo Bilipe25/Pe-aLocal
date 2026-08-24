@@ -30,6 +30,7 @@ export const orderEventPayloadSchema = z.object({
 export const orderOutboxQueueMessageSchema = z.object({
   eventId: z.string().uuid(),
   schemaVersion: z.literal(ORDER_EVENT_SCHEMA_VERSION),
+  stream: z.literal('ORDER').optional(),
 });
 
 export type OrderEventPayload = z.infer<typeof orderEventPayloadSchema>;

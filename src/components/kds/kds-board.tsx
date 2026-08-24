@@ -42,7 +42,7 @@ import {
 import { useKdsOrders, kdsQueryKeys } from '@/hooks/use-kds-orders';
 import { useOrderNotificationSound } from '@/hooks/use-order-notification-sound';
 import { useOrderRealtime, type OrderRealtimeState } from '@/hooks/use-order-realtime';
-import { orderQueryKeys } from '@/hooks/use-orders';
+import { invalidateOperationalOrderData } from '@/lib/query/invalidation';
 import { cn } from '@/lib/utils';
 import type { KdsLaneKey, KdsOrderDTO, KdsSnapshotDTO } from '@/types/kds';
 
@@ -89,19 +89,15 @@ export function KdsBoard({
   const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(() => new Set());
   const [fullscreen, setFullscreen] = useState(false);
   const previousStatusesRef = useRef<Map<string, KdsOrderDTO['status']> | null>(null);
+  const invalidateOperationalData = () => {
+    void invalidateOperationalOrderData(queryClient, { storeId });
+  };
   const realtimeState = useOrderRealtime(storeId, {
-    onNewOrder: () => {
-      void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
-    },
-    onOrderUpdated: () => {
-      void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
-    },
-    onPaymentUpdated: () => {
-      void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
-    },
-    onDiningRoomUpdated: () => {
-      void queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) });
-    },
+    onNewOrder: invalidateOperationalData,
+    onOrderUpdated: invalidateOperationalData,
+    onPaymentUpdated: invalidateOperationalData,
+    onDiningRoomUpdated: invalidateOperationalData,
+    onReconcileRequired: invalidateOperationalData,
   });
   const orders = useKdsOrders(storeId, authorizationScope, initialSnapshot, realtimeState);
   const sound = useOrderNotificationSound(`kds:${storeId}`);
@@ -135,17 +131,7 @@ export function KdsBoard({
   }, [snapshot]);
 
   async function refreshAll(orderId?: string) {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: kdsQueryKeys.store(storeId) }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.boardStore(storeId) }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.queueStore(storeId) }),
-      queryClient.invalidateQueries({ queryKey: orderQueryKeys.metricsStore(storeId) }),
-      orderId
-        ? queryClient.invalidateQueries({
-            queryKey: orderQueryKeys.details(storeId, authorizationScope, orderId),
-          })
-        : Promise.resolve(),
-    ]);
+    await invalidateOperationalOrderData(queryClient, { storeId, orderId });
   }
 
   function applyServerTransition(input: {

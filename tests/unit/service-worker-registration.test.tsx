@@ -18,6 +18,9 @@ describe('registro do Service Worker', () => {
     '/loja/checkout',
     '/loja/orders',
     '/loja/order/token',
+    `/q/${'a'.repeat(43)}`,
+    `/q/${'a'.repeat(43)}/cart`,
+    `/q/s/${'S'.repeat(43)}`,
   ])('adia atualização na rota sensível %s', (pathname) => {
     expect(isPwaUpdateSafePath(pathname)).toBe(false);
   });
@@ -37,6 +40,7 @@ describe('registro do Service Worker', () => {
       installing: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
+      update: vi.fn().mockResolvedValue(undefined),
     } as unknown as ServiceWorkerRegistration;
     const serviceWorker = {
       controller: {},

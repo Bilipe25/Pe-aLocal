@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query';
 
 import { KdsBoard } from '@/components/kds/kds-board';
+import { kdsQueryKeys } from '@/lib/query/keys/kds';
 import { hasTenantPermission, Permission } from '@/server/permissions';
 import { getKdsSnapshot } from '@/server/services/kds-query.service';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
@@ -24,13 +26,21 @@ export default async function KdsPage() {
     storeId: context.store.id,
     estimatedTimeMaxMinutes: context.store.settings?.estimatedTimeMaxMinutes ?? 50,
   });
+  const authorizationScope = `${context.session.userId}:${context.session.tenantRole}`;
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(
+    kdsQueryKeys.snapshot(context.store.id, authorizationScope),
+    initialSnapshot,
+  );
 
   return (
-    <KdsBoard
-      storeId={context.store.id}
-      storeName={context.store.name}
-      authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
-      initialSnapshot={initialSnapshot}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <KdsBoard
+        storeId={context.store.id}
+        storeName={context.store.name}
+        authorizationScope={authorizationScope}
+        initialSnapshot={initialSnapshot}
+      />
+    </HydrationBoundary>
   );
 }

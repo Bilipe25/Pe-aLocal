@@ -181,6 +181,13 @@ enum OrderOutboxEventType {
   PAYMENT_UPDATED
 }
 
+enum OperationalOutboxEventType {
+  DINING_REQUEST_OPENED
+  DINING_REQUEST_RESOLVED
+  DINING_SESSION_TRANSFERRED
+  DINING_SESSION_CLOSED
+}
+
 enum WebPushDispatchStatus {
   PENDING
   PROCESSING
@@ -525,6 +532,7 @@ model Tenant {
   orderPriceAdjustments         OrderPriceAdjustment[]
   auditLogs                     AuditLog[]
   orderOutboxEvents             OrderOutboxEvent[]
+  operationalOutboxEvents       OperationalOutboxEvent[]
   paymentStatusHistory          PaymentStatusHistory[]
   slugRedirects                 StoreSlugRedirect[]
   scheduleExceptions            StoreScheduleException[]
@@ -618,6 +626,7 @@ model Store {
   customization                 StoreCustomization?
   auditLogs                     AuditLog[]
   orderOutboxEvents             OrderOutboxEvent[]
+  operationalOutboxEvents       OperationalOutboxEvent[]
   paymentStatusHistory          PaymentStatusHistory[]
   assets                        StoreAsset[]
   banners                       StoreBanner[]
@@ -2329,6 +2338,40 @@ model OrderOutboxEvent {
   @@index([orderId, createdAt, id])
   @@index([queuedAt, processedAt])
   @@map("order_outbox_events")
+}
+
+model OperationalOutboxEvent {
+  id               String                     @id @default(uuid())
+  tenantId         String
+  storeId          String
+  aggregateType    String                     @db.VarChar(40)
+  aggregateId      String
+  eventType        OperationalOutboxEventType
+  aggregateVersion Int
+  schemaVersion    Int                        @default(1)
+  payload          Json
+  status           OrderOutboxStatus          @default(PENDING)
+  attempts         Int                        @default(0)
+  availableAt      DateTime                   @default(now())
+  queuedAt         DateTime?
+  lockedAt         DateTime?
+  lockToken        String?                    @db.Uuid
+  processedAt      DateTime?
+  failedAt         DateTime?
+  lastError        String?                    @db.VarChar(1000)
+  occurredAt       DateTime
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([aggregateType, aggregateId, eventType, aggregateVersion])
+  @@index([status, availableAt, createdAt])
+  @@index([storeId, createdAt, id])
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([queuedAt, processedAt])
+  @@map("operational_outbox_events")
 }
 
 model WebPushSubscription {

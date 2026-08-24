@@ -7,15 +7,10 @@ import {
   getDiningSessionDetailAction,
 } from '@/features/dining-room/actions';
 import type { OrderRealtimeState } from '@/hooks/use-order-realtime';
+import { diningRoomQueryKeys } from '@/lib/query/keys/dining-room';
 import type { DiningRoomSnapshotDto, DiningSessionDetailDto } from '@/types/dining-room';
 
-export const diningRoomQueryKeys = {
-  snapshot: (storeId: string, authorizationScope: string) =>
-    ['dining-room', storeId, authorizationScope] as const,
-  store: (storeId: string) => ['dining-room', storeId] as const,
-  detail: (storeId: string, authorizationScope: string, sessionId: string | null) =>
-    ['dining-room-detail', storeId, authorizationScope, sessionId] as const,
-};
+export { diningRoomQueryKeys } from '@/lib/query/keys/dining-room';
 
 function actionData<T>(
   result: { success: true; data: T } | { success: false; error: { message: string } },
@@ -41,7 +36,7 @@ export function useDiningRoom(
     initialData,
     staleTime: 5_000,
     retry: 2,
-    refetchInterval: realtimeState === 'connected' ? 60_000 : 25_000,
+    refetchInterval: realtimeState === 'connected' ? 25_000 : 15_000,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,

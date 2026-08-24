@@ -34,6 +34,7 @@ import { triggerDiningRoomUpdated } from '@/lib/pusher/server';
 import { Permission } from '@/server/permissions';
 import * as auditRepo from '@/server/repositories/audit-log.repository';
 import * as sessionRepo from '@/server/repositories/dining-table-session.repository';
+import { createDiningRoomOperationalEvent } from '@/server/services/operational-outbox.service';
 import type {
   DiningRoomSnapshotDto,
   DiningSessionDetailDto,
@@ -328,12 +329,12 @@ export async function createPublicDiningServiceRequest(
       },
       select: { id: true, type: true, status: true, createdAt: true, version: true },
     });
-    if (replay) return { request: replay, created: false, session };
+    if (replay) return { request: replay, created: false, session, outboxEvent: null };
     const open = await tx.diningTableServiceRequest.findFirst({
       where: { diningTableSessionId: session.id, type: input.type, status: 'OPEN' },
       select: { id: true, type: true, status: true, createdAt: true, version: true },
     });
-    if (open) return { request: open, created: false, session };
+    if (open) return { request: open, created: false, session, outboxEvent: null };
 
     const recent = await tx.diningTableServiceRequest.findFirst({
       where: { diningTableSessionId: session.id, type: input.type },
@@ -357,11 +358,21 @@ export async function createPublicDiningServiceRequest(
       },
       select: { id: true, type: true, status: true, createdAt: true, version: true },
     });
-    await tx.diningTableSession.update({
+    const updatedSession = await tx.diningTableSession.update({
       where: { id: session.id },
       data: { version: { increment: 1 } },
+      select: { version: true },
     });
-    return { request, created: true, session };
+    const outboxEvent = await createDiningRoomOperationalEvent(tx, {
+      tenantId: session.tenantId,
+      storeId: session.storeId,
+      sessionId: session.id,
+      tableId: session.diningTableId,
+      eventType: 'DINING_REQUEST_OPENED',
+      reason: 'REQUEST_OPENED',
+      version: updatedSession.version,
+    });
+    return { request, created: true, session, outboxEvent };
   });
 
   if (result.created) {
@@ -376,6 +387,7 @@ export async function createPublicDiningServiceRequest(
       },
     );
     await triggerDiningRoomUpdated(result.session.storeId, {
+      eventId: result.outboxEvent?.id,
       tableId: result.session.diningTableId,
       sessionId: result.session.id,
       reason: 'REQUEST_OPENED',
@@ -411,7 +423,7 @@ export async function resolveDiningServiceRequest(
       },
     });
     if (!request) throw new NotFoundError('Solicitação');
-    if (request.status === 'RESOLVED') return { request, changed: false };
+    if (request.status === 'RESOLVED') return { request, changed: false, outboxEvent: null };
     const updated = await tx.diningTableServiceRequest.updateMany({
       where: { id: request.id, status: 'OPEN', version: input.expectedVersion },
       data: {
@@ -422,9 +434,10 @@ export async function resolveDiningServiceRequest(
       },
     });
     if (updated.count !== 1) throw new ConcurrencyError('A solicitação');
-    await tx.diningTableSession.update({
+    const updatedSession = await tx.diningTableSession.update({
       where: { id: request.diningTableSession.id },
       data: { version: { increment: 1 } },
+      select: { version: true },
     });
     await auditRepo.createAuditLog(
       {
@@ -438,11 +451,21 @@ export async function resolveDiningServiceRequest(
       },
       tx,
     );
-    return { request, changed: true };
+    const outboxEvent = await createDiningRoomOperationalEvent(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      sessionId: request.diningTableSession.id,
+      tableId: request.diningTableSession.diningTableId,
+      eventType: 'DINING_REQUEST_RESOLVED',
+      reason: 'REQUEST_RESOLVED',
+      version: updatedSession.version,
+    });
+    return { request, changed: true, outboxEvent };
   });
   if (result.changed) {
     console.info('[DINING_REQUEST_RESOLVED]', { storeId: store.id, requestId: result.request.id });
     await triggerDiningRoomUpdated(store.id, {
+      eventId: result.outboxEvent?.id,
       tableId: result.request.diningTableSession.diningTableId,
       sessionId: result.request.diningTableSession.id,
       reason: 'REQUEST_RESOLVED',
@@ -472,7 +495,7 @@ export async function closeDiningSession(storeId: string, rawInput: DiningSessio
       },
     });
     if (!current) throw new NotFoundError('Atendimento da mesa');
-    if (current.status === 'CLOSED') return { current, changed: false };
+    if (current.status === 'CLOSED') return { current, changed: false, outboxEvent: null };
     const evaluation = evaluateDiningSessionClose({
       orders: current.orders,
       openRequestCount: current.serviceRequests.length,
@@ -501,11 +524,21 @@ export async function closeDiningSession(storeId: string, rawInput: DiningSessio
       },
       tx,
     );
-    return { current, changed: true };
+    const outboxEvent = await createDiningRoomOperationalEvent(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      sessionId: current.id,
+      tableId: current.diningTableId,
+      eventType: 'DINING_SESSION_CLOSED',
+      reason: 'CLOSED',
+      version: current.version + 1,
+    });
+    return { current, changed: true, outboxEvent };
   });
   if (result.changed) {
     console.info('[DINING_SESSION_CLOSED]', { storeId: store.id, sessionId: result.current.id });
     await triggerDiningRoomUpdated(store.id, {
+      eventId: result.outboxEvent?.id,
       tableId: result.current.diningTableId,
       sessionId: result.current.id,
       reason: 'CLOSED',
@@ -569,7 +602,16 @@ export async function transferDiningSession(storeId: string, rawInput: TransferD
       },
       tx,
     );
-    return { current, destination };
+    const outboxEvent = await createDiningRoomOperationalEvent(tx, {
+      tenantId: session.tenantId,
+      storeId: store.id,
+      sessionId: current.id,
+      tableId: destination.id,
+      eventType: 'DINING_SESSION_TRANSFERRED',
+      reason: 'TRANSFERRED',
+      version: current.version + 1,
+    });
+    return { current, destination, outboxEvent };
   });
   console.info('[DINING_SESSION_TRANSFERRED]', {
     storeId: store.id,
@@ -578,6 +620,7 @@ export async function transferDiningSession(storeId: string, rawInput: TransferD
     toDiningTableId: result.destination.id,
   });
   await triggerDiningRoomUpdated(store.id, {
+    eventId: result.outboxEvent.id,
     tableId: result.destination.id,
     sessionId: result.current.id,
     reason: 'TRANSFERRED',

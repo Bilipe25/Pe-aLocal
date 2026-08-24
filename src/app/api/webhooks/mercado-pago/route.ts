@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 import {
   getMercadoPagoConfig,
@@ -19,6 +20,22 @@ function response(status: number) {
     { received: status < 400 },
     { status, headers: { 'Cache-Control': 'private, no-store' } },
   );
+}
+
+async function wakePaymentWorker(eventId: string) {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    const worker = (env as CloudflareEnv & { ORDER_EVENTS_WORKER?: Fetcher }).ORDER_EVENTS_WORKER;
+    if (!worker) return;
+    const wake = await worker.fetch('https://order-events.internal/internal/mercado-pago/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId }),
+    });
+    if (!wake.ok) console.warn('[MP_WEBHOOK_WAKE_REJECTED]', { status: wake.status });
+  } catch {
+    console.warn('[MP_WEBHOOK_WAKE_UNAVAILABLE]');
+  }
 }
 
 async function expandedWebhookEventId(input: {
@@ -126,7 +143,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    await enqueueMercadoPagoWebhook(event);
+    const persisted = await enqueueMercadoPagoWebhook(event);
+    if (!persisted.processedAt) await wakePaymentWorker(persisted.id);
     return response(200);
   } catch (error) {
     console.error('[MP_WEBHOOK_FAILED]', {

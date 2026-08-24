@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query';
 
 import { DiningRoomWorkspace } from '@/features/dining-room/dining-room-workspace';
+import { diningRoomQueryKeys } from '@/lib/query/keys/dining-room';
 import { Permission } from '@/server/permissions';
 import { getDiningRoomSnapshotForStore } from '@/server/services/dining-table-session.service';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
@@ -16,11 +18,19 @@ export default async function DiningRoomPage() {
     storeName: context.store.name,
     enabledForNewOrders: context.store.entitlement?.dineInQrEnabled === true,
   });
+  const authorizationScope = `${context.session.userId}:${context.session.tenantRole}`;
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(
+    diningRoomQueryKeys.snapshot(context.store.id, authorizationScope),
+    initialSnapshot,
+  );
   return (
-    <DiningRoomWorkspace
-      storeId={context.store.id}
-      authorizationScope={`${context.session.userId}:${context.session.tenantRole}`}
-      initialSnapshot={initialSnapshot}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <DiningRoomWorkspace
+        storeId={context.store.id}
+        authorizationScope={authorizationScope}
+        initialSnapshot={initialSnapshot}
+      />
+    </HydrationBoundary>
   );
 }

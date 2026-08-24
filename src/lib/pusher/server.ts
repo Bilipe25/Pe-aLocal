@@ -111,6 +111,11 @@ async function triggerCustomerTracking(orderId: string) {
 export async function triggerNewOrder(storeId: string, orderId: string, orderNumber: number) {
   return Promise.all([
     getPusherHttpClient().trigger(eventChannels(storeId), 'new-order', {
+      eventId: crypto.randomUUID(),
+      schemaVersion: 1,
+      storeId,
+      entity: 'ORDER',
+      reason: 'ORDER_CREATED',
       orderId,
       orderNumber,
       timestamp: Date.now(),
@@ -127,6 +132,11 @@ export async function triggerOrderUpdated(
 ) {
   const publications: Promise<unknown>[] = [
     getPusherHttpClient().trigger(eventChannels(storeId), 'order-updated', {
+      eventId: crypto.randomUUID(),
+      schemaVersion: 1,
+      storeId,
+      entity: 'ORDER',
+      reason: 'ORDER_UPDATED',
       orderId,
       status,
       timestamp: Date.now(),
@@ -145,6 +155,11 @@ export async function triggerPaymentUpdated(
 ) {
   return Promise.all([
     getPusherHttpClient().trigger(eventChannels(storeId), 'payment-updated', {
+      eventId: crypto.randomUUID(),
+      schemaVersion: 1,
+      storeId,
+      entity: 'PAYMENT',
+      reason: 'PAYMENT_UPDATED',
       orderId,
       paymentStatus,
       timestamp: Date.now(),
@@ -159,6 +174,7 @@ export type DiningRoomInvalidationReason =
 export async function triggerDiningRoomUpdated(
   storeId: string,
   input: {
+    eventId?: string;
     tableId: string;
     sessionId: string;
     reason: DiningRoomInvalidationReason;
@@ -166,7 +182,9 @@ export async function triggerDiningRoomUpdated(
   },
 ) {
   return getPusherHttpClient().trigger(eventChannels(storeId), 'dining-room-updated', {
-    eventId: crypto.randomUUID(),
+    eventId: input.eventId ?? crypto.randomUUID(),
+    schemaVersion: 1,
+    storeId,
     entity: 'DINING_ROOM',
     tableId: input.tableId,
     sessionId: input.sessionId,

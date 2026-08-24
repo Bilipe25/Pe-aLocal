@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'pedidolocal-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const CACHE_NAME = `${CACHE_PREFIX}v5`;
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -14,7 +14,7 @@ const PRECACHE_PATHS = new Set(PRECACHE_URLS);
 
 function isSensitiveNavigation(pathname) {
   if (/^\/(?:dashboard|admin|auth)(?:\/|$)/.test(pathname)) return true;
-  if (/^\/q\/s\//.test(pathname)) return true;
+  if (/^\/q(?:\/|$)/.test(pathname)) return true;
   if (/^\/(?:login|forgot-password|reset-password)(?:\/|$)/.test(pathname)) return true;
   return /^\/[^/]+\/(?:cart|checkout|orders|order)(?:\/|$)/.test(pathname);
 }
@@ -59,7 +59,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') void self.skipWaiting();
+  if (event.data?.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
 });
 
 function validTrackingPath(pathname) {
@@ -225,12 +225,19 @@ self.addEventListener('fetch', (event) => {
     }
 
     event.respondWith(
-      fetch(request).catch(async () => (await caches.match(OFFLINE_URL)) || Response.error()),
+      fetch(request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return (await cache.match(OFFLINE_URL)) || Response.error();
+      }),
     );
     return;
   }
 
   if (PRECACHE_PATHS.has(url.pathname)) {
-    event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+    event.respondWith(
+      caches
+        .open(CACHE_NAME)
+        .then((cache) => cache.match(request).then((cached) => cached || fetch(request))),
+    );
   }
 });

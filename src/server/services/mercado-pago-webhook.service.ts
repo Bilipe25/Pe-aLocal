@@ -170,12 +170,13 @@ async function processClaimedWebhook(event: {
   });
 }
 
-export async function processPendingMercadoPagoWebhooks(limit = 20) {
+export async function processPendingMercadoPagoWebhooks(limit = 20, eventId?: string) {
   const db = getDb();
   const now = new Date();
   const staleLease = new Date(now.getTime() - WEBHOOK_LEASE_MS);
   const candidates = await db.paymentProviderWebhookEvent.findMany({
     where: {
+      id: eventId,
       provider: 'MERCADO_PAGO',
       processedAt: null,
       availableAt: { lte: now },
@@ -230,4 +231,8 @@ export async function processPendingMercadoPagoWebhooks(limit = 20) {
     }
   }
   return { selected: candidates.length, processed, failed };
+}
+
+export function processMercadoPagoWebhookById(eventId: string) {
+  return processPendingMercadoPagoWebhooks(1, eventId);
 }

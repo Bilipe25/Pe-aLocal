@@ -25,8 +25,11 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm cf:typegen
       - run: git diff --exit-code -- cloudflare-env.d.ts
+      - run: pnpm cf:cache-config:check
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: Cache, headers, and PWA contracts
+        run: pnpm test -- --run tests/unit/pwa-service-worker.test.ts tests/unit/service-worker-registration.test.tsx tests/unit/public-product-detail-route.test.ts tests/unit/public-store-asset-route.test.ts
       - run: pnpm test
       - run: pnpm db:validate
       - run: pnpm cf:order-events:dry-run:staging
@@ -47,7 +50,11 @@ jobs:
           NEXT_PUBLIC_PUSHER_CLUSTER: ${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
+      - run: pnpm cf:cache-config:check
       - run: pnpm cf:dry-run:staging
+        env:
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
+      - run: pnpm cf:dry-run:production
         env:
           CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: ${{ secrets.DATABASE_URL }}
 
