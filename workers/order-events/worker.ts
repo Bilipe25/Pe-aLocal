@@ -1,8 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 
+import {
+  outboxQueueMessageSchema,
+  type OutboxQueueMessage,
+} from '../../src/domain/operational-events';
 import type { OrderOutboxQueueMessage } from '../../src/domain/orders/order-events';
 import { orderOutboxQueueMessageSchema } from '../../src/domain/orders/order-events';
-import { createOrderEventPublisher } from '../../src/lib/pusher/order-event-publisher';
+import {
+  createOperationalEventPublisher,
+  createOrderEventPublisher,
+} from '../../src/lib/pusher/order-event-publisher';
 import { createDatabaseClient } from '../../src/server/database/factory';
 import { withDatabaseClient } from '../../src/server/database/client';
 import {
@@ -36,7 +43,15 @@ import {
 import { readWebPushSenderConfig } from '../../src/server/services/web-push-sender';
 import { revokeExpiredWebPushSubscriptions } from '../../src/server/services/web-push-revocation.service';
 import { reconcilePendingMercadoPagoPayments } from '../../src/server/services/mercado-pago-payment.service';
-import { processPendingMercadoPagoWebhooks } from '../../src/server/services/mercado-pago-webhook.service';
+import {
+  processMercadoPagoWebhookById,
+  processPendingMercadoPagoWebhooks,
+} from '../../src/server/services/mercado-pago-webhook.service';
+import {
+  purgeProcessedOperationalOutboxEvents,
+  processOperationalOutboxMessage,
+  relayPendingOperationalOutboxEvents,
+} from '../../src/server/services/operational-outbox.service';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
 const RETENTION_UTC_MINUTE = 17;
@@ -44,8 +59,9 @@ const RETENTION_UTC_MINUTE = 17;
 interface OrderEventsEnv {
   APP_ENV: string;
   HYPERDRIVE: Hyperdrive;
-  ORDER_OUTBOX_QUEUE: Queue<OrderOutboxQueueMessage>;
-  ORDER_OUTBOX_DLQ: Queue<OrderOutboxQueueMessage>;
+  HYPERDRIVE_FRESH: Hyperdrive;
+  ORDER_OUTBOX_QUEUE: Queue<OutboxQueueMessage>;
+  ORDER_OUTBOX_DLQ: Queue<OutboxQueueMessage>;
   PUSHER_APP_ID: string;
   PUSHER_KEY: string;
   PUSHER_SECRET: string;
@@ -73,7 +89,7 @@ interface OrderEventsEnv {
 function configureMercadoPagoRuntime(env: OrderEventsEnv) {
   Object.assign(process.env, {
     APP_ENV: env.APP_ENV,
-    DATABASE_URL: env.HYPERDRIVE.connectionString,
+    DATABASE_URL: env.HYPERDRIVE_FRESH.connectionString,
     MERCADO_PAGO_ENABLED: env.MERCADO_PAGO_ENABLED,
     MERCADO_PAGO_CLIENT_ID: env.MERCADO_PAGO_CLIENT_ID,
     MERCADO_PAGO_CLIENT_SECRET: env.MERCADO_PAGO_CLIENT_SECRET,
@@ -86,7 +102,7 @@ function configureMercadoPagoRuntime(env: OrderEventsEnv) {
 }
 
 function database(env: OrderEventsEnv) {
-  return createDatabaseClient(env.HYPERDRIVE.connectionString);
+  return createDatabaseClient(env.HYPERDRIVE_FRESH.connectionString);
 }
 
 function publisher(env: OrderEventsEnv, db: PrismaClient) {
@@ -116,24 +132,69 @@ function publisher(env: OrderEventsEnv, db: PrismaClient) {
   });
 }
 
-type OrderQueueMessage = Message<OrderOutboxQueueMessage>;
+function operationalPublisher(env: OrderEventsEnv) {
+  return createOperationalEventPublisher({
+    appId: env.PUSHER_APP_ID,
+    key: env.PUSHER_KEY,
+    secret: env.PUSHER_SECRET,
+    cluster: env.PUSHER_CLUSTER,
+    includeLegacyPublicChannel: env.PUSHER_LEGACY_PUBLIC_CHANNELS === 'true',
+  });
+}
+
+type OrderQueueMessage = Message<OutboxQueueMessage>;
 
 async function groupMessagesByAggregate(db: PrismaClient, messages: readonly OrderQueueMessage[]) {
   const parsed = messages.map((message, index) => ({
     message,
     index,
-    body: orderOutboxQueueMessageSchema.safeParse(message.body),
+    body: outboxQueueMessageSchema.safeParse(message.body),
   }));
-  const eventIds = [
-    ...new Set(parsed.flatMap(({ body }) => (body.success ? [body.data.eventId] : []))),
+  const orderEventIds = [
+    ...new Set(
+      parsed.flatMap(({ body }) =>
+        body.success && body.data.stream !== 'OPERATIONAL' ? [body.data.eventId] : [],
+      ),
+    ),
   ];
-  const metadata = eventIds.length
+  const operationalEventIds = [
+    ...new Set(
+      parsed.flatMap(({ body }) =>
+        body.success && body.data.stream === 'OPERATIONAL' ? [body.data.eventId] : [],
+      ),
+    ),
+  ];
+  const orderMetadata = orderEventIds.length
     ? await db.orderOutboxEvent.findMany({
-        where: { id: { in: eventIds } },
+        where: { id: { in: orderEventIds } },
         select: { id: true, orderId: true, aggregateVersion: true },
       })
     : [];
-  const byEventId = new Map(metadata.map((event) => [event.id, event]));
+  const operationalMetadata = operationalEventIds.length
+    ? await db.operationalOutboxEvent.findMany({
+        where: { id: { in: operationalEventIds } },
+        select: { id: true, aggregateType: true, aggregateId: true, aggregateVersion: true },
+      })
+    : [];
+  const byEventId = new Map([
+    ...orderMetadata.map(
+      (event) =>
+        [
+          event.id,
+          { aggregateKey: `order:${event.orderId}`, aggregateVersion: event.aggregateVersion },
+        ] as const,
+    ),
+    ...operationalMetadata.map(
+      (event) =>
+        [
+          event.id,
+          {
+            aggregateKey: `${event.aggregateType}:${event.aggregateId}`,
+            aggregateVersion: event.aggregateVersion,
+          },
+        ] as const,
+    ),
+  ]);
   const groups = new Map<
     string,
     Array<{ message: OrderQueueMessage; aggregateVersion: number; index: number }>
@@ -141,7 +202,7 @@ async function groupMessagesByAggregate(db: PrismaClient, messages: readonly Ord
 
   for (const item of parsed) {
     const event = item.body.success ? byEventId.get(item.body.data.eventId) : undefined;
-    const key = event ? `order:${event.orderId}` : `message:${item.index}`;
+    const key = event?.aggregateKey ?? `message:${item.index}`;
     const group = groups.get(key) ?? [];
     group.push({
       message: item.message,
@@ -248,11 +309,12 @@ async function processFastStoreWebPush(
 }
 
 export default {
-  async queue(batch: MessageBatch<OrderOutboxQueueMessage>, env: OrderEventsEnv) {
+  async queue(batch: MessageBatch<OutboxQueueMessage>, env: OrderEventsEnv) {
     const db = database(env);
     const startedAt = Date.now();
     try {
       const eventPublisher = publisher(env, db);
+      const operationalEventPublisher = operationalPublisher(env);
       const webPushConfig = env.WEB_PUSH_ENABLED === 'true' ? readWebPushSenderConfig(env) : null;
       const merchantWebPushConfig = readWebPushSenderConfig(
         env,
@@ -272,15 +334,28 @@ export default {
           if (!item) continue;
           const { message } = item;
           try {
-            await processFastStoreWebPush(db, merchantWebPushConfig, message.body);
-            await processFastWebPush(db, webPushConfig, message.body);
-            const result = await processOrderOutboxMessage(
-              db,
-              eventPublisher,
-              message.body,
-              message.attempts,
-              message.id,
-            );
+            const parsedMessage = outboxQueueMessageSchema.safeParse(message.body);
+            const isOperational =
+              parsedMessage.success && parsedMessage.data.stream === 'OPERATIONAL';
+            if (!isOperational) {
+              await processFastStoreWebPush(db, merchantWebPushConfig, message.body);
+              await processFastWebPush(db, webPushConfig, message.body);
+            }
+            const result = isOperational
+              ? await processOperationalOutboxMessage(
+                  db,
+                  operationalEventPublisher,
+                  message.body,
+                  message.attempts,
+                  message.id,
+                )
+              : await processOrderOutboxMessage(
+                  db,
+                  eventPublisher,
+                  message.body,
+                  message.attempts,
+                  message.id,
+                );
             if (result.action === 'ack') {
               message.ack();
               outcomes.acknowledged += 1;
@@ -346,7 +421,12 @@ export default {
         }
       }
       if (relayEnabled) {
-        await relayPendingOrderOutboxEvents(db, env.ORDER_OUTBOX_QUEUE, env.ORDER_OUTBOX_DLQ);
+        await relayPendingOrderOutboxEvents(
+          db,
+          env.ORDER_OUTBOX_QUEUE as Queue<OrderOutboxQueueMessage>,
+          env.ORDER_OUTBOX_DLQ as Queue<OrderOutboxQueueMessage>,
+        );
+        await relayPendingOperationalOutboxEvents(db, env.ORDER_OUTBOX_QUEUE);
       }
       try {
         const result = await resolveInactiveOrderOperationalSlaAlerts(db);
@@ -374,6 +454,13 @@ export default {
             deleted: result.deleted,
             retentionDays: result.retentionDays,
             durationMs: Date.now() - retentionStartedAt,
+          });
+          const operational = await purgeProcessedOperationalOutboxEvents(db, {
+            retentionDays: retentionDays(env),
+          });
+          console.info('[OPERATIONAL_OUTBOX_RETENTION_COMPLETED]', {
+            deleted: operational.deleted,
+            retentionDays: operational.retentionDays,
           });
         } catch (error) {
           console.error('[ORDER_OUTBOX_RETENTION_FAILED]', {
@@ -441,11 +528,35 @@ export default {
     }
   },
 
-  async fetch(request: Request, env: OrderEventsEnv) {
-    if (
-      request.method !== 'POST' ||
-      new URL(request.url).pathname !== '/internal/merchant-push/test'
-    ) {
+  async fetch(request: Request, env: OrderEventsEnv, context: ExecutionContext) {
+    const pathname = new URL(request.url).pathname;
+    if (request.method !== 'POST') {
+      return new Response('Not found', { status: 404 });
+    }
+    if (pathname === '/internal/mercado-pago/webhook') {
+      const body = (await request.json().catch(() => null)) as { eventId?: unknown } | null;
+      const eventId = typeof body?.eventId === 'string' ? body.eventId : '';
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      ) {
+        return Response.json({ error: 'invalid_request' }, { status: 400 });
+      }
+      configureMercadoPagoRuntime(env);
+      const db = database(env);
+      context.waitUntil(
+        withDatabaseClient(db, () => processMercadoPagoWebhookById(eventId))
+          .then((result) => console.info('[MP_WEBHOOK_WAKE_COMPLETED]', { eventId, ...result }))
+          .catch((error) =>
+            console.error('[MP_WEBHOOK_WAKE_FAILED]', {
+              eventId,
+              code: error instanceof Error ? error.name : 'UNKNOWN',
+            }),
+          )
+          .finally(() => disconnect(db)),
+      );
+      return Response.json({ accepted: true }, { status: 202 });
+    }
+    if (pathname !== '/internal/merchant-push/test') {
       return new Response('Not found', { status: 404 });
     }
     if (env.MERCHANT_WEB_PUSH_ENABLED !== 'true') {
@@ -483,4 +594,4 @@ export default {
       await disconnect(db);
     }
   },
-} satisfies ExportedHandler<OrderEventsEnv, OrderOutboxQueueMessage>;
+} satisfies ExportedHandler<OrderEventsEnv, OutboxQueueMessage>;

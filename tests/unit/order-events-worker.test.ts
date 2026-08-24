@@ -4,8 +4,12 @@ const mocks = vi.hoisted(() => ({
   disconnect: vi.fn(),
   createDatabaseClient: vi.fn(),
   createOrderEventPublisher: vi.fn(),
+  createOperationalEventPublisher: vi.fn(),
   processOrderOutboxMessage: vi.fn(),
+  processOperationalOutboxMessage: vi.fn(),
+  purgeProcessedOperationalOutboxEvents: vi.fn(),
   relayPendingOrderOutboxEvents: vi.fn(),
+  relayPendingOperationalOutboxEvents: vi.fn(),
   purgeProcessedOrderOutboxEvents: vi.fn(),
   purgeResolvedOrderOperationalSlaAlerts: vi.fn(),
   reconcileOrderOperationalSlaAlerts: vi.fn(),
@@ -29,10 +33,16 @@ vi.mock('@/server/database/factory', () => ({
 }));
 vi.mock('@/lib/pusher/order-event-publisher', () => ({
   createOrderEventPublisher: mocks.createOrderEventPublisher,
+  createOperationalEventPublisher: mocks.createOperationalEventPublisher,
 }));
 vi.mock('@/server/services/order-outbox-processor', () => ({
   processOrderOutboxMessage: mocks.processOrderOutboxMessage,
   relayPendingOrderOutboxEvents: mocks.relayPendingOrderOutboxEvents,
+}));
+vi.mock('@/server/services/operational-outbox.service', () => ({
+  purgeProcessedOperationalOutboxEvents: mocks.purgeProcessedOperationalOutboxEvents,
+  processOperationalOutboxMessage: mocks.processOperationalOutboxMessage,
+  relayPendingOperationalOutboxEvents: mocks.relayPendingOperationalOutboxEvents,
 }));
 vi.mock('@/server/services/order-outbox-retention', () => ({
   purgeProcessedOrderOutboxEvents: mocks.purgeProcessedOrderOutboxEvents,
@@ -82,12 +92,14 @@ function database() {
     orderOutboxEvent: {
       findMany: vi.fn().mockResolvedValue([{ id: eventId, orderId, aggregateVersion: 1 }]),
     },
+    operationalOutboxEvent: { findMany: vi.fn().mockResolvedValue([]) },
   };
 }
 
 function environment() {
   return {
     HYPERDRIVE: { connectionString: 'postgresql://local' },
+    HYPERDRIVE_FRESH: { connectionString: 'postgresql://local-fresh' },
     ORDER_OUTBOX_QUEUE: { sendBatch: vi.fn() },
     ORDER_OUTBOX_DLQ: { send: vi.fn().mockResolvedValue(undefined) },
     PUSHER_APP_ID: 'app',
@@ -121,6 +133,11 @@ describe('order events worker', () => {
     mocks.disconnect.mockResolvedValue(undefined);
     mocks.createDatabaseClient.mockReturnValue(database());
     mocks.createOrderEventPublisher.mockReturnValue({ publish: vi.fn() });
+    mocks.createOperationalEventPublisher.mockReturnValue({ publish: vi.fn() });
+    mocks.purgeProcessedOperationalOutboxEvents.mockResolvedValue({
+      deleted: 0,
+      retentionDays: 30,
+    });
     mocks.purgeProcessedOrderOutboxEvents.mockResolvedValue({
       deleted: 0,
       retentionDays: 30,
@@ -321,6 +338,30 @@ describe('order events worker', () => {
     );
 
     expect(maximumActive).toBe(3);
+  });
+
+  it('roteia eventos operacionais pela mesma fila sem projetar Web Push de pedido', async () => {
+    const db = database();
+    db.orderOutboxEvent.findMany.mockResolvedValue([]);
+    db.operationalOutboxEvent.findMany.mockResolvedValue([
+      {
+        id: eventId,
+        aggregateType: 'DINING_SESSION',
+        aggregateId: orderId,
+        aggregateVersion: 2,
+      },
+    ]);
+    mocks.createDatabaseClient.mockReturnValue(db);
+    mocks.processOperationalOutboxMessage.mockResolvedValue({ action: 'ack', eventId });
+    const input = batch();
+    input.message.body = { eventId, schemaVersion: 1, stream: 'OPERATIONAL' } as never;
+
+    await worker.queue(input as never, environment() as never);
+
+    expect(mocks.processOperationalOutboxMessage).toHaveBeenCalledOnce();
+    expect(mocks.processOrderOutboxMessage).not.toHaveBeenCalled();
+    expect(mocks.projectWebPushDispatch).not.toHaveBeenCalled();
+    expect(input.message.ack).toHaveBeenCalledOnce();
   });
 
   it('reutiliza a consulta do token público para eventos do mesmo pedido no lote', async () => {

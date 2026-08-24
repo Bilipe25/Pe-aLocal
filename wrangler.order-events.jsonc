@@ -43,6 +43,10 @@
       "binding": "HYPERDRIVE",
       "id": "db9213cd1b214074928647719ddff805",
     },
+    {
+      "binding": "HYPERDRIVE_FRESH",
+      "id": "8efb30a2a2eb4a9b87fa25e0509c4709",
+    },
   ],
   "queues": {
     "producers": [
@@ -59,7 +63,7 @@
       {
         "queue": "pedidolocal-order-events-staging",
         "max_batch_size": 10,
-        "max_batch_timeout": 5,
+        "max_batch_timeout": 1,
         "max_retries": 5,
         "dead_letter_queue": "pedidolocal-order-events-staging-dlq",
         "max_concurrency": 3,
@@ -103,6 +107,10 @@
           "binding": "HYPERDRIVE",
           "id": "db9213cd1b214074928647719ddff805",
         },
+        {
+          "binding": "HYPERDRIVE_FRESH",
+          "id": "8efb30a2a2eb4a9b87fa25e0509c4709",
+        },
       ],
       "queues": {
         "producers": [
@@ -119,7 +127,7 @@
           {
             "queue": "pedidolocal-order-events-staging",
             "max_batch_size": 10,
-            "max_batch_timeout": 5,
+            "max_batch_timeout": 1,
             "max_retries": 5,
             "dead_letter_queue": "pedidolocal-order-events-staging-dlq",
             "max_concurrency": 3,
@@ -151,6 +159,10 @@
           "binding": "HYPERDRIVE",
           "id": "4e8ea7785f6443a682350235f432d380",
         },
+        {
+          "binding": "HYPERDRIVE_FRESH",
+          "id": "5073a982b5594aa88a80a87f7cbf9520",
+        },
       ],
       "queues": {
         "producers": [
@@ -167,7 +179,7 @@
           {
             "queue": "pedidolocal-order-events-production",
             "max_batch_size": 10,
-            "max_batch_timeout": 5,
+            "max_batch_timeout": 1,
             "max_retries": 5,
             "dead_letter_queue": "pedidolocal-order-events-production-dlq",
             "max_concurrency": 5,

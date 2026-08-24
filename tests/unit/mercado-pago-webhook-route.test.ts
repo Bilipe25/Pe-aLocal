@@ -3,12 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   verifySignature: vi.fn(),
   enqueueWebhook: vi.fn(),
+  workerFetch: vi.fn(),
   config: {
     clientId: '32620436153512',
     testApplicationId: '1828304174612090' as string | undefined,
     webhookSecret: 'webhook-secret',
     oauthEnvironment: 'sandbox' as 'sandbox' | 'production',
   },
+}));
+vi.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: vi.fn(async () => ({
+    env: { ORDER_EVENTS_WORKER: { fetch: mocks.workerFetch } },
+  })),
 }));
 
 vi.mock('@/lib/mercado-pago/config', () => ({
@@ -127,7 +133,11 @@ describe('webhook Mercado Pago Orders', () => {
     mocks.config.testApplicationId = '1828304174612090';
     mocks.config.oauthEnvironment = 'sandbox';
     mocks.verifySignature.mockResolvedValue({ valid: true });
-    mocks.enqueueWebhook.mockResolvedValue({ id: 'event-1', processedAt: null });
+    mocks.enqueueWebhook.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      processedAt: null,
+    });
+    mocks.workerFetch.mockResolvedValue(new Response(null, { status: 202 }));
   });
 
   it('aceita e enfileira o payload oficial com application_id e tópico order', async () => {
@@ -142,6 +152,10 @@ describe('webhook Mercado Pago Orders', () => {
         application_id: '1828304174612090',
         data: { id: officialPayload.data.id },
       }),
+    );
+    expect(mocks.workerFetch).toHaveBeenCalledWith(
+      'https://order-events.internal/internal/mercado-pago/webhook',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 
