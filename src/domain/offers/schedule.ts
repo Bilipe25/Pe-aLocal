@@ -29,10 +29,13 @@ function dateOnly(value: Date | string | null | undefined): string | null {
     if (!Number.isFinite(value.getTime())) throw new RangeError('A data da oferta é inválida.');
     return value.toISOString().slice(0, 10);
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : /^(\d{4}-\d{2}-\d{2})T00:00:00\.000Z$/.exec(value)?.[1];
+  if (!date) {
     throw new RangeError('A data da oferta deve estar no formato YYYY-MM-DD.');
   }
-  return value;
+  return date;
 }
 
 function dayOfWeek(localDate: string): OfferDayOfWeek {
