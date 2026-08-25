@@ -18,19 +18,23 @@ test.describe('storefront mobile — fase 3', () => {
     await page.reload();
   });
 
-  test('mantém três destinos e apresenta o estado vazio do último pedido', async ({ page }) => {
+  test('mantém quatro destinos e abre o hub Mais', async ({ page }) => {
     const navigation = page.getByRole('navigation', { name: 'Navegação da loja' });
     await expect(navigation).toBeVisible();
-    await expect(navigation.locator('a, button')).toHaveCount(3);
+    await expect(navigation.getByRole('link')).toHaveCount(4);
     await expect(navigation.getByRole('link', { name: 'Cardápio' })).toHaveAttribute(
       'aria-current',
       'page',
     );
 
-    await navigation.getByRole('button', { name: 'Meu pedido' }).click();
-    await expect(navigation.getByRole('status')).toContainText(
-      'Você ainda não tem um pedido recente nesta loja.',
-    );
+    await navigation.getByRole('link', { name: 'Mais' }).click();
+    await expect(page).toHaveURL(`/${storeSlug}/mais`);
+    await expect(page.getByRole('heading', { name: 'Mais', level: 1 })).toBeVisible();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Navegação da loja' })
+        .getByRole('link', { name: 'Mais' }),
+    ).toHaveAttribute('aria-current', 'page');
   });
 
   test('persiste favorito após recarregar sem depender de conta', async ({ page }) => {

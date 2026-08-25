@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpen, Heart, ReceiptText, ShoppingBag } from 'lucide-react';
+import { BookOpen, CircleEllipsis, ReceiptText, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
@@ -11,27 +11,18 @@ import {
   subscribeToCartStorage,
   useCartStore,
 } from '@/stores/cart-store';
-import { useFavoritesStore } from '@/stores/favorites-store';
 import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
 
 interface StorefrontBottomNavProps {
   storeId: string;
   storeSlug: string;
-  showFavorites?: boolean;
 }
 
-export function StorefrontBottomNav({
-  storeId,
-  storeSlug,
-  showFavorites = false,
-}: StorefrontBottomNavProps) {
+export function StorefrontBottomNav({ storeId, storeSlug }: StorefrontBottomNavProps) {
   const pathname = usePathname();
   const activeCartStoreId = useCartStore(selectCartStoreId);
   const cartItemCount = useCartStore(selectCartItemCount);
   const setCartStore = useCartStore((state) => state.setStore);
-  const favoriteProductIds = useFavoritesStore((state) => state.productIds);
-  const setFavoritesStore = useFavoritesStore((state) => state.setStore);
-  const hasFavorites = favoriteProductIds.length > 0;
   const historyOrders = usePublicOrderHistoryStore((state) => state.orders);
   const setOrderHistoryStore = usePublicOrderHistoryStore((state) => state.setStore);
   const hasOrders = historyOrders.length > 0;
@@ -41,11 +32,19 @@ export function StorefrontBottomNav({
   const checkoutPath = `${catalogPath}/checkout`;
   const ordersPath = `${catalogPath}/orders`;
   const orderPathPrefix = `${catalogPath}/order/`;
+  const morePath = `${catalogPath}/mais`;
   const favoritesPath = `${catalogPath}/favorites`;
+  const accountPath = `${catalogPath}/account`;
   const isCatalogActive = pathname === catalogPath || pathname === `${catalogPath}/`;
   const isCartActive = pathname === cartPath || pathname === checkoutPath;
-  const isOrderActive = pathname === ordersPath || pathname.startsWith(orderPathPrefix) || pathname.startsWith(`${catalogPath}/account`);
-  const isFavoritesActive = pathname === favoritesPath;
+  const isOrderActive = pathname === ordersPath || pathname.startsWith(orderPathPrefix);
+  const isMoreActive =
+    pathname === morePath ||
+    pathname.startsWith(`${morePath}/`) ||
+    pathname === favoritesPath ||
+    pathname.startsWith(`${favoritesPath}/`) ||
+    pathname === accountPath ||
+    pathname.startsWith(`${accountPath}/`);
   const scopedCartItemCount = activeCartStoreId === storeId ? cartItemCount : 0;
 
   useEffect(() => {
@@ -54,15 +53,11 @@ export function StorefrontBottomNav({
   }, [setCartStore, storeId, storeSlug]);
 
   useEffect(() => {
-    setFavoritesStore(storeId, []);
-  }, [setFavoritesStore, storeId]);
-
-  useEffect(() => {
     setOrderHistoryStore(storeId, storeSlug);
   }, [setOrderHistoryStore, storeId, storeSlug]);
 
   const navItems = useMemo(() => {
-    const items = [
+    return [
       {
         key: 'catalog',
         href: catalogPath,
@@ -71,34 +66,30 @@ export function StorefrontBottomNav({
         active: isCatalogActive,
       },
       { key: 'cart', href: cartPath, label: 'Carrinho', icon: ShoppingBag, active: isCartActive },
+      {
+        key: 'order',
+        href: ordersPath,
+        label: 'Pedidos',
+        icon: ReceiptText,
+        active: isOrderActive,
+      },
+      {
+        key: 'more',
+        href: morePath,
+        label: 'Mais',
+        icon: CircleEllipsis,
+        active: isMoreActive,
+      },
     ];
-    if (showFavorites) {
-      items.push({
-        key: 'favorites',
-        href: favoritesPath,
-        label: 'Favoritos',
-        icon: Heart,
-        active: isFavoritesActive,
-      });
-    }
-    items.push({
-      key: 'order',
-      href: ordersPath,
-      label: 'Pedidos',
-      icon: ReceiptText,
-      active: isOrderActive,
-    });
-    return items;
   }, [
     catalogPath,
     cartPath,
-    favoritesPath,
     isCartActive,
     isCatalogActive,
-    isFavoritesActive,
+    isMoreActive,
     isOrderActive,
+    morePath,
     ordersPath,
-    showFavorites,
   ]);
 
   return (
@@ -127,11 +118,8 @@ export function StorefrontBottomNav({
                     {scopedCartItemCount > 99 ? '99+' : scopedCartItemCount}
                   </span>
                 )}
-                {item.key === 'favorites' && hasFavorites && (
-                  <span className="storefront-bottom-nav-favorite-dot" aria-hidden="true" />
-                )}
                 {item.key === 'order' && hasOrders && (
-                  <span className="storefront-bottom-nav-favorite-dot" aria-hidden="true" />
+                  <span className="storefront-bottom-nav-indicator" aria-hidden="true" />
                 )}
               </span>
               <span>{item.label}</span>

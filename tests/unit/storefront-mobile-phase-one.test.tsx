@@ -132,11 +132,12 @@ describe('storefront mobile — fase 1', () => {
       expect.stringContaining('query=Rua%20das%20Flores'),
     );
     expect(screen.getByText('Pix')).toBeVisible();
-    expect(screen.getByText('Pix').querySelector('svg')).toHaveAttribute('stroke', '#168f83');
-    expect(screen.getByText('Dinheiro').querySelector('svg')).toHaveAttribute('stroke', '#3f7d58');
-    expect(screen.getByText('Cartão no recebimento').querySelector('svg')).toHaveAttribute(
-      'stroke',
-      '#c77a00',
+    expect(screen.getByText('Pix').querySelector('svg')).toHaveClass('store-info-payment-icon-pix');
+    expect(screen.getByText('Dinheiro').querySelector('svg')).toHaveClass(
+      'store-info-payment-icon-cash',
+    );
+    expect(screen.getByText('Cartão no recebimento').querySelector('svg')).toHaveClass(
+      'store-info-payment-icon-card',
     );
     expect(screen.getByRole('link', { name: 'Ligar para (85) 99999-9999' })).toHaveAttribute(
       'href',

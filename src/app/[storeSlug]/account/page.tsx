@@ -39,8 +39,8 @@ export default async function ConsumerAccountPage({
   return (
     <div className="storefront-page-bottom-safe">
       <StorePurchaseHeader
-        backHref={`/${store.slug}/orders`}
-        backLabel="Voltar aos pedidos"
+        backHref={`/${store.slug}/mais`}
+        backLabel="Voltar a Mais"
         title="Minha conta"
         storeName={store.name}
         logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}

@@ -1,12 +1,15 @@
 'use client';
 
 import { Share2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
 interface StorefrontShareButtonProps {
   storeName: string;
   shareUrl?: string;
   className?: string;
+  ariaLabel?: string;
+  children?: ReactNode;
 }
 
 async function copyToClipboard(value: string) {
@@ -32,6 +35,8 @@ export function StorefrontShareButton({
   storeName,
   shareUrl,
   className,
+  ariaLabel,
+  children,
 }: StorefrontShareButtonProps) {
   async function handleShare() {
     const url = shareUrl || window.location.href;
@@ -64,9 +69,9 @@ export function StorefrontShareButton({
       type="button"
       onClick={handleShare}
       className={className ?? 'storefront-hero-share'}
-      aria-label={`Compartilhar cardápio de ${storeName}`}
+      aria-label={ariaLabel ?? `Compartilhar cardápio de ${storeName}`}
     >
-      <Share2 aria-hidden="true" />
+      {children ?? <Share2 aria-hidden="true" />}
     </button>
   );
 }
