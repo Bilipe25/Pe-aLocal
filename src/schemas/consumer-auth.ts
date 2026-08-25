@@ -65,4 +65,8 @@ export const consumerVerificationResendSchema = z
   .object({ challengeToken: challengeTokenSchema })
   .strict();
 
+export const consumerEmailChangeRequestSchema = z.object({ email: emailSchema }).strict();
+
+export const consumerEmailChangeConfirmSchema = consumerVerificationConfirmSchema;
+
 export type ConsumerVerificationRequest = z.infer<typeof consumerVerificationRequestSchema>;

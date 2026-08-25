@@ -23,18 +23,24 @@ import {
   NotFoundError,
   RateLimitError,
 } from '@/server/errors';
-import { isDeployedRuntime } from '@/server/runtime-environment';
+import { isDeployedRuntime, isLocalDevelopmentRuntime } from '@/server/runtime-environment';
 import {
   getStorefrontDeviceCookieName,
   hashStorefrontDeviceToken,
   isStorefrontDeviceToken,
 } from '@/server/services/customer-device-recognition.service';
 
-const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1_000;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
+const SESSION_ACTIVITY_TOUCH_MS = 24 * 60 * 60 * 1_000;
+const MAX_ACTIVE_SESSIONS = 5;
 const RESEND_COOLDOWN_MS = 60 * 1_000;
 const PHONE_CHALLENGE_TTL_MS = 5 * 60 * 1_000;
 const EMAIL_CHALLENGE_TTL_MS = 10 * 60 * 1_000;
 const MAX_ATTEMPTS = 5;
+const VERIFICATION_LIMIT_WINDOW_MS = 5 * 60 * 1_000;
+const VERIFICATION_SUBJECT_LIMIT = 5;
+const VERIFICATION_IP_LIMIT = 20;
+const VERIFICATION_STORE_LIMIT = 100;
 const DEVELOPMENT_OTP_SECRET = 'pedidolocal-development-only-otp-secret-v1';
 
 export const CONSUMER_SESSION_COOKIE = isDeployedRuntime()
@@ -63,7 +69,7 @@ function verificationUnavailable() {
 function getOtpSecret(providerName: string) {
   const secret = process.env.CONSUMER_VERIFICATION_OTP_SECRET?.trim() ?? '';
   if (secret.length >= 32) return secret;
-  if (providerName === 'development' && !isDeployedRuntime()) return DEVELOPMENT_OTP_SECRET;
+  if (providerName === 'development' && isLocalDevelopmentRuntime()) return DEVELOPMENT_OTP_SECRET;
   throw verificationUnavailable();
 }
 
@@ -101,7 +107,12 @@ export async function getConsumerStoreScope(storeSlug: string) {
       tenantId: true,
       slug: true,
       name: true,
-      entitlement: { select: { consumerIdentityEnabled: true } },
+      entitlement: {
+        select: {
+          consumerIdentityEnabled: true,
+          consumerConvenienceV2Enabled: true,
+        },
+      },
     },
   });
 }
@@ -241,6 +252,7 @@ async function failChallengeAfterDeliveryError(challengeId: string) {
 
 export async function requestConsumerVerification(input: {
   context: Awaited<ReturnType<typeof resolveConsumerVerificationContext>>;
+  requestIpHash?: string | null;
 }) {
   const { scope, claim, subject, providerName, request } = input.context;
   const provider = getConsumerVerificationProviderByName(providerName);
@@ -261,23 +273,68 @@ export async function requestConsumerVerification(input: {
   const provisionalExpiresAt = new Date(now.getTime() + challengeTtl(provider));
   const resendAfter = new Date(now.getTime() + RESEND_COOLDOWN_MS);
 
-  await getDb().consumerVerificationChallenge.create({
-    data: {
-      id: challengeId,
-      challengeTokenHash,
-      tenantId: scope.tenantId,
-      storeId: scope.id,
-      phoneNormalized: claim.phoneNormalized,
-      emailNormalized: claim.emailNormalized,
-      otpHash,
-      purpose: request.purpose,
-      provider: provider.name,
-      claimCustomerId: claim.customerId,
-      claimOrderId: claim.orderId,
-      resendAfter,
-      expiresAt: provisionalExpiresAt,
+  await getDb().$transaction(
+    async (tx) => {
+      const subjectLock = `consumer-verification:${scope.tenantId}:${subject.kind}:${subject.normalized}`;
+      const lockNames = [
+        `consumer-verification-store:${scope.id}`,
+        subjectLock,
+        ...(input.requestIpHash ? [`consumer-verification-ip:${input.requestIpHash}`] : []),
+      ].sort();
+      for (const lockName of lockNames) {
+        await tx.$executeRaw(
+          Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`,
+        );
+      }
+      const since = new Date(now.getTime() - VERIFICATION_LIMIT_WINDOW_MS);
+      const [subjectCount, ipCount, storeCount] = await Promise.all([
+        tx.consumerVerificationChallenge.count({
+          where: {
+            tenantId: scope.tenantId,
+            storeId: scope.id,
+            createdAt: { gte: since },
+            ...(subject.kind === 'email'
+              ? { emailNormalized: subject.normalized }
+              : { phoneNormalized: subject.normalized }),
+          },
+        }),
+        input.requestIpHash
+          ? tx.consumerVerificationChallenge.count({
+              where: { requestIpHash: input.requestIpHash, createdAt: { gte: since } },
+            })
+          : Promise.resolve(0),
+        tx.consumerVerificationChallenge.count({
+          where: { tenantId: scope.tenantId, storeId: scope.id, createdAt: { gte: since } },
+        }),
+      ]);
+      if (
+        subjectCount >= VERIFICATION_SUBJECT_LIMIT ||
+        ipCount >= VERIFICATION_IP_LIMIT ||
+        storeCount >= VERIFICATION_STORE_LIMIT
+      ) {
+        throw new RateLimitError('Muitas tentativas. Aguarde alguns minutos.');
+      }
+      await tx.consumerVerificationChallenge.create({
+        data: {
+          id: challengeId,
+          challengeTokenHash,
+          tenantId: scope.tenantId,
+          storeId: scope.id,
+          phoneNormalized: claim.phoneNormalized,
+          emailNormalized: claim.emailNormalized,
+          otpHash,
+          purpose: request.purpose,
+          provider: provider.name,
+          claimCustomerId: claim.customerId,
+          claimOrderId: claim.orderId,
+          requestIpHash: input.requestIpHash ?? null,
+          resendAfter,
+          expiresAt: provisionalExpiresAt,
+        },
+      });
     },
-  });
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 
   let started;
   try {
@@ -401,30 +458,35 @@ export async function resendConsumerVerification(input: {
   return { expiresAt, resendAfter };
 }
 
-async function recordFailedAttempt(input: {
-  challengeId: string;
-  attemptCount: number;
-  terminal: boolean;
-}) {
-  const nextAttempts = input.attemptCount + 1;
-  await getDb().consumerVerificationChallenge.updateMany({
-    where: {
-      id: input.challengeId,
-      status: 'PENDING',
-      consumedAt: null,
-      attemptCount: input.attemptCount,
+async function recordFailedAttempt(input: { challengeId: string; terminal: boolean }) {
+  await getDb().$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`consumer-challenge:${input.challengeId}`}, 0))`,
+      );
+      const current = await tx.consumerVerificationChallenge.findFirst({
+        where: { id: input.challengeId, status: 'PENDING', consumedAt: null },
+        select: { attemptCount: true },
+      });
+      if (!current) return;
+      const nextAttempts = current.attemptCount + 1;
+      await tx.consumerVerificationChallenge.update({
+        where: { id: input.challengeId },
+        data: {
+          attemptCount: nextAttempts,
+          status: input.terminal || nextAttempts >= MAX_ATTEMPTS ? 'FAILED' : 'PENDING',
+        },
+      });
     },
-    data: {
-      attemptCount: nextAttempts,
-      status: input.terminal || nextAttempts >= MAX_ATTEMPTS ? 'FAILED' : 'PENDING',
-    },
-  });
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 export async function verifyConsumerCode(input: {
   storeSlug: string;
   challengeToken: string;
   code: string;
+  deviceLabel?: string | null;
 }) {
   const scope = assertFeatureEnabled(await getConsumerStoreScope(input.storeSlug));
   const challengeTokenHash = await hashConsumerSecret(input.challengeToken);
@@ -464,7 +526,6 @@ export async function verifyConsumerCode(input: {
   if (!providerVerified) {
     await recordFailedAttempt({
       challengeId: challenge.id,
-      attemptCount: challenge.attemptCount,
       terminal: providerTerminal,
     });
     throw new AuthenticationError('O código informado é inválido ou expirou.');
@@ -613,17 +674,30 @@ export async function verifyConsumerCode(input: {
         customerName = customer.name;
       }
 
-      await tx.consumerSession.updateMany({
-        where: { consumerIdentityId: identity.id, revokedAt: null },
-        data: { revokedAt: now },
-      });
       await tx.consumerSession.create({
         data: {
           consumerIdentityId: identity.id,
           tokenHash: sessionTokenHash,
           expiresAt: sessionExpiresAt,
+          deviceLabel: input.deviceLabel?.trim().slice(0, 80) || null,
         },
       });
+      const excessSessions = await tx.consumerSession.findMany({
+        where: {
+          consumerIdentityId: identity.id,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: MAX_ACTIVE_SESSIONS,
+        select: { id: true },
+      });
+      if (excessSessions.length > 0) {
+        await tx.consumerSession.updateMany({
+          where: { id: { in: excessSessions.map((session) => session.id) }, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
       await tx.consumerVerificationChallenge.update({
         where: { id: current.id },
         data: {
@@ -656,6 +730,7 @@ export async function getCurrentConsumer(input: {
     select: {
       id: true,
       expiresAt: true,
+      lastUsedAt: true,
       consumerIdentity: {
         select: {
           id: true,
@@ -687,6 +762,12 @@ export async function getCurrentConsumer(input: {
     },
   });
   if (!session) return null;
+  if (session.lastUsedAt.getTime() <= now.getTime() - SESSION_ACTIVITY_TOUCH_MS) {
+    await getDb().consumerSession.updateMany({
+      where: { id: session.id, revokedAt: null, lastUsedAt: session.lastUsedAt },
+      data: { lastUsedAt: now },
+    });
+  }
   const customer =
     input.tenantId && input.storeId ? (session.consumerIdentity.customers?.[0] ?? null) : null;
   return {
@@ -720,6 +801,285 @@ export async function logoutConsumer(sessionToken?: string | null) {
     where: { tokenHash, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+}
+
+export async function requestConsumerEmailChange(input: {
+  storeSlug: string;
+  sessionToken?: string | null;
+  newEmailNormalized: string;
+  requestIpHash?: string | null;
+}) {
+  const { scope, consumer } = await requireConsumerForStore(input);
+  if (!scope.entitlement?.consumerConvenienceV2Enabled) throw new NotFoundError('Página');
+  const currentEmail = consumer.emailNormalized;
+  if (!currentEmail || currentEmail === input.newEmailNormalized) {
+    throw new BusinessRuleError('Informe um novo e-mail válido.');
+  }
+  const provider = getConsumerVerificationProvider();
+  if (!provider.isReady() || provider.method !== 'email' || provider.ownsCode) {
+    throw verificationUnavailable();
+  }
+  const now = new Date();
+  const requestId = randomUUID();
+  const challengeId = randomUUID();
+  const challengeToken = createConsumerSecret();
+  const challengeTokenHash = await hashConsumerSecret(challengeToken);
+  const currentEmailHash = await hashConsumerSecret(
+    `${getOtpSecret(provider.name)}:${currentEmail}`,
+  );
+  const code = provider.name === 'development' ? '000000' : generateConsumerOtp();
+  const otpHash = await hashConsumerOtp({
+    challengeToken,
+    code,
+    secret: getOtpSecret(provider.name),
+  });
+  const expiresAt = new Date(now.getTime() + EMAIL_CHALLENGE_TTL_MS);
+  const resendAfter = new Date(now.getTime() + RESEND_COOLDOWN_MS);
+
+  await getDb().$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`consumer-email-change:${consumer.identityId}`}, 0))`,
+      );
+      await tx.consumerEmailChangeRequest.updateMany({
+        where: {
+          consumerIdentityId: consumer.identityId,
+          status: { in: ['PENDING', 'CURRENT_VERIFIED'] },
+        },
+        data: { status: 'CANCELLED' },
+      });
+      await tx.consumerEmailChangeRequest.create({
+        data: {
+          id: requestId,
+          consumerIdentityId: consumer.identityId,
+          initiatedBySessionId: consumer.sessionId,
+          currentEmailHash,
+          newEmailNormalized: input.newEmailNormalized,
+          expiresAt,
+        },
+      });
+      await tx.consumerVerificationChallenge.create({
+        data: {
+          id: challengeId,
+          challengeTokenHash,
+          tenantId: scope.tenantId,
+          storeId: scope.id,
+          emailNormalized: input.newEmailNormalized,
+          otpHash,
+          purpose: 'EMAIL_CHANGE_NEW',
+          provider: provider.name,
+          consumerIdentityId: consumer.identityId,
+          emailChangeRequestId: requestId,
+          requestIpHash: input.requestIpHash ?? null,
+          resendAfter,
+          expiresAt,
+        },
+      });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+
+  try {
+    await provider.start({
+      subject: { kind: 'email', normalized: input.newEmailNormalized },
+      storeName: scope.name,
+      code,
+      idempotencyKey: `consumer-email-change/${requestId}`,
+    });
+  } catch (error) {
+    await getDb().$transaction([
+      getDb().consumerVerificationChallenge.updateMany({
+        where: { id: challengeId, status: 'PENDING' },
+        data: { status: 'FAILED' },
+      }),
+      getDb().consumerEmailChangeRequest.updateMany({
+        where: { id: requestId, status: 'PENDING' },
+        data: { status: 'FAILED' },
+      }),
+    ]);
+    throw error;
+  }
+  return { challengeToken, expiresAt, resendAfter };
+}
+
+export async function confirmConsumerEmailChange(input: {
+  storeSlug: string;
+  sessionToken?: string | null;
+  challengeToken: string;
+  code: string;
+}) {
+  const { scope, consumer } = await requireConsumerForStore(input);
+  if (!scope.entitlement?.consumerConvenienceV2Enabled) throw new NotFoundError('Página');
+  const challengeTokenHash = await hashConsumerSecret(input.challengeToken);
+  const now = new Date();
+  const challenge = await getDb().consumerVerificationChallenge.findFirst({
+    where: {
+      challengeTokenHash,
+      tenantId: scope.tenantId,
+      storeId: scope.id,
+      consumerIdentityId: consumer.identityId,
+      purpose: 'EMAIL_CHANGE_NEW',
+      status: 'PENDING',
+      consumedAt: null,
+      expiresAt: { gt: now },
+      attemptCount: { lt: MAX_ATTEMPTS },
+      emailChangeRequest: {
+        consumerIdentityId: consumer.identityId,
+        status: 'PENDING',
+        expiresAt: { gt: now },
+      },
+    },
+    select: { id: true, provider: true, otpHash: true },
+  });
+  if (!challenge) throw new BusinessRuleError('Esta confirmação expirou. Solicite uma nova.');
+  const provider = getConsumerVerificationProviderByName(challenge.provider);
+  const matches = Boolean(
+    challenge.otpHash &&
+    (await verifyConsumerOtpHash({
+      challengeToken: input.challengeToken,
+      code: input.code,
+      secret: getOtpSecret(provider.name),
+      otpHash: challenge.otpHash,
+    })),
+  );
+  if (!matches) {
+    await recordFailedAttempt({ challengeId: challenge.id, terminal: false });
+    throw new AuthenticationError('O código informado é inválido ou expirou.');
+  }
+
+  const nextSessionToken = createConsumerSecret();
+  const nextSessionTokenHash = await hashConsumerSecret(nextSessionToken);
+  const nextExpiresAt = new Date(now.getTime() + SESSION_TTL_MS);
+  await getDb().$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`consumer-email-change:${consumer.identityId}`}, 0))`,
+      );
+      const current = await tx.consumerVerificationChallenge.findFirst({
+        where: {
+          id: challenge.id,
+          consumerIdentityId: consumer.identityId,
+          purpose: 'EMAIL_CHANGE_NEW',
+          status: 'PENDING',
+          consumedAt: null,
+          expiresAt: { gt: now },
+          attemptCount: { lt: MAX_ATTEMPTS },
+        },
+        select: {
+          id: true,
+          otpHash: true,
+          emailChangeRequest: {
+            select: {
+              id: true,
+              consumerIdentityId: true,
+              currentEmailHash: true,
+              newEmailNormalized: true,
+              status: true,
+              expiresAt: true,
+            },
+          },
+        },
+      });
+      const change = current?.emailChangeRequest;
+      const currentIdentity = await tx.consumerIdentity.findUnique({
+        where: { id: consumer.identityId },
+        select: { emailNormalized: true },
+      });
+      if (
+        !current?.otpHash ||
+        !change ||
+        change.consumerIdentityId !== consumer.identityId ||
+        change.status !== 'PENDING' ||
+        change.expiresAt <= now ||
+        !currentIdentity?.emailNormalized ||
+        (await hashConsumerSecret(
+          `${getOtpSecret(provider.name)}:${currentIdentity.emailNormalized}`,
+        )) !== change.currentEmailHash ||
+        !(await verifyConsumerOtpHash({
+          challengeToken: input.challengeToken,
+          code: input.code,
+          secret: getOtpSecret(provider.name),
+          otpHash: current.otpHash,
+        }))
+      ) {
+        throw new ConflictError('Não foi possível alterar o e-mail. Solicite um novo código.');
+      }
+      const conflict = await tx.consumerIdentity.findUnique({
+        where: { emailNormalized: change.newEmailNormalized },
+        select: { id: true },
+      });
+      if (conflict && conflict.id !== consumer.identityId) {
+        throw new ConflictError('Não foi possível alterar o e-mail.');
+      }
+      const updated = await tx.consumerIdentity.updateMany({
+        where: { id: consumer.identityId, emailNormalized: currentIdentity.emailNormalized },
+        data: { emailNormalized: change.newEmailNormalized, emailVerifiedAt: now },
+      });
+      if (updated.count !== 1) throw new ConflictError('Não foi possível alterar o e-mail.');
+      await tx.consumerEmailChangeRequest.update({
+        where: { id: change.id },
+        data: { status: 'COMPLETED', newVerifiedAt: now, completedAt: now },
+      });
+      await tx.consumerVerificationChallenge.update({
+        where: { id: current.id },
+        data: {
+          status: 'VERIFIED',
+          verifiedAt: now,
+          consumedAt: now,
+          attemptCount: { increment: 1 },
+        },
+      });
+      await tx.consumerSession.updateMany({
+        where: {
+          consumerIdentityId: consumer.identityId,
+          id: { not: consumer.sessionId },
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      const rotated = await tx.consumerSession.updateMany({
+        where: {
+          id: consumer.sessionId,
+          consumerIdentityId: consumer.identityId,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: {
+          tokenHash: nextSessionTokenHash,
+          expiresAt: nextExpiresAt,
+          lastUsedAt: now,
+        },
+      });
+      if (rotated.count !== 1) throw new ConflictError('Não foi possível alterar o e-mail.');
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+  return { sessionToken: nextSessionToken, expiresAt: nextExpiresAt };
+}
+
+export function describeConsumerDevice(userAgent: string | null) {
+  const value = userAgent ?? '';
+  const browser = /Edg\//u.test(value)
+    ? 'Edge'
+    : /Firefox\//u.test(value)
+      ? 'Firefox'
+      : /CriOS\//u.test(value)
+        ? 'Chrome'
+        : /Chrome\//u.test(value)
+          ? 'Chrome'
+          : /Safari\//u.test(value)
+            ? 'Safari'
+            : 'Navegador';
+  const platform = /iPhone|iPad/u.test(value)
+    ? 'iPhone/iPad'
+    : /Android/u.test(value)
+      ? 'Android'
+      : /Windows/u.test(value)
+        ? 'Windows'
+        : /Macintosh/u.test(value)
+          ? 'Mac'
+          : null;
+  return platform ? `${browser} no ${platform}` : browser;
 }
 
 export function readCookieHeader(request: Request, name: string) {

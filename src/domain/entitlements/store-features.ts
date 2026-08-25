@@ -1,4 +1,11 @@
 export const STORE_FEATURE_DEFINITIONS = {
+  consumerConvenienceV2: {
+    key: 'consumerConvenienceV2',
+    label: 'Recompra e conveniência V2',
+    description: 'Sincroniza favoritos, mostra o de sempre e permite gerenciar aparelhos.',
+    entitlementField: 'consumerConvenienceV2Enabled',
+    implementationStatus: 'AVAILABLE',
+  },
   consumerIdentity: {
     key: 'consumerIdentity',
     label: 'Conta do cliente e Clientes',

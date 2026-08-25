@@ -16,8 +16,17 @@ interface FavoritesState {
   storeId: string | null;
   productIds: string[];
   setStore: (storeId: string, availableProductIds: string[]) => void;
+  mergeProductIds: (storeId: string, productIds: string[]) => string[];
+  configureServerSync: (storeId: string, storeSlug: string, enabled: boolean) => void;
   toggleFavorite: (productId: string) => boolean;
 }
+
+interface ServerSyncTarget {
+  storeId: string;
+  storeSlug: string;
+}
+
+let serverSyncTarget: ServerSyncTarget | null = null;
 
 export function getFavoritesStorageKey(storeId: string) {
   return `${FAVORITES_STORAGE_KEY_PREFIX}${storeId}`;
@@ -67,6 +76,7 @@ export function readFavorites(
   storeId: string,
   availableProductIds: string[],
 ) {
+  void availableProductIds;
   if (!storage) return [];
   const key = getFavoritesStorageKey(storeId);
   let raw: string | null;
@@ -97,10 +107,9 @@ export function readFavorites(
       return [];
     }
 
-    const available = new Set(availableProductIds);
-    const productIds = [...new Set(parsed.productIds)].filter((productId) =>
-      available.has(productId),
-    );
+    // Um favorito continua pertencendo ao consumidor mesmo quando o item fica
+    // temporariamente indisponível ou sai da resposta pública do catálogo.
+    const productIds = [...new Set(parsed.productIds)];
     if (productIds.length !== parsed.productIds.length) {
       writeFavorites(storage, storeId, productIds);
     }
@@ -128,6 +137,24 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
     set({ storeId, productIds });
   },
 
+  mergeProductIds: (storeId, incomingProductIds) => {
+    const current = get();
+    const localProductIds =
+      current.storeId === storeId
+        ? current.productIds
+        : readFavorites(getBrowserStorage(), storeId, []);
+    const productIds = [...new Set([...localProductIds, ...incomingProductIds])].slice(
+      -MAX_FAVORITES,
+    );
+    set({ storeId, productIds });
+    writeFavorites(getBrowserStorage(), storeId, productIds);
+    return productIds;
+  },
+
+  configureServerSync: (storeId, storeSlug, enabled) => {
+    serverSyncTarget = enabled ? { storeId, storeSlug } : null;
+  },
+
   toggleFavorite: (productId) => {
     const current = get();
     if (!current.storeId || !productId) return false;
@@ -137,6 +164,17 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       : [...current.productIds, productId].slice(-MAX_FAVORITES);
     set({ productIds });
     writeFavorites(getBrowserStorage(), current.storeId, productIds);
+    if (serverSyncTarget?.storeId === current.storeId) {
+      void fetch(
+        `/api/storefront/${encodeURIComponent(serverSyncTarget.storeSlug)}/consumer/favorites`,
+        {
+          method: isFavorite ? 'DELETE' : 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId }),
+        },
+      ).catch(() => undefined);
+    }
     return !isFavorite;
   },
 }));

@@ -72,6 +72,7 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
 
     const result = await requestConsumerVerification({
       context: verificationContext,
+      requestIpHash: ipHash,
     });
     return applyConsumerHeaders(
       Response.json({

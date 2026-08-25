@@ -3,7 +3,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 
 import { BusinessRuleError, RateLimitError } from '@/server/errors';
-import { isDeployedRuntime } from '@/server/runtime-environment';
+import { isLocalDevelopmentRuntime } from '@/server/runtime-environment';
 
 const BIRD_VERIFY_TIMEOUT_SECONDS = 5 * 60;
 const EMAIL_VERIFY_TIMEOUT_SECONDS = 10 * 60;
@@ -75,10 +75,7 @@ class DevelopmentProvider implements ConsumerVerificationProvider {
   readonly method = 'email' as const;
   readonly ownsCode = false;
   isReady() {
-    return (
-      !isDeployedRuntime() &&
-      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
-    );
+    return isLocalDevelopmentRuntime();
   }
   async start(input: ConsumerVerificationStartInput): Promise<ConsumerVerificationStartResult> {
     if (!this.isReady()) throw unavailable();
@@ -176,7 +173,10 @@ class ResendProvider implements ConsumerVerificationProvider {
         cache: 'no-store',
       });
     } catch {
-      throw unavailable();
+      // Falhas de transporte são ambíguas: o Resend pode ter aceitado o e-mail
+      // antes de a resposta chegar. Manter o mesmo challenge impede que uma
+      // nova solicitação gere imediatamente um segundo código diferente.
+      return { provider: this.name, expiresAt: localExpiry(EMAIL_VERIFY_TIMEOUT_SECONDS) };
     }
     if (response.status === 429) throw new RateLimitError(unavailable().message);
     if (!response.ok) throw unavailable();

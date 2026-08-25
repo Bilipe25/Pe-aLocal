@@ -180,6 +180,7 @@ export async function updateStoreEntitlement(
             combosPromotionsEnabled: current.combosPromotionsEnabled,
             posEnabled: current.posEnabled,
             consumerIdentityEnabled: current.consumerIdentityEnabled,
+            consumerConvenienceV2Enabled: current.consumerConvenienceV2Enabled,
           },
           next: {
             ...parsed.data,

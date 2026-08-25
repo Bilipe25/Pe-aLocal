@@ -37,6 +37,8 @@ type HistoricRepeatItem = {
   unitPrice: number;
   quantity: number;
   notes: string | null;
+  offerGroupId: string | null;
+  offerGroup: { nameSnapshot: string } | null;
   options: Array<{ optionId: string }>;
 };
 
@@ -83,7 +85,22 @@ async function rebuildHistoricItems(
   const productMap = new Map(products.map((product) => [product.id, product]));
   const readyItems: PublicRepeatOrderReadyItemDto[] = [];
   const issues: PublicRepeatOrderIssueDto[] = [];
+  const reviewedOfferGroups = new Set<string>();
   for (const historicItem of historicItems) {
+    if (historicItem.offerGroupId) {
+      if (!reviewedOfferGroups.has(historicItem.offerGroupId)) {
+        reviewedOfferGroups.add(historicItem.offerGroupId);
+        issues.push(
+          issue(
+            historicItem.productId,
+            historicItem.offerGroup?.nameSnapshot ?? historicItem.productName,
+            'REVIEW_REQUIRED',
+            `${historicItem.offerGroup?.nameSnapshot ?? 'Esta oferta'} precisa ser revisada com as condições atuais.`,
+          ),
+        );
+      }
+      continue;
+    }
     const product = productMap.get(historicItem.productId);
     if (!product) {
       issues.push(
@@ -158,6 +175,8 @@ export async function rebuildOrderIntentFromHistory(input: {
           unitPrice: true,
           quantity: true,
           notes: true,
+          offerGroupId: true,
+          offerGroup: { select: { nameSnapshot: true } },
           options: {
             orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
             select: { optionId: true },
@@ -226,6 +245,8 @@ export async function prepareOrderRepeat({
           unitPrice: true,
           quantity: true,
           notes: true,
+          offerGroupId: true,
+          offerGroup: { select: { nameSnapshot: true } },
           options: {
             orderBy: [{ groupPosition: 'asc' }, { position: 'asc' }, { id: 'asc' }],
             select: { optionId: true },

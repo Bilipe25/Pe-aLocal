@@ -34,8 +34,18 @@ export const storeEntitlementInputSchema = z
     combosPromotionsEnabled: z.boolean().default(false),
     posEnabled: z.boolean().default(false),
     consumerIdentityEnabled: z.boolean().default(false),
+    consumerConvenienceV2Enabled: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.consumerConvenienceV2Enabled && !value.consumerIdentityEnabled) {
+      context.addIssue({
+        code: 'custom',
+        path: ['consumerConvenienceV2Enabled'],
+        message: 'requer Conta do cliente e Clientes',
+      });
+    }
+  });
 
 export type StoreEntitlementInput = z.input<typeof storeEntitlementInputSchema>;
 export type ParsedStoreEntitlementInput = z.output<typeof storeEntitlementInputSchema>;

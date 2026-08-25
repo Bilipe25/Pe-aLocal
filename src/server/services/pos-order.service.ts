@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { storeAssetUrl } from '@/features/assets/urls';
 import { normalizePhone } from '@/lib/brazil';
+import { buildOrderCompositionSignature } from '@/server/services/consumer-repurchase.service';
 import type { PosOrderInput, PosQuoteInput } from '@/schemas/pos';
 import { getDb } from '@/server/database/client';
 import { AuthorizationError, BusinessRuleError, CheckoutError } from '@/server/errors';
@@ -217,9 +218,39 @@ export async function searchPosCustomers(search: string) {
     throw new AuthorizationError('Seu perfil não pode consultar dados de clientes.');
   }
   const term = search.trim().slice(0, 80);
-  if (term.length < 2) throw new BusinessRuleError('Digite ao menos dois caracteres do nome ou telefone.');
+  if (term.length < 2)
+    throw new BusinessRuleError('Digite ao menos dois caracteres do nome ou telefone.');
   const phoneNormalized = normalizePhone(term);
-  const customers = await getDb().$queryRaw<Array<{ id: string; name: string; phone: string; completedOrders: bigint; totalSpent: bigint; lastOrderAt: Date | null; classification: 'NEW' | 'RECURRING' | 'LAPSED' | null }>>(Prisma.sql`
+  const customers = await getDb().$queryRaw<
+    Array<{
+      id: string;
+      name: string;
+      phone: string;
+      completedOrders: bigint;
+      totalSpent: bigint;
+      lastOrderAt: Date | null;
+      classification: 'NEW' | 'RECURRING' | 'LAPSED' | null;
+      mostOrderedProductName: string | null;
+      mostOrderedCount: bigint | null;
+    }>
+  >(Prisma.sql`
+    WITH product_counts AS (
+      SELECT order_row."customerId", item."productId", item."productName",
+        COUNT(DISTINCT order_row.id)::bigint AS "orderCount"
+      FROM orders order_row
+      INNER JOIN order_items item ON item."orderId" = order_row.id
+        AND item."tenantId" = order_row."tenantId" AND item."storeId" = order_row."storeId"
+      WHERE order_row."tenantId" = ${context.session.tenantId}
+        AND order_row."storeId" = ${context.store.id}
+        AND order_row.status = 'DELIVERED'::"OrderStatus"
+        AND order_row."paymentStatus" = 'PAID'::"PaymentStatus"
+        AND order_row."customerId" IS NOT NULL
+      GROUP BY order_row."customerId", item."productId", item."productName"
+    ), top_product AS (
+      SELECT DISTINCT ON ("customerId") "customerId", "productName", "orderCount"
+      FROM product_counts
+      ORDER BY "customerId", "orderCount" DESC, "productName" ASC, "productId" ASC
+    )
     SELECT customer.id, customer.name, customer.phone,
       COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus")::bigint AS "completedOrders",
       COALESCE(SUM(order_row.total) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus"), 0)::bigint AS "totalSpent",
@@ -229,25 +260,128 @@ export async function searchPosCustomers(search: string) {
         WHEN COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= 2 AND MAX(COALESCE(order_row."deliveredAt", order_row."statusChangedAt")) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= CURRENT_TIMESTAMP - INTERVAL '60 days' THEN 'RECURRING'
         WHEN COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= 2 THEN 'LAPSED'
         ELSE NULL
-      END AS classification
+      END AS classification,
+      top_product."productName" AS "mostOrderedProductName",
+      top_product."orderCount" AS "mostOrderedCount"
     FROM customers customer
     LEFT JOIN orders order_row ON order_row."customerId" = customer.id AND order_row."tenantId" = customer."tenantId" AND order_row."storeId" = ${context.store.id}
     WHERE customer."tenantId" = ${context.session.tenantId}
+      AND EXISTS (
+        SELECT 1 FROM orders store_order
+        WHERE store_order."customerId" = customer.id
+          AND store_order."tenantId" = customer."tenantId"
+          AND store_order."storeId" = ${context.store.id}
+      )
       AND (lower(customer.name) LIKE lower(${`${term}%`}) OR (${phoneNormalized !== ''} AND customer."phoneNormalized" LIKE ${`${phoneNormalized}%`}))
-    GROUP BY customer.id
+    LEFT JOIN top_product ON top_product."customerId" = customer.id
+    GROUP BY customer.id, top_product."productName", top_product."orderCount"
     ORDER BY "lastOrderAt" DESC NULLS LAST, customer.name ASC
     LIMIT 5
   `);
   if (!customers.length) return [];
   const addresses = await getDb().customerAddress.findMany({
-    where: { tenantId: context.session.tenantId, customerId: { in: customers.map((customer) => customer.id) } },
+    where: {
+      tenantId: context.session.tenantId,
+      customerId: { in: customers.map((customer) => customer.id) },
+      storeUses: { some: { tenantId: context.session.tenantId, storeId: context.store.id } },
+    },
     orderBy: [{ isDefault: 'desc' }, { lastUsedAt: 'desc' }, { updatedAt: 'desc' }],
-    select: { id: true, customerId: true, label: true, street: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true, reference: true, storeUses: { where: { storeId: context.store.id }, take: 1, select: { deliveryZoneId: true } } },
+    select: {
+      id: true,
+      customerId: true,
+      label: true,
+      street: true,
+      number: true,
+      complement: true,
+      neighborhood: true,
+      city: true,
+      state: true,
+      zipCode: true,
+      reference: true,
+      storeUses: {
+        where: { storeId: context.store.id },
+        take: 1,
+        select: { deliveryZoneId: true },
+      },
+    },
   });
+  const usualByCustomer = new Map<
+    string,
+    { orderId: string; occurrences: number; summary: string }
+  >();
+  if (context.store.entitlement?.consumerConvenienceV2Enabled) {
+    const since = new Date();
+    since.setUTCMonth(since.getUTCMonth() - 12);
+    const historicOrders = await getDb().order.findMany({
+      where: {
+        tenantId: context.session.tenantId,
+        storeId: context.store.id,
+        customerId: { in: customers.map((customer) => customer.id) },
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        createdAt: { gte: since },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 250,
+      select: {
+        id: true,
+        customerId: true,
+        createdAt: true,
+        orderNumber: true,
+        items: {
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          select: {
+            productId: true,
+            productName: true,
+            quantity: true,
+            offerGroupId: true,
+            options: { select: { optionId: true } },
+          },
+        },
+      },
+    });
+    for (const customer of customers) {
+      const groups = new Map<string, { count: number; order: (typeof historicOrders)[number] }>();
+      for (const order of historicOrders
+        .filter((candidate) => candidate.customerId === customer.id)
+        .slice(0, 50)) {
+        const signature = buildOrderCompositionSignature(order);
+        if (!signature) continue;
+        const current = groups.get(signature);
+        if (current) current.count += 1;
+        else groups.set(signature, { count: 1, order });
+      }
+      const usual = [...groups.values()].sort(
+        (left, right) =>
+          right.count - left.count ||
+          right.order.createdAt.getTime() - left.order.createdAt.getTime(),
+      )[0];
+      if (usual && usual.count >= 3) {
+        usualByCustomer.set(customer.id, {
+          orderId: usual.order.id,
+          occurrences: usual.count,
+          summary: usual.order.items
+            .slice(0, 3)
+            .map((item) => `${item.quantity}× ${item.productName}`)
+            .join(' + '),
+        });
+      }
+    }
+  }
   return customers.map((customer) => ({
     ...customer,
-    completedOrders: Number(customer.completedOrders), totalSpent: Number(customer.totalSpent),
-    addresses: addresses.filter((address) => address.customerId === customer.id).slice(0, 5).map(({ storeUses, ...address }) => ({ ...address, deliveryZoneId: storeUses[0]?.deliveryZoneId ?? null })),
+    completedOrders: Number(customer.completedOrders),
+    totalSpent: Number(customer.totalSpent),
+    mostOrderedCount: Number(customer.mostOrderedCount ?? 0),
+    v2Enabled: Boolean(context.store.entitlement?.consumerConvenienceV2Enabled),
+    usualOrder: usualByCustomer.get(customer.id) ?? null,
+    addresses: addresses
+      .filter((address) => address.customerId === customer.id)
+      .slice(0, 5)
+      .map(({ storeUses, ...address }) => ({
+        ...address,
+        deliveryZoneId: storeUses[0]?.deliveryZoneId ?? null,
+      })),
   }));
 }
 

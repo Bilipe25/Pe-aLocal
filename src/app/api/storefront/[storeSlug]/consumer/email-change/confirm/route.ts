@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { consumerVerificationConfirmSchema } from '@/schemas/consumer-auth';
+import { consumerEmailChangeConfirmSchema } from '@/schemas/consumer-auth';
 import { slugSchema } from '@/schemas/store';
 import { errorToResponse, RateLimitError, ValidationError } from '@/server/errors';
 import {
@@ -13,11 +13,11 @@ import {
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
+  confirmConsumerEmailChange,
   CONSUMER_SESSION_COOKIE,
   consumerSessionCookieOptions,
-  describeConsumerDevice,
   hashConsumerSecret,
-  verifyConsumerCode,
+  readCookieHeader,
 } from '@/server/services/consumer-auth.service';
 
 export const dynamic = 'force-dynamic';
@@ -27,28 +27,24 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
   try {
     assertConsumerMutationRequest(request);
     const params = paramsSchema.safeParse(await context.params);
-    const input = consumerVerificationConfirmSchema.safeParse(await readConsumerJson(request));
+    const input = consumerEmailChangeConfirmSchema.safeParse(await readConsumerJson(request));
     if (!params.success || !input.success) throw new ValidationError();
     const fingerprint = await hashConsumerSecret(
       `${consumerClientAddress(request)}:${input.data.challengeToken}`,
     );
     const rateLimit = await getRateLimiter().check({
-      identifier: `consumer-verification-confirm:${fingerprint}`,
+      identifier: `consumer-email-change-confirm:${fingerprint}`,
       ...RATE_LIMITS.consumerVerificationConfirm,
       strict: isDeployedRuntime(),
     });
     if (rateLimit.unavailable || !rateLimit.allowed) throw new RateLimitError();
-
-    const result = await verifyConsumerCode({
+    const result = await confirmConsumerEmailChange({
       storeSlug: params.data.storeSlug,
+      sessionToken: readCookieHeader(request, CONSUMER_SESSION_COOKIE),
       challengeToken: input.data.challengeToken,
       code: input.data.code,
-      deviceLabel: describeConsumerDevice(request.headers.get('user-agent')),
     });
-    const response = NextResponse.json({
-      linked: result.linked,
-      customerName: result.customerName,
-    });
+    const response = NextResponse.json({ success: true });
     response.cookies.set(
       CONSUMER_SESSION_COOKIE,
       result.sessionToken,

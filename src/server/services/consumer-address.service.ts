@@ -165,16 +165,22 @@ export async function setDefaultConsumerAddress(input: {
   addressId: string;
 }) {
   const { scope, customerId } = await addressScope(input);
-  await getDb().$transaction(async (tx) => {
-    const target = await tx.customerAddress.findFirst({
-      where: { id: input.addressId, tenantId: scope.tenantId, customerId },
-      select: { id: true },
-    });
-    if (!target) throw new NotFoundError('Endereço');
-    await tx.customerAddress.updateMany({
-      where: { tenantId: scope.tenantId, customerId, isDefault: true },
-      data: { isDefault: false },
-    });
-    await tx.customerAddress.update({ where: { id: target.id }, data: { isDefault: true } });
-  });
+  await getDb().$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`consumer-address:${customerId}`}, 0))`,
+      );
+      const target = await tx.customerAddress.findFirst({
+        where: { id: input.addressId, tenantId: scope.tenantId, customerId },
+        select: { id: true },
+      });
+      if (!target) throw new NotFoundError('Endereço');
+      await tx.customerAddress.updateMany({
+        where: { tenantId: scope.tenantId, customerId, isDefault: true },
+        data: { isDefault: false },
+      });
+      await tx.customerAddress.update({ where: { id: target.id }, data: { isDefault: true } });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }

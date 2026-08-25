@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { Prisma } from '@prisma/client';
+
 import { getDb } from '@/server/database/client';
 import { NotFoundError } from '@/server/errors';
 import { requireConsumerForStore } from '@/server/services/consumer-auth.service';
@@ -14,7 +16,13 @@ const orderSelect = {
   total: true,
   createdAt: true,
   deliveredAt: true,
-} as const;
+  items: {
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
+    take: 3,
+    select: { productName: true, quantity: true },
+  },
+  _count: { select: { items: true } },
+} satisfies Prisma.OrderSelect;
 
 export async function listConsumerOrders(input: {
   storeSlug: string;
