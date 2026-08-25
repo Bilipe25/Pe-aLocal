@@ -39,6 +39,7 @@
     "db:customer-recognition:preflight": "node tools/customer-recognition-preflight.mjs",
     "db:orders:preflight": "node tools/order-module-preflight.mjs",
     "db:customer-recognition:cleanup": "node tools/customer-recognition-cleanup.mjs",
+    "db:consumer-identity:cleanup": "node tools/consumer-identity-cleanup.mjs",
     "db:outbox:replay": "tsx prisma/replay-order-outbox.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",

@@ -1,5 +1,8 @@
 # Identidade progressiva do consumidor + Clientes V1
 
+As conveniências opt-in de favoritos, recompra, sessões e Clientes V2 estão documentadas em
+[`consumer-convenience-v2.md`](./consumer-convenience-v2.md).
+
 ## Estado da entrega
 
 As migrations originais `20260824210000_consumer_identity_v1` e

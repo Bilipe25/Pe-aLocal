@@ -18,7 +18,7 @@ const scope = {
   tenantId: 'tenant-1',
   slug: 'loja-teste',
   name: 'Loja Teste',
-  entitlement: { consumerIdentityEnabled: true },
+  entitlement: { consumerIdentityEnabled: true, consumerConvenienceV2Enabled: true },
 };
 
 async function emailChallenge(overrides: Record<string, unknown> = {}) {
@@ -78,6 +78,7 @@ function verificationDb(input: {
     consumerSession: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       create: vi.fn().mockResolvedValue({}),
+      findMany: vi.fn().mockResolvedValue([]),
     },
   };
   const db = {
@@ -205,12 +206,10 @@ describe('consumer email verification service', () => {
     await expect(
       verifyConsumerCode({ storeSlug: 'loja-teste', challengeToken, code: '999999' }),
     ).rejects.toThrow('O código informado é inválido ou expirou.');
-    expect(db.consumerVerificationChallenge.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ attemptCount: 4 }),
-        data: { attemptCount: 5, status: 'FAILED' },
-      }),
-    );
+    expect(tx.consumerVerificationChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { attemptCount: 5, status: 'FAILED' },
+    });
     expect(tx.consumerSession.create).not.toHaveBeenCalled();
   });
 
@@ -259,6 +258,13 @@ describe('consumer email verification service', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
     const create = vi.fn().mockResolvedValue({});
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      consumerVerificationChallenge: {
+        count: vi.fn().mockResolvedValue(0),
+        create,
+      },
+    };
     const db = {
       store: { findFirst: vi.fn().mockResolvedValue(scope) },
       order: { findFirst: vi.fn() },
@@ -268,7 +274,12 @@ describe('consumer email verification service', () => {
         updateMany,
         update: vi.fn(),
       },
-      $transaction: vi.fn(),
+      $transaction: vi.fn(async (operation: unknown) => {
+        if (typeof operation === 'function') {
+          return (operation as (client: typeof tx) => unknown)(tx);
+        }
+        return operation;
+      }),
     };
     mocks.getDb.mockReturnValue(db);
     const context = await resolveConsumerVerificationContext({
@@ -290,6 +301,6 @@ describe('consumer email verification service', () => {
       },
       data: { status: 'FAILED' },
     });
-    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
   });
 });

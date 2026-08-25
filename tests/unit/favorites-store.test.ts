@@ -54,13 +54,25 @@ describe('favoritos por estabelecimento', () => {
     });
   });
 
-  it('remove IDs de produtos que deixaram o catálogo', () => {
+  it('preserva IDs quando o produto sai temporariamente do catálogo', () => {
     writeFavorites(storage, 'store-a', ['product-a', 'product-removed']);
 
-    expect(readFavorites(storage, 'store-a', ['product-a'])).toEqual(['product-a']);
+    expect(readFavorites(storage, 'store-a', ['product-a'])).toEqual([
+      'product-a',
+      'product-removed',
+    ]);
     expect(JSON.parse(storage.getItem(getFavoritesStorageKey('store-a')) ?? '{}')).toMatchObject({
-      productIds: ['product-a'],
+      productIds: ['product-a', 'product-removed'],
     });
+  });
+
+  it('mescla favoritos locais e autenticados sem duplicar', () => {
+    useFavoritesStore.getState().setStore('store-a', ['product-a']);
+    useFavoritesStore.getState().toggleFavorite('product-a');
+
+    expect(
+      useFavoritesStore.getState().mergeProductIds('store-a', ['product-b', 'product-a']),
+    ).toEqual(['product-a', 'product-b']);
   });
 
   it('descarta storage corrompido sem quebrar a página', () => {
