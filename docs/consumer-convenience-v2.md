@@ -22,11 +22,12 @@ As migrations aditivas são:
 1. `20260825150000_consumer_convenience_v2`: flag, sessões, favoritos e troca de e-mail;
 2. `20260825150100_consumer_convenience_v2_indexes`: índices concorrentes.
 
-Elas não fazem backfill, não removem dados e não devem ser substituídas por `prisma db push`. Nesta
-entrega, os arquivos foram criados e validados, mas não aplicados remotamente.
+Elas não fazem backfill, não removem dados e não devem ser substituídas por `prisma db push`. As duas
+migrations foram aplicadas em staging em 25/08/2026 com `prisma migrate deploy`; a verificação
+posterior confirmou o schema atualizado no projeto Supabase `wxkvajjupvvfwyfgxacb`.
 
-Sequência futura de rollout: backup → migration controlada → validar provider Resend → habilitar uma
-loja piloto → smoke tests Guest/Recognized/Verified → observar → expandir. Rollback funcional:
+Próximas etapas do rollout: validar provider Resend → habilitar uma loja piloto → smoke tests
+Guest/Recognized/Verified → observar → expandir. Rollback funcional:
 desligar `consumerConvenienceV2Enabled`; nenhum favorito, vínculo, pedido ou endereço é apagado.
 
 ## Favoritos
