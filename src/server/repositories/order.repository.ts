@@ -67,6 +67,7 @@ type CreateOrderParams =
       storeSlug: string;
       recognitionBrowserToken?: string | null;
       deviceTokenHash?: string | null;
+      consumerSessionTokenHash?: string | null;
     }
   | {
       input: DineInCheckoutInput;
@@ -107,6 +108,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
   const posInput = pos ? (input as PosOrderInput) : null;
   const recognitionBrowserToken = dineIn || pos ? null : params.recognitionBrowserToken;
   const deviceTokenHash = dineIn || pos ? null : params.deviceTokenHash;
+  const consumerSessionTokenHash = dineIn || pos ? null : params.consumerSessionTokenHash;
 
   return getDb().$transaction(
     async (tx) => {
@@ -158,7 +160,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           },
         },
         entitlement: {
-          select: { onlinePaymentsEnabled: true, dineInQrEnabled: true, posEnabled: true },
+          select: { onlinePaymentsEnabled: true, dineInQrEnabled: true, posEnabled: true, consumerIdentityEnabled: true },
         },
         paymentProviderConnections: {
           where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
@@ -338,6 +340,30 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               allowConsumed: true,
             })
           : null;
+      const authenticatedIdentity =
+        standardInput?.identityMode === 'AUTHENTICATED' && consumerSessionTokenHash
+          ? await tx.consumerSession.findFirst({
+              where: {
+                tokenHash: consumerSessionTokenHash,
+                revokedAt: null,
+                expiresAt: { gt: now },
+                consumerIdentity: {
+                  customers: { some: { tenantId: store.tenantId } },
+                },
+              },
+              select: {
+                consumerIdentity: {
+                  select: {
+                    customers: {
+                      where: { tenantId: store.tenantId },
+                      take: 1,
+                      select: { id: true, name: true, phone: true, phoneNormalized: true },
+                    },
+                  },
+                },
+              },
+            })
+          : null;
       if (standardInput?.identityMode === 'RECOGNIZED' && !recognizedIdentity) {
         throw new CheckoutError(
           'CART_INVALID',
@@ -345,6 +371,17 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           409,
         );
       }
+      if (
+        standardInput?.identityMode === 'AUTHENTICATED' &&
+        (!store.entitlement?.consumerIdentityEnabled || !authenticatedIdentity?.consumerIdentity.customers[0])
+      ) {
+        throw new CheckoutError(
+          'CART_INVALID',
+          'Sua conta expirou. Continue como visitante para não perder o carrinho.',
+          409,
+        );
+      }
+      const authenticatedCustomer = authenticatedIdentity?.consumerIdentity.customers[0] ?? null;
       const resolvedIdentity = pos
         ? {
             customerId: posCustomer?.id ?? null,
@@ -361,6 +398,13 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               customerPhone: null,
               phoneNormalized: null,
             }
+          : standardInput!.identityMode === 'AUTHENTICATED'
+            ? {
+                customerId: authenticatedCustomer!.id,
+                customerName: authenticatedCustomer!.name,
+                customerPhone: authenticatedCustomer!.phone,
+                phoneNormalized: authenticatedCustomer!.phoneNormalized,
+              }
           : standardInput!.identityMode === 'RECOGNIZED'
             ? {
                 customerId: recognizedIdentity!.customerId,
@@ -1400,6 +1444,7 @@ export async function getOrderByPublicToken(publicToken: string) {
       id: true,
       orderNumber: true,
       publicToken: true,
+      customerId: true,
       customerName: true,
       customerPhone: true,
       modality: true,
@@ -1484,6 +1529,7 @@ export async function getOrderByPublicToken(publicToken: string) {
               estimatedTimeMaxMinutes: true,
             },
           },
+          entitlement: { select: { consumerIdentityEnabled: true } },
         },
       },
     },

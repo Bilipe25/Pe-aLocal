@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'pedidolocal-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v5`;
+const CACHE_NAME = `${CACHE_PREFIX}v6`;
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -16,7 +16,7 @@ function isSensitiveNavigation(pathname) {
   if (/^\/(?:dashboard|admin|auth)(?:\/|$)/.test(pathname)) return true;
   if (/^\/q(?:\/|$)/.test(pathname)) return true;
   if (/^\/(?:login|forgot-password|reset-password)(?:\/|$)/.test(pathname)) return true;
-  return /^\/[^/]+\/(?:cart|checkout|orders|order)(?:\/|$)/.test(pathname);
+  return /^\/[^/]+\/(?:account|cart|checkout|orders|order)(?:\/|$)/.test(pathname);
 }
 
 function canCacheResponse(response) {

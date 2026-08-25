@@ -33,6 +33,7 @@ export const storeEntitlementInputSchema = z
     dineInQrEnabled: z.boolean(),
     combosPromotionsEnabled: z.boolean().default(false),
     posEnabled: z.boolean().default(false),
+    consumerIdentityEnabled: z.boolean().default(false),
   })
   .strict();
 

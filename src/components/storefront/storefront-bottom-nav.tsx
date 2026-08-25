@@ -44,7 +44,7 @@ export function StorefrontBottomNav({
   const favoritesPath = `${catalogPath}/favorites`;
   const isCatalogActive = pathname === catalogPath || pathname === `${catalogPath}/`;
   const isCartActive = pathname === cartPath || pathname === checkoutPath;
-  const isOrderActive = pathname === ordersPath || pathname.startsWith(orderPathPrefix);
+  const isOrderActive = pathname === ordersPath || pathname.startsWith(orderPathPrefix) || pathname.startsWith(`${catalogPath}/account`);
   const isFavoritesActive = pathname === favoritesPath;
   const scopedCartItemCount = activeCartStoreId === storeId ? cartItemCount : 0;
 
@@ -84,7 +84,7 @@ export function StorefrontBottomNav({
     items.push({
       key: 'order',
       href: ordersPath,
-      label: 'Meu pedido',
+      label: 'Pedidos',
       icon: ReceiptText,
       active: isOrderActive,
     });

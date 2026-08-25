@@ -113,7 +113,7 @@ describe('Service Worker PedidoLocal', () => {
     handlers.get('fetch')?.({ request, respondWith });
 
     await expect(respondWith.mock.calls[0][0]).resolves.toBeInstanceOf(Response);
-    expect(caches.open).toHaveBeenCalledWith('pedidolocal-shell-v5');
+    expect(caches.open).toHaveBeenCalledWith('pedidolocal-shell-v6');
     expect(cache.match).toHaveBeenCalledWith('/offline.html');
   });
 

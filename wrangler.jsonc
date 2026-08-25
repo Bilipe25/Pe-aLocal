@@ -34,6 +34,7 @@
     "WEB_PUSH_ENABLED": "true",
     "MERCHANT_WEB_PUSH_ENABLED": "false",
     "MERCADO_PAGO_ENABLED": "false",
+    "CONSUMER_VERIFICATION_PROVIDER": "disabled",
   },
   "services": [
     {
@@ -132,6 +133,7 @@
         "MERCADO_PAGO_CLIENT_ID": "32620436153512",
         "MERCADO_PAGO_TEST_APPLICATION_ID": "1828304174612090",
         "MERCADO_PAGO_REDIRECT_URI": "https://pedidolocal-staging.gabriellion97.workers.dev/api/integrations/mercado-pago/oauth/callback",
+        "CONSUMER_VERIFICATION_PROVIDER": "disabled",
       },
       "images": {
         "binding": "IMAGES",
@@ -231,6 +233,7 @@
         "WEB_PUSH_ENABLED": "false",
         "MERCHANT_WEB_PUSH_ENABLED": "false",
         "MERCADO_PAGO_ENABLED": "false",
+        "CONSUMER_VERIFICATION_PROVIDER": "disabled",
       },
       "images": {
         "binding": "IMAGES",

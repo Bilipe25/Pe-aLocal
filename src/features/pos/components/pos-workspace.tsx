@@ -67,6 +67,10 @@ interface CustomerLookup {
   id: string;
   name: string;
   phone: string;
+  completedOrders: number;
+  totalSpent: number;
+  lastOrderAt: Date | string | null;
+  classification: 'NEW' | 'RECURRING' | 'LAPSED' | null;
   addresses: Array<{
     id: string;
     label: 'HOME' | 'WORK' | 'OTHER';
@@ -512,6 +516,7 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerLookup, setCustomerLookup] = useState<CustomerLookup | null>(null);
+  const [customerResults, setCustomerResults] = useState<CustomerLookup[]>([]);
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'not-found' | 'error'>(
     'idle',
   );
@@ -992,22 +997,30 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
     const result = await lookupPosCustomerAction(customerPhone);
     if (!result.success) {
       setCustomerLookup(null);
+      setCustomerResults([]);
       setCustomerId(undefined);
       setLookupError(result.error.message);
       setLookupState('error');
       return;
     }
-    if (!result.data) {
+    if (result.data.length === 0) {
       setCustomerLookup(null);
+      setCustomerResults([]);
       setCustomerId(undefined);
       setLookupState('not-found');
       return;
     }
-    setCustomerLookup(result.data);
-    setCustomerId(result.data.id);
-    setCustomerName(result.data.name);
-    setCustomerPhone(result.data.phone);
+    setCustomerResults(result.data);
+    if (result.data.length === 1) selectCustomer(result.data[0]!);
     setLookupState('idle');
+  }
+
+  function selectCustomer(customer: CustomerLookup) {
+    setCustomerLookup(customer);
+    setCustomerId(customer.id);
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone);
+    setCustomerResults([]);
   }
 
   function selectSavedAddress(saved: CustomerLookup['addresses'][number]) {
@@ -1285,7 +1298,7 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
               </h2>
               <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
                 <label className="text-sm font-semibold">
-                  Telefone
+                  Nome ou telefone
                   <Input
                     className="mt-1"
                     inputMode="tel"
@@ -1294,8 +1307,9 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                       setCustomerPhone(event.target.value);
                       setCustomerId(undefined);
                       setCustomerLookup(null);
+                      setCustomerResults([]);
                     }}
-                    placeholder="(11) 99999-9999"
+                    placeholder="Comece pelo nome ou telefone"
                   />
                 </label>
                 {initialData.capabilities.canLookupCustomer ? (
@@ -1324,10 +1338,24 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                   <p className="text-error mt-2 text-sm font-semibold">{lookupError}</p>
                 ) : null}
               </div>
+              {customerResults.length > 0 ? (
+                <div className="border-border bg-surface mt-3 divide-y rounded-xl border" role="listbox" aria-label="Clientes encontrados">
+                  {customerResults.map((customer) => (
+                    <button key={customer.id} type="button" role="option" aria-selected="false" onClick={() => selectCustomer(customer)} className="hover:bg-surface-secondary focus-visible:ring-brand-500 flex min-h-16 w-full items-center justify-between gap-3 p-3 text-left focus-visible:ring-2 focus-visible:outline-none">
+                      <span><strong className="block text-sm">{customer.name}</strong><span className="text-text-secondary mt-0.5 block text-xs">{customer.phone}</span></span>
+                      <span className="text-right"><strong className="block font-mono text-sm">{customer.completedOrders} compra(s)</strong>{customer.classification ? <span className="text-text-secondary block text-xs">{{ NEW: 'Novo', RECURRING: 'Recorrente', LAPSED: 'Faz tempo que não pede' }[customer.classification]}</span> : null}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {customerLookup ? (
                 <div className="bg-success-light mt-3 rounded-xl p-3">
                   <p className="text-success font-semibold">
                     Cliente encontrado · {customerLookup.name}
+                  </p>
+                  <p className="text-success mt-1 text-xs">
+                    {customerLookup.completedOrders} compra(s) concluída(s) · {formatCurrency(customerLookup.totalSpent)}
+                    {customerLookup.lastOrderAt ? ` · última em ${new Intl.DateTimeFormat('pt-BR').format(new Date(customerLookup.lastOrderAt))}` : ''}
                   </p>
                   {customerLookup.addresses.length > 0 ? (
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">

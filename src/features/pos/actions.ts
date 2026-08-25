@@ -17,7 +17,7 @@ import { dispatchCommittedOrderEvents } from '@/server/services/order-event-disp
 import {
   calculatePosQuote,
   createPosOrder,
-  lookupPosCustomerByPhone,
+  searchPosCustomers,
 } from '@/server/services/pos-order.service';
 import {
   discardPosDraft,
@@ -258,10 +258,10 @@ export async function createPosOrderAction(rawInput: unknown): Promise<
 }
 
 export async function lookupPosCustomerAction(
-  phone: string,
-): Promise<ActionResult<Awaited<ReturnType<typeof lookupPosCustomerByPhone>>>> {
+  search: string,
+): Promise<ActionResult<Awaited<ReturnType<typeof searchPosCustomers>>>> {
   try {
-    return actionSuccess(await lookupPosCustomerByPhone(phone));
+    return actionSuccess(await searchPosCustomers(search));
   } catch (error) {
     return actionError(error);
   }

@@ -73,6 +73,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           activeContext?.store.entitlement?.advancedReportsEnabled &&
           hasTenantPermission(session.tenantRole, Permission.VIEW_REPORTS),
         )}
+        canViewCustomers={Boolean(
+          activeContext?.store.entitlement?.consumerIdentityEnabled &&
+          activeContext?.session.tenantRole &&
+          (activeContext.session.tenantRole === 'OWNER' || activeContext.session.tenantRole === 'MANAGER') &&
+          hasTenantPermission(activeContext.session.tenantRole, Permission.VIEW_CUSTOMER_CONTACT)
+        )}
         merchantPush={
           activeStore &&
           String(process.env.MERCHANT_WEB_PUSH_ENABLED) === 'true' &&

@@ -19,6 +19,7 @@ import {
 } from '@/components/storefront/customer-order-access-boundary';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
+import { ConsumerAuthPanel } from '@/components/storefront/consumer-auth-panel';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
 import {
   getPublicPaymentStatusLabel,
@@ -239,6 +240,14 @@ export default async function OrderPage({ params }: OrderPageProps) {
               )}
             </div>
           </div>
+          {order.customerId && order.store.entitlement?.consumerIdentityEnabled ? (
+            <ConsumerAuthPanel
+              storeSlug={order.store.slug}
+              storeName={order.store.name}
+              purpose="ORDER_CLAIM"
+              trackingToken={order.publicToken}
+            />
+          ) : null}
         </main>
 
         <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />

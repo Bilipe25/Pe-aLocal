@@ -47,6 +47,7 @@ const statusPresentation: Record<
 interface PublicOrderHistoryProps {
   storeId: string;
   storeSlug: string;
+  excludeOrderNumbers?: number[];
 }
 
 type HistoryItem =
@@ -124,7 +125,7 @@ async function loadTrackingBatch(records: PublicOrderHistoryRecord[], storeSlug:
   return payload.orders.map((order) => (isTrackingState(order) ? order : null));
 }
 
-export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryProps) {
+export function PublicOrderHistory({ storeId, storeSlug, excludeOrderNumbers = [] }: PublicOrderHistoryProps) {
   const router = useRouter();
   const orders = usePublicOrderHistoryStore((state) => state.orders);
   const setStore = usePublicOrderHistoryStore((state) => state.setStore);
@@ -219,9 +220,10 @@ export function PublicOrderHistory({ storeId, storeSlug }: PublicOrderHistoryPro
   const visibleItems = useMemo(
     () =>
       items.filter((item) =>
-        orders.some((order) => order.trackingToken === item.record.trackingToken),
+        orders.some((order) => order.trackingToken === item.record.trackingToken) &&
+        (item.status !== 'success' || !excludeOrderNumbers.includes(item.tracking.orderNumber)),
       ),
-    [items, orders],
+    [excludeOrderNumbers, items, orders],
   );
 
   if (orders.length === 0) {

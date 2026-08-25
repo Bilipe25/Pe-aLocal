@@ -1,7 +1,9 @@
 import { Store } from 'lucide-react';
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { formatPhone } from '@/lib/brazil';
 
 import { CheckoutFormLoader } from '@/components/storefront/checkout-form-loader';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
@@ -10,6 +12,11 @@ import {
   getPublicDeliveryZones,
   getPublicPurchaseStoreBySlug,
 } from '@/server/queries/public-store';
+import {
+  CONSUMER_SESSION_COOKIE,
+  getConsumerStoreScope,
+  getCurrentConsumer,
+} from '@/server/services/consumer-auth.service';
 
 interface CheckoutPageProps {
   params: Promise<{ storeSlug: string }>;
@@ -83,6 +90,21 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     ? await getPublicDeliveryZones(store.id)
     : [];
   const deliveryEnabled = store.settings.deliveryEnabled && deliveryZones.length > 0;
+  const consumerScope = await getConsumerStoreScope(store.slug);
+  const consumer = consumerScope?.entitlement?.consumerIdentityEnabled
+    ? await getCurrentConsumer({
+        sessionToken: (await cookies()).get(CONSUMER_SESSION_COOKIE)?.value,
+        tenantId: consumerScope.tenantId,
+        storeId: consumerScope.id,
+      })
+    : null;
+  const initialAuthenticatedCustomer = consumer?.customer
+    ? {
+        name: consumer.customer.name,
+        phone: formatPhone(consumer.phoneNormalized),
+        address: consumer.customer.addresses[0] ?? null,
+      }
+    : undefined;
 
   return (
     <div className="storefront-checkout-page">
@@ -120,6 +142,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                 store.settings.pickupEnabled,
               )}
               initialCouponCode={parseCouponCode(query.coupon)}
+              initialAuthenticatedCustomer={initialAuthenticatedCustomer}
             />
           ) : (
             <div className="storefront-checkout-unavailable">

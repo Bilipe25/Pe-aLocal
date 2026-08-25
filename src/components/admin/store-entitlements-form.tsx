@@ -33,6 +33,7 @@ export interface AdminStoreEntitlementItem {
   dineInQrEnabled: boolean;
   combosPromotionsEnabled: boolean;
   posEnabled?: boolean;
+  consumerIdentityEnabled?: boolean;
 }
 
 export function StoreEntitlementsForm({

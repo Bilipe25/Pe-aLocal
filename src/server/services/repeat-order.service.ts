@@ -18,6 +18,7 @@ interface RepeatOrderScope {
   orderId?: string;
   trackingToken?: string;
   deviceToken?: string | null;
+  authorizedCustomerId?: string | null;
   now?: Date;
 }
 
@@ -174,34 +175,38 @@ export async function prepareOrderRepeat({
   orderId,
   trackingToken,
   deviceToken,
+  authorizedCustomerId,
   now = new Date(),
 }: RepeatOrderScope): Promise<PublicRepeatOrderResponseDto | null> {
   if (Boolean(orderId) === Boolean(trackingToken)) return null;
 
   let recognizedCustomerId: string | null = null;
   if (orderId) {
-    if (!isStorefrontDeviceToken(deviceToken)) return null;
-    const tokenHash = await hashStorefrontDeviceToken(deviceToken);
-    const device = await getDb().storefrontDevice.findUnique({
-      where: { tokenHash },
-      select: {
-        expiresAt: true,
-        recognitions: {
-          where: {
-            tenantId,
-            storeId,
-            revokedAt: null,
-            expiresAt: { gt: now },
-            customer: { tenantId, recognitionEnabled: true },
+    recognizedCustomerId = authorizedCustomerId ?? null;
+    if (!recognizedCustomerId) {
+      if (!isStorefrontDeviceToken(deviceToken)) return null;
+      const tokenHash = await hashStorefrontDeviceToken(deviceToken);
+      const device = await getDb().storefrontDevice.findUnique({
+        where: { tokenHash },
+        select: {
+          expiresAt: true,
+          recognitions: {
+            where: {
+              tenantId,
+              storeId,
+              revokedAt: null,
+              expiresAt: { gt: now },
+              customer: { tenantId, recognitionEnabled: true },
+            },
+            take: 1,
+            select: { customerId: true },
           },
-          take: 1,
-          select: { customerId: true },
         },
-      },
-    });
-    if (!device || device.expiresAt <= now) return null;
-    recognizedCustomerId = device.recognitions[0]?.customerId ?? null;
-    if (!recognizedCustomerId) return null;
+      });
+      if (!device || device.expiresAt <= now) return null;
+      recognizedCustomerId = device.recognitions[0]?.customerId ?? null;
+      if (!recognizedCustomerId) return null;
+    }
   }
 
   const order = await getDb().order.findFirst({

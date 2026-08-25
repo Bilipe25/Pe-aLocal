@@ -32,6 +32,7 @@ import {
   TicketPercent,
   Truck,
   UtensilsCrossed,
+  UsersRound,
   Volume2,
   VolumeX,
   Wifi,
@@ -62,6 +63,7 @@ interface DashboardShellProps {
   canViewKds?: boolean;
   canViewDiningRoom?: boolean;
   canViewReports?: boolean;
+  canViewCustomers?: boolean;
   merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
 
@@ -113,6 +115,7 @@ function Navigation({
   canViewKds = false,
   canViewDiningRoom = false,
   canViewReports = false,
+  canViewCustomers = false,
   appearance = 'light',
   onNavigate,
 }: {
@@ -124,6 +127,7 @@ function Navigation({
   canViewKds: boolean;
   canViewDiningRoom: boolean;
   canViewReports: boolean;
+  canViewCustomers: boolean;
   appearance?: 'light' | 'dark';
   onNavigate?: () => void;
 }) {
@@ -162,6 +166,12 @@ function Navigation({
       href: activeStoreId ? '/dashboard/catalog' : fallbackHref,
       label: 'Catálogo',
       icon: UtensilsCrossed,
+    },
+    {
+      href: activeStoreId ? '/dashboard/customers' : fallbackHref,
+      label: 'Clientes',
+      icon: UsersRound,
+      hidden: !canViewCustomers,
     },
     {
       href: activeStoreId ? '/dashboard/offers' : fallbackHref,
@@ -480,6 +490,7 @@ export function DashboardShell({
   canViewKds = false,
   canViewDiningRoom = false,
   canViewReports = false,
+  canViewCustomers = false,
   merchantPush,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -536,6 +547,7 @@ export function DashboardShell({
             canViewKds={canViewKds}
             canViewDiningRoom={canViewDiningRoom}
             canViewReports={canViewReports}
+            canViewCustomers={canViewCustomers}
             appearance="dark"
           />
         </div>
@@ -760,6 +772,7 @@ export function DashboardShell({
                       canViewKds={canViewKds}
                       canViewDiningRoom={canViewDiningRoom}
                       canViewReports={canViewReports}
+                      canViewCustomers={canViewCustomers}
                       onNavigate={() => setMenuOpen(false)}
                     />
                     {merchantPush && (

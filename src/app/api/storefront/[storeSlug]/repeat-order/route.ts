@@ -7,6 +7,10 @@ import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import { getStorefrontDeviceCookieName } from '@/server/services/customer-device-recognition.service';
+import {
+  CONSUMER_SESSION_COOKIE,
+  getCurrentConsumer,
+} from '@/server/services/consumer-auth.service';
 import { prepareOrderRepeat } from '@/server/services/repeat-order.service';
 
 export const dynamic = 'force-dynamic';
@@ -59,12 +63,20 @@ export async function POST(
     if (!rateLimit.allowed) throw new RateLimitError('Muitas tentativas. Aguarde alguns segundos.');
 
     const cookieStore = await cookies();
+    const consumer = parsedBody.data.orderId
+      ? await getCurrentConsumer({
+          sessionToken: cookieStore.get(CONSUMER_SESSION_COOKIE)?.value,
+          tenantId: store.tenantId,
+          storeId: store.id,
+        })
+      : null;
     const result = await prepareOrderRepeat({
       tenantId: store.tenantId,
       storeId: store.id,
       orderId: parsedBody.data.orderId,
       trackingToken: parsedBody.data.trackingToken,
       deviceToken: cookieStore.get(getStorefrontDeviceCookieName())?.value,
+      authorizedCustomerId: consumer?.customer?.id,
     });
     if (!result) throw new NotFoundError('Pedido');
 

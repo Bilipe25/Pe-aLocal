@@ -30,16 +30,22 @@ function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
     identifier.startsWith('tracking-auth-ip:') ||
     identifier.startsWith('tracking-push-ip:') ||
     identifier.startsWith('merchant-push-read:') ||
-    identifier.startsWith('dining-session-public:')
+    identifier.startsWith('dining-session-public:') ||
+    identifier.startsWith('consumer-verification-store:')
   ) {
     return env.CHECKOUT_QUOTE_RATE_LIMITER;
   }
-  if (identifier.startsWith('order-ip:') || identifier.startsWith('recognition-ip:')) {
+  if (
+    identifier.startsWith('order-ip:') ||
+    identifier.startsWith('recognition-ip:') ||
+    identifier.startsWith('consumer-verification-ip:')
+  ) {
     return env.ORDER_IP_RATE_LIMITER;
   }
   return identifier.startsWith('login:') ||
     identifier.startsWith('password-recovery:') ||
-    identifier.startsWith('recognition-phone:')
+    identifier.startsWith('recognition-phone:') ||
+    identifier.startsWith('consumer-verification-phone:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
 }
@@ -101,4 +107,8 @@ export const RATE_LIMITS = {
   resumeProviderPayment: { maxAttempts: 5, windowInSeconds: 60 },
   diningSessionPublic: { maxAttempts: 8, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
+  consumerVerificationByPhone: { maxAttempts: 5, windowInSeconds: 300 },
+  consumerVerificationByIp: { maxAttempts: 20, windowInSeconds: 300 },
+  consumerVerificationByStore: { maxAttempts: 100, windowInSeconds: 300 },
+  consumerVerificationConfirm: { maxAttempts: 10, windowInSeconds: 300 },
 } as const;
