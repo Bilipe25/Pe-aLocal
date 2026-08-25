@@ -210,9 +210,16 @@ const recognizedCheckoutSchema = z
   })
   .strict();
 
+const authenticatedCheckoutSchema = z
+  .object({
+    ...checkoutOrderShape,
+    identityMode: z.literal('AUTHENTICATED'),
+  })
+  .strict();
+
 export const checkoutSchema = addQuoteRefinements(
   z
-    .discriminatedUnion('identityMode', [visitorCheckoutSchema, recognizedCheckoutSchema])
+    .discriminatedUnion('identityMode', [visitorCheckoutSchema, recognizedCheckoutSchema, authenticatedCheckoutSchema])
     .superRefine((data, ctx) => {
       if (data.identityMode === 'VISITOR' && data.savedAddressReference) {
         ctx.addIssue({

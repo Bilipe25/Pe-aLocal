@@ -9,6 +9,8 @@ import {
 import { requireSuperAdminStoreAccess } from '@/server/auth';
 import { getDb } from '@/server/database/client';
 import { ConflictError, ValidationError } from '@/server/errors';
+import { isDeployedRuntime } from '@/server/runtime-environment';
+import { isConsumerVerificationReady } from '@/server/consumer-verification/provider';
 import {
   ensureStoreEntitlement,
   entitlementSelect,
@@ -48,6 +50,15 @@ export async function updateStoreEntitlement(
     );
   }
   await ensureStoreEntitlement(tenantId, storeId);
+  if (
+    parsed.data.consumerIdentityEnabled &&
+    isDeployedRuntime() &&
+    !isConsumerVerificationReady()
+  ) {
+    throw new ValidationError(
+      'Configure e valide o provedor Bird antes de ativar Conta do cliente e Clientes.',
+    );
+  }
 
   return getDb().$transaction(async (tx) => {
     const locked = await lockStoreEntitlement(tx, tenantId, storeId);
@@ -168,6 +179,7 @@ export async function updateStoreEntitlement(
             dineInQrEnabled: current.dineInQrEnabled,
             combosPromotionsEnabled: current.combosPromotionsEnabled,
             posEnabled: current.posEnabled,
+            consumerIdentityEnabled: current.consumerIdentityEnabled,
           },
           next: {
             ...parsed.data,

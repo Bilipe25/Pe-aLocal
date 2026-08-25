@@ -52,7 +52,7 @@ describe('navegação inferior do storefront', () => {
       'href',
       '/loja-a/cart',
     );
-    expect(screen.getByRole('link', { name: 'Meu pedido' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Pedidos' })).toHaveAttribute(
       'href',
       '/loja-a/orders',
     );
@@ -71,12 +71,12 @@ describe('navegação inferior do storefront', () => {
   });
 
   it.each(['/loja-a/orders', '/loja-a/order/123'])(
-    'mantém Meu pedido ativo na rota %s',
+    'mantém Pedidos ativo na rota %s',
     (pathname) => {
       navigationMocks.pathname = pathname;
       render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
-      expect(screen.getByRole('link', { name: 'Meu pedido' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Pedidos' })).toHaveAttribute(
         'aria-current',
         'page',
       );

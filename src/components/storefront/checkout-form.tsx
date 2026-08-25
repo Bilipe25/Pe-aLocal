@@ -95,7 +95,7 @@ export interface AutomaticRecognitionBootstrap {
 }
 
 const checkoutFormSchema = object({
-  identityMode: enumSchema(['VISITOR', 'RECOGNIZED']),
+  identityMode: enumSchema(['VISITOR', 'RECOGNIZED', 'AUTHENTICATED']),
   customerName: string().check(trim(), maxLength(100)),
   customerPhone: string().check(trim(), maxLength(20)),
   modality: enumSchema(['DELIVERY', 'PICKUP']),
@@ -244,6 +244,17 @@ export interface CheckoutFormProps {
   storeState?: string;
   automaticRecognitionManaged?: boolean;
   automaticRecognitionBootstrap?: AutomaticRecognitionBootstrap | null;
+  initialAuthenticatedCustomer?: {
+    name: string;
+    phone: string;
+    address: {
+      street: string;
+      number: string;
+      complement: string | null;
+      reference: string | null;
+      zipCode: string | null;
+    } | null;
+  };
 }
 
 const STEPS: Array<{ id: CheckoutStep; label: string; shortLabel: string }> = [
@@ -600,6 +611,7 @@ export function CheckoutForm({
   initialCouponCode = '',
   automaticRecognitionManaged = false,
   automaticRecognitionBootstrap,
+  initialAuthenticatedCustomer,
 }: CheckoutFormProps) {
   const router = useRouter();
   const items = useCartStore((state) => state.items);
@@ -689,18 +701,18 @@ export function CheckoutForm({
     resolver: zodResolver(checkoutFormSchema),
     mode: 'onBlur',
     defaultValues: {
-      identityMode: 'VISITOR',
-      customerName: '',
-      customerPhone: '',
+      identityMode: initialAuthenticatedCustomer ? 'AUTHENTICATED' : 'VISITOR',
+      customerName: initialAuthenticatedCustomer?.name ?? '',
+      customerPhone: initialAuthenticatedCustomer?.phone ?? '',
       modality: defaultModality,
       deliveryZoneId: '',
-      deliveryPostalCode: '',
+      deliveryPostalCode: formatPostalCode(initialAuthenticatedCustomer?.address?.zipCode ?? ''),
       savedAddressReference: '',
       address: {
-        street: '',
-        number: '',
-        complement: '',
-        reference: '',
+        street: initialAuthenticatedCustomer?.address?.street ?? '',
+        number: initialAuthenticatedCustomer?.address?.number ?? '',
+        complement: initialAuthenticatedCustomer?.address?.complement ?? '',
+        reference: initialAuthenticatedCustomer?.address?.reference ?? '',
       },
       saveCustomerData: true,
       addressLabel: 'HOME',
@@ -1326,10 +1338,10 @@ export function CheckoutForm({
           expectedQuoteFingerprint: effectiveQuote.quoteFingerprint,
         };
         const payload =
-          identityMode === 'RECOGNIZED'
+          identityMode !== 'VISITOR'
             ? {
                 ...commonPayload,
-                identityMode: 'RECOGNIZED' as const,
+                identityMode,
               }
             : {
                 ...commonPayload,
@@ -1595,7 +1607,34 @@ export function CheckoutForm({
                   </p>
                 </div>
               </header>
-              {recognizedCustomer ? (
+              {identityMode === 'AUTHENTICATED' && initialAuthenticatedCustomer ? (
+                <div className="border-tinta/15 bg-papel rounded-2xl border p-4">
+                  <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
+                    Conta confirmada
+                  </p>
+                  <p className="text-tinta mt-1 font-bold">{initialAuthenticatedCustomer.name}</p>
+                  <p className="text-text-muted mt-0.5 text-sm">
+                    {initialAuthenticatedCustomer.phone}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-3"
+                    onClick={() => {
+                      setValue('identityMode', 'VISITOR', { shouldDirty: true });
+                      setValue('customerName', '', { shouldDirty: true });
+                      setValue('customerPhone', '', { shouldDirty: true });
+                      setValue('deliveryPostalCode', '', { shouldDirty: true });
+                      setValue('address.street', '', { shouldDirty: true });
+                      setValue('address.number', '', { shouldDirty: true });
+                      setValue('address.complement', '', { shouldDirty: true });
+                      setValue('address.reference', '', { shouldDirty: true });
+                    }}
+                  >
+                    Pedir para outra pessoa
+                  </Button>
+                </div>
+              ) : recognizedCustomer ? (
                 <div className="border-tinta/15 bg-papel rounded-2xl border p-4">
                   <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
                     Reconhecimento neste aparelho
@@ -2266,12 +2305,16 @@ export function CheckoutForm({
                     <p className="text-tinta mt-1 font-semibold">
                       {identityMode === 'RECOGNIZED'
                         ? recognizedCustomer?.maskedName
-                        : reviewValues?.customerName}
+                        : identityMode === 'AUTHENTICATED'
+                          ? initialAuthenticatedCustomer?.name
+                          : reviewValues?.customerName}
                     </p>
                     <p className="text-text-muted text-sm">
                       {identityMode === 'RECOGNIZED'
                         ? recognizedCustomer?.maskedPhone
-                        : reviewValues?.customerPhone}
+                        : identityMode === 'AUTHENTICATED'
+                          ? initialAuthenticatedCustomer?.phone
+                          : reviewValues?.customerPhone}
                     </p>
                   </div>
                   <button

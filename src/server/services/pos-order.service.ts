@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { Prisma } from '@prisma/client';
+
 import { storeAssetUrl } from '@/features/assets/urls';
 import { normalizePhone } from '@/lib/brazil';
 import type { PosOrderInput, PosQuoteInput } from '@/schemas/pos';
@@ -209,60 +211,44 @@ export async function createPosOrder(input: PosOrderInput) {
   }
 }
 
-export async function lookupPosCustomerByPhone(phone: string) {
+export async function searchPosCustomers(search: string) {
   const context = await requirePosContext();
   if (!hasTenantPermission(context.session.tenantRole, Permission.VIEW_CUSTOMER_CONTACT)) {
     throw new AuthorizationError('Seu perfil não pode consultar dados de clientes.');
   }
-  const phoneNormalized = normalizePhone(phone);
-  if (!/^55\d{10,11}$/.test(phoneNormalized)) {
-    throw new BusinessRuleError('Informe um telefone brasileiro completo.');
-  }
-  const customer = await getDb().customer.findUnique({
-    where: {
-      tenantId_phoneNormalized: { tenantId: context.session.tenantId, phoneNormalized },
-    },
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      addresses: {
-        orderBy: [{ isDefault: 'desc' }, { lastUsedAt: 'desc' }, { updatedAt: 'desc' }],
-        take: 5,
-        select: {
-          id: true,
-          label: true,
-          street: true,
-          number: true,
-          complement: true,
-          neighborhood: true,
-          city: true,
-          state: true,
-          zipCode: true,
-          reference: true,
-          storeUses: {
-            where: { storeId: context.store.id },
-            take: 1,
-            select: { deliveryZoneId: true },
-          },
-        },
-      },
-    },
+  const term = search.trim().slice(0, 80);
+  if (term.length < 2) throw new BusinessRuleError('Digite ao menos dois caracteres do nome ou telefone.');
+  const phoneNormalized = normalizePhone(term);
+  const customers = await getDb().$queryRaw<Array<{ id: string; name: string; phone: string; completedOrders: bigint; totalSpent: bigint; lastOrderAt: Date | null; classification: 'NEW' | 'RECURRING' | 'LAPSED' | null }>>(Prisma.sql`
+    SELECT customer.id, customer.name, customer.phone,
+      COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus")::bigint AS "completedOrders",
+      COALESCE(SUM(order_row.total) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus"), 0)::bigint AS "totalSpent",
+      MAX(COALESCE(order_row."deliveredAt", order_row."statusChangedAt")) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") AS "lastOrderAt",
+      CASE
+        WHEN COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") = 1 THEN 'NEW'
+        WHEN COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= 2 AND MAX(COALESCE(order_row."deliveredAt", order_row."statusChangedAt")) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= CURRENT_TIMESTAMP - INTERVAL '60 days' THEN 'RECURRING'
+        WHEN COUNT(order_row.id) FILTER (WHERE order_row.status = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus") >= 2 THEN 'LAPSED'
+        ELSE NULL
+      END AS classification
+    FROM customers customer
+    LEFT JOIN orders order_row ON order_row."customerId" = customer.id AND order_row."tenantId" = customer."tenantId" AND order_row."storeId" = ${context.store.id}
+    WHERE customer."tenantId" = ${context.session.tenantId}
+      AND (lower(customer.name) LIKE lower(${`${term}%`}) OR (${phoneNormalized !== ''} AND customer."phoneNormalized" LIKE ${`${phoneNormalized}%`}))
+    GROUP BY customer.id
+    ORDER BY "lastOrderAt" DESC NULLS LAST, customer.name ASC
+    LIMIT 5
+  `);
+  if (!customers.length) return [];
+  const addresses = await getDb().customerAddress.findMany({
+    where: { tenantId: context.session.tenantId, customerId: { in: customers.map((customer) => customer.id) } },
+    orderBy: [{ isDefault: 'desc' }, { lastUsedAt: 'desc' }, { updatedAt: 'desc' }],
+    select: { id: true, customerId: true, label: true, street: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true, reference: true, storeUses: { where: { storeId: context.store.id }, take: 1, select: { deliveryZoneId: true } } },
   });
-  return customer
-    ? {
-        id: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        addresses: customer.addresses.map((address) => {
-          const { storeUses, ...value } = address;
-          return {
-            ...value,
-            deliveryZoneId: storeUses[0]?.deliveryZoneId ?? null,
-          };
-        }),
-      }
-    : null;
+  return customers.map((customer) => ({
+    ...customer,
+    completedOrders: Number(customer.completedOrders), totalSpent: Number(customer.totalSpent),
+    addresses: addresses.filter((address) => address.customerId === customer.id).slice(0, 5).map(({ storeUses, ...address }) => ({ ...address, deliveryZoneId: storeUses[0]?.deliveryZoneId ?? null })),
+  }));
 }
 
 export async function getPosWorkspace() {

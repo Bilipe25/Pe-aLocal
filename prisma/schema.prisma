@@ -305,6 +305,25 @@ enum CustomerAddressLabel {
   OTHER
 }
 
+enum ConsumerIdentityLinkProof {
+  ORDER_PUBLIC_TOKEN
+  DEVICE_RECOGNITION
+}
+
+enum ConsumerVerificationPurpose {
+  LOGIN
+  ORDER_CLAIM
+  DEVICE_CLAIM
+}
+
+enum ConsumerVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
 enum CustomerRecognitionThrottleScope {
   IP
   PHONE
@@ -513,47 +532,48 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members                       TenantMember[]
-  stores                        Store[]
-  categories                    Category[]
-  products                      Product[]
-  deliveryZones                 DeliveryZone[]
-  deliveryPostalRanges          DeliveryZonePostalRange[]
-  customers                     Customer[]
-  deviceRecognitions            CustomerDeviceRecognition[]
-  recognitionThrottles          CustomerRecognitionThrottle[]
-  orders                        Order[]
-  coupons                       Coupon[]
-  storeCombos                   StoreCombo[]
-  storeComboItems               StoreComboItem[]
-  storeProductPromotions        StoreProductPromotion[]
-  storeOffers                   StoreOffer[]
-  orderOfferGroups              OrderOfferGroup[]
-  orderPriceAdjustments         OrderPriceAdjustment[]
-  auditLogs                     AuditLog[]
-  orderOutboxEvents             OrderOutboxEvent[]
-  operationalOutboxEvents       OperationalOutboxEvent[]
-  paymentStatusHistory          PaymentStatusHistory[]
-  slugRedirects                 StoreSlugRedirect[]
-  scheduleExceptions            StoreScheduleException[]
-  orderPushSubscriptions        OrderPushSubscription[]
-  webPushDispatches             WebPushDispatch[]
-  webPushDeliveries             WebPushDelivery[]
-  storeStaffPushSubscriptions   StoreStaffPushSubscription[]
-  storeWebPushDispatches        StoreWebPushDispatch[]
-  storeWebPushDeliveries        StoreWebPushDelivery[]
-  orderOperationalSlaAlerts     OrderOperationalSlaAlert[]
-  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
-  paymentProviderConnections    StorePaymentProviderConnection[]
-  paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
-  mercadoPagoPayments           MercadoPagoPayment[]
-  diningTables                  StoreDiningTable[]
-  diningTableSessions           DiningTableSession[]
-  diningTableServiceRequests    DiningTableServiceRequest[]
-  posDrafts                     PosDraft[]
-  posTerminals                  StorePosTerminal[]
-  posShortcuts                  StorePosShortcut[]
-  posManualDiscounts            PosManualDiscountLedger[]
+  members                        TenantMember[]
+  stores                         Store[]
+  categories                     Category[]
+  products                       Product[]
+  deliveryZones                  DeliveryZone[]
+  deliveryPostalRanges           DeliveryZonePostalRange[]
+  customers                      Customer[]
+  deviceRecognitions             CustomerDeviceRecognition[]
+  recognitionThrottles           CustomerRecognitionThrottle[]
+  orders                         Order[]
+  coupons                        Coupon[]
+  storeCombos                    StoreCombo[]
+  storeComboItems                StoreComboItem[]
+  storeProductPromotions         StoreProductPromotion[]
+  storeOffers                    StoreOffer[]
+  orderOfferGroups               OrderOfferGroup[]
+  orderPriceAdjustments          OrderPriceAdjustment[]
+  auditLogs                      AuditLog[]
+  orderOutboxEvents              OrderOutboxEvent[]
+  operationalOutboxEvents        OperationalOutboxEvent[]
+  paymentStatusHistory           PaymentStatusHistory[]
+  slugRedirects                  StoreSlugRedirect[]
+  scheduleExceptions             StoreScheduleException[]
+  orderPushSubscriptions         OrderPushSubscription[]
+  webPushDispatches              WebPushDispatch[]
+  webPushDeliveries              WebPushDelivery[]
+  storeStaffPushSubscriptions    StoreStaffPushSubscription[]
+  storeWebPushDispatches         StoreWebPushDispatch[]
+  storeWebPushDeliveries         StoreWebPushDelivery[]
+  orderOperationalSlaAlerts      OrderOperationalSlaAlert[]
+  orderOperationalSlaDeliveries  OrderOperationalSlaDelivery[]
+  paymentProviderConnections     StorePaymentProviderConnection[]
+  paymentOAuthAttempts           PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments            MercadoPagoPayment[]
+  diningTables                   StoreDiningTable[]
+  diningTableSessions            DiningTableSession[]
+  diningTableServiceRequests     DiningTableServiceRequest[]
+  posDrafts                      PosDraft[]
+  posTerminals                   StorePosTerminal[]
+  posShortcuts                   StorePosShortcut[]
+  posManualDiscounts             PosManualDiscountLedger[]
+  consumerVerificationChallenges ConsumerVerificationChallenge[]
 
   @@map("tenants")
 }
@@ -602,55 +622,56 @@ model Store {
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   settings StoreSettings?
 
-  address                       StoreAddress?
-  openingHours                  OpeningHour[]
-  scheduleExceptions            StoreScheduleException[]
-  categories                    Category[]
-  products                      Product[]
-  deliveryZones                 DeliveryZone[]
-  deliveryPostalRanges          DeliveryZonePostalRange[]
-  customerAddressUses           CustomerAddressStoreUse[]
-  recognitionSessions           CheckoutRecognitionSession[]
-  recognitionAddressReferences  CheckoutRecognitionAddressReference[]
-  deviceRecognitions            CustomerDeviceRecognition[]
-  recognitionThrottles          CustomerRecognitionThrottle[]
-  coupons                       Coupon[]
-  combos                        StoreCombo[]
-  comboItems                    StoreComboItem[]
-  productPromotions             StoreProductPromotion[]
-  offers                        StoreOffer[]
-  orderOfferGroups              OrderOfferGroup[]
-  orderPriceAdjustments         OrderPriceAdjustment[]
-  orders                        Order[]
-  orderCounter                  StoreOrderCounter?
-  customization                 StoreCustomization?
-  auditLogs                     AuditLog[]
-  orderOutboxEvents             OrderOutboxEvent[]
-  operationalOutboxEvents       OperationalOutboxEvent[]
-  paymentStatusHistory          PaymentStatusHistory[]
-  assets                        StoreAsset[]
-  banners                       StoreBanner[]
-  domains                       StoreDomain[]
-  entitlement                   StoreEntitlement?
-  slugRedirects                 StoreSlugRedirect[]
-  orderPushSubscriptions        OrderPushSubscription[]
-  webPushDispatches             WebPushDispatch[]
-  webPushDeliveries             WebPushDelivery[]
-  storeStaffPushSubscriptions   StoreStaffPushSubscription[]
-  storeWebPushDispatches        StoreWebPushDispatch[]
-  storeWebPushDeliveries        StoreWebPushDelivery[]
-  orderOperationalSlaAlerts     OrderOperationalSlaAlert[]
-  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
-  paymentProviderConnections    StorePaymentProviderConnection[]
-  paymentOAuthAttempts          PaymentProviderOAuthAttempt[]
-  mercadoPagoPayments           MercadoPagoPayment[]
-  diningTables                  StoreDiningTable[]
-  diningTableSessions           DiningTableSession[]
-  diningTableServiceRequests    DiningTableServiceRequest[]
-  posDrafts                     PosDraft[]
-  posTerminals                  StorePosTerminal[]
-  posShortcuts                  StorePosShortcut[]
-  posManualDiscounts            PosManualDiscountLedger[]
+  address                        StoreAddress?
+  openingHours                   OpeningHour[]
+  scheduleExceptions             StoreScheduleException[]
+  categories                     Category[]
+  products                       Product[]
+  deliveryZones                  DeliveryZone[]
+  deliveryPostalRanges           DeliveryZonePostalRange[]
+  customerAddressUses            CustomerAddressStoreUse[]
+  recognitionSessions            CheckoutRecognitionSession[]
+  recognitionAddressReferences   CheckoutRecognitionAddressReference[]
+  deviceRecognitions             CustomerDeviceRecognition[]
+  recognitionThrottles           CustomerRecognitionThrottle[]
+  consumerVerificationChallenges ConsumerVerificationChallenge[]
+  coupons                        Coupon[]
+  combos                         StoreCombo[]
+  comboItems                     StoreComboItem[]
+  productPromotions              StoreProductPromotion[]
+  offers                         StoreOffer[]
+  orderOfferGroups               OrderOfferGroup[]
+  orderPriceAdjustments          OrderPriceAdjustment[]
+  orders                         Order[]
+  orderCounter                   StoreOrderCounter?
+  customization                  StoreCustomization?
+  auditLogs                      AuditLog[]
+  orderOutboxEvents              OrderOutboxEvent[]
+  operationalOutboxEvents        OperationalOutboxEvent[]
+  paymentStatusHistory           PaymentStatusHistory[]
+  assets                         StoreAsset[]
+  banners                        StoreBanner[]
+  domains                        StoreDomain[]
+  entitlement                    StoreEntitlement?
+  slugRedirects                  StoreSlugRedirect[]
+  orderPushSubscriptions         OrderPushSubscription[]
+  webPushDispatches              WebPushDispatch[]
+  webPushDeliveries              WebPushDelivery[]
+  storeStaffPushSubscriptions    StoreStaffPushSubscription[]
+  storeWebPushDispatches         StoreWebPushDispatch[]
+  storeWebPushDeliveries         StoreWebPushDelivery[]
+  orderOperationalSlaAlerts      OrderOperationalSlaAlert[]
+  orderOperationalSlaDeliveries  OrderOperationalSlaDelivery[]
+  paymentProviderConnections     StorePaymentProviderConnection[]
+  paymentOAuthAttempts           PaymentProviderOAuthAttempt[]
+  mercadoPagoPayments            MercadoPagoPayment[]
+  diningTables                   StoreDiningTable[]
+  diningTableSessions            DiningTableSession[]
+  diningTableServiceRequests     DiningTableServiceRequest[]
+  posDrafts                      PosDraft[]
+  posTerminals                   StorePosTerminal[]
+  posShortcuts                   StorePosShortcut[]
+  posManualDiscounts             PosManualDiscountLedger[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -881,6 +902,7 @@ model StoreEntitlement {
   dineInQrEnabled                Boolean   @default(false)
   combosPromotionsEnabled        Boolean   @default(false)
   posEnabled                     Boolean   @default(false)
+  consumerIdentityEnabled        Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1473,29 +1495,101 @@ model DeliveryZonePostalRange {
 // =============================================================================
 
 model Customer {
-  id                 String    @id @default(uuid())
-  tenantId           String
-  name               String
-  phone              String
-  phoneNormalized    String    @db.VarChar(13)
-  lastOrderAt        DateTime?
-  recognitionEnabled Boolean   @default(false)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                        String                     @id @default(uuid())
+  tenantId                  String
+  name                      String
+  phone                     String
+  phoneNormalized           String                     @db.VarChar(13)
+  lastOrderAt               DateTime?
+  recognitionEnabled        Boolean                    @default(false)
+  consumerIdentityId        String?
+  consumerIdentityLinkedAt  DateTime?
+  consumerIdentityLinkProof ConsumerIdentityLinkProof?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
 
   tenant                       Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consumerIdentity             ConsumerIdentity?                     @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
   addresses                    CustomerAddress[]
   orders                       Order[]
   recognitionSessions          CheckoutRecognitionSession[]
   recognitionAddressReferences CheckoutRecognitionAddressReference[]
   deviceRecognitions           CustomerDeviceRecognition[]
+  verificationChallenges       ConsumerVerificationChallenge[]
 
   @@unique([tenantId, phone])
   @@unique([id, tenantId])
   @@unique([tenantId, phoneNormalized])
+  @@unique([tenantId, consumerIdentityId])
   @@index([tenantId])
   @@index([phone])
+  @@index([consumerIdentityId])
   @@map("customers")
+}
+
+model ConsumerIdentity {
+  id              String   @id @default(uuid())
+  phoneNormalized String   @unique @db.VarChar(13)
+  phoneVerifiedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customers  Customer[]
+  sessions   ConsumerSession[]
+  challenges ConsumerVerificationChallenge[]
+
+  @@index([phoneVerifiedAt])
+  @@map("consumer_identities")
+}
+
+model ConsumerSession {
+  id                 String    @id @default(uuid())
+  consumerIdentityId String
+  tokenHash          String    @unique @db.Char(64)
+  expiresAt          DateTime
+  lastUsedAt         DateTime  @default(now())
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([consumerIdentityId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("consumer_sessions")
+}
+
+model ConsumerVerificationChallenge {
+  id                 String                      @id @default(uuid())
+  challengeTokenHash String                      @unique @db.Char(64)
+  tenantId           String
+  storeId            String
+  phoneNormalized    String                      @db.VarChar(13)
+  purpose            ConsumerVerificationPurpose
+  status             ConsumerVerificationStatus  @default(PENDING)
+  provider           String                      @db.VarChar(24)
+  consumerIdentityId String?
+  claimCustomerId    String?
+  claimOrderId       String?
+  attemptCount       Int                         @default(0)
+  resendCount        Int                         @default(0)
+  resendAfter        DateTime
+  expiresAt          DateTime
+  verifiedAt         DateTime?
+  consumedAt         DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  consumerIdentity ConsumerIdentity? @relation(fields: [consumerIdentityId], references: [id], onDelete: SetNull)
+  claimCustomer    Customer?         @relation(fields: [claimCustomerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  claimOrder       Order?            @relation(fields: [claimOrderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@index([tenantId, storeId, phoneNormalized, createdAt])
+  @@index([claimCustomerId, expiresAt])
+  @@index([expiresAt, status])
+  @@map("consumer_verification_challenges")
 }
 
 model CustomerAddress {
@@ -1568,7 +1662,7 @@ model CheckoutRecognitionSession {
   updatedAt           DateTime                             @updatedAt
 
   store             Store                                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  customer          Customer?                             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer          Customer?                             @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   deviceRecognition CustomerDeviceRecognition?            @relation(fields: [deviceRecognitionId], references: [id], onDelete: SetNull)
   addressReferences CheckoutRecognitionAddressReference[]
 
@@ -1838,33 +1932,34 @@ model Order {
 
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store              Store               @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer           Customer?           @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   createdBy          User?               @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   cancelledBy        User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   diningTable        StoreDiningTable?   @relation(fields: [diningTableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   diningTableSession DiningTableSession? @relation(fields: [diningTableSessionId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
   posTerminal        StorePosTerminal?   @relation(fields: [posTerminalId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
 
-  items                         OrderItem[]
-  offerGroups                   OrderOfferGroup[]
-  priceAdjustments              OrderPriceAdjustment[]
-  statusHistory                 OrderStatusHistory[]
-  internalNotes                 OrderInternalNote[]
-  payment                       Payment?
-  outboxEvents                  OrderOutboxEvent[]
-  paymentHistory                PaymentStatusHistory[]
-  couponUsages                  CouponUsage[]
-  couponReservation             CouponReservation?
-  pushSubscriptions             OrderPushSubscription[]
-  webPushDispatches             WebPushDispatch[]
-  webPushDeliveries             WebPushDelivery[]
-  storeWebPushDispatches        StoreWebPushDispatch[]
-  storeWebPushDeliveries        StoreWebPushDelivery[]
-  operationalSlaAlerts          OrderOperationalSlaAlert[]
-  mercadoPagoPayment            MercadoPagoPayment?
-  orderOperationalSlaDeliveries OrderOperationalSlaDelivery[]
-  convertedPosDrafts            PosDraft[]                    @relation("PosDraftConvertedOrder")
-  posManualDiscount             PosManualDiscountLedger?
+  items                          OrderItem[]
+  offerGroups                    OrderOfferGroup[]
+  priceAdjustments               OrderPriceAdjustment[]
+  statusHistory                  OrderStatusHistory[]
+  internalNotes                  OrderInternalNote[]
+  payment                        Payment?
+  outboxEvents                   OrderOutboxEvent[]
+  paymentHistory                 PaymentStatusHistory[]
+  couponUsages                   CouponUsage[]
+  couponReservation              CouponReservation?
+  pushSubscriptions              OrderPushSubscription[]
+  webPushDispatches              WebPushDispatch[]
+  webPushDeliveries              WebPushDelivery[]
+  storeWebPushDispatches         StoreWebPushDispatch[]
+  storeWebPushDeliveries         StoreWebPushDelivery[]
+  operationalSlaAlerts           OrderOperationalSlaAlert[]
+  mercadoPagoPayment             MercadoPagoPayment?
+  orderOperationalSlaDeliveries  OrderOperationalSlaDelivery[]
+  convertedPosDrafts             PosDraft[]                      @relation("PosDraftConvertedOrder")
+  posManualDiscount              PosManualDiscountLedger?
+  consumerVerificationChallenges ConsumerVerificationChallenge[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -1876,6 +1971,7 @@ model Order {
   @@index([createdAt])
   @@index([customerPhone])
   @@index([customerId])
+  @@index([tenantId, storeId, customerId, createdAt, id])
   @@index([createdById, createdAt])
   @@index([diningTableId])
   @@index([diningTableSessionId])

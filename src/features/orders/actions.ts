@@ -38,6 +38,11 @@ import {
   isStorefrontDeviceToken,
   storefrontDeviceCookieOptions,
 } from '@/server/services/customer-device-recognition.service';
+import {
+  CONSUMER_SESSION_COOKIE,
+  hashConsumerSecret,
+  isConsumerSecret,
+} from '@/server/services/consumer-auth.service';
 
 import { reportPixPaymentInputSchema } from './schemas';
 
@@ -181,10 +186,13 @@ export async function createOrderAction(
     const strict = isDeployedRuntime();
     const limiter = getRateLimiter();
     const recognitionBrowserToken = cookieStore.get(getRecognitionCookieName())?.value ?? null;
+    const consumerSessionToken = cookieStore.get(CONSUMER_SESSION_COOKIE)?.value ?? null;
     const identityRateKey =
       input.identityMode === 'VISITOR'
         ? normalizePhone(input.customerPhone)
-        : `recognized:${recognitionBrowserToken ?? 'missing'}`;
+        : input.identityMode === 'AUTHENTICATED'
+          ? `authenticated:${consumerSessionToken ?? 'missing'}`
+          : `recognized:${recognitionBrowserToken ?? 'missing'}`;
     const phoneHash = await sha256Hex(identityRateKey);
     const [ipRateLimit, phoneRateLimit] = await Promise.all([
       limiter.check({
@@ -216,6 +224,9 @@ export async function createOrderAction(
       input,
       storeSlug,
       recognitionBrowserToken,
+      consumerSessionTokenHash: isConsumerSecret(consumerSessionToken)
+        ? await hashConsumerSecret(consumerSessionToken)
+        : null,
       deviceTokenHash: await hashStorefrontDeviceToken(deviceToken),
     });
 

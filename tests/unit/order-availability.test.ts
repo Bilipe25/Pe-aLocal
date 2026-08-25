@@ -205,6 +205,7 @@ describe('checkout público v2', () => {
       }),
       storeSlug: 'loja-a',
       recognitionBrowserToken: null,
+      consumerSessionTokenHash: null,
       deviceTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(mocks.dispatchCommittedOrderEvents).toHaveBeenCalledWith({
