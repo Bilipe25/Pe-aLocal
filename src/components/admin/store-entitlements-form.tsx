@@ -34,6 +34,7 @@ export interface AdminStoreEntitlementItem {
   combosPromotionsEnabled: boolean;
   posEnabled?: boolean;
   consumerIdentityEnabled?: boolean;
+  consumerConvenienceV2Enabled?: boolean;
 }
 
 export function StoreEntitlementsForm({

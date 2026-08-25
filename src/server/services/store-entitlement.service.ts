@@ -56,7 +56,7 @@ export async function updateStoreEntitlement(
     !isConsumerVerificationReady()
   ) {
     throw new ValidationError(
-      'Configure e valide o provedor Bird antes de ativar Conta do cliente e Clientes.',
+      'Configure e valide o provedor de confirmação antes de ativar Conta do cliente e Clientes.',
     );
   }
 
@@ -180,6 +180,7 @@ export async function updateStoreEntitlement(
             combosPromotionsEnabled: current.combosPromotionsEnabled,
             posEnabled: current.posEnabled,
             consumerIdentityEnabled: current.consumerIdentityEnabled,
+            consumerConvenienceV2Enabled: current.consumerConvenienceV2Enabled,
           },
           next: {
             ...parsed.data,

@@ -273,6 +273,7 @@ export async function findStoreScopeById(id: string, tenantId: string) {
           combosPromotionsEnabled: true,
           posEnabled: true,
           consumerIdentityEnabled: true,
+          consumerConvenienceV2Enabled: true,
         },
       },
       tenant: {

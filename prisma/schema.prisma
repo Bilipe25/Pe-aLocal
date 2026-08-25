@@ -314,11 +314,22 @@ enum ConsumerVerificationPurpose {
   LOGIN
   ORDER_CLAIM
   DEVICE_CLAIM
+  EMAIL_CHANGE_CURRENT
+  EMAIL_CHANGE_NEW
 }
 
 enum ConsumerVerificationStatus {
   PENDING
   VERIFIED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum ConsumerEmailChangeStatus {
+  PENDING
+  CURRENT_VERIFIED
+  COMPLETED
   FAILED
   EXPIRED
   CANCELLED
@@ -574,6 +585,7 @@ model Tenant {
   posShortcuts                   StorePosShortcut[]
   posManualDiscounts             PosManualDiscountLedger[]
   consumerVerificationChallenges ConsumerVerificationChallenge[]
+  consumerFavorites              ConsumerFavorite[]
 
   @@map("tenants")
 }
@@ -635,6 +647,7 @@ model Store {
   deviceRecognitions             CustomerDeviceRecognition[]
   recognitionThrottles           CustomerRecognitionThrottle[]
   consumerVerificationChallenges ConsumerVerificationChallenge[]
+  consumerFavorites              ConsumerFavorite[]
   coupons                        Coupon[]
   combos                         StoreCombo[]
   comboItems                     StoreComboItem[]
@@ -903,6 +916,7 @@ model StoreEntitlement {
   combosPromotionsEnabled        Boolean   @default(false)
   posEnabled                     Boolean   @default(false)
   consumerIdentityEnabled        Boolean   @default(false)
+  consumerConvenienceV2Enabled   Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1110,6 +1124,7 @@ model Product {
   promotions        StoreProductPromotion[]
   offerComboChoices StoreOfferComboChoice[]
   posShortcuts      StorePosShortcut[]
+  consumerFavorites ConsumerFavorite[]
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, categoryId, archivedAt, sortOrder])
@@ -1528,17 +1543,22 @@ model Customer {
 }
 
 model ConsumerIdentity {
-  id              String   @id @default(uuid())
-  phoneNormalized String   @unique @db.VarChar(13)
-  phoneVerifiedAt DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String    @id @default(uuid())
+  phoneNormalized String?   @unique @db.VarChar(13)
+  phoneVerifiedAt DateTime?
+  emailNormalized String?   @unique @db.VarChar(254)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  customers  Customer[]
-  sessions   ConsumerSession[]
-  challenges ConsumerVerificationChallenge[]
+  customers           Customer[]
+  sessions            ConsumerSession[]
+  challenges          ConsumerVerificationChallenge[]
+  favorites           ConsumerFavorite[]
+  emailChangeRequests ConsumerEmailChangeRequest[]
 
   @@index([phoneVerifiedAt])
+  @@index([emailVerifiedAt])
   @@map("consumer_identities")
 }
 
@@ -1548,11 +1568,13 @@ model ConsumerSession {
   tokenHash          String    @unique @db.Char(64)
   expiresAt          DateTime
   lastUsedAt         DateTime  @default(now())
+  deviceLabel        String?   @db.VarChar(80)
   revokedAt          DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+  consumerIdentity      ConsumerIdentity             @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+  initiatedEmailChanges ConsumerEmailChangeRequest[] @relation("ConsumerEmailChangeInitiatingSession")
 
   @@index([consumerIdentityId, revokedAt, expiresAt])
   @@index([expiresAt])
@@ -1560,36 +1582,88 @@ model ConsumerSession {
 }
 
 model ConsumerVerificationChallenge {
-  id                 String                      @id @default(uuid())
-  challengeTokenHash String                      @unique @db.Char(64)
-  tenantId           String
-  storeId            String
-  phoneNormalized    String                      @db.VarChar(13)
-  purpose            ConsumerVerificationPurpose
-  status             ConsumerVerificationStatus  @default(PENDING)
-  provider           String                      @db.VarChar(24)
-  consumerIdentityId String?
-  claimCustomerId    String?
-  claimOrderId       String?
-  attemptCount       Int                         @default(0)
-  resendCount        Int                         @default(0)
-  resendAfter        DateTime
-  expiresAt          DateTime
-  verifiedAt         DateTime?
-  consumedAt         DateTime?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  id                   String                      @id @default(uuid())
+  challengeTokenHash   String                      @unique @db.Char(64)
+  tenantId             String
+  storeId              String
+  phoneNormalized      String?                     @db.VarChar(13)
+  emailNormalized      String?                     @db.VarChar(254)
+  otpHash              String?                     @db.Char(64)
+  purpose              ConsumerVerificationPurpose
+  status               ConsumerVerificationStatus  @default(PENDING)
+  provider             String                      @db.VarChar(24)
+  consumerIdentityId   String?
+  claimCustomerId      String?
+  claimOrderId         String?
+  emailChangeRequestId String?
+  requestIpHash        String?                     @db.Char(64)
+  attemptCount         Int                         @default(0)
+  resendCount          Int                         @default(0)
+  resendAfter          DateTime
+  expiresAt            DateTime
+  verifiedAt           DateTime?
+  consumedAt           DateTime?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store            Store             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  consumerIdentity ConsumerIdentity? @relation(fields: [consumerIdentityId], references: [id], onDelete: SetNull)
-  claimCustomer    Customer?         @relation(fields: [claimCustomerId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  claimOrder       Order?            @relation(fields: [claimOrderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  tenant             Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store              Store                       @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  consumerIdentity   ConsumerIdentity?           @relation(fields: [consumerIdentityId], references: [id], onDelete: SetNull)
+  claimCustomer      Customer?                   @relation(fields: [claimCustomerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  claimOrder         Order?                      @relation(fields: [claimOrderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  emailChangeRequest ConsumerEmailChangeRequest? @relation(fields: [emailChangeRequestId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, storeId, phoneNormalized, createdAt])
+  @@index([tenantId, storeId, emailNormalized, createdAt])
+  @@index([requestIpHash, createdAt])
+  @@index([emailChangeRequestId, purpose, status])
   @@index([claimCustomerId, expiresAt])
   @@index([expiresAt, status])
   @@map("consumer_verification_challenges")
+}
+
+model ConsumerFavorite {
+  id                 String   @id @default(uuid())
+  consumerIdentityId String
+  tenantId           String
+  storeId            String
+  productId          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product          Product          @relation(fields: [productId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+
+  @@unique([consumerIdentityId, tenantId, storeId, productId])
+  @@index([consumerIdentityId, tenantId, storeId, createdAt, id])
+  @@index([productId, tenantId, storeId])
+  @@map("consumer_favorites")
+}
+
+model ConsumerEmailChangeRequest {
+  id                   String                    @id @default(uuid())
+  consumerIdentityId   String
+  initiatedBySessionId String?
+  currentEmailHash     String                    @db.Char(64)
+  newEmailNormalized   String                    @db.VarChar(254)
+  status               ConsumerEmailChangeStatus @default(PENDING)
+  expiresAt            DateTime
+  currentVerifiedAt    DateTime?
+  newVerifiedAt        DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  consumerIdentity   ConsumerIdentity                @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+  initiatedBySession ConsumerSession?                @relation("ConsumerEmailChangeInitiatingSession", fields: [initiatedBySessionId], references: [id], onDelete: SetNull)
+  challenges         ConsumerVerificationChallenge[]
+
+  @@index([consumerIdentityId, status, expiresAt])
+  @@index([newEmailNormalized, status, expiresAt])
+  @@index([expiresAt, status])
+  @@map("consumer_email_change_requests")
 }
 
 model CustomerAddress {

@@ -9,6 +9,9 @@ const baseEnv = {
   NODE_ENV: 'test',
   CONSUMER_VERIFICATION_PROVIDER: 'disabled',
   BIRD_API_KEY: '',
+  RESEND_API_KEY: '',
+  RESEND_FROM_EMAIL: '',
+  CONSUMER_VERIFICATION_OTP_SECRET: '',
 } as const;
 
 async function loadEnv(overrides: Record<string, string> = {}) {
@@ -49,5 +52,30 @@ describe('consumer verification environment', () => {
     await expect(
       loadEnv({ CONSUMER_VERIFICATION_PROVIDER: 'bird', BIRD_API_KEY: 'legacy-access-key' }),
     ).rejects.toThrow('BIRD_API_KEY: deve ser uma API key Bird regional');
+  });
+
+  it('accepts Resend only with all server-side email OTP settings', async () => {
+    await expect(
+      loadEnv({
+        CONSUMER_VERIFICATION_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_1234567890abcdefghijklmnop',
+        RESEND_FROM_EMAIL: 'PedidoLocal <acesso@updates.example.com>',
+        CONSUMER_VERIFICATION_OTP_SECRET: 'a-secure-test-secret-with-32-characters',
+      }),
+    ).resolves.toMatchObject({ CONSUMER_VERIFICATION_PROVIDER: 'resend' });
+  });
+
+  it('rejects Resend when delivery or HMAC configuration is incomplete', async () => {
+    await expect(loadEnv({ CONSUMER_VERIFICATION_PROVIDER: 'resend' })).rejects.toThrow(
+      'RESEND_API_KEY: é obrigatória',
+    );
+    await expect(
+      loadEnv({
+        CONSUMER_VERIFICATION_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_1234567890abcdefghijklmnop',
+        RESEND_FROM_EMAIL: 'acesso@updates.example.com',
+        CONSUMER_VERIFICATION_OTP_SECRET: 'short',
+      }),
+    ).rejects.toThrow('CONSUMER_VERIFICATION_OTP_SECRET: deve ter pelo menos 32 caracteres');
   });
 });

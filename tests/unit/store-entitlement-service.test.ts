@@ -58,6 +58,7 @@ const input: StoreEntitlementInput = {
   combosPromotionsEnabled: false,
   posEnabled: false,
   consumerIdentityEnabled: false,
+  consumerConvenienceV2Enabled: false,
 };
 
 const current = {

@@ -1,7 +1,7 @@
 'use client';
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowLeft, Loader2, MessageSquareText, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Mail, MessageSquareText, Smartphone, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -17,18 +17,21 @@ export function ConsumerAuthPanel({
   purpose = 'LOGIN',
   trackingToken,
   compact = false,
+  verificationMethod,
 }: {
   storeSlug: string;
   storeName: string;
   purpose?: Purpose;
   trackingToken?: string;
   compact?: boolean;
+  verificationMethod: 'email' | 'phone';
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
+  const [step, setStep] = useState<'identifier' | 'code'>('identifier');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [resendAt, setResendAt] = useState(0);
@@ -66,7 +69,8 @@ export function ConsumerAuthPanel({
     startTransition(async () => {
       try {
         const payload = await post('request-verification', {
-          ...(phone ? { phone } : {}),
+          ...(verificationMethod === 'email' && email ? { email } : {}),
+          ...(verificationMethod === 'phone' && phone ? { phone } : {}),
           purpose,
           ...(trackingToken ? { trackingToken } : {}),
         });
@@ -113,8 +117,11 @@ export function ConsumerAuthPanel({
 
   function openPanel() {
     setOpen(true);
-    if (purpose === 'ORDER_CLAIM') requestCode();
+    if (purpose === 'ORDER_CLAIM' && verificationMethod === 'phone') requestCode();
   }
+
+  const isEmail = verificationMethod === 'email';
+  const needsIdentifierInput = purpose !== 'ORDER_CLAIM' || isEmail;
 
   return (
     <>
@@ -124,11 +131,17 @@ export function ConsumerAuthPanel({
         {!compact ? (
           <>
             <div className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" aria-hidden="true" />
+              {isEmail ? (
+                <Mail className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Smartphone className="h-5 w-5" aria-hidden="true" />
+              )}
               <h2 className="font-bold">Encontre seus pedidos em qualquer aparelho</h2>
             </div>
             <p className="text-text-secondary mt-1 text-sm">
-              Confirme seu celular para acessar seus pedidos e endereços salvos.
+              {isEmail
+                ? 'Confirme seu e-mail para acessar seus pedidos e endereços salvos.'
+                : 'Confirme seu celular para acessar seus pedidos e endereços salvos.'}
             </p>
           </>
         ) : null}
@@ -158,16 +171,28 @@ export function ConsumerAuthPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <Dialog.Title className="text-xl font-bold">
-                  {step === 'phone' ? 'Confirmar celular' : 'Digite o código'}
+                  {step === 'identifier'
+                    ? isEmail
+                      ? purpose === 'ORDER_CLAIM'
+                        ? 'Guardar meus pedidos'
+                        : 'Acesse seus pedidos'
+                      : 'Confirmar celular'
+                    : 'Digite o código'}
                 </Dialog.Title>
                 <Dialog.Description className="text-text-secondary mt-1 text-sm">
-                  {step === 'phone'
-                    ? purpose === 'ORDER_CLAIM'
-                      ? 'Enviaremos um código para o celular usado neste pedido.'
-                      : `Veja seus pedidos de ${storeName} em qualquer aparelho.`
-                    : purpose === 'ORDER_CLAIM'
-                      ? 'Enviamos seis números para o celular usado neste pedido.'
-                      : `Enviamos seis números para ${phone}.`}
+                  {step === 'identifier'
+                    ? isEmail
+                      ? purpose === 'ORDER_CLAIM'
+                        ? 'Informe o e-mail que você quer usar para acessar este pedido em qualquer aparelho.'
+                        : `Acesse seus pedidos de ${storeName} em qualquer aparelho.`
+                      : purpose === 'ORDER_CLAIM'
+                        ? 'Enviaremos um código para o celular usado neste pedido.'
+                        : `Veja seus pedidos de ${storeName} em qualquer aparelho.`
+                    : isEmail
+                      ? `Enviamos seis números para ${email}.`
+                      : purpose === 'ORDER_CLAIM'
+                        ? 'Enviamos seis números para o celular usado neste pedido.'
+                        : `Enviamos seis números para ${phone}.`}
                 </Dialog.Description>
               </div>
               <Dialog.Close
@@ -177,17 +202,29 @@ export function ConsumerAuthPanel({
                 <X aria-hidden="true" />
               </Dialog.Close>
             </div>
-            {step === 'phone' && purpose !== 'ORDER_CLAIM' ? (
+            {step === 'identifier' && needsIdentifierInput ? (
               <label className="mt-5 block text-sm font-semibold">
-                Celular
-                <Input
-                  className="mt-1"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  value={phone}
-                  onChange={(event) => setPhone(formatPhoneInput(event.target.value))}
-                  placeholder="(11) 99999-9999"
-                />
+                {isEmail ? 'Seu e-mail' : 'Celular'}
+                {isEmail ? (
+                  <Input
+                    className="mt-1"
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="seu@email.com"
+                  />
+                ) : (
+                  <Input
+                    className="mt-1"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(event) => setPhone(formatPhoneInput(event.target.value))}
+                    placeholder="(11) 99999-9999"
+                  />
+                )}
               </label>
             ) : step === 'code' ? (
               <label className="mt-5 block text-sm font-semibold">
@@ -219,41 +256,49 @@ export function ConsumerAuthPanel({
               className="mt-5 w-full"
               disabled={
                 pending ||
-                (step === 'phone' && purpose !== 'ORDER_CLAIM'
-                  ? phone.length < 14
+                (step === 'identifier' && needsIdentifierInput
+                  ? isEmail
+                    ? !email.trim() || email.length > 254
+                    : phone.length < 14
                   : step === 'code'
                     ? code.length !== 6
                     : false)
               }
-              onClick={step === 'phone' ? requestCode : verifyCode}
+              onClick={step === 'identifier' ? requestCode : verifyCode}
             >
               {pending ? (
                 <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : step === 'phone' ? (
-                <MessageSquareText aria-hidden="true" />
+              ) : step === 'identifier' ? (
+                isEmail ? (
+                  <Mail aria-hidden="true" />
+                ) : (
+                  <MessageSquareText aria-hidden="true" />
+                )
               ) : null}
               {pending
                 ? 'Aguarde…'
-                : step === 'phone' && purpose === 'ORDER_CLAIM'
+                : step === 'identifier' && purpose === 'ORDER_CLAIM' && !isEmail
                   ? 'Tentar novamente'
-                  : step === 'phone'
-                    ? 'Continuar'
+                  : step === 'identifier'
+                    ? isEmail
+                      ? 'Enviar código'
+                      : 'Continuar'
                     : 'Confirmar código'}
             </Button>
             {step === 'code' ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                {purpose !== 'ORDER_CLAIM' ? (
+                {needsIdentifierInput ? (
                   <Button
                     type="button"
                     variant="ghost"
                     onClick={() => {
-                      setStep('phone');
+                      setStep('identifier');
                       setCode('');
                       setError(null);
                     }}
                   >
                     <ArrowLeft aria-hidden="true" />
-                    Trocar número
+                    {isEmail ? 'Trocar e-mail' : 'Trocar número'}
                   </Button>
                 ) : (
                   <span />

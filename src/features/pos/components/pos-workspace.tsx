@@ -71,6 +71,10 @@ interface CustomerLookup {
   totalSpent: number;
   lastOrderAt: Date | string | null;
   classification: 'NEW' | 'RECURRING' | 'LAPSED' | null;
+  mostOrderedProductName: string | null;
+  mostOrderedCount: number;
+  v2Enabled: boolean;
+  usualOrder: { orderId: string; occurrences: number; summary: string } | null;
   addresses: Array<{
     id: string;
     label: 'HOME' | 'WORK' | 'OTHER';
@@ -1339,11 +1343,42 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                 ) : null}
               </div>
               {customerResults.length > 0 ? (
-                <div className="border-border bg-surface mt-3 divide-y rounded-xl border" role="listbox" aria-label="Clientes encontrados">
+                <div
+                  className="border-border bg-surface mt-3 divide-y rounded-xl border"
+                  role="listbox"
+                  aria-label="Clientes encontrados"
+                >
                   {customerResults.map((customer) => (
-                    <button key={customer.id} type="button" role="option" aria-selected="false" onClick={() => selectCustomer(customer)} className="hover:bg-surface-secondary focus-visible:ring-brand-500 flex min-h-16 w-full items-center justify-between gap-3 p-3 text-left focus-visible:ring-2 focus-visible:outline-none">
-                      <span><strong className="block text-sm">{customer.name}</strong><span className="text-text-secondary mt-0.5 block text-xs">{customer.phone}</span></span>
-                      <span className="text-right"><strong className="block font-mono text-sm">{customer.completedOrders} compra(s)</strong>{customer.classification ? <span className="text-text-secondary block text-xs">{{ NEW: 'Novo', RECURRING: 'Recorrente', LAPSED: 'Faz tempo que não pede' }[customer.classification]}</span> : null}</span>
+                    <button
+                      key={customer.id}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      onClick={() => selectCustomer(customer)}
+                      className="hover:bg-surface-secondary focus-visible:ring-brand-500 flex min-h-16 w-full items-center justify-between gap-3 p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <span>
+                        <strong className="block text-sm">{customer.name}</strong>
+                        <span className="text-text-secondary mt-0.5 block text-xs">
+                          {customer.phone}
+                        </span>
+                      </span>
+                      <span className="text-right">
+                        <strong className="block font-mono text-sm">
+                          {customer.completedOrders} compra(s)
+                        </strong>
+                        {customer.classification ? (
+                          <span className="text-text-secondary block text-xs">
+                            {
+                              {
+                                NEW: 'Novo',
+                                RECURRING: 'Recorrente',
+                                LAPSED: 'Faz tempo que não pede',
+                              }[customer.classification]
+                            }
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1354,9 +1389,39 @@ export function PosWorkspace({ initialData }: { initialData: Workspace }) {
                     Cliente encontrado · {customerLookup.name}
                   </p>
                   <p className="text-success mt-1 text-xs">
-                    {customerLookup.completedOrders} compra(s) concluída(s) · {formatCurrency(customerLookup.totalSpent)}
-                    {customerLookup.lastOrderAt ? ` · última em ${new Intl.DateTimeFormat('pt-BR').format(new Date(customerLookup.lastOrderAt))}` : ''}
+                    {customerLookup.completedOrders} compra(s) concluída(s) ·{' '}
+                    {formatCurrency(customerLookup.totalSpent)}
+                    {customerLookup.lastOrderAt
+                      ? ` · última em ${new Intl.DateTimeFormat('pt-BR').format(new Date(customerLookup.lastOrderAt))}`
+                      : ''}
                   </p>
+                  {customerLookup.v2Enabled && customerLookup.mostOrderedProductName ? (
+                    <p className="text-success mt-2 text-sm">
+                      <strong>Mais pedido:</strong> {customerLookup.mostOrderedProductName}
+                      {customerLookup.mostOrderedCount > 0
+                        ? ` · em ${customerLookup.mostOrderedCount} compras`
+                        : ''}
+                    </p>
+                  ) : null}
+                  {customerLookup.v2Enabled && customerLookup.usualOrder ? (
+                    <div className="border-success/25 mt-3 flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-success min-w-0 text-sm">
+                        <strong className="block">Pedido de sempre</strong>
+                        <span className="line-clamp-2">{customerLookup.usualOrder.summary}</span>
+                        <span className="block text-xs">
+                          Repetido {customerLookup.usualOrder.occurrences} vezes
+                        </span>
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={operationState === 'loading'}
+                        onClick={() => void repeatRecentOrder(customerLookup.usualOrder!.orderId)}
+                      >
+                        O de sempre
+                      </Button>
+                    </div>
+                  ) : null}
                   {customerLookup.addresses.length > 0 ? (
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       {customerLookup.addresses.map((saved) => (

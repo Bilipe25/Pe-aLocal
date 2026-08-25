@@ -7,6 +7,7 @@ import { getDb } from '@/server/database/client';
 import { AuthorizationError, NotFoundError } from '@/server/errors';
 import { isTenantAdmin, Permission } from '@/server/permissions';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
+import { getCustomerRepurchaseShortcuts } from '@/server/services/consumer-repurchase.service';
 
 export type CustomerClassification = 'NEW' | 'RECURRING' | 'LAPSED' | null;
 
@@ -51,6 +52,12 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
         AND order_row."tenantId" = customer."tenantId"
         AND order_row."storeId" = ${context.store.id}
       WHERE customer."tenantId" = ${context.session.tenantId}
+        AND EXISTS (
+          SELECT 1 FROM orders store_order
+          WHERE store_order."customerId" = customer."id"
+            AND store_order."tenantId" = customer."tenantId"
+            AND store_order."storeId" = ${context.store.id}
+        )
         AND (${search} = '' OR lower(customer."name") LIKE lower(${`${search}%`}) OR (${phoneSearch !== ''} AND customer."phoneNormalized" LIKE ${`${phoneSearch}%`}))
       GROUP BY customer."id"
     )
@@ -69,7 +76,7 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
     LIMIT 25 OFFSET ${(page - 1) * 25}
   `);
   const summaryRows = await getDb().$queryRaw<
-    Array<{ total: bigint; recurring: bigint; lapsed: bigint }>
+    Array<{ total: bigint; recurring: bigint; lapsed: bigint; returnedThisMonth: bigint }>
   >(Prisma.sql`
     WITH completed AS (
       SELECT customer."id", COUNT(order_row."id")::bigint AS count,
@@ -79,10 +86,36 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
         AND order_row."tenantId" = customer."tenantId" AND order_row."storeId" = ${context.store.id}
         AND order_row."status" = 'DELIVERED'::"OrderStatus" AND order_row."paymentStatus" = 'PAID'::"PaymentStatus"
       WHERE customer."tenantId" = ${context.session.tenantId}
+        AND EXISTS (
+          SELECT 1 FROM orders store_order
+          WHERE store_order."customerId" = customer."id"
+            AND store_order."tenantId" = customer."tenantId"
+            AND store_order."storeId" = ${context.store.id}
+        )
       GROUP BY customer."id"
+    ), returned AS (
+      SELECT DISTINCT recent."customerId"
+      FROM orders recent
+      WHERE recent."tenantId" = ${context.session.tenantId}
+        AND recent."storeId" = ${context.store.id}
+        AND recent.status = 'DELIVERED'::"OrderStatus"
+        AND recent."paymentStatus" = 'PAID'::"PaymentStatus"
+        AND COALESCE(recent."deliveredAt", recent."statusChangedAt") >=
+          (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE ${context.store.timeZone}) AT TIME ZONE ${context.store.timeZone})
+        AND EXISTS (
+          SELECT 1 FROM orders previous
+          WHERE previous."tenantId" = recent."tenantId"
+            AND previous."storeId" = recent."storeId"
+            AND previous."customerId" = recent."customerId"
+            AND previous.status = 'DELIVERED'::"OrderStatus"
+            AND previous."paymentStatus" = 'PAID'::"PaymentStatus"
+            AND COALESCE(previous."deliveredAt", previous."statusChangedAt") <
+              (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE ${context.store.timeZone}) AT TIME ZONE ${context.store.timeZone})
+        )
     ) SELECT COUNT(*)::bigint AS total,
       COUNT(*) FILTER (WHERE count >= 2 AND "lastOrderAt" >= CURRENT_TIMESTAMP - INTERVAL '60 days')::bigint AS recurring,
-      COUNT(*) FILTER (WHERE count >= 2 AND "lastOrderAt" < CURRENT_TIMESTAMP - INTERVAL '60 days')::bigint AS lapsed
+      COUNT(*) FILTER (WHERE count >= 2 AND "lastOrderAt" < CURRENT_TIMESTAMP - INTERVAL '60 days')::bigint AS lapsed,
+      (SELECT COUNT(*)::bigint FROM returned) AS "returnedThisMonth"
     FROM completed
   `);
   return {
@@ -101,14 +134,20 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
       total: Number(summaryRows[0]?.total ?? 0),
       recurring: Number(summaryRows[0]?.recurring ?? 0),
       lapsed: Number(summaryRows[0]?.lapsed ?? 0),
+      returnedThisMonth: Number(summaryRows[0]?.returnedThisMonth ?? 0),
     },
+    v2Enabled: Boolean(context.store.entitlement?.consumerConvenienceV2Enabled),
   };
 }
 
 export async function getCustomerProfileV1(customerId: string) {
   const context = await requireCustomersContext();
   const customer = await getDb().customer.findFirst({
-    where: { id: customerId, tenantId: context.session.tenantId },
+    where: {
+      id: customerId,
+      tenantId: context.session.tenantId,
+      orders: { some: { tenantId: context.session.tenantId, storeId: context.store.id } },
+    },
     select: { id: true, name: true, phone: true, phoneNormalized: true },
   });
   if (!customer) throw new NotFoundError('Cliente');
@@ -131,5 +170,33 @@ export async function getCustomerProfileV1(customerId: string) {
       createdAt: true,
     },
   });
-  return { customer, metrics: metrics ?? null, orders };
+  let mostOrdered: { productName: string; orderCount: number } | null = null;
+  let repurchase: Awaited<ReturnType<typeof getCustomerRepurchaseShortcuts>> | null = null;
+  if (context.store.entitlement?.consumerConvenienceV2Enabled) {
+    const [mostOrderedRows, shortcuts] = await Promise.all([
+      getDb().$queryRaw<Array<{ productName: string; orderCount: bigint }>>(Prisma.sql`
+        SELECT item."productName", COUNT(DISTINCT item."orderId")::bigint AS "orderCount"
+        FROM order_items item
+        INNER JOIN orders order_row ON order_row.id = item."orderId"
+          AND order_row."tenantId" = item."tenantId" AND order_row."storeId" = item."storeId"
+        WHERE order_row."tenantId" = ${context.session.tenantId}
+          AND order_row."storeId" = ${context.store.id}
+          AND order_row."customerId" = ${customer.id}
+          AND order_row.status = 'DELIVERED'::"OrderStatus"
+          AND order_row."paymentStatus" = 'PAID'::"PaymentStatus"
+        GROUP BY item."productId", item."productName"
+        ORDER BY "orderCount" DESC, item."productName" ASC, item."productId" ASC
+        LIMIT 1
+      `),
+      getCustomerRepurchaseShortcuts({
+        tenantId: context.session.tenantId,
+        storeId: context.store.id,
+        customerId: customer.id,
+      }),
+    ]);
+    const row = mostOrderedRows[0];
+    if (row) mostOrdered = { productName: row.productName, orderCount: Number(row.orderCount) };
+    repurchase = shortcuts;
+  }
+  return { customer, metrics: metrics ?? null, orders, mostOrdered, repurchase };
 }

@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { Search, UsersRound } from 'lucide-react';
+import Link from 'next/link';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -8,9 +8,133 @@ import { formatCurrency } from '@/lib/utils';
 import { listCustomersV1 } from '@/server/services/customers-v1.service';
 
 export const metadata = { title: 'Clientes' };
-const classification = { NEW: 'Novo', RECURRING: 'Recorrente', LAPSED: 'Faz tempo que não pede' } as const;
+const classification = {
+  NEW: 'Novo',
+  RECURRING: 'Recorrente',
+  LAPSED: 'Faz tempo que não pede',
+} as const;
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ search?: string; page?: string }> }) {
-  const query = await searchParams; const parsedPage = Number(query.page ?? '1'); const page = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1; const result = await listCustomersV1({ search: query.search, page });
-  return <div><PageHeader title="Clientes" description={`Relacionamento comercial de ${result.store.name}, sem campanhas ou automações.`} /><form className="flex max-w-2xl gap-2" action="/dashboard/customers"><label className="relative flex-1"><span className="sr-only">Buscar por nome ou telefone</span><Search className="text-text-muted pointer-events-none absolute top-3.5 left-3 h-4 w-4" aria-hidden="true" /><Input name="search" defaultValue={query.search ?? ''} className="pl-10" placeholder="Nome ou telefone" maxLength={80} /></label><Button type="submit" variant="outline">Buscar</Button></form><dl className="border-border mt-5 grid grid-cols-3 divide-x rounded-xl border"><div className="p-4"><dt className="text-text-secondary text-xs">Clientes</dt><dd className="mt-1 font-mono text-xl font-bold">{result.summary.total}</dd></div><div className="p-4"><dt className="text-text-secondary text-xs">Recorrentes</dt><dd className="mt-1 font-mono text-xl font-bold">{result.summary.recurring}</dd></div><div className="p-4"><dt className="text-text-secondary text-xs">Sem pedir há 60+ dias</dt><dd className="mt-1 font-mono text-xl font-bold">{result.summary.lapsed}</dd></div></dl>{result.items.length ? <ul className="border-border bg-surface mt-6 divide-y rounded-xl border">{result.items.map((customer) => <li key={customer.id}><Link href={`/dashboard/customers/${customer.id}`} className="hover:bg-surface-secondary focus-visible:ring-brand-500 grid min-h-20 gap-2 p-4 focus-visible:ring-2 focus-visible:outline-none sm:grid-cols-[minmax(0,1fr)_repeat(3,9rem)] sm:items-center"><div><span className="font-semibold">{customer.name}</span>{customer.classification ? <span className="text-text-secondary mt-0.5 block text-xs">{classification[customer.classification]}</span> : null}</div><span className="text-text-secondary text-sm"><strong className="text-text-primary block font-mono">{customer.completedOrders}</strong> compras</span><span className="text-text-secondary text-sm"><strong className="text-text-primary block font-mono">{formatCurrency(customer.totalSpent)}</strong> total</span><span className="text-text-secondary text-sm"><strong className="text-text-primary block font-mono">{customer.lastOrderAt ? new Intl.DateTimeFormat('pt-BR').format(customer.lastOrderAt) : '—'}</strong> última compra</span></Link></li>)}</ul> : <div className="border-border mt-6 rounded-xl border p-8 text-center"><UsersRound className="text-text-muted mx-auto" aria-hidden="true" /><h2 className="mt-3 font-bold">Nenhum cliente encontrado</h2><p className="text-text-secondary mt-1 text-sm">Tente o início do nome ou o telefone completo.</p></div>}<div className="mt-4 flex justify-between">{page > 1 ? <Button asChild variant="outline"><Link href={`/dashboard/customers?page=${page - 1}${query.search ? `&search=${encodeURIComponent(query.search)}` : ''}`}>Anterior</Link></Button> : <span />}{page * 25 < result.total ? <Button asChild variant="outline"><Link href={`/dashboard/customers?page=${page + 1}${query.search ? `&search=${encodeURIComponent(query.search)}` : ''}`}>Próxima</Link></Button> : null}</div></div>;
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; page?: string }>;
+}) {
+  const query = await searchParams;
+  const parsedPage = Number(query.page ?? '1');
+  const page = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const result = await listCustomersV1({ search: query.search, page });
+  const summaries = [
+    { label: 'Clientes', value: result.summary.total },
+    { label: 'Recorrentes', value: result.summary.recurring },
+    ...(result.v2Enabled
+      ? [{ label: 'Voltaram este mês', value: result.summary.returnedThisMonth }]
+      : []),
+    { label: 'Sem pedir há 60+ dias', value: result.summary.lapsed },
+  ];
+
+  return (
+    <div>
+      <PageHeader title="Clientes" description={`Quem compra e volta em ${result.store.name}.`} />
+      <form className="flex max-w-2xl gap-2" action="/dashboard/customers">
+        <label className="relative flex-1">
+          <span className="sr-only">Buscar por nome ou telefone</span>
+          <Search
+            className="text-text-muted pointer-events-none absolute top-3.5 left-3 h-4 w-4"
+            aria-hidden="true"
+          />
+          <Input
+            name="search"
+            defaultValue={query.search ?? ''}
+            className="pl-10"
+            placeholder="Nome ou telefone"
+            maxLength={80}
+          />
+        </label>
+        <Button type="submit" variant="outline">
+          Buscar
+        </Button>
+      </form>
+      <dl
+        className={`border-border mt-5 grid divide-x rounded-xl border ${summaries.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}
+      >
+        {summaries.map((summary) => (
+          <div key={summary.label} className="p-4">
+            <dt className="text-text-secondary text-xs">{summary.label}</dt>
+            <dd className="mt-1 font-mono text-xl font-bold">{summary.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {result.items.length ? (
+        <ul className="border-border bg-surface mt-6 divide-y rounded-xl border">
+          {result.items.map((customer) => (
+            <li key={customer.id}>
+              <Link
+                href={`/dashboard/customers/${customer.id}`}
+                className="hover:bg-surface-secondary focus-visible:ring-brand-500 grid min-h-20 gap-2 p-4 focus-visible:ring-2 focus-visible:outline-none sm:grid-cols-[minmax(0,1fr)_repeat(3,9rem)] sm:items-center"
+              >
+                <div>
+                  <span className="font-semibold">{customer.name}</span>
+                  {customer.classification && (
+                    <span className="text-text-secondary mt-0.5 block text-xs">
+                      {classification[customer.classification]}
+                    </span>
+                  )}
+                </div>
+                <span className="text-text-secondary text-sm">
+                  <strong className="text-text-primary block font-mono">
+                    {customer.completedOrders}
+                  </strong>{' '}
+                  compras
+                </span>
+                <span className="text-text-secondary text-sm">
+                  <strong className="text-text-primary block font-mono">
+                    {formatCurrency(customer.totalSpent)}
+                  </strong>{' '}
+                  total
+                </span>
+                <span className="text-text-secondary text-sm">
+                  <strong className="text-text-primary block font-mono">
+                    {customer.lastOrderAt
+                      ? new Intl.DateTimeFormat('pt-BR').format(customer.lastOrderAt)
+                      : '—'}
+                  </strong>{' '}
+                  última compra
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="border-border mt-6 rounded-xl border p-8 text-center">
+          <UsersRound className="text-text-muted mx-auto" aria-hidden="true" />
+          <h2 className="mt-3 font-bold">Nenhum cliente encontrado</h2>
+          <p className="text-text-secondary mt-1 text-sm">
+            Tente o início do nome ou o telefone completo.
+          </p>
+        </div>
+      )}
+      <div className="mt-4 flex justify-between">
+        {page > 1 ? (
+          <Button asChild variant="outline">
+            <Link
+              href={`/dashboard/customers?page=${page - 1}${query.search ? `&search=${encodeURIComponent(query.search)}` : ''}`}
+            >
+              Anterior
+            </Link>
+          </Button>
+        ) : (
+          <span />
+        )}
+        {page * 25 < result.total && (
+          <Button asChild variant="outline">
+            <Link
+              href={`/dashboard/customers?page=${page + 1}${query.search ? `&search=${encodeURIComponent(query.search)}` : ''}`}
+            >
+              Próxima
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }

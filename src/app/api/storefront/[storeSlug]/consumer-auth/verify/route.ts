@@ -15,6 +15,7 @@ import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
   CONSUMER_SESSION_COOKIE,
   consumerSessionCookieOptions,
+  describeConsumerDevice,
   hashConsumerSecret,
   verifyConsumerCode,
 } from '@/server/services/consumer-auth.service';
@@ -28,7 +29,9 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
     const params = paramsSchema.safeParse(await context.params);
     const input = consumerVerificationConfirmSchema.safeParse(await readConsumerJson(request));
     if (!params.success || !input.success) throw new ValidationError();
-    const fingerprint = await hashConsumerSecret(`${consumerClientAddress(request)}:${input.data.challengeToken}`);
+    const fingerprint = await hashConsumerSecret(
+      `${consumerClientAddress(request)}:${input.data.challengeToken}`,
+    );
     const rateLimit = await getRateLimiter().check({
       identifier: `consumer-verification-confirm:${fingerprint}`,
       ...RATE_LIMITS.consumerVerificationConfirm,
@@ -40,9 +43,17 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
       storeSlug: params.data.storeSlug,
       challengeToken: input.data.challengeToken,
       code: input.data.code,
+      deviceLabel: describeConsumerDevice(request.headers.get('user-agent')),
     });
-    const response = NextResponse.json({ linked: result.linked, customerName: result.customerName });
-    response.cookies.set(CONSUMER_SESSION_COOKIE, result.sessionToken, consumerSessionCookieOptions(result.expiresAt));
+    const response = NextResponse.json({
+      linked: result.linked,
+      customerName: result.customerName,
+    });
+    response.cookies.set(
+      CONSUMER_SESSION_COOKIE,
+      result.sessionToken,
+      consumerSessionCookieOptions(result.expiresAt),
+    );
     return applyConsumerHeaders(response);
   } catch (error) {
     return applyConsumerHeaders(errorToResponse(error));

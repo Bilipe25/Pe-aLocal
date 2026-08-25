@@ -2,8 +2,9 @@ import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { CatalogView } from '@/components/storefront/catalog-view';
+import { ConsumerFavoritesSync } from '@/components/storefront/consumer-favorites-sync';
+import { ConsumerRepurchaseLoader } from '@/components/storefront/consumer-repurchase-loader';
 import { NetworkStatus } from '@/components/storefront/network-status';
-import { RecentOrdersLoader } from '@/components/storefront/recent-orders-loader';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
@@ -83,6 +84,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         />
       )}
       <NetworkStatus />
+      <ConsumerFavoritesSync storeId={store.id} storeSlug={store.slug} />
 
       {!store.availability.acceptingOrders && (
         <StoreClosedBanner availability={store.availability} />
@@ -133,13 +135,13 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         initialCouponCode={initialCouponCode}
         showFeaturedProductsSection={store.settings?.showFeaturedProductsSection ?? true}
         minOrderValue={store.settings?.minOrderValue}
-        recentOrdersSlot={
+        personalizationSlot={
           <Suspense fallback={null}>
-            <RecentOrdersLoader
+            <ConsumerRepurchaseLoader
               tenantId={store.tenantId}
               storeId={store.id}
               storeSlug={store.slug}
-              enabled={store.settings?.showRecentPurchasesSection ?? true}
+              recentOrdersEnabled={store.settings?.showRecentPurchasesSection ?? true}
             />
           </Suspense>
         }

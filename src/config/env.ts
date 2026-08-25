@@ -13,6 +13,31 @@ const optionalBirdApiKeySchema = z.preprocess(
     .optional(),
 );
 
+const optionalResendApiKeySchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z
+    .string()
+    .regex(/^re_[A-Za-z0-9_-]{16,}$/u, 'deve ser uma API key Resend no formato re_...')
+    .optional(),
+);
+
+const optionalFromEmailSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z
+    .string()
+    .min(3)
+    .max(320)
+    .refine((value) => value.includes('@') && !/[\r\n]/u.test(value), {
+      message: 'deve conter um remetente de e-mail válido e sem quebras de linha',
+    })
+    .optional(),
+);
+
+const optionalOtpSecretSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(32, 'deve ter pelo menos 32 caracteres').optional(),
+);
+
 const envSchema = z
   .object({
     // Prisma CLI e fallback exclusivo do runtime Node local.
@@ -28,8 +53,13 @@ const envSchema = z
     APP_ENV: z.enum(['development', 'staging', 'production']).optional(),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-    CONSUMER_VERIFICATION_PROVIDER: z.enum(['disabled', 'development', 'bird']).default('disabled'),
+    CONSUMER_VERIFICATION_PROVIDER: z
+      .enum(['disabled', 'development', 'bird', 'resend'])
+      .default('disabled'),
     BIRD_API_KEY: optionalBirdApiKeySchema,
+    RESEND_API_KEY: optionalResendApiKeySchema,
+    RESEND_FROM_EMAIL: optionalFromEmailSchema,
+    CONSUMER_VERIFICATION_OTP_SECRET: optionalOtpSecretSchema,
 
     STORAGE_PROVIDER: z.enum(['local', 'vercel-blob', 'supabase', 's3', 'r2']).default('local'),
     STORAGE_TOKEN: z.string().optional().default(''),
@@ -43,6 +73,21 @@ const envSchema = z
         path: ['BIRD_API_KEY'],
         message: 'é obrigatória quando CONSUMER_VERIFICATION_PROVIDER=bird',
       });
+    }
+    if (env.CONSUMER_VERIFICATION_PROVIDER === 'resend') {
+      for (const key of [
+        'RESEND_API_KEY',
+        'RESEND_FROM_EMAIL',
+        'CONSUMER_VERIFICATION_OTP_SECRET',
+      ] as const) {
+        if (!env[key]) {
+          context.addIssue({
+            code: 'custom',
+            path: [key],
+            message: `é obrigatória quando CONSUMER_VERIFICATION_PROVIDER=resend`,
+          });
+        }
+      }
     }
   });
 

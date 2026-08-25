@@ -45,7 +45,8 @@ function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
   return identifier.startsWith('login:') ||
     identifier.startsWith('password-recovery:') ||
     identifier.startsWith('recognition-phone:') ||
-    identifier.startsWith('consumer-verification-phone:')
+    identifier.startsWith('consumer-verification-phone:') ||
+    identifier.startsWith('consumer-verification-email:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
 }
@@ -107,8 +108,11 @@ export const RATE_LIMITS = {
   resumeProviderPayment: { maxAttempts: 5, windowInSeconds: 60 },
   diningSessionPublic: { maxAttempts: 8, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
-  consumerVerificationByPhone: { maxAttempts: 5, windowInSeconds: 300 },
-  consumerVerificationByIp: { maxAttempts: 20, windowInSeconds: 300 },
-  consumerVerificationByStore: { maxAttempts: 100, windowInSeconds: 300 },
-  consumerVerificationConfirm: { maxAttempts: 10, windowInSeconds: 300 },
+  // Estes valores refletem exatamente os bindings nativos configurados no
+  // Wrangler. Cooldown e tentativas por challenge continuam autoritativos no banco.
+  consumerVerificationByPhone: { maxAttempts: 5, windowInSeconds: 60 },
+  consumerVerificationByEmail: { maxAttempts: 5, windowInSeconds: 60 },
+  consumerVerificationByIp: { maxAttempts: 30, windowInSeconds: 60 },
+  consumerVerificationByStore: { maxAttempts: 60, windowInSeconds: 60 },
+  consumerVerificationConfirm: { maxAttempts: 10, windowInSeconds: 60 },
 } as const;

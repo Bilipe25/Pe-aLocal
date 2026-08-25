@@ -1,81 +1,189 @@
 # Identidade progressiva do consumidor + Clientes V1
 
-## Estado desta entrega
+As conveniências opt-in de favoritos, recompra, sessões e Clientes V2 estão documentadas em
+[`consumer-convenience-v2.md`](./consumer-convenience-v2.md).
 
-O código foi preparado e, em 24/08/2026, as migrations `20260824210000_consumer_identity_v1` e `20260824210100_consumer_identity_search_indexes` foram aplicadas com sucesso ao banco configurado. O entitlement `consumerIdentityEnabled` permanece desligado. Nenhum SMS real ou deploy da aplicação foi executado nessa operação.
+## Estado da entrega
 
-## Modelo de confiança
+As migrations originais `20260824210000_consumer_identity_v1` e
+`20260824210100_consumer_identity_search_indexes` já haviam sido aplicadas em 24/08/2026. A
+migration aditiva `20260825120000_consumer_identity_email_verification` foi aplicada no banco de
+staging autorizado em 25/08/2026 por `prisma migrate deploy`; a verificação posterior confirmou o
+schema remoto atualizado.
 
-- `GUEST`: checkout visitante e histórico local continuam funcionando.
-- `RECOGNIZED`: o aparelho conhecido apenas facilita o preenchimento; não é autenticação.
-- `VERIFIED`: o telefone foi confirmado pelo provedor e a sessão fica em cookie HttpOnly por 90 dias.
+O entitlement `consumerIdentityEnabled` continua sendo o único controle de Conta do cliente e
+Clientes V1. Nenhum e-mail/SMS real, alteração DNS ou deploy de código fez parte desta operação. O
+Worker `pedidolocal-staging` permanece com `CONSUMER_VERIFICATION_PROVIDER=disabled` enquanto a
+marca e o domínio transacional são decididos.
 
-Confirmar um telefone não reivindica automaticamente um `Customer`. O vínculo exige uma prova forte e explícita: `publicToken` ativo de um pedido com Customer compatível, reconhecimento ativo do aparelho ou um vínculo anterior. Não existe backfill de clientes antigos.
+## Arquitetura e responsabilidades
 
-## Provedor de confirmação
+- `GUEST`: checkout visitante e histórico local continuam sem conta e sem e-mail.
+- `RECOGNIZED`: telefone e cookie do aparelho agilizam uma nova compra, mas não autenticam.
+- `VERIFIED`: e-mail ou telefone legado confirmado cria uma `ConsumerSession` própria do
+  PedidoLocal em cookie HttpOnly por 90 dias.
+- `Customer`: continua tenant-scoped, comercial e baseado no telefone do pedido.
+- `ConsumerIdentity`: guarda somente credenciais verificadas globais; dados comerciais, endereços
+  e pedidos permanecem no `Customer` do tenant.
+- Resend: apenas entrega o e-mail. Não cria OTP, identidade, vínculo, autorização nem sessão.
 
-Variáveis do servidor:
+Antes, toda `ConsumerIdentity` exigia telefone verificado e Bird/development controlavam o código.
+Agora, telefone/`phoneVerifiedAt` permanecem opcionais para preservar identidades legadas e foram
+adicionados `emailNormalized`/`emailVerifiedAt`. Resend e development usam OTP controlado pelo
+PedidoLocal; Bird continua com OTP controlado pela API Verify.
+
+## Modelo de confiança e safe claim
+
+Verificar `pessoa@example.com` prova somente o controle desse e-mail. Isso nunca procura um
+`Customer` por telefone, nome ou semelhança.
+
+O primeiro vínculo exige um contexto forte resolvido no servidor:
+
+1. `ORDER_CLAIM`: `publicToken` ativo, loja/tenant corretos, pedido com `customerId` exato e ação
+   explícita “Guardar meus pedidos”; ou
+2. `DEVICE_CLAIM`: reconhecimento válido do aparelho, loja/tenant corretos e Customer exato; ou
+3. vínculo anterior: login por e-mail encontra a `ConsumerIdentity` já ligada.
+
+O navegador nunca usa `customerId`, `consumerIdentityId` ou `tenantId` como autoridade. Login com
+um e-mail novo pode criar identidade e sessão vazias, mas não dá acesso a Customer ou pedido antigo.
+A resposta pública não revela se o e-mail já existia.
+
+Quando um Customer já está ligado a uma identidade legada por telefone, um claim forte pode
+adicionar o e-mail verificado à **mesma** identidade. Um e-mail já usado por outra identidade ou uma
+tentativa de trocar silenciosamente o e-mail existente falha genericamente.
+
+## Providers
 
 ```dotenv
 CONSUMER_VERIFICATION_PROVIDER=disabled
+
+# Bird legado/alternativo
 BIRD_API_KEY=
+
+# Resend
+RESEND_API_KEY=
+RESEND_FROM_EMAIL="PedidoLocal <acesso@updates.example.com>"
+CONSUMER_VERIFICATION_OTP_SECRET=
 ```
 
-Valores aceitos para o provider:
+Valores aceitos:
 
 - `disabled`: padrão seguro; nenhuma confirmação é iniciada.
-- `development`: somente `next dev`/testes, com código determinístico `000000`. O adaptador se recusa a operar em runtime publicado.
-- `bird`: usa a Verify API regional atual da Bird, somente por SMS, com seis dígitos. O PedidoLocal limita cada challenge a cinco minutos, cinco tentativas e reenvio após 60 segundos.
+- `development`: somente development/test, e-mail sem entrega real e código fixo `000000`. Recusa
+  qualquer runtime publicado.
+- `bird`: Verify API regional atual, SMS e telefone E.164. Bird cria e confere o código.
+- `resend`: envio transacional por e-mail. PedidoLocal cria e confere o código.
 
-Não use prefixo `NEXT_PUBLIC_` nessas variáveis. O código OTP, a chave Bird, tokens de sessão, telefone e endereços não podem aparecer em logs.
+Todas as variáveis são server-only e não podem usar `NEXT_PUBLIC_`. `RESEND_API_KEY`,
+`BIRD_API_KEY`, o segredo HMAC, OTPs, e-mails completos e tokens nunca entram em logs ou no bundle do
+storefront.
 
-### API Bird escolhida
+## OTP de e-mail
 
-Para novos projetos, o PedidoLocal usa a geração atual documentada pela Bird:
+- seis dígitos com `crypto.getRandomValues` e amostragem sem viés;
+- HMAC-SHA-256 vinculado ao challenge opaco e assinado com
+  `CONSUMER_VERIFICATION_OTP_SECRET` (mínimo 32 caracteres);
+- somente o hash hexadecimal é persistido;
+- expiração em 10 minutos;
+- no máximo cinco tentativas;
+- reenvio após 60 segundos com código/hash rotacionados;
+- uso único e consumo protegido por transaction + advisory lock;
+- challenge anterior do mesmo provider/loja/e-mail é cancelado após novo envio bem-sucedido;
+- falha de entrega marca o challenge como `FAILED`, antes que qualquer token seja devolvido;
+- dois submits simultâneos podem consumir no máximo uma vez.
 
-- `POST /v1/verify/verifications` para criar ou reenviar;
-- `POST /v1/verify/verifications/check` para conferir o código;
-- `Authorization: Bearer BIRD_API_KEY`;
-- host regional derivado da própria chave `bk_{região}_...`;
-- destinatário E.164 como identificador da verificação, sem guardar `verificationId`.
+O endpoint de confirmação recebe somente `challengeToken` opaco e `code`. O e-mail, tenant, loja,
+Customer e prova de claim são recuperados server-side.
 
-A geração anterior usava `api.bird.com/workspaces/{workspaceId}/verify`, `Authorization: AccessKey`, Navigator e um `verificationId`. Ela continua documentada para integrações existentes, mas não é a opção adotada pelo PedidoLocal. `BIRD_ACCESS_KEY`, `BIRD_WORKSPACE_ID` e `BIRD_VERIFY_NAVIGATOR_ID` não são mais lidas pelo código.
+## Adaptador Resend
 
-Referências oficiais: [visão geral da Verify](https://bird.com/en-us/docs/guides/verify/overview), [envio e conferência](https://bird.com/en-us/docs/guides/verify/sending-verifications), [autenticação e API keys](https://bird.com/en-us/docs/guides/authentication) e [hosts regionais](https://bird.com/en-us/docs/api/regions).
+Foi escolhido REST `fetch` server-side, sem instalar o SDK. O runtime já oferece `fetch`, o payload é
+pequeno e isso evita dependência e impacto desnecessário no bundle.
 
-### Configuração Bird obrigatória antes do rollout
+- endpoint: `POST https://api.resend.com/emails`;
+- autenticação: `Authorization: Bearer RESEND_API_KEY`;
+- conteúdo HTML e plain text;
+- timeout de 10 segundos, sem retry automático;
+- `Idempotency-Key` determinística por challenge/reenvio, sem PII;
+- erros e `429` retornam mensagem humana e mantêm Guest/Recognized/checkout funcionando.
 
-A API atual mantém duração, tentativas e cooldown na configuração do workspace. Antes de ativar uma loja em produção, confirmar no painel Bird:
+Segundo a documentação oficial, a chave de idempotência do `POST /emails` dura 24 horas e aceita até
+256 caracteres. Referências: [Send Email](https://resend.com/docs/api-reference/emails/send-email),
+[Idempotency Keys](https://resend.com/docs/dashboard/emails/idempotency-keys),
+[Domains](https://resend.com/docs/dashboard/domains/introduction) e
+[Cloudflare](https://resend.com/docs/knowledge-base/cloudflare).
 
-- Duration: 5 minutos;
-- Maximum Retries: 5;
-- Retry Delay: 60 segundos;
-- país Brasil habilitado;
-- SMS habilitado para o Brasil;
-- API key regional com somente o escopo `verify:write`.
+## Template transacional
 
-O provider também envia `options.code_length=6` e `options.channels=["sms"]`. Mesmo que a configuração remota esteja divergente, o PedidoLocal falha fechado após cinco minutos ou cinco tentativas e mantém seus próprios limites por telefone, IP e loja. Respostas `429` da Bird são respeitadas e nunca provocam retry automático ou novo SMS silencioso.
+Assunto: `Seu código de acesso — {StoreName}`.
 
-## Rollout
+O HTML é responsivo, sem imagem ou CSS avançado, e o código permanece texto selecionável de alto
+contraste. A versão plain text contém o mesmo conteúdo:
 
-1. Fazer backup e executar os preflights de integridade de Order/Customer.
-2. Revisar e aplicar `20260824210000_consumer_identity_v1`.
-3. Aplicar isoladamente `20260824210100_consumer_identity_search_indexes`, pois usa `CREATE INDEX CONCURRENTLY`.
-4. Configurar a Verify atual no ambiente piloto com duração de 5 minutos, 5 tentativas, cooldown de 60 segundos e somente SMS.
-5. Criar uma API key regional com escopo mínimo `verify:write` e armazená-la como secret `BIRD_API_KEY`.
-6. Alterar `CONSUMER_VERIFICATION_PROVIDER` para `bird` e publicar.
-7. Ativar `consumerIdentityEnabled` somente em uma loja piloto pelo Super Admin.
-8. Validar login, claim pós-pedido, checkout visitante, checkout autenticado, endereços, Clientes e PDV.
-9. Expandir gradualmente.
+```text
+{StoreName}
 
-O backend bloqueia a ativação do entitlement em runtime publicado quando o provider não está pronto.
+Seu código é:
+
+482193
+
+Ele expira em 10 minutos.
+
+Se você não solicitou esse acesso, ignore este e-mail.
+```
+
+Não inclui telefone, endereço, itens, valor ou histórico do pedido.
+
+## Migration aditiva
+
+`20260825120000_consumer_identity_email_verification`:
+
+- torna o par de telefone da identidade opcional sem apagar os dados existentes;
+- adiciona `emailNormalized` único e `emailVerifiedAt` à identidade;
+- adiciona `emailNormalized` e `otpHash` ao challenge;
+- torna o telefone do challenge opcional para login por e-mail;
+- adiciona checks de formato/shape e índice de busca tenant/loja/e-mail;
+- preserva sessões, vínculos, Customers, Orders, Addresses e challenges Bird existentes.
+
+Ela foi aplicada em staging por `prisma migrate deploy` em 25/08/2026. Não usar `db push` remoto.
+
+## Cache, privacidade e falha
+
+Rotas de request, resend e verify usam `private, no-store`; o Service Worker ignora toda `/api/**` e
+as páginas privadas. E-mail não vai para URL, query string, Pusher, analytics ou payload de fila.
+
+Se Resend estiver indisponível, somente ativação/login Verified falha fechado. Cardápio, carrinho,
+checkout sem e-mail, pedido, tracking e reconhecimento por telefone continuam funcionando. Dados
+privados nunca fazem fail-open.
+
+## Preparação manual da Resend
+
+1. Criar ou escolher um subdomínio transacional, por exemplo `updates.seudominio.com`.
+2. Adicionar o domínio na Resend.
+3. Copiar os registros SPF e DKIM exibidos pela Resend para o DNS Cloudflare e aguardar `Verified`.
+4. Opcionalmente configurar DMARC de forma gradual. Não é necessário habilitar recebimento ou
+   webhook de bounce nesta V1.
+5. Criar uma API key com permissão mínima de envio e, quando disponível, restrita ao domínio.
+6. Gerar um segredo HMAC aleatório de pelo menos 32 caracteres.
+7. Armazenar `RESEND_API_KEY` e `CONSUMER_VERIFICATION_OTP_SECRET` como secrets do Worker.
+8. Configurar `RESEND_FROM_EMAIL` como var server-side usando exatamente o domínio verificado.
+9. Alterar `CONSUMER_VERIFICATION_PROVIDER` para `resend` somente depois da migration e dos secrets.
+10. Fazer smoke test numa loja piloto antes de ativar `consumerIdentityEnabled`.
+
+Não automatizar DNS ou enviar e-mail real durante testes. O domínio `resend.dev` serve apenas para
+testes controlados da própria Resend e não substitui o domínio de produção.
 
 ## Rollback funcional
 
-Desligue `consumerIdentityEnabled` ou volte o provider para `disabled`. Isso oculta Conta e Clientes e bloqueia as rotas privadas, sem apagar identidades, sessões, vínculos, Customers, endereços ou pedidos. Não remova tabelas durante um rollback operacional.
+Desligar `consumerIdentityEnabled` ou mudar o provider para `disabled`. Isso oculta Conta/Clientes e
+bloqueia as rotas privadas sem apagar identidades, credenciais, sessões, vínculos, Customers,
+endereços ou pedidos. Trocar `bird` por `resend` não invalida sessões já emitidas; challenge pendente
+só pode ser concluído pelo mesmo provider que o iniciou.
 
-## Privacidade e retenção
+## Riscos restantes
 
-Rotas de OTP, conta, endereços e pedidos autenticados usam `private, no-store`. O Service Worker trata `/account/**` como sensível. A identidade global guarda apenas telefone normalizado e data de verificação; nome, contato comercial, endereços e pedidos continuam no Customer tenant-scoped. Sessões podem ser revogadas e expiram em 90 dias.
-
-Risco residual conhecido: autenticação somente por telefone não detecta a reciclagem pela operadora de um número que já estava vinculado. Passkeys e recuperação forte são evoluções posteriores.
+- entrega depende da reputação do domínio, SPF/DKIM e filtros do destinatário;
+- conta de e-mail comprometida compromete a prova de controle enquanto não houver passkey;
+- identidades legadas apenas por telefone precisam de um claim forte para receber uma credencial de
+  e-mail; não existe backfill automático;
+- bounces/webhooks, passkeys, recuperação forte e troca assistida de e-mail ficam fora da V1.

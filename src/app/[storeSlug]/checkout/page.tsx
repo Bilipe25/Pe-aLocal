@@ -101,7 +101,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const initialAuthenticatedCustomer = consumer?.customer
     ? {
         name: consumer.customer.name,
-        phone: formatPhone(consumer.phoneNormalized),
+        phone: formatPhone(consumer.customer.phoneNormalized),
         address: consumer.customer.addresses[0] ?? null,
       }
     : undefined;
