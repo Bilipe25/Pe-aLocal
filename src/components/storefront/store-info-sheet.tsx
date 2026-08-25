@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import Image from 'next/image';
-import { useId, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useId, useState, useSyncExternalStore } from 'react';
 
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import type { EffectiveStoreAvailability } from '@/features/stores/availability';
@@ -60,6 +60,7 @@ export interface StoreInfoSheetProps {
   phone: string | null;
   whatsapp: string | null;
   shareUrl?: string;
+  trigger?: ReactNode;
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -208,27 +209,31 @@ export function StoreInfoSheet(props: StoreInfoSheetProps) {
   const normalizedPhone = props.phone ? normalizePhone(props.phone) : '';
   const normalizedWhatsapp = props.whatsapp ? normalizePhone(props.whatsapp) : '';
   const payments = [
-    props.acceptsPix ? { label: 'Pix', icon: WalletCards, tone: 'pix', color: '#168f83' } : null,
-    props.acceptsCash
-      ? { label: 'Dinheiro', icon: Banknote, tone: 'cash', color: '#3f7d58' }
-      : null,
+    props.acceptsPix ? { label: 'Pix', icon: WalletCards, tone: 'pix' } : null,
+    props.acceptsCash ? { label: 'Dinheiro', icon: Banknote, tone: 'cash' } : null,
     props.acceptsCardOnDelivery
-      ? { label: 'Cartão no recebimento', icon: CreditCard, tone: 'card', color: '#c77a00' }
+      ? { label: 'Cartão no recebimento', icon: CreditCard, tone: 'card' }
       : null,
   ].filter((payment): payment is NonNullable<typeof payment> => payment !== null);
   const todayKey = useSyncExternalStore(subscribeToLocalDay, getTodayKey, () => '');
   const isOpen = props.availability.acceptingOrders;
+  const portalContainer =
+    typeof document === 'undefined'
+      ? undefined
+      : (document.querySelector<HTMLElement>('.storefront-theme') ?? undefined);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button type="button" className="store-info-trigger">
-          <Store aria-hidden="true" />
-          <span>Sobre a loja</span>
-        </button>
+        {props.trigger ?? (
+          <button type="button" className="store-info-trigger">
+            <Store aria-hidden="true" />
+            <span>Sobre a loja</span>
+          </button>
+        )}
       </Dialog.Trigger>
 
-      <Dialog.Portal>
+      <Dialog.Portal container={portalContainer}>
         <Dialog.Overlay className="store-info-overlay" onClick={() => setOpen(false)} />
         <Dialog.Content className="store-info-dialog">
           <div className="store-info-drag-handle" aria-hidden="true" />
@@ -408,7 +413,6 @@ export function StoreInfoSheet(props: StoreInfoSheetProps) {
                       <span key={payment.label} data-tone={payment.tone}>
                         <Icon
                           className={`store-info-payment-icon-${payment.tone}`}
-                          color={payment.color}
                           aria-hidden="true"
                         />
                         {payment.label}

@@ -153,7 +153,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         </footer>
       )}
 
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} showFavorites={false} />
+      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </>
   );
 }

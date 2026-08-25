@@ -42,7 +42,11 @@ export function StorefrontOffers({
   if (offers.length === 0) return null;
   return (
     <>
-      <section className="storefront-category-section" aria-labelledby="storefront-offers-title">
+      <section
+        id="ofertas"
+        className="storefront-category-section storefront-offers-section"
+        aria-labelledby="storefront-offers-title"
+      >
         <div className="storefront-category-header">
           <div>
             <h2 id="storefront-offers-title" className="storefront-section-title">
