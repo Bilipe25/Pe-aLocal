@@ -2,7 +2,7 @@ export const STORE_FEATURE_DEFINITIONS = {
   consumerIdentity: {
     key: 'consumerIdentity',
     label: 'Conta do cliente e Clientes',
-    description: 'Ativa confirmação por celular, histórico em outros aparelhos e Clientes V1.',
+    description: 'Ativa acesso verificado, histórico em outros aparelhos e Clientes V1.',
     entitlementField: 'consumerIdentityEnabled',
     implementationStatus: 'AVAILABLE',
   },

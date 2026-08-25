@@ -111,7 +111,9 @@ export function ConsumerOrderHistory({
           <h2 id="consumer-orders-title" className="text-xl font-bold">
             Olá{customerName ? `, ${customerName.split(' ')[0]}` : ''}
           </h2>
-          <p className="text-text-secondary text-sm">Seus pedidos confirmados por celular.</p>
+          <p className="text-text-secondary text-sm">
+            Seus pedidos disponíveis com acesso verificado.
+          </p>
         </div>
         <a
           href={`/${storeSlug}/account`}

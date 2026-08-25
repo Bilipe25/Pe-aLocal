@@ -20,6 +20,7 @@ import {
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { ConsumerAuthPanel } from '@/components/storefront/consumer-auth-panel';
+import { getConsumerVerificationMethod } from '@/server/consumer-verification/provider';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
 import {
   getPublicPaymentStatusLabel,
@@ -246,6 +247,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               storeName={order.store.name}
               purpose="ORDER_CLAIM"
               trackingToken={order.publicToken}
+              verificationMethod={getConsumerVerificationMethod()}
             />
           ) : null}
         </main>

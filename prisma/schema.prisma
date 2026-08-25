@@ -1528,17 +1528,20 @@ model Customer {
 }
 
 model ConsumerIdentity {
-  id              String   @id @default(uuid())
-  phoneNormalized String   @unique @db.VarChar(13)
-  phoneVerifiedAt DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String    @id @default(uuid())
+  phoneNormalized String?   @unique @db.VarChar(13)
+  phoneVerifiedAt DateTime?
+  emailNormalized String?   @unique @db.VarChar(254)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   customers  Customer[]
   sessions   ConsumerSession[]
   challenges ConsumerVerificationChallenge[]
 
   @@index([phoneVerifiedAt])
+  @@index([emailVerifiedAt])
   @@map("consumer_identities")
 }
 
@@ -1564,7 +1567,9 @@ model ConsumerVerificationChallenge {
   challengeTokenHash String                      @unique @db.Char(64)
   tenantId           String
   storeId            String
-  phoneNormalized    String                      @db.VarChar(13)
+  phoneNormalized    String?                     @db.VarChar(13)
+  emailNormalized    String?                     @db.VarChar(254)
+  otpHash            String?                     @db.Char(64)
   purpose            ConsumerVerificationPurpose
   status             ConsumerVerificationStatus  @default(PENDING)
   provider           String                      @db.VarChar(24)
@@ -1587,6 +1592,7 @@ model ConsumerVerificationChallenge {
   claimOrder       Order?            @relation(fields: [claimOrderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
 
   @@index([tenantId, storeId, phoneNormalized, createdAt])
+  @@index([tenantId, storeId, emailNormalized, createdAt])
   @@index([claimCustomerId, expiresAt])
   @@index([expiresAt, status])
   @@map("consumer_verification_challenges")

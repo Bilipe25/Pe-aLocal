@@ -55,16 +55,20 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
       request: input.data,
       deviceToken: getConsumerDeviceToken(request),
     });
-    const phoneHash = await hashConsumerSecret(`phone:${verificationContext.phoneNormalized}`);
-    const phoneResult = await limiter.check({
-      identifier: `consumer-verification-phone:${scope.tenantId}:${phoneHash}`,
-      ...RATE_LIMITS.consumerVerificationByPhone,
+    const subjectHash = await hashConsumerSecret(
+      `${verificationContext.subject.kind}:${verificationContext.subject.normalized}`,
+    );
+    const subjectResult = await limiter.check({
+      identifier: `consumer-verification-${verificationContext.subject.kind}:${scope.tenantId}:${subjectHash}`,
+      ...(verificationContext.subject.kind === 'email'
+        ? RATE_LIMITS.consumerVerificationByEmail
+        : RATE_LIMITS.consumerVerificationByPhone),
       strict,
     });
-    if (phoneResult.unavailable) {
+    if (subjectResult.unavailable) {
       throw new RateLimitError('A confirmação está temporariamente indisponível.');
     }
-    if (!phoneResult.allowed) throw new RateLimitError();
+    if (!subjectResult.allowed) throw new RateLimitError();
 
     const result = await requestConsumerVerification({
       context: verificationContext,
@@ -72,7 +76,10 @@ export async function POST(request: Request, context: { params: Promise<{ storeS
     return applyConsumerHeaders(
       Response.json({
         ...result,
-        message: 'Se o número puder receber mensagens, o código será enviado em instantes.',
+        message:
+          verificationContext.subject.kind === 'email'
+            ? 'Se o endereço puder receber mensagens, o código será enviado em instantes.'
+            : 'Se o número puder receber mensagens, o código será enviado em instantes.',
       }),
     );
   } catch (error) {

@@ -45,7 +45,8 @@ function selectBinding(env: CloudflareEnv, identifier: string): RateLimit {
   return identifier.startsWith('login:') ||
     identifier.startsWith('password-recovery:') ||
     identifier.startsWith('recognition-phone:') ||
-    identifier.startsWith('consumer-verification-phone:')
+    identifier.startsWith('consumer-verification-phone:') ||
+    identifier.startsWith('consumer-verification-email:')
     ? env.AUTH_RATE_LIMITER
     : env.ORDER_RATE_LIMITER;
 }
@@ -108,6 +109,7 @@ export const RATE_LIMITS = {
   diningSessionPublic: { maxAttempts: 8, windowInSeconds: 60 },
   passwordRecovery: { maxAttempts: 5, windowInSeconds: 60 },
   consumerVerificationByPhone: { maxAttempts: 5, windowInSeconds: 300 },
+  consumerVerificationByEmail: { maxAttempts: 5, windowInSeconds: 300 },
   consumerVerificationByIp: { maxAttempts: 20, windowInSeconds: 300 },
   consumerVerificationByStore: { maxAttempts: 100, windowInSeconds: 300 },
   consumerVerificationConfirm: { maxAttempts: 10, windowInSeconds: 300 },
