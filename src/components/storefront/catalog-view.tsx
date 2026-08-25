@@ -53,7 +53,7 @@ interface CatalogViewProps {
   initialCouponCode?: string | null;
   showFeaturedProductsSection?: boolean;
   minOrderValue?: number | null;
-  recentOrdersSlot?: ReactNode;
+  personalizationSlot?: ReactNode;
   cartScopeId?: string;
   cartHref?: string;
 }
@@ -104,7 +104,7 @@ export function CatalogView({
   initialCouponCode,
   showFeaturedProductsSection = true,
   minOrderValue,
-  recentOrdersSlot,
+  personalizationSlot,
   cartScopeId = storeId,
   cartHref = `/${storeSlug}/cart`,
 }: CatalogViewProps) {
@@ -574,7 +574,7 @@ export function CatalogView({
         />
       )}
 
-      {recentOrdersSlot}
+      {personalizationSlot}
 
       {showSearchSummary && (
         <div

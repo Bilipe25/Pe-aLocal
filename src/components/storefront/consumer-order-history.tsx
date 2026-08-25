@@ -17,6 +17,16 @@ type Order = {
   modality: string;
   total: number;
   createdAt: string;
+  items: Array<{ productName: string; quantity: number }>;
+  _count: { items: number };
+};
+
+const activeStatusLabel: Record<string, string> = {
+  PENDING: 'Aguardando confirmação',
+  CONFIRMED: 'Confirmado',
+  PREPARING: 'Em preparo',
+  READY: 'Pronto',
+  OUT_FOR_DELIVERY: 'Saiu para entrega',
 };
 
 export function ConsumerOrderHistory({
@@ -84,10 +94,21 @@ export function ConsumerOrderHistory({
                       ? 'Mesa'
                       : 'Retirada'}
                 </p>
+                {activeList && (
+                  <p className="text-info mt-1 text-xs font-semibold">
+                    {activeStatusLabel[order.status] ?? 'Em andamento'}
+                  </p>
+                )}
               </div>
             </div>
             <strong className="font-mono text-sm">{formatCurrency(order.total)}</strong>
           </div>
+          <p className="text-text-secondary mt-3 line-clamp-2 text-sm">
+            {order.items.map((item) => `${item.quantity}× ${item.productName}`).join(' · ')}
+            {order._count.items > order.items.length
+              ? ` · +${order._count.items - order.items.length} itens`
+              : ''}
+          </p>
           {!activeList ? (
             <Button
               type="button"

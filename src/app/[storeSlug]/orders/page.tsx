@@ -9,7 +9,10 @@ import { StorePurchaseHeader } from '@/components/storefront/store-purchase-head
 import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
 import { AuthenticationError } from '@/server/errors';
-import { getConsumerVerificationMethod } from '@/server/consumer-verification/provider';
+import {
+  getConsumerVerificationMethod,
+  isConsumerVerificationReady,
+} from '@/server/consumer-verification/provider';
 import { listConsumerOrders } from '@/server/services/consumer-account.service';
 import {
   CONSUMER_SESSION_COOKIE,
@@ -49,6 +52,7 @@ export default async function OrdersPage({
   const scope = await getConsumerStoreScope(store.slug);
   const featureEnabled = scope?.entitlement?.consumerIdentityEnabled === true;
   const verificationMethod = getConsumerVerificationMethod();
+  const verificationReady = isConsumerVerificationReady();
   const requestedPage = Number((await searchParams).page ?? '1');
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   let verifiedOrders: Awaited<ReturnType<typeof listConsumerOrders>> | null = null;
@@ -110,7 +114,7 @@ export default async function OrdersPage({
         ) : (
           <>
             <PublicOrderHistory storeId={store.id} storeSlug={store.slug} />
-            {featureEnabled ? (
+            {featureEnabled && verificationReady ? (
               <ConsumerAuthPanel
                 storeSlug={store.slug}
                 storeName={store.name}
