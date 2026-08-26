@@ -45,7 +45,7 @@ export default async function ConsumerAccountPage({
         logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
         logoImageAssetId={store.customization.assets.logo?.id ?? null}
       />
-      <main className="storefront-orders-main">
+      <main className="storefront-orders-main storefront-content-arrival">
         <h1 className="text-2xl font-bold">
           Olá
           {authorized.consumer.customer

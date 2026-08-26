@@ -16,6 +16,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   type FormEvent,
+  Suspense,
+  use,
   useEffect,
   useId,
   useLayoutEffect,
@@ -29,6 +31,7 @@ import { ProductImage } from '@/components/storefront/product-image';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
 import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
+import { StorefrontCartLoading } from '@/components/storefront/storefront-tab-loading';
 import {
   ComboConfigurator,
   FlexibleComboConfigurator,
@@ -43,7 +46,10 @@ import {
   subscribeToCartStorage,
   useCartStore,
 } from '@/stores/cart-store';
+import type { CartItem } from '@/stores/cart-store';
 import type { PublicStorefrontOfferDto } from '@/types/storefront';
+
+type PublicComboOffer = Extract<PublicStorefrontOfferDto, { kind: 'COMBO' | 'FLEXIBLE_COMBO' }>;
 
 const CartItemEditor = dynamic(
   () => import('@/components/storefront/cart-item-editor').then((module) => module.CartItemEditor),
@@ -73,7 +79,50 @@ interface CartViewProps {
   quoteEndpoint?: string;
   quoteModality?: CartFulfillmentModality;
   contextLabel?: string;
-  comboOffers?: Array<Extract<PublicStorefrontOfferDto, { kind: 'COMBO' | 'FLEXIBLE_COMBO' }>>;
+  comboOffers?: PublicComboOffer[] | Promise<PublicComboOffer[]>;
+}
+
+function CartComboEditor({
+  comboOffers,
+  editingItem,
+  storeOpen,
+  onClose,
+}: {
+  comboOffers: PublicComboOffer[] | Promise<PublicComboOffer[]>;
+  editingItem: CartItem;
+  storeOpen: boolean;
+  onClose: () => void;
+}) {
+  const offers = comboOffers instanceof Promise ? use(comboOffers) : comboOffers;
+  const editingCombo = offers.find((offer) => offer.id === editingItem.comboId) ?? null;
+
+  useEffect(() => {
+    if (!editingCombo) onClose();
+  }, [editingCombo, onClose]);
+
+  if (editingCombo?.kind === 'COMBO') {
+    return (
+      <ComboConfigurator
+        offer={editingCombo}
+        storeOpen={storeOpen}
+        cartItem={editingItem}
+        onClose={onClose}
+      />
+    );
+  }
+
+  if (editingCombo?.kind === 'FLEXIBLE_COMBO') {
+    return (
+      <FlexibleComboConfigurator
+        offer={editingCombo}
+        storeOpen={storeOpen}
+        cartItem={editingItem}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return null;
 }
 
 export function buildCartCheckoutHref(storeSlug: string) {
@@ -203,10 +252,6 @@ export function CartView({
     acceptingOrders && quoteState.status === 'success' && Boolean(quoteState.quote?.canCheckout);
   const checkoutHref = checkoutHrefOverride ?? buildCartCheckoutHref(storeSlug);
   const editingItem = items.find((item) => item.id === editingItemId) ?? null;
-  const editingCombo =
-    editingItem?.kind === 'COMBO'
-      ? (comboOffers.find((offer) => offer.id === editingItem.comboId) ?? null)
-      : null;
 
   useEffect(() => {
     let active = true;
@@ -334,12 +379,7 @@ export function CartView({
   }
 
   if (!cartHydrated || activeStoreId !== storeId) {
-    return (
-      <main className="storefront-cart-hydration" role="status" aria-live="polite" aria-busy="true">
-        <Loader2 className="animate-spin" aria-hidden="true" />
-        Carregando sua sacola…
-      </main>
-    );
+    return <StorefrontCartLoading />;
   }
 
   if (items.length === 0) {
@@ -364,7 +404,10 @@ export function CartView({
   }
 
   return (
-    <main className="storefront-cart-page" aria-busy={quoteState.status === 'loading'}>
+    <main
+      className="storefront-cart-page storefront-content-arrival"
+      aria-busy={quoteState.status === 'loading'}
+    >
       <span className="sr-only" role="status" aria-live="polite">
         {cartAnnouncement}
       </span>
@@ -452,15 +495,10 @@ export function CartView({
                     priceChanged={priceChanged}
                     issues={issues}
                     onRemove={() => handleRemoveItem(item.id, displayName)}
-                    onEdit={
-                      item.kind !== 'COMBO' ||
-                      comboOffers.some((offer) => offer.id === item.comboId)
-                        ? (trigger) => {
-                            editingTriggerRef.current = trigger;
-                            setEditingItemId(item.id);
-                          }
-                        : undefined
-                    }
+                    onEdit={(trigger) => {
+                      editingTriggerRef.current = trigger;
+                      setEditingItemId(item.id);
+                    }}
                     onQuantityChange={(qty) => updateQuantity(item.id, qty)}
                   />
                 );
@@ -683,23 +721,22 @@ export function CartView({
           onClose={closeItemEditor}
         />
       )}
-      {editingItem && editingCombo?.kind === 'COMBO' && (
-        <ComboConfigurator
-          key={editingItem.id}
-          offer={editingCombo}
-          storeOpen={acceptingOrders}
-          cartItem={editingItem}
-          onClose={closeItemEditor}
-        />
-      )}
-      {editingItem && editingCombo?.kind === 'FLEXIBLE_COMBO' && (
-        <FlexibleComboConfigurator
-          key={editingItem.id}
-          offer={editingCombo}
-          storeOpen={acceptingOrders}
-          cartItem={editingItem}
-          onClose={closeItemEditor}
-        />
+      {editingItem?.kind === 'COMBO' && (
+        <Suspense
+          fallback={
+            <div className="storefront-cart-editor-loading" role="status">
+              Carregando opções do combo…
+            </div>
+          }
+        >
+          <CartComboEditor
+            key={editingItem.id}
+            comboOffers={comboOffers}
+            editingItem={editingItem}
+            storeOpen={acceptingOrders}
+            onClose={closeItemEditor}
+          />
+        </Suspense>
       )}
     </main>
   );

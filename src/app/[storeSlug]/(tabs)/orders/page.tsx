@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { PublicOrderHistory } from '@/components/storefront/public-order-history';
 import { ConsumerAuthPanel } from '@/components/storefront/consumer-auth-panel';
 import { ConsumerOrderHistory } from '@/components/storefront/consumer-order-history';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
+import { StorefrontOrdersContentLoading } from '@/components/storefront/storefront-tab-loading';
 import { getPublicStoreShellBySlug } from '@/server/queries/public-store';
 import { AuthenticationError } from '@/server/errors';
 import {
@@ -37,17 +39,15 @@ export async function generateMetadata({
   };
 }
 
-export default async function OrdersPage({
-  params,
+type StoreShell = NonNullable<Awaited<ReturnType<typeof getPublicStoreShellBySlug>>>;
+
+async function OrdersContent({
+  store,
   searchParams,
 }: {
-  params: Promise<{ storeSlug: string }>;
+  store: StoreShell;
   searchParams: Promise<{ page?: string }>;
 }) {
-  const { storeSlug } = await params;
-  const store = await getPublicStoreShellBySlug(storeSlug);
-  if (!store) notFound();
-  if (store.slug !== storeSlug) redirect(`/${store.slug}/orders`);
   const scope = await getConsumerStoreScope(store.slug);
   const featureEnabled = scope?.entitlement?.consumerIdentityEnabled === true;
   const verificationMethod = getConsumerVerificationMethod();
@@ -67,6 +67,63 @@ export default async function OrdersPage({
     }
   }
 
+  return verifiedOrders ? (
+    <div className="storefront-content-arrival">
+      <ConsumerOrderHistory
+        storeId={store.id}
+        storeSlug={store.slug}
+        customerName={verifiedOrders.customerName}
+        active={verifiedOrders.active.map((order) => ({
+          ...order,
+          createdAt: order.createdAt.toISOString(),
+        }))}
+        previous={verifiedOrders.previous.map((order) => ({
+          ...order,
+          createdAt: order.createdAt.toISOString(),
+        }))}
+        hasMore={verifiedOrders.hasMore}
+        page={page}
+      />
+      <div className="border-border mt-8 border-t pt-7">
+        <h2 className="font-bold">Pedidos lembrados neste aparelho</h2>
+        <p className="text-text-secondary mt-1 text-sm">
+          Pedidos locais que ainda não estão vinculados à sua conta.
+        </p>
+        <PublicOrderHistory
+          storeId={store.id}
+          storeSlug={store.slug}
+          excludeOrderNumbers={[...verifiedOrders.active, ...verifiedOrders.previous].map(
+            (order) => order.orderNumber,
+          )}
+        />
+      </div>
+    </div>
+  ) : (
+    <div className="storefront-content-arrival">
+      <PublicOrderHistory storeId={store.id} storeSlug={store.slug} />
+      {featureEnabled && verificationReady ? (
+        <ConsumerAuthPanel
+          storeSlug={store.slug}
+          storeName={store.name}
+          verificationMethod={verificationMethod}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export default async function OrdersPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ storeSlug: string }>;
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { storeSlug } = await params;
+  const store = await getPublicStoreShellBySlug(storeSlug);
+  if (!store) notFound();
+  if (store.slug !== storeSlug) redirect(`/${store.slug}/orders`);
+
   return (
     <div className="storefront-page-bottom-safe">
       <StorePurchaseHeader
@@ -79,49 +136,9 @@ export default async function OrdersPage({
       />
 
       <main className="storefront-orders-main">
-        {verifiedOrders ? (
-          <>
-            <ConsumerOrderHistory
-              storeId={store.id}
-              storeSlug={store.slug}
-              customerName={verifiedOrders.customerName}
-              active={verifiedOrders.active.map((order) => ({
-                ...order,
-                createdAt: order.createdAt.toISOString(),
-              }))}
-              previous={verifiedOrders.previous.map((order) => ({
-                ...order,
-                createdAt: order.createdAt.toISOString(),
-              }))}
-              hasMore={verifiedOrders.hasMore}
-              page={page}
-            />
-            <div className="border-border mt-8 border-t pt-7">
-              <h2 className="font-bold">Pedidos lembrados neste aparelho</h2>
-              <p className="text-text-secondary mt-1 text-sm">
-                Pedidos locais que ainda não estão vinculados à sua conta.
-              </p>
-              <PublicOrderHistory
-                storeId={store.id}
-                storeSlug={store.slug}
-                excludeOrderNumbers={[...verifiedOrders.active, ...verifiedOrders.previous].map(
-                  (order) => order.orderNumber,
-                )}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <PublicOrderHistory storeId={store.id} storeSlug={store.slug} />
-            {featureEnabled && verificationReady ? (
-              <ConsumerAuthPanel
-                storeSlug={store.slug}
-                storeName={store.name}
-                verificationMethod={verificationMethod}
-              />
-            ) : null}
-          </>
-        )}
+        <Suspense fallback={<StorefrontOrdersContentLoading standalone />}>
+          <OrdersContent store={store} searchParams={searchParams} />
+        </Suspense>
       </main>
     </div>
   );
