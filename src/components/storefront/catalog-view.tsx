@@ -14,6 +14,7 @@ import Image from 'next/image';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
+import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
 import Link from 'next/link';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
@@ -108,6 +109,11 @@ export function CatalogView({
   cartScopeId = storeId,
   cartHref = `/${storeSlug}/cart`,
 }: CatalogViewProps) {
+  const shellState = useOptionalStorefrontClientState();
+  const shellManagesStore = shellState?.storeId === storeId && shellState.storeSlug === storeSlug;
+  const shellManagesCart = shellManagesStore && cartScopeId === storeId;
+  const getCatalogMemory = shellState?.getCatalogMemory;
+  const updateCatalogMemory = shellState?.updateCatalogMemory;
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
   const cartStoreId = useCartStore(selectCartStoreId);
@@ -115,17 +121,22 @@ export function CatalogView({
   const setFavoriteStore = useFavoritesStore((state) => state.setStore);
   const favoriteProductIds = useFavoritesStore((state) => state.productIds);
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
-    categories[0]?.id ?? null,
-  );
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(() => {
+    const remembered = getCatalogMemory?.().activeCategoryId;
+    return remembered && categories.some((category) => category.id === remembered)
+      ? remembered
+      : (categories[0]?.id ?? null);
+  });
   const [selectedProduct, setSelectedProduct] = useState<PublicStorefrontProductSummaryDto | null>(
     null,
   );
   const [selectedPromotionalPrice, setSelectedPromotionalPrice] = useState<number | null>(null);
   const [productDetailState, setProductDetailState] = useState<ProductDetailState | null>(null);
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<CatalogSort>('RELEVANCE');
-  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [search, setSearch] = useState(() => getCatalogMemory?.().search ?? '');
+  const [sort, setSort] = useState<CatalogSort>(() => getCatalogMemory?.().sort ?? 'RELEVANCE');
+  const [onlyAvailable, setOnlyAvailable] = useState(
+    () => getCatalogMemory?.().onlyAvailable ?? false,
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const lastFocusedProductRef = useRef<HTMLElement | null>(null);
@@ -135,6 +146,7 @@ export function CatalogView({
   const catalogRef = useRef<HTMLElement>(null);
   const selectedProductIdRef = useRef<string | null>(null);
   const productDetailRequestRef = useRef<AbortController | null>(null);
+  const scrollYRef = useRef(getCatalogMemory?.().scrollY ?? 0);
   const productDetailCacheRef = useRef(
     new Map<
       string,
@@ -143,17 +155,52 @@ export function CatalogView({
   );
 
   useEffect(() => {
-    setStore(cartScopeId, storeSlug);
+    if (!shellManagesCart) setStore(cartScopeId, storeSlug);
     if (initialCouponCode) setCouponCode(initialCouponCode);
-  }, [cartScopeId, initialCouponCode, setCouponCode, setStore, storeSlug]);
+  }, [cartScopeId, initialCouponCode, setCouponCode, setStore, shellManagesCart, storeSlug]);
   const availableProductIds = useMemo(
     () => categories.flatMap((category) => category.products.map((product) => product.id)),
     [categories],
   );
-  useEffect(
-    () => setFavoriteStore(storeId, availableProductIds),
-    [availableProductIds, setFavoriteStore, storeId],
-  );
+  useEffect(() => {
+    if (shellManagesStore) return;
+    setFavoriteStore(storeId, availableProductIds);
+  }, [availableProductIds, setFavoriteStore, shellManagesStore, storeId]);
+
+  useEffect(() => {
+    if (!shellManagesStore) return;
+    updateCatalogMemory?.({ search, sort, onlyAvailable, activeCategoryId });
+  }, [activeCategoryId, onlyAvailable, search, shellManagesStore, sort, updateCatalogMemory]);
+
+  useEffect(() => {
+    if (!shellManagesStore) return;
+
+    const rememberedScrollY = getCatalogMemory?.().scrollY ?? 0;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        window.scrollTo({ top: rememberedScrollY, behavior: 'auto' });
+        scrollYRef.current = rememberedScrollY;
+      });
+    });
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+    const rememberScroll = () => {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        scrollYRef.current = window.scrollY;
+        scrollTimer = null;
+      }, 100);
+    };
+    window.addEventListener('scroll', rememberScroll, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      if (scrollTimer) clearTimeout(scrollTimer);
+      window.removeEventListener('scroll', rememberScroll);
+      updateCatalogMemory?.({ scrollY: scrollYRef.current });
+    };
+  }, [getCatalogMemory, shellManagesStore, updateCatalogMemory]);
 
   const catalogIndex = useMemo(() => createCatalogIndex(categories), [categories]);
   const visibleCategories = useMemo(() => {

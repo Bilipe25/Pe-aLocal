@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import type { OrderStatus } from '@prisma/client';
 
 import { Button } from '@/components/ui/button';
+import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
 import { repeatOrderIntoCart } from '@/features/storefront/repeat-order';
 import { cn, formatCurrency } from '@/lib/utils';
 import { OrderDetailsSheet } from '@/components/storefront/order-details-sheet';
@@ -125,8 +126,14 @@ async function loadTrackingBatch(records: PublicOrderHistoryRecord[], storeSlug:
   return payload.orders.map((order) => (isTrackingState(order) ? order : null));
 }
 
-export function PublicOrderHistory({ storeId, storeSlug, excludeOrderNumbers = [] }: PublicOrderHistoryProps) {
+export function PublicOrderHistory({
+  storeId,
+  storeSlug,
+  excludeOrderNumbers = [],
+}: PublicOrderHistoryProps) {
   const router = useRouter();
+  const shellState = useOptionalStorefrontClientState();
+  const shellManagesStore = shellState?.storeId === storeId && shellState.storeSlug === storeSlug;
   const orders = usePublicOrderHistoryStore((state) => state.orders);
   const setStore = usePublicOrderHistoryStore((state) => state.setStore);
   const removeOrder = usePublicOrderHistoryStore((state) => state.removeOrder);
@@ -174,9 +181,10 @@ export function PublicOrderHistory({ storeId, storeSlug, excludeOrderNumbers = [
   };
 
   useEffect(() => {
+    if (shellManagesStore) return;
     setStore(storeId, storeSlug);
     return subscribeToPublicOrderHistoryStorage(storeId, storeSlug);
-  }, [setStore, storeId, storeSlug]);
+  }, [setStore, shellManagesStore, storeId, storeSlug]);
 
   useEffect(() => {
     if (orders.length === 0) {
@@ -219,9 +227,10 @@ export function PublicOrderHistory({ storeId, storeSlug, excludeOrderNumbers = [
 
   const visibleItems = useMemo(
     () =>
-      items.filter((item) =>
-        orders.some((order) => order.trackingToken === item.record.trackingToken) &&
-        (item.status !== 'success' || !excludeOrderNumbers.includes(item.tracking.orderNumber)),
+      items.filter(
+        (item) =>
+          orders.some((order) => order.trackingToken === item.record.trackingToken) &&
+          (item.status !== 'success' || !excludeOrderNumbers.includes(item.tracking.orderNumber)),
       ),
     [excludeOrderNumbers, items, orders],
   );

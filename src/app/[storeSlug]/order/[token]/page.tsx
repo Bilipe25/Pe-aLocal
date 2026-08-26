@@ -6,7 +6,7 @@ import {
 } from '@/server/repositories/order.repository';
 import {
   getCanonicalPublicStoreSlug,
-  getPublicPurchaseStoreBySlug,
+  getPublicStoreShellBySlug,
 } from '@/server/queries/public-store';
 import { formatCurrency } from '@/lib/utils';
 import { PixPaymentInfo } from '@/components/storefront/pix-payment-info';
@@ -18,7 +18,6 @@ import {
   ExpiredOrderAccess,
 } from '@/components/storefront/customer-order-access-boundary';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { ConsumerAuthPanel } from '@/components/storefront/consumer-auth-panel';
 import { getConsumerVerificationMethod } from '@/server/consumer-verification/provider';
 import { privateCustomerOrderChannel } from '@/lib/pusher/customer-channel';
@@ -39,7 +38,7 @@ interface OrderPageProps {
 
 export async function generateMetadata({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
   const order = await getTrackedOrder(token);
 
   if (!order || !store || order.store.slug !== storeSlug) {
@@ -72,7 +71,7 @@ const paymentMap = {
 
 export default async function OrderPage({ params }: OrderPageProps) {
   const { storeSlug, token } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
   const order = await getTrackedOrder(token);
 
   if (!order || !store) {
@@ -251,8 +250,6 @@ export default async function OrderPage({ params }: OrderPageProps) {
             />
           ) : null}
         </main>
-
-        <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
       </div>
     </CustomerOrderAccessBoundary>
   );

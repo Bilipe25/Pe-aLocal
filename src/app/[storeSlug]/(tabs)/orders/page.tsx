@@ -6,8 +6,7 @@ import { PublicOrderHistory } from '@/components/storefront/public-order-history
 import { ConsumerAuthPanel } from '@/components/storefront/consumer-auth-panel';
 import { ConsumerOrderHistory } from '@/components/storefront/consumer-order-history';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
-import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+import { getPublicStoreShellBySlug } from '@/server/queries/public-store';
 import { AuthenticationError } from '@/server/errors';
 import {
   getConsumerVerificationMethod,
@@ -25,7 +24,7 @@ export async function generateMetadata({
   params: Promise<{ storeSlug: string }>;
 }): Promise<Metadata> {
   const { storeSlug } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
 
   return {
     title: store ? `Meus pedidos | ${store.name}` : 'Meus pedidos',
@@ -46,7 +45,7 @@ export default async function OrdersPage({
   searchParams: Promise<{ page?: string }>;
 }) {
   const { storeSlug } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/orders`);
   const scope = await getConsumerStoreScope(store.slug);
@@ -124,8 +123,6 @@ export default async function OrdersPage({
           </>
         )}
       </main>
-
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </div>
   );
 }

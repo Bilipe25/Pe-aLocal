@@ -138,6 +138,37 @@ const publicPurchaseStoreSelect = {
   },
 } as const;
 
+/**
+ * Dados compartilhados pela moldura das abas públicas. Este contrato não
+ * consulta entitlement nem conexões de pagamento; essas leituras pertencem
+ * exclusivamente ao checkout, onde a decisão precisa ser autoritativa.
+ */
+const publicStoreShellSelect = {
+  id: true,
+  tenantId: true,
+  name: true,
+  slug: true,
+  timeZone: true,
+  logoUrl: true,
+  settings: {
+    select: {
+      primaryColor: true,
+      secondaryColor: true,
+      fontFamily: true,
+      minOrderValue: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+    },
+  },
+  customization: {
+    select: {
+      publishedConfig: true,
+      publishedVersion: true,
+      publishedAt: true,
+    },
+  },
+} as const;
+
 async function getStoreFromDb(slug: string) {
   const db = getDb();
   let store = await db.store.findUnique({
@@ -411,6 +442,102 @@ export async function getPublicStorefrontSitemapEntries() {
  * é recalculada em cada novo request.
  */
 export const getPublicStoreBySlug = cache(getPublicStoreBySlugForRequest);
+
+async function getStoreShellFromDb(slug: string) {
+  const db = getDb();
+  let store = await db.store.findUnique({
+    where: { slug },
+    select: publicStoreShellSelect,
+  });
+
+  if (!store) {
+    const redirect = await db.storeSlugRedirect.findUnique({
+      where: { oldSlug: slug },
+      select: { store: { select: publicStoreShellSelect } },
+    });
+    store = redirect?.store ?? null;
+  }
+
+  if (!store) return null;
+
+  const resolvedCustomization = resolvePublicCustomization({
+    publishedConfig: store.customization?.publishedConfig,
+    publishedVersion: store.customization?.publishedVersion,
+    publishedAt: store.customization?.publishedAt,
+    legacy: {
+      primaryColor: store.settings?.primaryColor,
+      secondaryColor: store.settings?.secondaryColor,
+      fontFamily: store.settings?.fontFamily,
+    },
+  });
+  const logoAssetId = resolvedCustomization.config.identity.logoAssetId;
+  const logoAsset = logoAssetId
+    ? await db.storeAsset.findFirst({
+        where: {
+          id: logoAssetId,
+          tenantId: store.tenantId,
+          storeId: store.id,
+          assetType: 'LOGO',
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      })
+    : null;
+
+  return {
+    id: store.id,
+    tenantId: store.tenantId,
+    name: store.name,
+    slug: store.slug,
+    timeZone: store.timeZone,
+    logoUrl: store.logoUrl,
+    settings: store.settings
+      ? {
+          minOrderValue: store.settings.minOrderValue,
+          deliveryEnabled: store.settings.deliveryEnabled,
+          pickupEnabled: store.settings.pickupEnabled,
+        }
+      : null,
+    customization: {
+      publishedVersion: resolvedCustomization.publishedVersion,
+      source: resolvedCustomization.source,
+      config: resolvedCustomization.config,
+      assets: {
+        logo: logoAsset
+          ? {
+              id: logoAsset.id,
+              url: storeAssetUrl(logoAsset.id, 384),
+            }
+          : null,
+      },
+    },
+  };
+}
+
+async function getPublicStoreShellBySlugForRequest(slug: string) {
+  return unstable_cache(() => getStoreShellFromDb(slug), ['public-store-shell', slug], {
+    revalidate: PUBLIC_CACHE_SECONDS,
+    tags: [CACHE_TAGS.storeSlug(slug)],
+  })();
+}
+
+/** Snapshot mínimo e cacheável da moldura persistente das abas. */
+export const getPublicStoreShellBySlug = cache(getPublicStoreShellBySlugForRequest);
+
+async function getPublicCartStoreBySlugForRequest(slug: string) {
+  const store = await getPublicStoreShellBySlugForRequest(slug);
+  if (!store) return null;
+
+  const availability = await getEffectiveStoreAvailabilityForTenant(store.tenantId, store.id);
+  return { ...store, availability };
+}
+
+/**
+ * Snapshot leve do carrinho. Mantém disponibilidade dinâmica sem carregar
+ * credenciais ou configuração do provedor de pagamento.
+ */
+export const getPublicCartStoreBySlug = cache(getPublicCartStoreBySlugForRequest);
 
 async function getPurchaseStoreFromDb(slug: string) {
   const db = getDb();

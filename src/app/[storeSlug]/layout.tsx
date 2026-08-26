@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { getStorefrontThemeStyle, storefrontLayoutClass } from '@/features/customization/theme';
 import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
-import { getPublicStoreBySlug } from '@/server/queries/public-store';
+import { getPublicStoreBySlug, getPublicStoreShellBySlug } from '@/server/queries/public-store';
 import { getPublicStorePwaBySlug } from '@/server/queries/public-store-pwa';
 import { storePwaIconUrl } from '@/features/assets/urls';
 
@@ -82,7 +82,7 @@ export async function generateMetadata({ params }: StoreLayoutProps): Promise<Me
 
 export async function generateViewport({ params }: StoreLayoutProps): Promise<Viewport> {
   const { storeSlug } = await params;
-  const store = await getPublicStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
 
   return {
     width: 'device-width',
@@ -94,7 +94,7 @@ export async function generateViewport({ params }: StoreLayoutProps): Promise<Vi
 
 export default async function StoreLayout({ children, params }: StoreLayoutProps) {
   const { storeSlug } = await params;
-  const store = await getPublicStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
 
   if (!store) notFound();
 

@@ -2,8 +2,6 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import { ConsumerFavoritesSync } from '@/components/storefront/consumer-favorites-sync';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontMore } from '@/components/storefront/storefront-more';
 import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
 import {
@@ -94,7 +92,6 @@ export default async function MorePage({ params }: MorePageProps) {
 
   return (
     <>
-      <ConsumerFavoritesSync storeId={store.id} storeSlug={store.slug} />
       <StorefrontMore
         storeId={store.id}
         storeSlug={store.slug}
@@ -131,7 +128,6 @@ export default async function MorePage({ params }: MorePageProps) {
           shareUrl,
         }}
       />
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </>
   );
 }

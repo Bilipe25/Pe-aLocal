@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { ProductImage } from '@/components/storefront/product-image';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
 import { CartRecommendations } from '@/components/storefront/cart-recommendations';
+import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
 import {
   ComboConfigurator,
   FlexibleComboConfigurator,
@@ -114,7 +115,10 @@ export function CartView({
   const [couponExpanded, setCouponExpanded] = useState(false);
   const [couponDraft, setCouponDraft] = useState(couponCode ?? '');
   const [couponInputError, setCouponInputError] = useState<string | null>(null);
-  const [cartHydrated, setCartHydrated] = useState(false);
+  const shellState = useOptionalStorefrontClientState();
+  const shellManagesStore = shellState?.storeId === storeId && shellState.storeSlug === storeSlug;
+  const [localCartHydrated, setLocalCartHydrated] = useState(false);
+  const cartHydrated = shellManagesStore ? (shellState?.hydrated ?? false) : localCartHydrated;
   const editingTriggerRef = useRef<HTMLButtonElement | null>(null);
   const couponResolutionRef = useRef<string | null>(null);
   const couponPanelId = useId();
@@ -123,17 +127,19 @@ export function CartView({
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   useLayoutEffect(() => {
+    if (shellManagesStore) return;
+
     setStore(storeId, storeSlug);
     const unsubscribe = subscribeToCartStorage(storeId, storeSlug);
     let active = true;
     queueMicrotask(() => {
-      if (active) setCartHydrated(true);
+      if (active) setLocalCartHydrated(true);
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [setStore, storeId, storeSlug]);
+  }, [setStore, shellManagesStore, storeId, storeSlug]);
 
   const quoteModality: CartFulfillmentModality =
     quoteModalityOverride ?? (pickupEnabled ? 'PICKUP' : deliveryEnabled ? 'DELIVERY' : 'PICKUP');
