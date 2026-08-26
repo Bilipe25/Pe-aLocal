@@ -16,6 +16,8 @@ interface ProductCardProps {
   imageUrl: string | null;
   imageAssetId: string | null;
   onClick: () => void;
+  prefetchId?: string;
+  onPrefetchIntent?: () => void;
   disabled?: boolean;
   showImage: boolean;
   showBadges: boolean;
@@ -35,6 +37,8 @@ export function ProductCard({
   imageUrl,
   imageAssetId,
   onClick,
+  prefetchId,
+  onPrefetchIntent,
   disabled,
   showImage,
   showBadges,
@@ -58,6 +62,9 @@ export function ProductCard({
   return (
     <article
       id={id}
+      data-product-prefetch-id={prefetchId}
+      onPointerEnter={onPrefetchIntent}
+      onFocusCapture={onPrefetchIntent}
       className={`storefront-product-card storefront-product-variant-${resolvedVariant} ${
         isDisabled ? 'is-disabled' : ''
       }`}

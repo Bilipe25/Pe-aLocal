@@ -13,7 +13,9 @@ interface ProductImageProps {
   sizes: string;
   width: number;
   loading?: 'eager' | 'lazy';
+  fetchPriority?: 'high' | 'low' | 'auto';
   priority?: boolean;
+  previewImageUrl?: string | null;
   fallback?: ReactNode;
 }
 
@@ -24,12 +26,16 @@ export function ProductImage({
   sizes,
   width,
   loading = 'lazy',
+  fetchPriority = 'auto',
   priority = false,
+  previewImageUrl = null,
   fallback,
 }: ProductImageProps) {
   const src = imageAssetId ?? imageUrl;
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const [failedPreviewSrc, setFailedPreviewSrc] = useState<string | null>(null);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const hasPreview = Boolean(previewImageUrl && failedPreviewSrc !== previewImageUrl);
   const status: ProductImageStatus = !src
     ? 'missing'
     : failedSrc === src
@@ -37,15 +43,32 @@ export function ProductImage({
       : loadedSrc === src
         ? 'loaded'
         : 'loading';
-  const unavailableLabel =
-    status === 'error'
+  const unavailableLabel = hasPreview
+    ? undefined
+    : status === 'error'
       ? `Imagem indisponível para ${name}`
       : status === 'missing'
         ? `${name} está sem imagem`
         : undefined;
 
   return (
-    <div className={`storefront-product-image-frame is-${status}`} aria-label={unavailableLabel}>
+    <div
+      className={`storefront-product-image-frame is-${status} ${hasPreview ? 'has-preview' : ''}`}
+      aria-label={unavailableLabel}
+    >
+      {hasPreview && previewImageUrl && (
+        <Image
+          className="storefront-product-image-preview"
+          src={previewImageUrl}
+          alt=""
+          fill
+          sizes={sizes}
+          loading="eager"
+          loader={() => previewImageUrl}
+          onError={() => setFailedPreviewSrc(previewImageUrl)}
+          aria-hidden="true"
+        />
+      )}
       {src && status !== 'error' && (
         <Image
           className="storefront-product-image"
@@ -54,13 +77,14 @@ export function ProductImage({
           fill
           sizes={sizes}
           loading={loading}
+          fetchPriority={fetchPriority}
           priority={priority}
           onLoad={() => setLoadedSrc(src)}
           onError={() => setFailedSrc(src)}
           data-asset-target-width={width}
         />
       )}
-      {status !== 'loaded' && (
+      {status !== 'loaded' && !hasPreview && (
         <span
           className={`storefront-product-image-placeholder ${status === 'loading' ? 'is-loading' : ''}`}
           aria-hidden="true"

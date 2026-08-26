@@ -92,9 +92,14 @@ export function ProductModal({
   const hasProductImage = Boolean(resolvedProduct.imageAssetId || resolvedProduct.imageUrl);
   const favoriteFeedback = useFavoriteFeedback(isFavorite);
 
-  const missingRequired = optionGroups
-    .filter((group) => group.isRequired)
-    .some((group) => (selectedOptions.get(group.id) ?? []).length < group.minSelections);
+  const incompleteRequiredGroups = optionGroups.filter(
+    (group) =>
+      group.isRequired && (selectedOptions.get(group.id) ?? []).length < group.minSelections,
+  );
+  const missingRequired = incompleteRequiredGroups.length > 0;
+  const incompleteRequiredGroupNames = incompleteRequiredGroups
+    .map((group) => group.title)
+    .join(', ');
   const portalContainer =
     typeof document === 'undefined'
       ? undefined
@@ -164,7 +169,7 @@ export function ProductModal({
   }
 
   const modalActions = (
-    <div className="storefront-product-modal-actions">
+    <div className={`storefront-product-modal-actions ${hasProductImage ? 'is-over-media' : ''}`}>
       {onFavoriteToggle && (
         <button
           type="button"
@@ -199,110 +204,128 @@ export function ProductModal({
       <Dialog.Portal container={portalContainer}>
         <Dialog.Overlay className="storefront-product-modal-overlay" />
         <Dialog.Content className="storefront-product-modal">
-          {hasProductImage && (
-            <div className="storefront-product-modal-media">
-              <ProductImage
-                name={resolvedProduct.name}
-                imageUrl={resolvedProduct.imageUrl}
-                imageAssetId={resolvedProduct.imageAssetId}
-                sizes="(max-width: 639px) 100vw, 32rem"
-                width={768}
-              />
-              {modalActions}
-            </div>
-          )}
-
-          <div className={`storefront-product-modal-header ${hasProductImage ? 'has-media' : ''}`}>
-            <div className="storefront-product-modal-heading">
-              <Dialog.Title className="storefront-product-modal-title">
-                {resolvedProduct.name}
-              </Dialog.Title>
-              {resolvedProduct.description ? (
-                <Dialog.Description className="storefront-product-modal-description">
-                  {resolvedProduct.description}
-                </Dialog.Description>
-              ) : (
-                <Dialog.Description className="sr-only">
-                  {cartItem
-                    ? 'Revise as opções, a observação e a quantidade deste item.'
-                    : 'Configure as opções e a quantidade antes de adicionar o produto à sacola.'}
-                </Dialog.Description>
-              )}
-              <p className="storefront-product-modal-price">
-                <span>{promotionalPrice != null ? 'Preço promocional' : 'A partir de'}</span>
-                {promotionalPrice != null ? (
-                  <>
-                    <s className="text-text-muted mr-2 text-sm">
-                      <span className="sr-only">Preço anterior: </span>
-                      {formatCurrency(resolvedProduct.basePrice)}
-                    </s>
-                    {formatCurrency(promotionalPrice)}
-                  </>
-                ) : (
-                  formatCurrency(resolvedProduct.basePrice)
-                )}
-              </p>
-            </div>
-            {!hasProductImage && modalActions}
-          </div>
-
-          {detailStatus === 'loading' && (
-            <div
-              id="product-details-loading"
-              className="storefront-product-modal-load-state"
-              role="status"
-              aria-live="polite"
-            >
-              <span className="sr-only">Carregando adicionais e opções do produto.</span>
-              <span className="storefront-product-modal-skeleton-line is-wide" aria-hidden="true" />
-              <span className="storefront-product-modal-skeleton-line" aria-hidden="true" />
-              <span className="storefront-product-modal-skeleton-option" aria-hidden="true" />
-              <span className="storefront-product-modal-skeleton-option" aria-hidden="true" />
-            </div>
-          )}
-
-          {detailStatus === 'error' && (
-            <div
-              id="product-details-error"
-              className="storefront-product-modal-load-error"
-              role="alert"
-            >
-              <p>
-                {detailError ??
-                  'Não foi possível carregar os adicionais deste produto. Tente novamente.'}
-              </p>
-              <Button type="button" variant="outline" onClick={onRetry}>
-                Tentar novamente
-              </Button>
-            </div>
-          )}
-
-          {detailsReady && optionGroups.length > 0 && (
-            <div className="storefront-product-modal-options">
-              {optionGroups.map((group) => (
-                <OptionGroupSelector
-                  key={group.id}
-                  group={group}
-                  selected={selectedOptions.get(group.id) ?? []}
-                  onChange={(options) => handleOptionChange(group.id, options)}
+          {modalActions}
+          <div className="storefront-product-modal-scroll">
+            {hasProductImage && (
+              <div className="storefront-product-modal-media">
+                <ProductImage
+                  name={resolvedProduct.name}
+                  imageUrl={resolvedProduct.imageUrl}
+                  imageAssetId={resolvedProduct.imageAssetId}
+                  previewImageUrl={product.imageAssetId ? product.imageUrl : null}
+                  sizes="(max-width: 639px) 100vw, 32rem"
+                  width={768}
+                  loading="eager"
+                  priority
                 />
-              ))}
-            </div>
-          )}
+              </div>
+            )}
 
-          {detailsReady && detail?.allowNotes && (
-            <div className="storefront-product-modal-notes">
-              <label htmlFor="product-notes">Alguma observação?</label>
-              <Textarea
-                id="product-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Ex: Sem cebola, molho à parte..."
-                rows={2}
-                className="storefront-product-modal-textarea"
-              />
+            <div
+              className={`storefront-product-modal-header ${hasProductImage ? 'has-media' : ''}`}
+            >
+              <div className="storefront-product-modal-heading">
+                <Dialog.Title className="storefront-product-modal-title">
+                  {resolvedProduct.name}
+                </Dialog.Title>
+                {resolvedProduct.description ? (
+                  <Dialog.Description className="storefront-product-modal-description">
+                    {resolvedProduct.description}
+                  </Dialog.Description>
+                ) : (
+                  <Dialog.Description className="sr-only">
+                    {cartItem
+                      ? 'Revise as opções, a observação e a quantidade deste item.'
+                      : 'Configure as opções e a quantidade antes de adicionar o produto à sacola.'}
+                  </Dialog.Description>
+                )}
+                <p className="storefront-product-modal-price">
+                  <span>{promotionalPrice != null ? 'Preço promocional' : 'A partir de'}</span>
+                  {promotionalPrice != null ? (
+                    <>
+                      <s className="text-text-muted mr-2 text-sm">
+                        <span className="sr-only">Preço anterior: </span>
+                        {formatCurrency(resolvedProduct.basePrice)}
+                      </s>
+                      {formatCurrency(promotionalPrice)}
+                    </>
+                  ) : (
+                    formatCurrency(resolvedProduct.basePrice)
+                  )}
+                </p>
+              </div>
             </div>
-          )}
+
+            {detailStatus === 'loading' && (
+              <div
+                id="product-details-loading"
+                className="storefront-product-modal-load-state"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <span className="sr-only">Preparando adicionais e opções do produto.</span>
+                {[0, 1].map((groupIndex) => (
+                  <div
+                    key={groupIndex}
+                    className="storefront-product-modal-skeleton-group"
+                    aria-hidden="true"
+                  >
+                    <span className="storefront-skeleton-block storefront-skeleton-line is-title" />
+                    {[0, 1, 2].map((optionIndex) => (
+                      <span key={optionIndex} className="storefront-product-modal-skeleton-choice">
+                        <span className="storefront-skeleton-block storefront-skeleton-circle" />
+                        <span className="storefront-skeleton-block storefront-skeleton-line" />
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {detailStatus === 'error' && (
+              <div
+                id="product-details-error"
+                className="storefront-product-modal-load-error"
+                role="alert"
+              >
+                <p>
+                  {detailError ??
+                    'Não foi possível carregar os adicionais deste produto. Tente novamente.'}
+                </p>
+                <Button type="button" variant="outline" onClick={onRetry}>
+                  Tentar novamente
+                </Button>
+              </div>
+            )}
+
+            {detailsReady && optionGroups.length > 0 && (
+              <div className="storefront-product-modal-options">
+                {optionGroups.map((group) => (
+                  <OptionGroupSelector
+                    key={group.id}
+                    group={group}
+                    selected={selectedOptions.get(group.id) ?? []}
+                    onChange={(options) => handleOptionChange(group.id, options)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {detailsReady && detail?.allowNotes && (
+              <div className="storefront-product-modal-notes">
+                <label htmlFor="product-notes">Alguma observação?</label>
+                <Textarea
+                  id="product-notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Ex: Sem cebola, molho à parte..."
+                  rows={2}
+                  className="storefront-product-modal-textarea"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="storefront-product-modal-footer">
             {!storeOpen && (
@@ -329,7 +352,7 @@ export function ProductModal({
                 role="status"
                 className="storefront-product-modal-message"
               >
-                Selecione os complementos obrigatórios para continuar.
+                Escolha as opções obrigatórias em: {incompleteRequiredGroupNames}.
               </p>
             )}
             {quantity >= MAX_CART_ITEM_QUANTITY && (
@@ -388,7 +411,7 @@ export function ProductModal({
                 {!storeOpen
                   ? 'Loja fechada'
                   : detailStatus === 'loading'
-                    ? 'Carregando...'
+                    ? 'Preparando opções…'
                     : detailStatus === 'error'
                       ? 'Detalhes indisponíveis'
                       : productUnavailable
