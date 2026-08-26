@@ -14,7 +14,10 @@ import Image from 'next/image';
 
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
-import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
+import {
+  STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
+  useOptionalStorefrontClientState,
+} from '@/components/storefront/storefront-client-state-provider';
 import Link from 'next/link';
 import { ProductCard } from '@/components/storefront/product-card';
 import { ProductModal } from '@/components/storefront/product-modal';
@@ -59,12 +62,34 @@ interface CatalogViewProps {
   cartHref?: string;
 }
 
-const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
-
 type ProductDetailState =
   | { productId: string; status: 'loading' }
   | { productId: string; status: 'success'; detail: PublicStorefrontProductDetailDto }
   | { productId: string; status: 'error'; message: string };
+
+type LocalProductDetailCache = Map<
+  string,
+  { detail: PublicStorefrontProductDetailDto; expiresAt: number }
+>;
+
+function readLocalProductDetail(cache: LocalProductDetailCache, productId: string) {
+  const cached = cache.get(productId);
+  if (!cached) return null;
+  if (cached.expiresAt > Date.now()) return cached.detail;
+  cache.delete(productId);
+  return null;
+}
+
+function writeLocalProductDetail(
+  cache: LocalProductDetailCache,
+  productId: string,
+  detail: PublicStorefrontProductDetailDto,
+) {
+  cache.set(productId, {
+    detail,
+    expiresAt: Date.now() + STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
+  });
+}
 
 function isProductDetailResponse(
   value: unknown,
@@ -114,6 +139,8 @@ export function CatalogView({
   const shellManagesCart = shellManagesStore && cartScopeId === storeId;
   const getCatalogMemory = shellState?.getCatalogMemory;
   const updateCatalogMemory = shellState?.updateCatalogMemory;
+  const getCachedProductDetail = shellState?.getCachedProductDetail;
+  const cacheProductDetail = shellState?.cacheProductDetail;
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
   const cartStoreId = useCartStore(selectCartStoreId);
@@ -147,12 +174,7 @@ export function CatalogView({
   const selectedProductIdRef = useRef<string | null>(null);
   const productDetailRequestRef = useRef<AbortController | null>(null);
   const scrollYRef = useRef(getCatalogMemory?.().scrollY ?? 0);
-  const productDetailCacheRef = useRef(
-    new Map<
-      string,
-      { detail: PublicStorefrontProductDetailDto; expirationTimer: ReturnType<typeof setTimeout> }
-    >(),
-  );
+  const productDetailCacheRef = useRef<LocalProductDetailCache>(new Map());
 
   useEffect(() => {
     if (!shellManagesCart) setStore(cartScopeId, storeSlug);
@@ -198,7 +220,8 @@ export function CatalogView({
       cancelAnimationFrame(secondFrame);
       if (scrollTimer) clearTimeout(scrollTimer);
       window.removeEventListener('scroll', rememberScroll);
-      updateCatalogMemory?.({ scrollY: scrollYRef.current });
+      scrollYRef.current = window.scrollY;
+      updateCatalogMemory?.({ scrollY: window.scrollY });
     };
   }, [getCatalogMemory, shellManagesStore, updateCatalogMemory]);
 
@@ -271,14 +294,12 @@ export function CatalogView({
     product: PublicStorefrontProductSummaryDto,
     bypassCache = false,
   ) {
-    const cached = productDetailCacheRef.current.get(product.id);
-    if (!bypassCache && cached) {
-      setProductDetailState({ productId: product.id, status: 'success', detail: cached.detail });
+    const cachedDetail = shellManagesStore
+      ? getCachedProductDetail?.(product.id)
+      : readLocalProductDetail(productDetailCacheRef.current, product.id);
+    if (!bypassCache && cachedDetail) {
+      setProductDetailState({ productId: product.id, status: 'success', detail: cachedDetail });
       return;
-    }
-    if (cached) {
-      clearTimeout(cached.expirationTimer);
-      productDetailCacheRef.current.delete(product.id);
     }
 
     productDetailRequestRef.current?.abort();
@@ -303,16 +324,11 @@ export function CatalogView({
         throw new Error('Os detalhes recebidos são inválidos. Tente novamente.');
       }
 
-      const expirationTimer = setTimeout(() => {
-        const current = productDetailCacheRef.current.get(product.id);
-        if (current?.expirationTimer === expirationTimer) {
-          productDetailCacheRef.current.delete(product.id);
-        }
-      }, PRODUCT_DETAIL_CACHE_TTL_MS);
-      productDetailCacheRef.current.set(product.id, {
-        detail: payload.product,
-        expirationTimer,
-      });
+      if (shellManagesStore) {
+        cacheProductDetail?.(product.id, payload.product);
+      } else {
+        writeLocalProductDetail(productDetailCacheRef.current, product.id, payload.product);
+      }
       if (selectedProductIdRef.current === product.id) {
         setProductDetailState({
           productId: product.id,
@@ -359,9 +375,6 @@ export function CatalogView({
     () => () => {
       selectedProductIdRef.current = null;
       productDetailRequestRef.current?.abort();
-      for (const cached of productDetailCacheRef.current.values()) {
-        clearTimeout(cached.expirationTimer);
-      }
       productDetailCacheRef.current.clear();
     },
     [],

@@ -9,6 +9,7 @@ import {
 import { useCartStore } from '@/stores/cart-store';
 import { useFavoritesStore } from '@/stores/favorites-store';
 import { usePublicOrderHistoryStore } from '@/stores/public-order-history-store';
+import type { PublicStorefrontProductDetailDto } from '@/types/storefront';
 
 vi.mock('@/components/storefront/consumer-favorites-sync', () => ({
   ConsumerFavoritesSync: () => null,
@@ -120,5 +121,54 @@ describe('estado persistente da moldura do storefront', () => {
       search: 'pizza',
       scrollY: 420,
     });
+  });
+
+  it('mantém detalhes de produto por loja somente durante o TTL', async () => {
+    let currentContext: ClientStateContext = null;
+    let now = 1_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const detail: PublicStorefrontProductDetailDto = {
+      id: 'product-1',
+      name: 'X-Bacon',
+      description: null,
+      imageUrl: null,
+      imageAssetId: null,
+      basePrice: 2_500,
+      isFeatured: false,
+      isSoldOut: false,
+      allowNotes: true,
+      optionGroups: [],
+    };
+    const captureContext = (context: ClientStateContext) => {
+      currentContext = context;
+    };
+    const { rerender } = render(
+      <StorefrontClientStateProvider storeId="store-a" storeSlug="loja-a">
+        <StateProbe onChange={captureContext} />
+      </StorefrontClientStateProvider>,
+    );
+    await waitFor(() => expect(currentContext?.hydrated).toBe(true));
+
+    act(() => requireContext(currentContext).cacheProductDetail(detail.id, detail));
+    expect(requireContext(currentContext).getCachedProductDetail(detail.id)).toBe(detail);
+
+    rerender(
+      <StorefrontClientStateProvider storeId="store-b" storeSlug="loja-b">
+        <StateProbe onChange={captureContext} />
+      </StorefrontClientStateProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('pronto:store-b')).toBeVisible());
+    expect(requireContext(currentContext).getCachedProductDetail(detail.id)).toBeNull();
+
+    rerender(
+      <StorefrontClientStateProvider storeId="store-a" storeSlug="loja-a">
+        <StateProbe onChange={captureContext} />
+      </StorefrontClientStateProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('pronto:store-a')).toBeVisible());
+    expect(requireContext(currentContext).getCachedProductDetail(detail.id)).toBe(detail);
+
+    now += 60_001;
+    expect(requireContext(currentContext).getCachedProductDetail(detail.id)).toBeNull();
   });
 });

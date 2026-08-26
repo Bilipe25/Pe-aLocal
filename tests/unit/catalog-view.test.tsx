@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     storeId: null as string | null,
     items: [] as Array<{ unitPrice: number; quantity: number }>,
   },
+  shellState: null as unknown,
 }));
 
 vi.mock('@/stores/cart-store', () => ({
@@ -34,6 +35,15 @@ vi.mock('@/stores/cart-store', () => ({
     }),
 }));
 vi.mock('@/components/storefront/cart-fab', () => ({ CartFab: () => null }));
+vi.mock('@/components/storefront/storefront-client-state-provider', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/components/storefront/storefront-client-state-provider')
+  >('@/components/storefront/storefront-client-state-provider');
+  return {
+    ...actual,
+    useOptionalStorefrontClientState: () => mocks.shellState,
+  };
+});
 vi.mock('@/components/storefront/category-nav', () => ({ CategoryNav: () => null }));
 vi.mock('@/components/storefront/store-banners', () => ({ StoreBanners: () => null }));
 vi.mock('@/components/storefront/recent-orders-section', () => ({
@@ -153,6 +163,7 @@ describe('catálogo público', () => {
     vi.clearAllMocks();
     mocks.cartState.storeId = null;
     mocks.cartState.items = [];
+    mocks.shellState = null;
     mocks.fetch.mockResolvedValue(response({ product: productDetail }));
     vi.stubGlobal('fetch', mocks.fetch);
     vi.stubGlobal(
@@ -217,6 +228,102 @@ describe('catálogo público', () => {
       expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
     );
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reutiliza o detalhe após o catálogo desmontar enquanto a moldura permanece ativa', async () => {
+    const productCache = new Map<string, typeof productDetail>();
+    const getCachedProductDetail = vi.fn(
+      (productId: string) => productCache.get(productId) ?? null,
+    );
+    const cacheProductDetail = vi.fn((productId: string, detail: typeof productDetail) => {
+      productCache.set(productId, detail);
+    });
+    const updateCatalogMemory = vi.fn();
+    mocks.shellState = {
+      storeId: 'store-1',
+      storeSlug: 'loja-1',
+      hydrated: true,
+      getCatalogMemory: () => ({
+        search: '',
+        sort: 'RELEVANCE',
+        onlyAvailable: false,
+        activeCategoryId: null,
+        scrollY: 0,
+      }),
+      updateCatalogMemory,
+      getCachedProductDetail,
+      cacheProductDetail,
+    };
+
+    const firstVisit = render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Burger da casa' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
+    );
+    firstVisit.unmount();
+
+    render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Burger da casa' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
+    );
+    expect(cacheProductDetail).toHaveBeenCalledOnce();
+    expect(getCachedProductDetail).toHaveBeenLastCalledWith('product-1');
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('persiste a posição exata da janela ao desmontar antes do debounce', () => {
+    const updateCatalogMemory = vi.fn();
+    mocks.shellState = {
+      storeId: 'store-1',
+      storeSlug: 'loja-1',
+      hydrated: true,
+      getCatalogMemory: () => ({
+        search: '',
+        sort: 'RELEVANCE',
+        onlyAvailable: false,
+        activeCategoryId: null,
+        scrollY: 0,
+      }),
+      updateCatalogMemory,
+      getCachedProductDetail: vi.fn(() => null),
+      cacheProductDetail: vi.fn(),
+    };
+    const view = render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 777 });
+    fireEvent.scroll(window);
+
+    view.unmount();
+
+    expect(updateCatalogMemory).toHaveBeenCalledWith({ scrollY: 777 });
   });
 
   it('mostra erro recuperável e tenta carregar o detalhe novamente', async () => {

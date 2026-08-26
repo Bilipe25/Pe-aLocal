@@ -9,13 +9,28 @@ const navigationMocks = vi.hoisted(() => ({
   pathname: '/loja-a',
   push: vi.fn(),
 }));
-const linkStatusMocks = vi.hoisted(() => ({ pending: false }));
+const linkStatusMocks = vi.hoisted(() => ({ pendingHref: null as string | null }));
 
 vi.mock('next/link', async () => {
-  const actual = await vi.importActual<typeof import('next/link')>('next/link');
+  const React = await vi.importActual<typeof import('react')>('react');
+  const LinkHrefContext = React.createContext('');
+  const Link = React.forwardRef<
+    HTMLAnchorElement,
+    React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }
+  >(function MockLink({ children, href, ...props }, ref) {
+    return (
+      <LinkHrefContext.Provider value={href}>
+        <a ref={ref} href={href} {...props}>
+          {children}
+        </a>
+      </LinkHrefContext.Provider>
+    );
+  });
   return {
-    ...actual,
-    useLinkStatus: () => ({ pending: linkStatusMocks.pending }),
+    default: Link,
+    useLinkStatus: () => ({
+      pending: React.useContext(LinkHrefContext) === linkStatusMocks.pendingHref,
+    }),
   };
 });
 
@@ -28,7 +43,7 @@ describe('navegação inferior do storefront', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navigationMocks.pathname = '/loja-a';
-    linkStatusMocks.pending = false;
+    linkStatusMocks.pendingHref = null;
     useCartStore.setState({
       storeId: 'store-a',
       storeSlug: 'loja-a',
@@ -127,13 +142,19 @@ describe('navegação inferior do storefront', () => {
 
   it('mostra feedback imediato sem antecipar aria-current durante uma navegação pendente', () => {
     navigationMocks.pathname = '/loja-a/orders';
-    linkStatusMocks.pending = true;
+    linkStatusMocks.pendingHref = '/loja-a/cart';
 
     render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
 
-    expect(document.querySelectorAll('.storefront-bottom-nav-item.is-pending')).toHaveLength(4);
+    expect(document.querySelectorAll('.storefront-bottom-nav-item.is-pending')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Carrinho, 2 itens' })).toContainElement(
+      document.querySelector('.storefront-bottom-nav-item.is-pending'),
+    );
     expect(screen.getByRole('link', { name: 'Pedidos' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Mais' })).not.toHaveAttribute('aria-current');
-    expect(screen.getAllByText(/^Abrindo /)).toHaveLength(4);
+    expect(screen.getByText('Abrindo Carrinho')).toBeInTheDocument();
+    expect(screen.queryByText('Abrindo Cardápio')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abrindo Pedidos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abrindo Mais')).not.toBeInTheDocument();
   });
 });
