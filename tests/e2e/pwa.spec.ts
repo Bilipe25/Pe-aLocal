@@ -102,7 +102,7 @@ test.describe('PWA', () => {
     }
 
     const cacheEntries = await page.evaluate(async () => {
-      const cache = await caches.open('pedidolocal-shell-v5');
+      const cache = await caches.open('pedidolocal-shell-v6');
       return (await cache.keys()).map((request) => new URL(request.url).pathname).sort();
     });
     expect(cacheEntries).toEqual(

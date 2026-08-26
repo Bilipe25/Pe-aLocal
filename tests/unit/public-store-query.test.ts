@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultCustomization } from '@/features/customization/domain';
 import {
   getPublicCatalog,
+  getPublicCartStoreBySlug,
   getPublicCartRecommendationCandidates,
   getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
   getPublicPurchaseStoreBySlug,
   getPublicProductDetail,
   getPublicStoreBySlug,
+  getPublicStoreShellBySlug,
   getPublicStorefrontSitemapEntries,
 } from '@/server/queries/public-store';
 
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   productFindFirst: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
   storeAssetFindMany: vi.fn(),
+  storeAssetFindFirst: vi.fn(),
   listPublicStoreBanners: vi.fn(),
   findActivePrimaryStoreDomain: vi.fn(),
   getEffectiveStoreAvailabilityForTenant: vi.fn(),
@@ -116,6 +119,7 @@ describe('queries públicas da loja', () => {
     mocks.productFindFirst.mockResolvedValue(null);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
     mocks.storeAssetFindMany.mockResolvedValue([]);
+    mocks.storeAssetFindFirst.mockResolvedValue(null);
     mocks.listPublicStoreBanners.mockResolvedValue([]);
     mocks.findActivePrimaryStoreDomain.mockResolvedValue(null);
     mocks.getEffectiveStoreAvailabilityForTenant.mockResolvedValue({
@@ -130,7 +134,10 @@ describe('queries públicas da loja', () => {
       category: { findMany: mocks.categoryFindMany },
       product: { findFirst: mocks.productFindFirst },
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
-      storeAsset: { findMany: mocks.storeAssetFindMany },
+      storeAsset: {
+        findMany: mocks.storeAssetFindMany,
+        findFirst: mocks.storeAssetFindFirst,
+      },
     });
   });
 
@@ -145,7 +152,7 @@ describe('queries públicas da loja', () => {
     expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledTimes(1);
   });
 
-  it('carrega um snapshot enxuto para carrinho e checkout', async () => {
+  it('mantém a configuração autoritativa de pagamentos somente no checkout', async () => {
     const result = await getPublicPurchaseStoreBySlug('loja-1');
 
     expect(result).toMatchObject({
@@ -161,8 +168,39 @@ describe('queries públicas da loja', () => {
     });
     expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).not.toHaveProperty('description');
     expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).not.toHaveProperty('openingHours');
+    expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).toHaveProperty('entitlement');
+    expect(mocks.storeFindUnique.mock.calls[0]?.[0]?.select).toHaveProperty(
+      'paymentProviderConnections',
+    );
     expect(mocks.listPublicStoreBanners).not.toHaveBeenCalled();
     expect(mocks.findActivePrimaryStoreDomain).not.toHaveBeenCalled();
+  });
+
+  it('carrega a moldura das abas sem disponibilidade ou configuração de pagamentos', async () => {
+    const result = await getPublicStoreShellBySlug('loja-1');
+    const query = mocks.storeFindUnique.mock.calls[0]?.[0];
+
+    expect(result).toMatchObject({
+      id: 'store-1',
+      slug: 'loja-1',
+      settings: { deliveryEnabled: true, pickupEnabled: true },
+      customization: { assets: { logo: null } },
+    });
+    expect(query.select).not.toHaveProperty('entitlement');
+    expect(query.select).not.toHaveProperty('paymentProviderConnections');
+    expect(query.select).not.toHaveProperty('openingHours');
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).not.toHaveBeenCalled();
+    expect(mocks.listPublicStoreBanners).not.toHaveBeenCalled();
+  });
+
+  it('recalcula disponibilidade no carrinho sem consultar o provedor de pagamento', async () => {
+    const result = await getPublicCartStoreBySlug('loja-1');
+    const query = mocks.storeFindUnique.mock.calls[0]?.[0];
+
+    expect(result?.availability).toMatchObject({ acceptingOrders: true, state: 'OPEN' });
+    expect(query.select).not.toHaveProperty('entitlement');
+    expect(query.select).not.toHaveProperty('paymentProviderConnections');
+    expect(mocks.getEffectiveStoreAvailabilityForTenant).toHaveBeenCalledOnce();
   });
 
   it('não compartilha resultado entre slugs no mesmo request', async () => {

@@ -2,17 +2,21 @@ import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getPublicDeliveryZones: vi.fn(),
+  getPublicCartStoreBySlug: vi.fn(),
+  getPublicOffers: vi.fn(),
   getPublicPurchaseStoreBySlug: vi.fn(),
   getPublicStorefrontSitemapEntries: vi.fn(),
 }));
 
 vi.mock('@/server/queries/public-store', () => ({
   getPublicDeliveryZones: mocks.getPublicDeliveryZones,
+  getPublicCartStoreBySlug: mocks.getPublicCartStoreBySlug,
+  getPublicOffers: mocks.getPublicOffers,
   getPublicPurchaseStoreBySlug: mocks.getPublicPurchaseStoreBySlug,
   getPublicStorefrontSitemapEntries: mocks.getPublicStorefrontSitemapEntries,
 }));
 
-import { generateMetadata as generateCartMetadata } from '@/app/[storeSlug]/cart/page';
+import { generateMetadata as generateCartMetadata } from '@/app/[storeSlug]/(tabs)/cart/page';
 import { generateMetadata as generateCheckoutMetadata } from '@/app/[storeSlug]/checkout/page';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
@@ -51,6 +55,7 @@ describe('rotas SEO públicas', () => {
   });
 
   it('marca carrinho e checkout como noindex, nofollow e noarchive', async () => {
+    mocks.getPublicCartStoreBySlug.mockResolvedValue({ name: 'Loja 1' });
     mocks.getPublicPurchaseStoreBySlug.mockResolvedValue({ name: 'Loja 1' });
 
     const cartMetadata = await generateCartMetadata({

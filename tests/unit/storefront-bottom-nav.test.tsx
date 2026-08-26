@@ -9,6 +9,15 @@ const navigationMocks = vi.hoisted(() => ({
   pathname: '/loja-a',
   push: vi.fn(),
 }));
+const linkStatusMocks = vi.hoisted(() => ({ pending: false }));
+
+vi.mock('next/link', async () => {
+  const actual = await vi.importActual<typeof import('next/link')>('next/link');
+  return {
+    ...actual,
+    useLinkStatus: () => ({ pending: linkStatusMocks.pending }),
+  };
+});
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigationMocks.pathname,
@@ -19,6 +28,7 @@ describe('navegação inferior do storefront', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navigationMocks.pathname = '/loja-a';
+    linkStatusMocks.pending = false;
     useCartStore.setState({
       storeId: 'store-a',
       storeSlug: 'loja-a',
@@ -113,5 +123,17 @@ describe('navegação inferior do storefront', () => {
     expect(screen.getByRole('link', { name: 'Pedidos' })).toContainElement(
       document.querySelector('.storefront-bottom-nav-indicator'),
     );
+  });
+
+  it('mostra feedback imediato sem antecipar aria-current durante uma navegação pendente', () => {
+    navigationMocks.pathname = '/loja-a/orders';
+    linkStatusMocks.pending = true;
+
+    render(<StorefrontBottomNav storeId="store-a" storeSlug="loja-a" />);
+
+    expect(document.querySelectorAll('.storefront-bottom-nav-item.is-pending')).toHaveLength(4);
+    expect(screen.getByRole('link', { name: 'Pedidos' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Mais' })).not.toHaveAttribute('aria-current');
+    expect(screen.getAllByText(/^Abrindo /)).toHaveLength(4);
   });
 });
