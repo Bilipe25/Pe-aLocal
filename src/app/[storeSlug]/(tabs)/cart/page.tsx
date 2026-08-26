@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
 import { CartView } from '@/components/storefront/cart-view';
-import { getPublicOffers, getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+import { getPublicCartStoreBySlug, getPublicOffers } from '@/server/queries/public-store';
 
 export async function generateMetadata({
   params,
@@ -10,7 +10,7 @@ export async function generateMetadata({
   params: Promise<{ storeSlug: string }>;
 }): Promise<Metadata> {
   const { storeSlug } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicCartStoreBySlug(storeSlug);
 
   return {
     title: store ? `Sua sacola | ${store.name}` : 'Sua sacola',
@@ -25,7 +25,7 @@ export async function generateMetadata({
 
 export default async function CartPage({ params }: { params: Promise<{ storeSlug: string }> }) {
   const { storeSlug } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicCartStoreBySlug(storeSlug);
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/cart`);
   const offers = await getPublicOffers(store.id, store.tenantId, store.timeZone);

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
 import { ProductCard } from '@/components/storefront/product-card';
+import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
 import type { StoreCustomizationConfig } from '@/schemas/customization';
 import { useFavoritesStore } from '@/stores/favorites-store';
 import type { PublicStorefrontCategoryDto } from '@/types/storefront';
@@ -28,11 +29,14 @@ export function StorefrontFavorites({
   customization,
 }: StorefrontFavoritesProps) {
   const router = useRouter();
-  const hydrated = useSyncExternalStore(
+  const shellState = useOptionalStorefrontClientState();
+  const shellManagesStore = shellState?.storeId === storeId && shellState.storeSlug === storeSlug;
+  const locallyHydrated = useSyncExternalStore(
     subscribeToHydration,
     () => true,
     () => false,
   );
+  const hydrated = shellManagesStore ? (shellState?.hydrated ?? false) : locallyHydrated;
   const favoritesStoreId = useFavoritesStore((state) => state.storeId);
   const favoriteProductIds = useFavoritesStore((state) => state.productIds);
   const setStore = useFavoritesStore((state) => state.setStore);
@@ -41,8 +45,9 @@ export function StorefrontFavorites({
   const availableProductIds = useMemo(() => products.map((product) => product.id), [products]);
 
   useEffect(() => {
+    if (shellManagesStore) return;
     setStore(storeId, availableProductIds);
-  }, [availableProductIds, setStore, storeId]);
+  }, [availableProductIds, setStore, shellManagesStore, storeId]);
 
   const scopedFavoriteIds = useMemo(
     () => (favoritesStoreId === storeId ? favoriteProductIds : []),

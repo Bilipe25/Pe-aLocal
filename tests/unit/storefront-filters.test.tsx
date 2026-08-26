@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import StorefrontLoading from '@/app/[storeSlug]/loading';
+import StorefrontLoading from '@/app/[storeSlug]/(tabs)/(catalog)/loading';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
 import { StorefrontSearch } from '@/components/storefront/storefront-search';
 

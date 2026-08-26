@@ -2,11 +2,8 @@ import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { CatalogView } from '@/components/storefront/catalog-view';
-import { ConsumerFavoritesSync } from '@/components/storefront/consumer-favorites-sync';
 import { ConsumerRepurchaseLoader } from '@/components/storefront/consumer-repurchase-loader';
-import { NetworkStatus } from '@/components/storefront/network-status';
 import { StoreClosedBanner } from '@/components/storefront/store-closed-banner';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontHero } from '@/components/storefront/storefront-hero';
 import { buildMenuJsonLd, serializeJsonLd } from '@/lib/storefront/jsonld';
 import { getStorefrontCanonicalUrl } from '@/lib/storefront/urls';
@@ -83,8 +80,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(menuJsonLd) }}
         />
       )}
-      <NetworkStatus />
-      <ConsumerFavoritesSync storeId={store.id} storeSlug={store.slug} />
 
       {!store.availability.acceptingOrders && (
         <StoreClosedBanner availability={store.availability} />
@@ -152,8 +147,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
           Tecnologia por PedidoLocal
         </footer>
       )}
-
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </>
   );
 }

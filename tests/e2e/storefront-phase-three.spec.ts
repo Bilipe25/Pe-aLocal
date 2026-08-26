@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 const storeSlug = process.env.E2E_STORE_SLUG;
+const secondStoreSlug = process.env.E2E_SECOND_STORE_SLUG;
 
 test.describe('storefront mobile — fase 3', () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -35,6 +36,105 @@ test.describe('storefront mobile — fase 3', () => {
         .getByRole('navigation', { name: 'Navegação da loja' })
         .getByRole('link', { name: 'Mais' }),
     ).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('preserva a mesma instância da navegação entre abas e ao voltar no histórico', async ({
+    page,
+  }) => {
+    const marker = `shell-${Date.now()}`;
+    const navigation = page.getByRole('navigation', { name: 'Navegação da loja' });
+    await navigation.evaluate((element, value) => {
+      element.setAttribute('data-e2e-shell-marker', value);
+    }, marker);
+
+    await navigation.getByRole('link', { name: 'Mais' }).click();
+    await expect(page).toHaveURL(`/${storeSlug}/mais`);
+    await expect(page.getByRole('navigation', { name: 'Navegação da loja' })).toHaveAttribute(
+      'data-e2e-shell-marker',
+      marker,
+    );
+
+    await page
+      .getByRole('navigation', { name: 'Navegação da loja' })
+      .getByRole('link', {
+        name: 'Pedidos',
+      })
+      .click();
+    await expect(page).toHaveURL(`/${storeSlug}/orders`);
+    await page.goBack();
+    await expect(page).toHaveURL(`/${storeSlug}/mais`);
+    await expect(page.getByRole('navigation', { name: 'Navegação da loja' })).toHaveAttribute(
+      'data-e2e-shell-marker',
+      marker,
+    );
+  });
+
+  test('restaura busca e rolagem do catálogo ao retornar de outra aba', async ({ page }) => {
+    const search = page.getByRole('searchbox', { name: 'Buscar no cardápio' });
+    await search.fill('x');
+    await page.evaluate(() => window.scrollTo({ top: 520, behavior: 'auto' }));
+    const rememberedScroll = await page.evaluate(() => window.scrollY);
+
+    await page
+      .getByRole('navigation', { name: 'Navegação da loja' })
+      .getByRole('link', {
+        name: 'Mais',
+      })
+      .click();
+    await expect(page).toHaveURL(`/${storeSlug}/mais`);
+    await page
+      .getByRole('navigation', { name: 'Navegação da loja' })
+      .getByRole('link', {
+        name: 'Cardápio',
+      })
+      .click();
+
+    await expect(search).toHaveValue('x');
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThanOrEqual(Math.max(0, rememberedScroll - 8));
+  });
+
+  test('não repete a tela de hidratação local do carrinho na segunda visita', async ({ page }) => {
+    const navigation = page.getByRole('navigation', { name: 'Navegação da loja' });
+    await navigation.getByRole('link', { name: /Carrinho/ }).click();
+    await expect(page).toHaveURL(`/${storeSlug}/cart`);
+    await expect(page.getByText('Carregando sua sacola…')).toHaveCount(0);
+
+    await page
+      .getByRole('navigation', { name: 'Navegação da loja' })
+      .getByRole('link', {
+        name: 'Mais',
+      })
+      .click();
+    await page
+      .getByRole('navigation', { name: 'Navegação da loja' })
+      .getByRole('link', {
+        name: /Carrinho/,
+      })
+      .click();
+    await expect(page).toHaveURL(`/${storeSlug}/cart`);
+    await expect(page.getByText('Carregando sua sacola…')).toHaveCount(0);
+  });
+
+  test('carrega diretamente cada aba com a navegação íntegra', async ({ page }) => {
+    for (const suffix of ['', '/cart', '/orders', '/mais', '/favorites']) {
+      await page.goto(`/${storeSlug}${suffix}`);
+      const navigation = page.getByRole('navigation', { name: 'Navegação da loja' });
+      await expect(navigation).toBeVisible();
+      await expect(navigation.getByRole('link')).toHaveCount(4);
+    }
+  });
+
+  test('isola a memória transitória ao trocar de loja', async ({ page }) => {
+    test.skip(!secondStoreSlug, 'E2E_SECOND_STORE_SLUG não foi configurado.');
+    await page.getByRole('searchbox', { name: 'Buscar no cardápio' }).fill('pizza');
+
+    await page.goto(`/${secondStoreSlug}`);
+    await expect(page.getByRole('searchbox', { name: 'Buscar no cardápio' })).toHaveValue('');
+
+    await page.goto(`/${storeSlug}`);
+    await expect(page.getByRole('searchbox', { name: 'Buscar no cardápio' })).toHaveValue('');
   });
 
   test('persiste favorito após recarregar sem depender de conta', async ({ page }) => {

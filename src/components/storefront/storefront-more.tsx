@@ -17,6 +17,7 @@ import { useEffect } from 'react';
 
 import { StoreInfoSheet, type StoreInfoSheetProps } from '@/components/storefront/store-info-sheet';
 import { ProductImage } from '@/components/storefront/product-image';
+import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import { useFavoritesStore } from '@/stores/favorites-store';
 
@@ -79,14 +80,17 @@ function MoreRowContent({
 }
 
 function FavoritesLink({ storeId, href }: { storeId: string; href: string }) {
+  const shellState = useOptionalStorefrontClientState();
+  const shellManagesStore = shellState?.storeId === storeId;
   const favoritesStoreId = useFavoritesStore((state) => state.storeId);
   const productIds = useFavoritesStore((state) => state.productIds);
   const setStore = useFavoritesStore((state) => state.setStore);
   const count = favoritesStoreId === storeId ? productIds.length : 0;
 
   useEffect(() => {
+    if (shellManagesStore) return;
     setStore(storeId, []);
-  }, [setStore, storeId]);
+  }, [setStore, shellManagesStore, storeId]);
 
   return (
     <Link

@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
-import { ConsumerFavoritesSync } from '@/components/storefront/consumer-favorites-sync';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import { StorefrontFavorites } from '@/components/storefront/storefront-favorites';
 import { getPublicCatalog, getPublicStoreBySlug } from '@/server/queries/public-store';
 
@@ -41,7 +39,6 @@ export default async function FavoritesPage({ params }: FavoritesPageProps) {
 
   return (
     <div className="storefront-page-bottom-safe">
-      <ConsumerFavoritesSync storeId={store.id} storeSlug={store.slug} />
       <StorePurchaseHeader
         backHref={`/${store.slug}/mais`}
         backLabel="Voltar a Mais"
@@ -58,7 +55,6 @@ export default async function FavoritesPage({ params }: FavoritesPageProps) {
           customization={store.customization.config}
         />
       </main>
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </div>
   );
 }

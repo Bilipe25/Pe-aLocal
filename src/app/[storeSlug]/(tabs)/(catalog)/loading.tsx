@@ -1,4 +1,4 @@
-export default function StorefrontLoading() {
+export default function CatalogLoading() {
   return (
     <div className="storefront-skeleton" role="status" aria-live="polite">
       <span className="sr-only">Carregando o cardápio da loja...</span>

@@ -7,12 +7,11 @@ import { ConsumerLogoutButton } from '@/components/storefront/consumer-account-a
 import { ConsumerEmailChange } from '@/components/storefront/consumer-email-change';
 import { ConsumerSessions } from '@/components/storefront/consumer-sessions';
 import { StorePurchaseHeader } from '@/components/storefront/store-purchase-header';
-import { StorefrontBottomNav } from '@/components/storefront/storefront-bottom-nav';
 import {
   getConsumerVerificationMethod,
   isConsumerVerificationReady,
 } from '@/server/consumer-verification/provider';
-import { getPublicPurchaseStoreBySlug } from '@/server/queries/public-store';
+import { getPublicStoreShellBySlug } from '@/server/queries/public-store';
 import {
   CONSUMER_SESSION_COOKIE,
   requireConsumerForStore,
@@ -25,7 +24,7 @@ export default async function ConsumerAccountPage({
   params: Promise<{ storeSlug: string }>;
 }) {
   const { storeSlug } = await params;
-  const store = await getPublicPurchaseStoreBySlug(storeSlug);
+  const store = await getPublicStoreShellBySlug(storeSlug);
   if (!store) notFound();
   let authorized;
   try {
@@ -93,7 +92,6 @@ export default async function ConsumerAccountPage({
           <ConsumerLogoutButton storeSlug={store.slug} />
         </div>
       </main>
-      <StorefrontBottomNav storeId={store.id} storeSlug={store.slug} />
     </div>
   );
 }
