@@ -69,6 +69,34 @@ test.describe('storefront mobile — fase 3', () => {
     );
   });
 
+  test('marca somente o destino acionado durante uma navegação lenta', async ({ page }) => {
+    let delayCartNavigation = false;
+    await page.route(`**/${storeSlug}/cart**`, async (route) => {
+      const headers = route.request().headers();
+      const isPrefetch = headers['next-router-prefetch'] === '1' || headers.purpose === 'prefetch';
+      if (isPrefetch) {
+        await route.abort();
+        return;
+      }
+      if (delayCartNavigation) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+      await route.continue();
+    });
+    await page.reload();
+    delayCartNavigation = true;
+
+    const navigation = page.getByRole('navigation', { name: 'Navegação da loja' });
+    const navigationPromise = navigation.getByRole('link', { name: /Carrinho/ }).click();
+
+    await expect(navigation.locator('.storefront-bottom-nav-item.is-pending')).toHaveCount(1);
+    await expect(
+      navigation.getByRole('link', { name: /Carrinho/ }).locator('.is-pending'),
+    ).toHaveCount(1);
+    await navigationPromise;
+    await expect(page).toHaveURL(`/${storeSlug}/cart`);
+  });
+
   test('restaura busca e rolagem do catálogo ao retornar de outra aba', async ({ page }) => {
     const search = page.getByRole('searchbox', { name: 'Buscar no cardápio' });
     await search.fill('x');

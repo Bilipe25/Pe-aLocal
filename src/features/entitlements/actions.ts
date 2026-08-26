@@ -17,6 +17,7 @@ export async function updateStoreEntitlementAction(
     updateTag(CACHE_TAGS.store(storeId));
     updateTag(CACHE_TAGS.storeSlug(result.storeSlug));
     updateTag(CACHE_TAGS.paymentMethods(storeId));
+    updateTag(CACHE_TAGS.capabilities(storeId));
     revalidatePath(`/admin/tenants/${tenantId}/stores/${storeId}/customization`);
     revalidatePath(`/dashboard/stores/${storeId}/payments`);
     return actionSuccess(undefined);

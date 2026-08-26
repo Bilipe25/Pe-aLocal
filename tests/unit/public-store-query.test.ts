@@ -7,6 +7,7 @@ import {
   getPublicCartRecommendationCandidates,
   getCanonicalPublicStoreSlug,
   getPublicDeliveryZones,
+  getPublicOffers,
   getPublicPurchaseStoreBySlug,
   getPublicProductDetail,
   getPublicStoreBySlug,
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   categoryFindMany: vi.fn(),
   productFindFirst: vi.fn(),
   deliveryZoneFindMany: vi.fn(),
+  storeEntitlementFindFirst: vi.fn(),
   storeAssetFindMany: vi.fn(),
   storeAssetFindFirst: vi.fn(),
   listPublicStoreBanners: vi.fn(),
@@ -118,6 +120,7 @@ describe('queries públicas da loja', () => {
     mocks.categoryFindMany.mockResolvedValue([]);
     mocks.productFindFirst.mockResolvedValue(null);
     mocks.deliveryZoneFindMany.mockResolvedValue([]);
+    mocks.storeEntitlementFindFirst.mockResolvedValue({ combosPromotionsEnabled: false });
     mocks.storeAssetFindMany.mockResolvedValue([]);
     mocks.storeAssetFindFirst.mockResolvedValue(null);
     mocks.listPublicStoreBanners.mockResolvedValue([]);
@@ -134,6 +137,7 @@ describe('queries públicas da loja', () => {
       category: { findMany: mocks.categoryFindMany },
       product: { findFirst: mocks.productFindFirst },
       deliveryZone: { findMany: mocks.deliveryZoneFindMany },
+      storeEntitlement: { findFirst: mocks.storeEntitlementFindFirst },
       storeAsset: {
         findMany: mocks.storeAssetFindMany,
         findFirst: mocks.storeAssetFindFirst,
@@ -760,6 +764,23 @@ describe('queries públicas da loja', () => {
     expect(mocks.unstableCache.mock.calls[0][2].tags).toEqual(['store-slug:loja-1']);
     expect(mocks.unstableCache.mock.calls[1][2].tags).toEqual(['catalog:store-1']);
     expect(mocks.unstableCache.mock.calls[2][2].tags).toEqual(['delivery:store-1']);
+  });
+
+  it('cacheia a capability pública de ofertas sob tag invalidável da loja', async () => {
+    await expect(getPublicOffers('store-1', 'tenant-1', 'America/Fortaleza')).resolves.toEqual([]);
+
+    expect(mocks.storeEntitlementFindFirst).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1', storeId: 'store-1' },
+      select: { combosPromotionsEnabled: true },
+    });
+    expect(mocks.unstableCache).toHaveBeenCalledWith(
+      expect.any(Function),
+      ['public-store-offer-capabilities', 'store-1', 'tenant-1'],
+      {
+        revalidate: 60,
+        tags: ['store-capabilities:store-1'],
+      },
+    );
   });
 
   it('deduplica getPublicCatalog dentro do mesmo request', async () => {

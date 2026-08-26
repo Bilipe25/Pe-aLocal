@@ -1126,10 +1126,18 @@ export async function getPublicOffers(
   timeZone: string,
   now = new Date(),
 ): Promise<PublicStorefrontOfferDto[]> {
-  const entitlement = await getDb().storeEntitlement.findFirst({
-    where: { tenantId, storeId },
-    select: { combosPromotionsEnabled: true },
-  });
+  const entitlement = await unstable_cache(
+    () =>
+      getDb().storeEntitlement.findFirst({
+        where: { tenantId, storeId },
+        select: { combosPromotionsEnabled: true },
+      }),
+    ['public-store-offer-capabilities', storeId, tenantId],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [CACHE_TAGS.capabilities(storeId)],
+    },
+  )();
   if (!entitlement?.combosPromotionsEnabled) return [];
 
   const definitions = await unstable_cache(

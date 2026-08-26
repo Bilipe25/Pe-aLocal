@@ -72,6 +72,13 @@ export function offersCacheTag(storeId: string): string {
 }
 
 /**
+ * Tag para capabilities públicas derivadas dos entitlements da loja.
+ */
+export function publicCapabilitiesCacheTag(storeId: string): string {
+  return `store-capabilities:${storeId}`;
+}
+
+/**
  * Retorna todas as tags de cache de uma loja.
  * Útil para invalidar tudo quando a loja é suspensa.
  */
@@ -87,6 +94,7 @@ export function allStoreCacheTags(storeId: string): string[] {
     bannersCacheTag(storeId),
     domainsCacheTag(storeId),
     offersCacheTag(storeId),
+    publicCapabilitiesCacheTag(storeId),
   ];
 }
 
@@ -106,5 +114,6 @@ export const CACHE_TAGS = {
   banners: bannersCacheTag,
   domains: domainsCacheTag,
   offers: offersCacheTag,
+  capabilities: publicCapabilitiesCacheTag,
   all: allStoreCacheTags,
 } as const;

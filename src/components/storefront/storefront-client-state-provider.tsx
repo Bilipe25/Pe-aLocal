@@ -18,6 +18,9 @@ import {
   subscribeToPublicOrderHistoryStorage,
   usePublicOrderHistoryStore,
 } from '@/stores/public-order-history-store';
+import type { PublicStorefrontProductDetailDto } from '@/types/storefront';
+
+export const STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
 
 export interface StorefrontCatalogMemory {
   search: string;
@@ -41,6 +44,8 @@ interface StorefrontClientStateContextValue {
   hydrated: boolean;
   getCatalogMemory: () => StorefrontCatalogMemory;
   updateCatalogMemory: (patch: Partial<StorefrontCatalogMemory>) => void;
+  getCachedProductDetail: (productId: string) => PublicStorefrontProductDetailDto | null;
+  cacheProductDetail: (productId: string, detail: PublicStorefrontProductDetailDto) => void;
 }
 
 const StorefrontClientStateContext = createContext<StorefrontClientStateContextValue | null>(null);
@@ -56,6 +61,9 @@ export function StorefrontClientStateProvider({
 }) {
   const [hydratedStoreId, setHydratedStoreId] = useState<string | null>(null);
   const catalogMemoryByStoreRef = useRef(new Map<string, StorefrontCatalogMemory>());
+  const productDetailsByStoreRef = useRef(
+    new Map<string, Map<string, { detail: PublicStorefrontProductDetailDto; expiresAt: number }>>(),
+  );
 
   useLayoutEffect(() => {
     const cart = useCartStore.getState();
@@ -91,6 +99,34 @@ export function StorefrontClientStateProvider({
     },
     [storeId],
   );
+  const getCachedProductDetail = useCallback(
+    (productId: string) => {
+      const storeCache = productDetailsByStoreRef.current.get(storeId);
+      const cached = storeCache?.get(productId);
+      if (!cached) return null;
+      if (cached.expiresAt > Date.now()) return cached.detail;
+
+      storeCache?.delete(productId);
+      if (storeCache?.size === 0) productDetailsByStoreRef.current.delete(storeId);
+      return null;
+    },
+    [storeId],
+  );
+  const cacheProductDetail = useCallback(
+    (productId: string, detail: PublicStorefrontProductDetailDto) => {
+      const storeCache = productDetailsByStoreRef.current.get(storeId) ?? new Map();
+      const now = Date.now();
+      for (const [cachedProductId, cached] of storeCache) {
+        if (cached.expiresAt <= now) storeCache.delete(cachedProductId);
+      }
+      storeCache.set(productId, {
+        detail,
+        expiresAt: now + STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
+      });
+      productDetailsByStoreRef.current.set(storeId, storeCache);
+    },
+    [storeId],
+  );
   const value = useMemo<StorefrontClientStateContextValue>(
     () => ({
       storeId,
@@ -98,8 +134,18 @@ export function StorefrontClientStateProvider({
       hydrated: hydratedStoreId === storeId,
       getCatalogMemory,
       updateCatalogMemory,
+      getCachedProductDetail,
+      cacheProductDetail,
     }),
-    [getCatalogMemory, hydratedStoreId, storeId, storeSlug, updateCatalogMemory],
+    [
+      cacheProductDetail,
+      getCachedProductDetail,
+      getCatalogMemory,
+      hydratedStoreId,
+      storeId,
+      storeSlug,
+      updateCatalogMemory,
+    ],
   );
 
   return (
