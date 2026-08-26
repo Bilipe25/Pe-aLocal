@@ -1,5 +1,7 @@
 'use client';
 
+import type { KeyboardEvent } from 'react';
+
 import { formatCurrency } from '@/lib/utils';
 import type { SelectedOption } from '@/stores/cart-store';
 import type { PublicStorefrontOptionGroupDto } from '@/types/storefront';
@@ -25,7 +27,30 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
       return;
     }
 
-    onChange(selectedIds.has(option.id) ? [] : [option]);
+    onChange(selectedIds.has(option.id) && !group.isRequired ? [] : [option]);
+  }
+
+  function handleSingleChoiceKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const lastIndex = group.options.length - 1;
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = index === lastIndex ? 0 : index + 1;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = index === 0 ? lastIndex : index - 1;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = lastIndex;
+    }
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextOption = group.options[nextIndex];
+    if (!nextOption) return;
+    onChange([nextOption]);
+    const radios =
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    radios?.[nextIndex]?.focus();
   }
 
   return (
@@ -60,8 +85,9 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
         role={group.isMultiple ? 'group' : 'radiogroup'}
         aria-labelledby={titleId}
         aria-describedby={group.isMultiple ? helpId : undefined}
+        aria-required={!group.isMultiple && group.isRequired ? 'true' : undefined}
       >
-        {group.options.map((option) => {
+        {group.options.map((option, optionIndex) => {
           const isSelected = selectedIds.has(option.id);
           const reachedLimit =
             group.isMultiple && !isSelected && selected.length >= group.maxSelections;
@@ -72,8 +98,18 @@ export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSe
               type="button"
               role={group.isMultiple ? 'checkbox' : 'radio'}
               aria-checked={isSelected}
+              tabIndex={
+                group.isMultiple
+                  ? undefined
+                  : isSelected || (selected.length === 0 && optionIndex === 0)
+                    ? 0
+                    : -1
+              }
               disabled={reachedLimit}
               onClick={() => handleToggle(option)}
+              onKeyDown={(event) => {
+                if (!group.isMultiple) handleSingleChoiceKeyDown(event, optionIndex);
+              }}
               className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 isSelected ? 'storefront-selection-row text-tinta' : 'text-tinta hover:bg-tinta/5'
               }`}

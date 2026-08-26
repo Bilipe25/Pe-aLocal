@@ -56,8 +56,16 @@ vi.mock('@/components/storefront/recent-orders-section', () => ({
   ),
 }));
 vi.mock('@/components/storefront/product-card', () => ({
-  ProductCard: ({ name, onClick }: { name: string; onClick: () => void }) => (
-    <button type="button" onClick={onClick}>
+  ProductCard: ({
+    name,
+    onClick,
+    onPrefetchIntent,
+  }: {
+    name: string;
+    onClick: () => void;
+    onPrefetchIntent?: () => void;
+  }) => (
+    <button type="button" onClick={onClick} onPointerEnter={onPrefetchIntent}>
       {name}
     </button>
   ),
@@ -228,6 +236,41 @@ describe('catálogo público', () => {
       expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
     );
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefetch por intenção não abre o modal e o toque reutiliza a request em andamento', async () => {
+    let resolveRequest!: (value: ReturnType<typeof response>) => void;
+    mocks.fetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRequest = resolve;
+      }),
+    );
+
+    render(
+      <CatalogView
+        categories={categories}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+
+    const product = screen.getByRole('button', { name: 'Burger da casa' });
+    fireEvent.pointerEnter(product);
+    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(product);
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'loading');
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+
+    resolveRequest(response({ product: productDetail }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
+    );
+    expect(mocks.fetch).toHaveBeenCalledOnce();
   });
 
   it('reutiliza o detalhe após o catálogo desmontar enquanto a moldura permanece ativa', async () => {

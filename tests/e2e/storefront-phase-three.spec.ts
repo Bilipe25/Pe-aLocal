@@ -69,6 +69,58 @@ test.describe('storefront mobile — fase 3', () => {
     );
   });
 
+  test('abre produto em fullscreen, deduplica o detalhe e reutiliza o cache ao reabrir', async ({
+    page,
+  }) => {
+    const detailRequests = new Map<string, number>();
+    await page.route(`**/api/storefront/${storeSlug}/products/**`, async (route) => {
+      const url = route.request().url();
+      detailRequests.set(url, (detailRequests.get(url) ?? 0) + 1);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await route.continue();
+    });
+    await page.reload();
+
+    const productButton = page.locator('.storefront-product-main:not(:disabled)').first();
+    test.skip((await productButton.count()) === 0, 'A loja E2E não possui produtos disponíveis.');
+    const productId = await productButton.evaluate((element) =>
+      element.closest('[data-product-prefetch-id]')?.getAttribute('data-product-prefetch-id'),
+    );
+    expect(productId).toBeTruthy();
+    const requestSuffix = `/products/${encodeURIComponent(productId!)}`;
+    await productButton.scrollIntoViewIfNeeded();
+    await productButton.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    const viewport = page.viewportSize();
+    const box = await dialog.boundingBox();
+    expect(viewport).not.toBeNull();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box!.width - viewport!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box!.height - viewport!.height)).toBeLessThanOrEqual(1);
+    await expect(dialog.locator('.storefront-product-modal-load-state')).toBeHidden();
+    expect(
+      [...detailRequests.entries()]
+        .filter(([url]) => new URL(url).pathname.endsWith(requestSuffix))
+        .reduce((total, [, count]) => total + count, 0),
+    ).toBe(1);
+
+    await dialog.getByRole('button', { name: /Fechar detalhes de/ }).click();
+    await expect(productButton).toBeFocused();
+    await productButton.click();
+    await expect(
+      page.getByRole('dialog').locator('.storefront-product-modal-load-state'),
+    ).toBeHidden();
+    expect(
+      [...detailRequests.entries()]
+        .filter(([url]) => new URL(url).pathname.endsWith(requestSuffix))
+        .reduce((total, [, count]) => total + count, 0),
+    ).toBe(1);
+  });
+
   test('marca somente o destino acionado durante uma navegação lenta', async ({ page }) => {
     let delayCartNavigation = false;
     await page.route(`**/${storeSlug}/cart**`, async (route) => {

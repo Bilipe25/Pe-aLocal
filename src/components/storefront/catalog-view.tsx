@@ -4,6 +4,7 @@ import { SearchX } from 'lucide-react';
 import {
   Fragment,
   type ReactNode,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -15,6 +16,7 @@ import Image from 'next/image';
 import { CartFab } from '@/components/storefront/cart-fab';
 import { CategoryNav } from '@/components/storefront/category-nav';
 import {
+  STOREFRONT_PRODUCT_DETAIL_CACHE_MAX_ENTRIES,
   STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
   useOptionalStorefrontClientState,
 } from '@/components/storefront/storefront-client-state-provider';
@@ -32,6 +34,11 @@ import {
   filterIndexedCatalog,
   type CatalogSort,
 } from '@/features/storefront/catalog-filter';
+import {
+  allowsPassiveProductDetailPrefetch,
+  createFullscreenProductImageWarmer,
+  ProductDetailPrefetchQueue,
+} from '@/features/storefront/product-detail-prefetch';
 import { reportStorefrontEvent } from '@/lib/checkout/telemetry';
 import { formatCurrency } from '@/lib/utils';
 import type { StoreCustomizationConfig, StoreSection } from '@/schemas/customization';
@@ -75,7 +82,11 @@ type LocalProductDetailCache = Map<
 function readLocalProductDetail(cache: LocalProductDetailCache, productId: string) {
   const cached = cache.get(productId);
   if (!cached) return null;
-  if (cached.expiresAt > Date.now()) return cached.detail;
+  if (cached.expiresAt > Date.now()) {
+    cache.delete(productId);
+    cache.set(productId, cached);
+    return cached.detail;
+  }
   cache.delete(productId);
   return null;
 }
@@ -85,9 +96,19 @@ function writeLocalProductDetail(
   productId: string,
   detail: PublicStorefrontProductDetailDto,
 ) {
+  const now = Date.now();
+  for (const [cachedProductId, cached] of cache) {
+    if (cached.expiresAt <= now) cache.delete(cachedProductId);
+  }
+  cache.delete(productId);
+  while (cache.size >= STOREFRONT_PRODUCT_DETAIL_CACHE_MAX_ENTRIES) {
+    const leastRecentlyUsedProductId = cache.keys().next().value;
+    if (typeof leastRecentlyUsedProductId !== 'string') break;
+    cache.delete(leastRecentlyUsedProductId);
+  }
   cache.set(productId, {
     detail,
-    expiresAt: Date.now() + STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
+    expiresAt: now + STOREFRONT_PRODUCT_DETAIL_CACHE_TTL_MS,
   });
 }
 
@@ -141,6 +162,7 @@ export function CatalogView({
   const updateCatalogMemory = shellState?.updateCatalogMemory;
   const getCachedProductDetail = shellState?.getCachedProductDetail;
   const cacheProductDetail = shellState?.cacheProductDetail;
+  const requestSharedProductDetail = shellState?.requestProductDetail;
   const setStore = useCartStore((state) => state.setStore);
   const setCouponCode = useCartStore((state) => state.setCouponCode);
   const cartStoreId = useCartStore(selectCartStoreId);
@@ -172,9 +194,12 @@ export function CatalogView({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const catalogRef = useRef<HTMLElement>(null);
   const selectedProductIdRef = useRef<string | null>(null);
-  const productDetailRequestRef = useRef<AbortController | null>(null);
   const scrollYRef = useRef(getCatalogMemory?.().scrollY ?? 0);
   const productDetailCacheRef = useRef<LocalProductDetailCache>(new Map());
+  const localProductDetailRequestsRef = useRef(
+    new Map<string, Promise<PublicStorefrontProductDetailDto>>(),
+  );
+  const productDetailPrefetchQueueRef = useRef<ProductDetailPrefetchQueue | null>(null);
 
   useEffect(() => {
     if (!shellManagesCart) setStore(cartScopeId, storeSlug);
@@ -226,6 +251,15 @@ export function CatalogView({
   }, [getCatalogMemory, shellManagesStore, updateCatalogMemory]);
 
   const catalogIndex = useMemo(() => createCatalogIndex(categories), [categories]);
+  const productsById = useMemo(
+    () =>
+      new Map(
+        categories.flatMap((category) =>
+          category.products.map((product) => [product.id, product] as const),
+        ),
+      ),
+    [categories],
+  );
   const visibleCategories = useMemo(() => {
     return filterIndexedCatalog(catalogIndex, {
       query: deferredSearch,
@@ -290,30 +324,11 @@ export function CatalogView({
     });
   }
 
-  async function loadProductDetail(
-    product: PublicStorefrontProductSummaryDto,
-    bypassCache = false,
-  ) {
-    const cachedDetail = shellManagesStore
-      ? getCachedProductDetail?.(product.id)
-      : readLocalProductDetail(productDetailCacheRef.current, product.id);
-    if (!bypassCache && cachedDetail) {
-      setProductDetailState({ productId: product.id, status: 'success', detail: cachedDetail });
-      return;
-    }
-
-    productDetailRequestRef.current?.abort();
-    const controller = new AbortController();
-    productDetailRequestRef.current = controller;
-    setProductDetailState({ productId: product.id, status: 'loading' });
-
-    try {
+  const fetchProductDetail = useCallback(
+    async (product: PublicStorefrontProductSummaryDto) => {
       const response = await fetch(
         `/api/storefront/${encodeURIComponent(storeSlug)}/products/${encodeURIComponent(product.id)}`,
-        {
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        },
+        { headers: { Accept: 'application/json' } },
       );
       const payload: unknown = await response.json().catch(() => null);
 
@@ -323,35 +338,101 @@ export function CatalogView({
       if (!isProductDetailResponse(payload, product.id)) {
         throw new Error('Os detalhes recebidos são inválidos. Tente novamente.');
       }
+      return payload.product;
+    },
+    [storeSlug],
+  );
 
-      if (shellManagesStore) {
-        cacheProductDetail?.(product.id, payload.product);
-      } else {
-        writeLocalProductDetail(productDetailCacheRef.current, product.id, payload.product);
-      }
-      if (selectedProductIdRef.current === product.id) {
-        setProductDetailState({
-          productId: product.id,
-          status: 'success',
-          detail: payload.product,
+  const resolveProductDetail = useCallback(
+    (product: PublicStorefrontProductSummaryDto, bypassCache = false) => {
+      if (shellManagesStore && requestSharedProductDetail) {
+        return requestSharedProductDetail(product.id, () => fetchProductDetail(product), {
+          bypassCache,
         });
       }
-    } catch (error) {
-      if (controller.signal.aborted || selectedProductIdRef.current !== product.id) return;
-      setProductDetailState({
-        productId: product.id,
-        status: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Não foi possível carregar os detalhes. Tente novamente.',
-      });
-    } finally {
-      if (productDetailRequestRef.current === controller) {
-        productDetailRequestRef.current = null;
+
+      if (!bypassCache) {
+        const cached = readLocalProductDetail(productDetailCacheRef.current, product.id);
+        if (cached) return Promise.resolve(cached);
       }
-    }
-  }
+      const inFlight = localProductDetailRequestsRef.current.get(product.id);
+      if (inFlight) return inFlight;
+
+      const request = fetchProductDetail(product)
+        .then((detail) => {
+          writeLocalProductDetail(productDetailCacheRef.current, product.id, detail);
+          if (shellManagesStore) cacheProductDetail?.(product.id, detail);
+          return detail;
+        })
+        .finally(() => {
+          if (localProductDetailRequestsRef.current.get(product.id) === request) {
+            localProductDetailRequestsRef.current.delete(product.id);
+          }
+        });
+      localProductDetailRequestsRef.current.set(product.id, request);
+      return request;
+    },
+    [cacheProductDetail, fetchProductDetail, requestSharedProductDetail, shellManagesStore],
+  );
+
+  const loadProductDetail = useCallback(
+    async (product: PublicStorefrontProductSummaryDto, bypassCache = false) => {
+      const cachedDetail = shellManagesStore
+        ? getCachedProductDetail?.(product.id)
+        : readLocalProductDetail(productDetailCacheRef.current, product.id);
+      if (!bypassCache && cachedDetail) {
+        setProductDetailState({ productId: product.id, status: 'success', detail: cachedDetail });
+        return;
+      }
+
+      setProductDetailState({ productId: product.id, status: 'loading' });
+
+      try {
+        const detail = await resolveProductDetail(product, bypassCache);
+        if (selectedProductIdRef.current === product.id) {
+          setProductDetailState({
+            productId: product.id,
+            status: 'success',
+            detail,
+          });
+        }
+      } catch (error) {
+        if (selectedProductIdRef.current !== product.id) return;
+        setProductDetailState({
+          productId: product.id,
+          status: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Não foi possível carregar os detalhes. Tente novamente.',
+        });
+      }
+    },
+    [getCachedProductDetail, resolveProductDetail, shellManagesStore],
+  );
+
+  const warmFullscreenProductImage = useMemo(() => createFullscreenProductImageWarmer(), []);
+  const prefetchProductDetail = useCallback(
+    (product: PublicStorefrontProductSummaryDto, priority: 'viewport' | 'intent') => {
+      if (!allowsPassiveProductDetailPrefetch()) return;
+      productDetailPrefetchQueueRef.current?.enqueue(product, priority);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const queue = new ProductDetailPrefetchQueue(
+      (product) => resolveProductDetail(product),
+      warmFullscreenProductImage,
+    );
+    productDetailPrefetchQueueRef.current = queue;
+    return () => {
+      if (productDetailPrefetchQueueRef.current === queue) {
+        productDetailPrefetchQueueRef.current = null;
+      }
+      queue.dispose();
+    };
+  }, [resolveProductDetail, warmFullscreenProductImage]);
 
   function openProduct(product: PublicStorefrontProductSummaryDto, promotionalPrice?: number) {
     lastFocusedProductRef.current =
@@ -359,13 +440,12 @@ export function CatalogView({
     selectedProductIdRef.current = product.id;
     setSelectedProduct(product);
     setSelectedPromotionalPrice(promotionalPrice ?? null);
+    productDetailPrefetchQueueRef.current?.prioritizeExplicitRequest(product.id);
     void loadProductDetail(product);
   }
 
   function closeProduct() {
     selectedProductIdRef.current = null;
-    productDetailRequestRef.current?.abort();
-    productDetailRequestRef.current = null;
     setSelectedProduct(null);
     setSelectedPromotionalPrice(null);
     requestAnimationFrame(() => lastFocusedProductRef.current?.focus());
@@ -374,8 +454,8 @@ export function CatalogView({
   useEffect(
     () => () => {
       selectedProductIdRef.current = null;
-      productDetailRequestRef.current?.abort();
       productDetailCacheRef.current.clear();
+      localProductDetailRequestsRef.current.clear();
     },
     [],
   );
@@ -434,6 +514,32 @@ export function CatalogView({
     return () => observer.disconnect();
   }, [visibleCategories]);
 
+  useEffect(() => {
+    if (!allowsPassiveProductDetailPrefetch() || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const productId = entry.target.getAttribute('data-product-prefetch-id');
+          const product = productId ? productsById.get(productId) : undefined;
+          if (product && productDetailPrefetchQueueRef.current?.enqueue(product, 'viewport')) {
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { rootMargin: '360px 0px', threshold: 0.01 },
+    );
+    const cards = [featuredSectionRef.current, catalogRef.current].flatMap((container) =>
+      container
+        ? Array.from(container.querySelectorAll<HTMLElement>('[data-product-prefetch-id]'))
+        : [],
+    );
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [productsById, visibleCategories]);
+
   const productCard = (
     product: PublicStorefrontProductSummaryDto,
     variant: 'featured' | 'horizontal' | 'compact',
@@ -450,6 +556,8 @@ export function CatalogView({
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
       imageAssetId={product.imageAssetId}
+      prefetchId={product.id}
+      onPrefetchIntent={() => prefetchProductDetail(product, 'intent')}
       onClick={() => {
         if (featuredPosition !== undefined) {
           reportStorefrontEvent(storeSlug, {

@@ -134,10 +134,12 @@ describe('limite de quantidade no storefront', () => {
     );
 
     expect(document.querySelector('.storefront-product-modal-media')).not.toBeNull();
-    expect(document.querySelector('.storefront-product-modal-media img')).toHaveAttribute(
-      'src',
-      '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838?width=384',
-    );
+    expect(
+      document.querySelector('.storefront-product-modal-media .storefront-product-image'),
+    ).toHaveAttribute('src', '/api/store-assets/4da03571-bffd-45ef-8c44-20686c487838?width=384');
+    expect(
+      document.querySelector('.storefront-product-modal-media .storefront-product-image-preview'),
+    ).toHaveAttribute('src', '/imagem-legada.jpg');
     expect(screen.getByText('A partir de')).toBeVisible();
     expect(screen.getByRole('button', { name: /Adicionar/ })).toHaveTextContent('R$ 25,00');
 
@@ -158,8 +160,8 @@ describe('limite de quantidade no storefront', () => {
       />,
     );
 
-    expect(screen.getByText('Carregando adicionais e opções do produto.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Carregando...' })).toBeDisabled();
+    expect(screen.getByText('Preparando adicionais e opções do produto.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Preparando opções…' })).toBeDisabled();
   });
 
   it('permite tentar novamente quando o detalhe falha', () => {
