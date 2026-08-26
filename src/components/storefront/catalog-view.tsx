@@ -502,7 +502,7 @@ export function CatalogView({
         <main
           key={section}
           ref={catalogRef}
-          className="storefront-catalog"
+          className="storefront-catalog storefront-content-arrival"
           aria-busy={search !== deferredSearch}
         >
           {visibleCategories.length === 0 ? (

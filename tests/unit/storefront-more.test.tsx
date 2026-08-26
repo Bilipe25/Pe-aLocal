@@ -95,6 +95,7 @@ function renderMore(hasVerifiedConsumer = false, offerCount = 0) {
         storeName="Sabor da Vila"
         logoUrl={null}
         logoAssetId={null}
+        shareUrl={storeInfo.shareUrl}
         offerCount={offerCount}
         hasVerifiedConsumer={hasVerifiedConsumer}
         storeInfo={storeInfo}

@@ -47,7 +47,7 @@ export default async function FavoritesPage({ params }: FavoritesPageProps) {
         logoImageUrl={store.customization.assets.logo?.url ?? store.logoUrl}
         logoImageAssetId={store.customization.assets.logo?.id ?? null}
       />
-      <main className="storefront-favorites-main">
+      <main className="storefront-favorites-main storefront-content-arrival">
         <StorefrontFavorites
           storeId={store.id}
           storeSlug={store.slug}

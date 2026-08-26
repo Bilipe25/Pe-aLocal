@@ -13,13 +13,16 @@ import {
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { Suspense, use, useEffect } from 'react';
 
 import { StoreInfoSheet, type StoreInfoSheetProps } from '@/components/storefront/store-info-sheet';
 import { ProductImage } from '@/components/storefront/product-image';
 import { useOptionalStorefrontClientState } from '@/components/storefront/storefront-client-state-provider';
+import { StorefrontMoreRowLoading } from '@/components/storefront/storefront-tab-loading';
 import { StorefrontShareButton } from '@/components/storefront/storefront-share-button';
 import { useFavoritesStore } from '@/stores/favorites-store';
+
+type StorefrontMoreStoreInfo = Omit<StoreInfoSheetProps, 'trigger'>;
 
 interface StorefrontMoreProps {
   storeId: string;
@@ -27,9 +30,14 @@ interface StorefrontMoreProps {
   storeName: string;
   logoUrl: string | null;
   logoAssetId: string | null;
-  offerCount: number;
-  hasVerifiedConsumer: boolean;
-  storeInfo: Omit<StoreInfoSheetProps, 'trigger'>;
+  shareUrl: string;
+  offerCount: number | Promise<number>;
+  hasVerifiedConsumer: boolean | Promise<boolean>;
+  storeInfo: StorefrontMoreStoreInfo | Promise<StorefrontMoreStoreInfo>;
+}
+
+function useStreamedValue<T>(value: T | Promise<T>): T {
+  return value instanceof Promise ? use(value) : value;
 }
 
 function MoreSectionHeader({
@@ -118,12 +126,99 @@ function FavoritesLink({ storeId, href }: { storeId: string; href: string }) {
   );
 }
 
+function OffersLink({
+  offerCount,
+  catalogHref,
+}: {
+  offerCount: number | Promise<number>;
+  catalogHref: string;
+}) {
+  const count = useStreamedValue(offerCount);
+
+  return (
+    <Link
+      href={count > 0 ? `${catalogHref}#ofertas` : catalogHref}
+      className="storefront-more-row storefront-content-arrival"
+      aria-label={
+        count > 0
+          ? `Ofertas e cupons, ${count} ${count === 1 ? 'oferta disponível' : 'ofertas disponíveis'}`
+          : 'Ofertas e cupons, ver cardápio'
+      }
+    >
+      <MoreRowContent
+        icon={Ticket}
+        title="Ofertas e cupons"
+        description={count > 0 ? 'Veja benefícios disponíveis' : 'Confira o cardápio da loja'}
+        badge={
+          count > 0 ? (
+            <span className="storefront-more-count" aria-hidden="true">
+              {count > 99 ? '99+' : count}
+            </span>
+          ) : undefined
+        }
+      />
+    </Link>
+  );
+}
+
+function StoreInfoRow({
+  storeInfo,
+}: {
+  storeInfo: StorefrontMoreStoreInfo | Promise<StorefrontMoreStoreInfo>;
+}) {
+  const info = useStreamedValue(storeInfo);
+
+  return (
+    <StoreInfoSheet
+      {...info}
+      trigger={
+        <button type="button" className="storefront-more-row storefront-content-arrival">
+          <MoreRowContent
+            icon={Store}
+            title="Sobre a loja"
+            description="Horários, entrega e endereço"
+          />
+        </button>
+      }
+    />
+  );
+}
+
+function VerifiedConsumerSection({
+  hasVerifiedConsumer,
+  catalogHref,
+}: {
+  hasVerifiedConsumer: boolean | Promise<boolean>;
+  catalogHref: string;
+}) {
+  if (!useStreamedValue(hasVerifiedConsumer)) return null;
+
+  return (
+    <section
+      className="storefront-more-group storefront-content-arrival"
+      aria-labelledby="more-your-data"
+    >
+      <MoreSectionHeader icon={UserRound} id="more-your-data" title="Seus dados" />
+      <div className="storefront-more-list">
+        <Link href={`${catalogHref}/account/addresses`} className="storefront-more-row">
+          <MoreRowContent
+            icon={MapPin}
+            title="Meus endereços"
+            description="Gerencie seus endereços de entrega"
+          />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export function StorefrontMore({
   storeId,
   storeSlug,
   storeName,
   logoUrl,
   logoAssetId,
+  shareUrl,
   offerCount,
   hasVerifiedConsumer,
   storeInfo,
@@ -131,7 +226,7 @@ export function StorefrontMore({
   const catalogHref = `/${storeSlug}`;
 
   return (
-    <main className="storefront-more-main">
+    <main className="storefront-more-main storefront-content-arrival">
       <header className="storefront-more-header">
         <Link
           href={catalogHref}
@@ -162,30 +257,9 @@ export function StorefrontMore({
         <MoreSectionHeader icon={UserRound} id="more-for-you" title="Para você" />
         <div className="storefront-more-list">
           <FavoritesLink storeId={storeId} href={`${catalogHref}/favorites`} />
-          <Link
-            href={offerCount > 0 ? `${catalogHref}#ofertas` : catalogHref}
-            className="storefront-more-row"
-            aria-label={
-              offerCount > 0
-                ? `Ofertas e cupons, ${offerCount} ${offerCount === 1 ? 'oferta disponível' : 'ofertas disponíveis'}`
-                : 'Ofertas e cupons, ver cardápio'
-            }
-          >
-            <MoreRowContent
-              icon={Ticket}
-              title="Ofertas e cupons"
-              description={
-                offerCount > 0 ? 'Veja benefícios disponíveis' : 'Confira o cardápio da loja'
-              }
-              badge={
-                offerCount > 0 ? (
-                  <span className="storefront-more-count" aria-hidden="true">
-                    {offerCount > 99 ? '99+' : offerCount}
-                  </span>
-                ) : undefined
-              }
-            />
-          </Link>
+          <Suspense fallback={<StorefrontMoreRowLoading label="Carregando ofertas…" />}>
+            <OffersLink offerCount={offerCount} catalogHref={catalogHref} />
+          </Suspense>
           <div className="storefront-more-row is-disabled" aria-disabled="true">
             <MoreRowContent
               icon={Gift}
@@ -201,21 +275,12 @@ export function StorefrontMore({
       <section className="storefront-more-group" aria-labelledby="more-store">
         <MoreSectionHeader icon={Store} id="more-store" title="A loja" />
         <div className="storefront-more-list">
-          <StoreInfoSheet
-            {...storeInfo}
-            trigger={
-              <button type="button" className="storefront-more-row">
-                <MoreRowContent
-                  icon={Store}
-                  title="Sobre a loja"
-                  description="Horários, entrega e endereço"
-                />
-              </button>
-            }
-          />
+          <Suspense fallback={<StorefrontMoreRowLoading label="Carregando informações da loja…" />}>
+            <StoreInfoRow storeInfo={storeInfo} />
+          </Suspense>
           <StorefrontShareButton
             storeName={storeName}
-            shareUrl={storeInfo.shareUrl}
+            shareUrl={shareUrl}
             className="storefront-more-row"
             ariaLabel={`Compartilhar loja ${storeName}`}
           >
@@ -228,20 +293,12 @@ export function StorefrontMore({
         </div>
       </section>
 
-      {hasVerifiedConsumer && (
-        <section className="storefront-more-group" aria-labelledby="more-your-data">
-          <MoreSectionHeader icon={UserRound} id="more-your-data" title="Seus dados" />
-          <div className="storefront-more-list">
-            <Link href={`${catalogHref}/account/addresses`} className="storefront-more-row">
-              <MoreRowContent
-                icon={MapPin}
-                title="Meus endereços"
-                description="Gerencie seus endereços de entrega"
-              />
-            </Link>
-          </div>
-        </section>
-      )}
+      <Suspense fallback={null}>
+        <VerifiedConsumerSection
+          hasVerifiedConsumer={hasVerifiedConsumer}
+          catalogHref={catalogHref}
+        />
+      </Suspense>
 
       <aside className="storefront-more-callout" aria-labelledby="more-callout-title">
         <span className="storefront-more-callout-icon" aria-hidden="true">

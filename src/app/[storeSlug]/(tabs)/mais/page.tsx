@@ -62,13 +62,13 @@ export default async function MorePage({ params }: MorePageProps) {
   if (!store) notFound();
   if (store.slug !== storeSlug) redirect(`/${store.slug}/mais`);
 
-  const [deliveryZones, offers, verifiedConsumer] = await Promise.all([
-    store.settings?.deliveryEnabled ? getPublicDeliveryZones(store.id) : Promise.resolve([]),
-    getPublicOffers(store.id, store.tenantId, store.timeZone),
-    hasVerifiedConsumer(store.slug),
-  ]);
-  const minDeliveryFee =
-    deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
+  const deliveryZonesPromise = store.settings?.deliveryEnabled
+    ? getPublicDeliveryZones(store.id)
+    : Promise.resolve([]);
+  const offerCountPromise = getPublicOffers(store.id, store.tenantId, store.timeZone).then(
+    (offers) => offers.length,
+  );
+  const verifiedConsumerPromise = hasVerifiedConsumer(store.slug);
   const fullAddress =
     store.address && 'street' in store.address
       ? {
@@ -89,6 +89,38 @@ export default async function MorePage({ params }: MorePageProps) {
   });
   const logoUrl = store.customization.assets.logo?.url ?? store.logoUrl;
   const logoAssetId = store.customization.assets.logo?.id ?? null;
+  const storeInfoPromise = deliveryZonesPromise.then((deliveryZones) => {
+    const minDeliveryFee =
+      deliveryZones.length > 0 ? Math.min(...deliveryZones.map((zone) => zone.fee)) : null;
+
+    return {
+      name: store.name,
+      description: store.description,
+      slogan: config.identity.slogan,
+      aboutText: config.identity.aboutText,
+      logoUrl,
+      logoAssetId,
+      availability: store.availability,
+      estimatedTime: store.settings
+        ? formatStorefrontEstimate(
+            store.settings.estimatedTimeMinMinutes,
+            store.settings.estimatedTimeMaxMinutes,
+          )
+        : null,
+      minOrderValue: store.settings?.minOrderValue ?? null,
+      deliveryEnabled: Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0),
+      pickupEnabled: Boolean(store.settings?.pickupEnabled),
+      minDeliveryFee,
+      openingHours: store.openingHours,
+      address: fullAddress,
+      acceptsPix: Boolean(store.settings?.acceptsPix),
+      acceptsCash: Boolean(store.settings?.acceptsCash),
+      acceptsCardOnDelivery: Boolean(store.settings?.acceptsCardOnDelivery),
+      phone: store.phone,
+      whatsapp: store.whatsapp,
+      shareUrl,
+    };
+  });
 
   return (
     <>
@@ -98,35 +130,10 @@ export default async function MorePage({ params }: MorePageProps) {
         storeName={store.name}
         logoUrl={logoUrl}
         logoAssetId={logoAssetId}
-        offerCount={offers.length}
-        hasVerifiedConsumer={verifiedConsumer}
-        storeInfo={{
-          name: store.name,
-          description: store.description,
-          slogan: config.identity.slogan,
-          aboutText: config.identity.aboutText,
-          logoUrl,
-          logoAssetId,
-          availability: store.availability,
-          estimatedTime: store.settings
-            ? formatStorefrontEstimate(
-                store.settings.estimatedTimeMinMinutes,
-                store.settings.estimatedTimeMaxMinutes,
-              )
-            : null,
-          minOrderValue: store.settings?.minOrderValue ?? null,
-          deliveryEnabled: Boolean(store.settings?.deliveryEnabled && deliveryZones.length > 0),
-          pickupEnabled: Boolean(store.settings?.pickupEnabled),
-          minDeliveryFee,
-          openingHours: store.openingHours,
-          address: fullAddress,
-          acceptsPix: Boolean(store.settings?.acceptsPix),
-          acceptsCash: Boolean(store.settings?.acceptsCash),
-          acceptsCardOnDelivery: Boolean(store.settings?.acceptsCardOnDelivery),
-          phone: store.phone,
-          whatsapp: store.whatsapp,
-          shareUrl,
-        }}
+        shareUrl={shareUrl}
+        offerCount={offerCountPromise}
+        hasVerifiedConsumer={verifiedConsumerPromise}
+        storeInfo={storeInfoPromise}
       />
     </>
   );
