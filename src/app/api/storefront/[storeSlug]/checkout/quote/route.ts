@@ -5,6 +5,7 @@ import { getPublicStoreScopeBySlug } from '@/server/queries/public-store';
 import { getRateLimiter, RATE_LIMITS } from '@/server/rate-limit';
 import { isDeployedRuntime } from '@/server/runtime-environment';
 import {
+  applyAuthorizedLoyaltyReward,
   calculateCheckoutQuote,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
@@ -13,6 +14,11 @@ import {
   resolveRecognitionAddressReference,
   type ResolvedRecognitionAddress,
 } from '@/server/services/customer-recognition.service';
+import {
+  CONSUMER_SESSION_COOKIE,
+  hashConsumerSecret,
+  isConsumerSecret,
+} from '@/server/services/consumer-auth.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,10 +128,12 @@ export async function POST(
       );
     }
 
-    const scope = parsed.data.savedAddressReference
-      ? await getPublicStoreScopeBySlug(storeSlug)
-      : null;
-    if (parsed.data.savedAddressReference && !scope) throw new NotFoundError('Loja');
+    const scope =
+      parsed.data.savedAddressReference || parsed.data.loyaltyRewardId
+        ? await getPublicStoreScopeBySlug(storeSlug)
+        : null;
+    if ((parsed.data.savedAddressReference || parsed.data.loyaltyRewardId) && !scope)
+      throw new NotFoundError('Loja');
 
     const browserToken = parsed.data.savedAddressReference
       ? readCookie(request, getRecognitionCookieName())
@@ -143,12 +151,52 @@ export async function POST(
           });
         }
 
-        return calculateCheckoutQuote(storeSlug, parsed.data, {
+        const baseQuote = await calculateCheckoutQuote(storeSlug, parsed.data, {
           client: transaction,
           savedAddress: savedAddress
             ? { ...savedAddress.address, mappedDeliveryZoneId: savedAddress.mappedDeliveryZoneId }
             : null,
         });
+        if (!baseQuote || !parsed.data.loyaltyRewardId || !scope) return baseQuote;
+        const sessionToken = readCookie(request, CONSUMER_SESSION_COOKIE);
+        if (!isConsumerSecret(sessionToken)) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Confirme seu acesso para usar o benefício.',
+            409,
+          );
+        }
+        const session = await transaction.consumerSession.findFirst({
+          where: {
+            tokenHash: await hashConsumerSecret(sessionToken),
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+            consumerIdentity: { customers: { some: { tenantId: scope.tenantId } } },
+          },
+          select: { consumerIdentityId: true },
+        });
+        if (!session) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Sua conta expirou. Confirme o acesso novamente.',
+            409,
+          );
+        }
+        const reward = await transaction.loyaltyReward.findFirst({
+          where: {
+            id: parsed.data.loyaltyRewardId,
+            tenantId: scope.tenantId,
+            storeId: scope.id,
+            consumerIdentityId: session.consumerIdentityId,
+            status: 'AVAILABLE',
+            store: { entitlement: { loyaltyEnabled: true } },
+          },
+          select: { id: true, value: true, minimumOrderValue: true },
+        });
+        if (!reward) {
+          throw new CheckoutError('CART_INVALID', 'Este benefício não está mais disponível.', 409);
+        }
+        return applyAuthorizedLoyaltyReward(baseQuote, reward);
       },
       {
         isolationLevel: 'ReadCommitted',

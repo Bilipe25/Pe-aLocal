@@ -65,6 +65,7 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   automaticDiscount: number;
   couponDiscount: number;
   manualDiscount: number;
+  loyaltyDiscount?: number;
   adjustments: CheckoutQuoteAdjustmentDto[];
   offerGroups: CheckoutQuoteOfferGroupDto[];
 }
@@ -111,6 +112,7 @@ export function assertQuoteFinancialInvariants(quote: {
   automaticDiscount: number;
   couponDiscount: number;
   manualDiscount?: number;
+  loyaltyDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;
@@ -181,6 +183,7 @@ export function applyAuthorizedPosManualDiscount(
     automaticDiscount: quote.automaticDiscount,
     couponDiscount: quote.couponDiscount,
     manualDiscount: amount,
+    loyaltyDiscount: quote.loyaltyDiscount,
     discount,
     deliveryFee: quote.deliveryFee,
     total,
@@ -205,6 +208,78 @@ export function applyAuthorizedPosManualDiscount(
     quoteFingerprint,
     adjustments,
     manualDiscount: amount,
+    loyaltyDiscount: quote.loyaltyDiscount,
+    discount,
+    total,
+  };
+}
+
+/** Aplica um benefício já autenticado. Fidelidade e cupom não acumulam na V1. */
+export function applyAuthorizedLoyaltyReward(
+  quote: ResolvedCheckoutQuote,
+  reward: { id: string; value: number; minimumOrderValue: number },
+): ResolvedCheckoutQuote {
+  if (quote.couponDiscount > 0 || quote.coupon) {
+    throw new CheckoutError(
+      'COUPON_INVALID',
+      'Use o cupom ou o benefício de fidelidade. Os dois não acumulam.',
+      422,
+    );
+  }
+  if (quote.subtotal < reward.minimumOrderValue) {
+    throw new CheckoutError(
+      'CART_INVALID',
+      `Este benefício vale em pedidos de itens a partir de R$ ${(reward.minimumOrderValue / 100).toFixed(2).replace('.', ',')}.`,
+      422,
+    );
+  }
+  const eligibleSubtotal = Math.max(0, quote.subtotal - quote.automaticDiscount);
+  const amount = Math.min(reward.value, eligibleSubtotal);
+  if (amount <= 0) {
+    throw new CheckoutError('CART_INVALID', 'Não há valor de itens elegível para este benefício.');
+  }
+  const adjustments: CheckoutQuoteAdjustmentDto[] = [
+    ...quote.adjustments,
+    {
+      type: 'LOYALTY',
+      sourceId: reward.id,
+      sourceVersion: null,
+      label: 'Benefício de fidelidade',
+      amount,
+    },
+  ];
+  const discount = safeAdd(quote.discount, amount);
+  const total = quote.total - amount;
+  assertQuoteFinancialInvariants({
+    subtotal: quote.subtotal,
+    automaticDiscount: quote.automaticDiscount,
+    couponDiscount: quote.couponDiscount,
+    manualDiscount: quote.manualDiscount,
+    loyaltyDiscount: amount,
+    discount,
+    deliveryFee: quote.deliveryFee,
+    total,
+    adjustments,
+    offerGroups: quote.offerGroups,
+  });
+  const quoteFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        baseQuoteFingerprint: quote.quoteFingerprint,
+        loyaltyRewardId: reward.id,
+        loyaltyValue: reward.value,
+        minimumOrderValue: reward.minimumOrderValue,
+        eligibleSubtotal,
+        amount,
+        total,
+      }),
+    )
+    .digest('hex');
+  return {
+    ...quote,
+    quoteFingerprint,
+    adjustments,
+    loyaltyDiscount: amount,
     discount,
     total,
   };
@@ -1410,6 +1485,7 @@ export async function calculateCheckoutQuote(
     automaticDiscount,
     couponDiscount,
     manualDiscount: 0,
+    loyaltyDiscount: 0,
     discount,
     deliveryFee,
     total,
@@ -1451,6 +1527,7 @@ export async function calculateCheckoutQuote(
     automaticDiscount,
     couponDiscount,
     manualDiscount: 0,
+    loyaltyDiscount: 0,
     discount,
     deliveryFee,
     total,

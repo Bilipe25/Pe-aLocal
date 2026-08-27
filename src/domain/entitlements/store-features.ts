@@ -1,4 +1,11 @@
 export const STORE_FEATURE_DEFINITIONS = {
+  loyalty: {
+    key: 'loyalty',
+    label: 'Fidelidade — Volte e ganhe',
+    description: 'A cada alguns pedidos concluídos, o cliente recebe um desconto da loja.',
+    entitlementField: 'loyaltyEnabled',
+    implementationStatus: 'AVAILABLE',
+  },
   consumerConvenienceV2: {
     key: 'consumerConvenienceV2',
     label: 'Recompra e conveniência V2',

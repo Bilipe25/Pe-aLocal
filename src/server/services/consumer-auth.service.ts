@@ -29,6 +29,7 @@ import {
   hashStorefrontDeviceToken,
   isStorefrontDeviceToken,
 } from '@/server/services/customer-device-recognition.service';
+import { processClaimedDeliveredOrders } from '@/server/services/loyalty.service';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const SESSION_ACTIVITY_TOUCH_MS = 24 * 60 * 60 * 1_000;
@@ -708,13 +709,36 @@ export async function verifyConsumerCode(input: {
           attemptCount: { increment: 1 },
         },
       });
-      return { invalid: false as const, linked: Boolean(customer), customerName };
+      return {
+        invalid: false as const,
+        linked: Boolean(customer),
+        customerName,
+        loyaltyClaim: customer
+          ? { tenantId: current.tenantId, storeId: current.storeId, customerId: customer.id }
+          : null,
+      };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
 
   if (result.invalid) throw new AuthenticationError('O código informado é inválido ou expirou.');
-  return { sessionToken, expiresAt: sessionExpiresAt, ...result };
+  if (result.loyaltyClaim) {
+    try {
+      await getDb().$transaction((tx) => processClaimedDeliveredOrders(tx, result.loyaltyClaim!));
+    } catch (error) {
+      console.error('[LOYALTY_SAFE_CLAIM_FAILED]', {
+        storeId: result.loyaltyClaim.storeId,
+        error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+      });
+    }
+  }
+  return {
+    sessionToken,
+    expiresAt: sessionExpiresAt,
+    invalid: result.invalid,
+    linked: result.linked,
+    customerName: result.customerName,
+  };
 }
 
 export async function getCurrentConsumer(input: {

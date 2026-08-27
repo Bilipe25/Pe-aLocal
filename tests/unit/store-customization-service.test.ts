@@ -193,6 +193,7 @@ describe('StoreCustomizationService', () => {
       posEnabled: false,
       consumerIdentityEnabled: false,
       consumerConvenienceV2Enabled: false,
+      loyaltyEnabled: false,
     });
     expect(result.entitlement).not.toHaveProperty('id');
     expect(result.entitlement).not.toHaveProperty('tenantId');

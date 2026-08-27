@@ -86,7 +86,15 @@ function resetFavoritesStorage() {
   useFavoritesStore.setState({ storeId: null, productIds: [] });
 }
 
-function renderMore(hasVerifiedConsumer = false, offerCount = 0) {
+function renderMore(
+  hasVerifiedConsumer = false,
+  offerCount = 0,
+  loyaltyState: {
+    progress: number;
+    requiredOrders: number;
+    availableRewards: number;
+  } | null = null,
+) {
   return render(
     <div className="storefront-theme">
       <StorefrontMore
@@ -99,6 +107,7 @@ function renderMore(hasVerifiedConsumer = false, offerCount = 0) {
         offerCount={offerCount}
         hasVerifiedConsumer={hasVerifiedConsumer}
         storeInfo={storeInfo}
+        loyaltyState={loyaltyState}
       />
     </div>,
   );
@@ -127,14 +136,23 @@ describe('hub Mais do storefront', () => {
       'href',
       '/sabor-da-vila',
     );
-    expect(screen.getByText('Fidelidade').closest('a, button')).toBeNull();
-    expect(screen.getByText('Fidelidade').closest('[aria-disabled="true"]')).toBeVisible();
+    expect(screen.queryByText('Fidelidade')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sobre a loja/ })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Compartilhar loja Sabor da Vila' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Seus dados' })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Favoritos, nenhum produto salvo' })).toBeVisible(),
     );
+  });
+
+  it('mostra a fidelidade somente quando o programa está ativo', () => {
+    renderMore(true, 0, { progress: 4, requiredOrders: 5, availableRewards: 0 });
+
+    expect(screen.getByRole('link', { name: /Fidelidade/ })).toHaveAttribute(
+      'href',
+      '/sabor-da-vila/loyalty',
+    );
+    expect(screen.getByText('4 de 5 pedidos')).toBeVisible();
   });
 
   it('mostra Meus endereços somente para consumidor verificado', () => {

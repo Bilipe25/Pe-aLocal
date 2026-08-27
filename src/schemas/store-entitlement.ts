@@ -35,6 +35,7 @@ export const storeEntitlementInputSchema = z
     posEnabled: z.boolean().default(false),
     consumerIdentityEnabled: z.boolean().default(false),
     consumerConvenienceV2Enabled: z.boolean().default(false),
+    loyaltyEnabled: z.boolean().default(false),
   })
   .strict()
   .superRefine((value, context) => {
@@ -42,6 +43,13 @@ export const storeEntitlementInputSchema = z
       context.addIssue({
         code: 'custom',
         path: ['consumerConvenienceV2Enabled'],
+        message: 'requer Conta do cliente e Clientes',
+      });
+    }
+    if (value.loyaltyEnabled && !value.consumerIdentityEnabled) {
+      context.addIssue({
+        code: 'custom',
+        path: ['loyaltyEnabled'],
         message: 'requer Conta do cliente e Clientes',
       });
     }

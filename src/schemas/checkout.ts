@@ -81,6 +81,7 @@ const checkoutCartShape = {
 
 const checkoutQuoteShape = {
   modality: z.enum(['DELIVERY', 'PICKUP']),
+  loyaltyRewardId: z.guid().optional(),
   // O PostgreSQL aceita UUIDs legados sem bits RFC 4122 (usados pelo seed).
   // A consulta autoritativa ainda limita a zona por tenant e loja.
   deliveryZoneId: z.guid().optional(),
@@ -219,7 +220,11 @@ const authenticatedCheckoutSchema = z
 
 export const checkoutSchema = addQuoteRefinements(
   z
-    .discriminatedUnion('identityMode', [visitorCheckoutSchema, recognizedCheckoutSchema, authenticatedCheckoutSchema])
+    .discriminatedUnion('identityMode', [
+      visitorCheckoutSchema,
+      recognizedCheckoutSchema,
+      authenticatedCheckoutSchema,
+    ])
     .superRefine((data, ctx) => {
       if (data.identityMode === 'VISITOR' && data.savedAddressReference) {
         ctx.addIssue({

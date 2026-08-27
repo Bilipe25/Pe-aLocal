@@ -266,7 +266,8 @@ export type CheckoutQuoteAdjustmentType =
   | 'CART_DISCOUNT'
   | 'FREE_DELIVERY'
   | 'COUPON'
-  | 'MANUAL_DISCOUNT';
+  | 'MANUAL_DISCOUNT'
+  | 'LOYALTY';
 
 export interface CheckoutQuoteAdjustmentDto {
   type: CheckoutQuoteAdjustmentType;
@@ -294,6 +295,7 @@ export interface CheckoutQuoteDto {
   automaticDiscount?: number;
   couponDiscount?: number;
   manualDiscount?: number;
+  loyaltyDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;

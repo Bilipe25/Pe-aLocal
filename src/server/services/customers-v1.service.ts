@@ -8,6 +8,7 @@ import { AuthorizationError, NotFoundError } from '@/server/errors';
 import { isTenantAdmin, Permission } from '@/server/permissions';
 import { requireActiveStoreContext } from '@/server/services/store-context.service';
 import { getCustomerRepurchaseShortcuts } from '@/server/services/consumer-repurchase.service';
+import { getCustomerLoyaltySummary } from '@/server/services/loyalty.service';
 
 export type CustomerClassification = 'NEW' | 'RECURRING' | 'LAPSED' | null;
 
@@ -148,7 +149,7 @@ export async function getCustomerProfileV1(customerId: string) {
       tenantId: context.session.tenantId,
       orders: { some: { tenantId: context.session.tenantId, storeId: context.store.id } },
     },
-    select: { id: true, name: true, phone: true, phoneNormalized: true },
+    select: { id: true, name: true, phone: true, phoneNormalized: true, consumerIdentityId: true },
   });
   if (!customer) throw new NotFoundError('Cliente');
   const result = await listCustomersV1({ search: customer.phoneNormalized, page: 1 });
@@ -198,5 +199,12 @@ export async function getCustomerProfileV1(customerId: string) {
     if (row) mostOrdered = { productName: row.productName, orderCount: Number(row.orderCount) };
     repurchase = shortcuts;
   }
-  return { customer, metrics: metrics ?? null, orders, mostOrdered, repurchase };
+  const loyalty = context.store.entitlement?.loyaltyEnabled
+    ? await getCustomerLoyaltySummary({
+        tenantId: context.session.tenantId,
+        storeId: context.store.id,
+        consumerIdentityId: customer.consumerIdentityId,
+      })
+    : null;
+  return { customer, metrics: metrics ?? null, orders, mostOrdered, repurchase, loyalty };
 }

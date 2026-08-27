@@ -7,6 +7,10 @@ import {
   type OrderOutboxQueueMessage,
 } from '@/domain/orders/order-events';
 import type { OrderEventPublisher } from '@/lib/pusher/order-event-publisher';
+import {
+  processLoyaltyForOrder,
+  restoreLoyaltyRewardForCancelledOrder,
+} from '@/server/services/loyalty.service';
 
 export const OUTBOX_MAX_ATTEMPTS = 5;
 const CLAIM_TIMEOUT_MS = 2 * 60 * 1_000;
@@ -111,6 +115,23 @@ export async function processOrderOutboxMessage(
     const payload = orderEventPayloadSchema.parse(current.payload);
     if (payload.orderId !== current.orderId || payload.version !== current.aggregateVersion) {
       throw new Error('Order event payload does not match its outbox aggregate.');
+    }
+    if (current.eventType === 'ORDER_COMPLETED') {
+      await db.$transaction((tx) =>
+        processLoyaltyForOrder(tx, {
+          tenantId: current.tenantId,
+          storeId: current.storeId,
+          orderId: current.orderId,
+        }),
+      );
+    } else if (current.eventType === 'ORDER_CANCELLED') {
+      await db.$transaction((tx) =>
+        restoreLoyaltyRewardForCancelledOrder(tx, {
+          tenantId: current.tenantId,
+          storeId: current.storeId,
+          orderId: current.orderId,
+        }),
+      );
     }
     await publisher.publish({
       id: current.id,

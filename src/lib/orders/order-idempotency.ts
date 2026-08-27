@@ -88,6 +88,7 @@ export function canonicalizeCheckoutForIdempotency(
     addressLabel: standard?.addressLabel ?? null,
     setAddressAsDefault: standard?.setAddressAsDefault ?? false,
     couponCode: input.couponCode ?? null,
+    loyaltyRewardId: standard?.loyaltyRewardId ?? null,
     paymentMethod: input.paymentMethod,
     payerEmail: input.payerEmail?.trim().toLowerCase() ?? null,
     changeFor: standard?.changeFor ?? null,

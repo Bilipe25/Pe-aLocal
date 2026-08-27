@@ -14,6 +14,7 @@ import {
   CONSUMER_SESSION_COOKIE,
   requireConsumerForStore,
 } from '@/server/services/consumer-auth.service';
+import { getConsumerLoyaltyState } from '@/server/services/loyalty.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,30 @@ async function hasVerifiedConsumer(storeSlug: string) {
   }
 }
 
+async function getMoreLoyaltyState(store: { id: string; tenantId: string; slug: string }) {
+  const sessionToken = (await cookies()).get(CONSUMER_SESSION_COOKIE)?.value;
+  let identityId: string | null = null;
+  if (sessionToken) {
+    try {
+      const verified = await requireConsumerForStore({ storeSlug: store.slug, sessionToken });
+      identityId = verified.consumer.identityId;
+    } catch (error) {
+      if (!(error instanceof AuthenticationError) && !(error instanceof NotFoundError)) throw error;
+    }
+  }
+  const state = await getConsumerLoyaltyState({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    consumerIdentityId: identityId,
+  });
+  if (!state) return null;
+  return {
+    progress: state.cycle?.progress ?? 0,
+    requiredOrders: state.cycle?.requiredOrders ?? state.program.requiredOrders,
+    availableRewards: state.rewards.length,
+  };
+}
+
 export default async function MorePage({ params }: MorePageProps) {
   const { storeSlug } = await params;
   const store = await getPublicStoreBySlug(storeSlug);
@@ -69,6 +94,7 @@ export default async function MorePage({ params }: MorePageProps) {
     (offers) => offers.length,
   );
   const verifiedConsumerPromise = hasVerifiedConsumer(store.slug);
+  const loyaltyStatePromise = getMoreLoyaltyState(store);
   const fullAddress =
     store.address && 'street' in store.address
       ? {
@@ -134,6 +160,7 @@ export default async function MorePage({ params }: MorePageProps) {
         offerCount={offerCountPromise}
         hasVerifiedConsumer={verifiedConsumerPromise}
         storeInfo={storeInfoPromise}
+        loyaltyState={loyaltyStatePromise}
       />
     </>
   );

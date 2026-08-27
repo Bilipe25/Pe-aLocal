@@ -59,6 +59,7 @@ const input: StoreEntitlementInput = {
   posEnabled: false,
   consumerIdentityEnabled: false,
   consumerConvenienceV2Enabled: false,
+  loyaltyEnabled: false,
 };
 
 const current = {

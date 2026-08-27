@@ -250,6 +250,19 @@ enum OrderPriceAdjustmentType {
   FREE_DELIVERY
   COUPON
   MANUAL_DISCOUNT
+  LOYALTY
+}
+
+enum LoyaltyCycleStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum LoyaltyRewardStatus {
+  AVAILABLE
+  RESERVED
+  REDEEMED
+  CANCELLED
 }
 
 enum PosDraftStatus {
@@ -510,6 +523,7 @@ model User {
   posDraftsCreated          PosDraft[]                    @relation("PosDraftCreatedBy")
   posDiscountsApplied       PosManualDiscountLedger[]     @relation("PosManualDiscountAppliedBy")
   posDiscountsAuthorized    PosManualDiscountLedger[]     @relation("PosManualDiscountAuthorizedBy")
+  loyaltyProgramsCreated    LoyaltyProgram[]               @relation("LoyaltyProgramCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -586,6 +600,10 @@ model Tenant {
   posManualDiscounts             PosManualDiscountLedger[]
   consumerVerificationChallenges ConsumerVerificationChallenge[]
   consumerFavorites              ConsumerFavorite[]
+  loyaltyPrograms                LoyaltyProgram[]
+  loyaltyCycles                  LoyaltyCycle[]
+  loyaltyContributions           LoyaltyContribution[]
+  loyaltyRewards                 LoyaltyReward[]
 
   @@map("tenants")
 }
@@ -685,6 +703,10 @@ model Store {
   posTerminals                   StorePosTerminal[]
   posShortcuts                   StorePosShortcut[]
   posManualDiscounts             PosManualDiscountLedger[]
+  loyaltyPrograms                LoyaltyProgram[]
+  loyaltyCycles                  LoyaltyCycle[]
+  loyaltyContributions           LoyaltyContribution[]
+  loyaltyRewards                 LoyaltyReward[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -917,6 +939,7 @@ model StoreEntitlement {
   posEnabled                     Boolean   @default(false)
   consumerIdentityEnabled        Boolean   @default(false)
   consumerConvenienceV2Enabled   Boolean   @default(false)
+  loyaltyEnabled                 Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1556,6 +1579,9 @@ model ConsumerIdentity {
   challenges          ConsumerVerificationChallenge[]
   favorites           ConsumerFavorite[]
   emailChangeRequests ConsumerEmailChangeRequest[]
+  loyaltyCycles       LoyaltyCycle[]
+  loyaltyRewards      LoyaltyReward[]
+  loyaltyContributions LoyaltyContribution[]
 
   @@index([phoneVerifiedAt])
   @@index([emailVerifiedAt])
@@ -2034,6 +2060,8 @@ model Order {
   convertedPosDrafts             PosDraft[]                      @relation("PosDraftConvertedOrder")
   posManualDiscount              PosManualDiscountLedger?
   consumerVerificationChallenges ConsumerVerificationChallenge[]
+  loyaltyContribution            LoyaltyContribution?
+  loyaltyReward                   LoyaltyReward?                   @relation("LoyaltyRewardOrder")
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -2062,6 +2090,111 @@ model Order {
   @@index([storeId, origin, createdAt, id])
   @@index([posTerminalId, tenantId, storeId])
   @@map("orders")
+}
+
+model LoyaltyProgram {
+  id                String   @id @default(uuid())
+  tenantId          String
+  storeId           String
+  version           Int
+  requiredOrders    Int
+  rewardValue       Int
+  minimumOrderValue Int      @default(0)
+  isActive          Boolean  @default(false)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdBy     User?                 @relation("LoyaltyProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cycles        LoyaltyCycle[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, version])
+  @@index([tenantId, storeId, isActive, version])
+  @@index([createdById])
+  @@map("loyalty_programs")
+}
+
+model LoyaltyCycle {
+  id                 String             @id @default(uuid())
+  tenantId           String
+  storeId            String
+  consumerIdentityId String
+  programId          String
+  programVersion     Int
+  requiredOrders     Int
+  rewardValue        Int
+  minimumOrderValue  Int
+  progress           Int                @default(0)
+  status             LoyaltyCycleStatus @default(ACTIVE)
+  startedAt          DateTime           @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  consumerIdentity  ConsumerIdentity      @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  program           LoyaltyProgram        @relation(fields: [programId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  contributions     LoyaltyContribution[]
+  reward            LoyaltyReward?
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, consumerIdentityId, status, startedAt])
+  @@map("loyalty_cycles")
+}
+
+model LoyaltyContribution {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  storeId            String
+  consumerIdentityId String
+  cycleId            String
+  orderId            String
+  createdAt          DateTime @default(now())
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  cycle            LoyaltyCycle     @relation(fields: [cycleId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  order            Order            @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([orderId, tenantId, storeId])
+  @@index([tenantId, storeId, consumerIdentityId, createdAt])
+  @@map("loyalty_contributions")
+}
+
+model LoyaltyReward {
+  id                 String              @id @default(uuid())
+  tenantId           String
+  storeId            String
+  consumerIdentityId String
+  cycleId            String
+  value              Int
+  minimumOrderValue  Int
+  status             LoyaltyRewardStatus @default(AVAILABLE)
+  orderId            String?
+  reservedAt         DateTime?
+  redeemedAt         DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  cycle            LoyaltyCycle     @relation(fields: [cycleId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  order            Order?           @relation("LoyaltyRewardOrder", fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([id, tenantId, storeId])
+  @@unique([cycleId, tenantId, storeId])
+  @@unique([orderId, tenantId, storeId])
+  @@index([tenantId, storeId, consumerIdentityId, status, createdAt])
+  @@index([tenantId, storeId, status, createdAt])
+  @@map("loyalty_rewards")
 }
 
 model OrderInternalNote {

@@ -255,6 +255,7 @@ export interface CheckoutFormProps {
       zipCode: string | null;
     } | null;
   };
+  availableLoyaltyReward?: { id: string; value: number; minimumOrderValue: number };
 }
 
 const STEPS: Array<{ id: CheckoutStep; label: string; shortLabel: string }> = [
@@ -395,6 +396,14 @@ function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
             <dt className="text-success">Desconto {quote.coupon?.code}</dt>
             <dd className="text-success font-mono">
               − {formatCurrency(quote.couponDiscount ?? quote.coupon?.discount ?? 0)}
+            </dd>
+          </div>
+        )}
+        {(quote.loyaltyDiscount ?? 0) > 0 && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-success">Benefício de fidelidade</dt>
+            <dd className="text-success font-mono">
+              − {formatCurrency(quote.loyaltyDiscount ?? 0)}
             </dd>
           </div>
         )}
@@ -612,6 +621,7 @@ export function CheckoutForm({
   automaticRecognitionManaged = false,
   automaticRecognitionBootstrap,
   initialAuthenticatedCustomer,
+  availableLoyaltyReward,
 }: CheckoutFormProps) {
   const router = useRouter();
   const items = useCartStore((state) => state.items);
@@ -632,6 +642,7 @@ export function CheckoutForm({
   } | null>(null);
   const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
+  const [applyLoyaltyReward, setApplyLoyaltyReward] = useState(false);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [acceptedChangedQuote, setAcceptedChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [recognizedCustomer, setRecognizedCustomer] = useState<RecognizedCustomer | null>(null);
@@ -774,11 +785,14 @@ export function CheckoutForm({
       savedAddressReference:
         modality === 'DELIVERY' && savedAddressReference ? savedAddressReference : undefined,
       couponCode: couponCode.trim() || undefined,
+      loyaltyRewardId: applyLoyaltyReward ? availableLoyaltyReward?.id : undefined,
       items: items.map(cartItemToCheckoutLine),
     };
   }, [
     activeStoreId,
     couponCode,
+    applyLoyaltyReward,
+    availableLoyaltyReward?.id,
     deliveryZoneId,
     items,
     modality,
@@ -1607,6 +1621,39 @@ export function CheckoutForm({
                   </p>
                 </div>
               </header>
+
+              {availableLoyaltyReward ? (
+                <div className="border-tinta/10 bg-kraft rounded-2xl border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-tinta font-bold">Seu benefício</p>
+                      <p className="storefront-action-text mt-1 font-mono text-xl font-bold">
+                        {formatCurrency(availableLoyaltyReward.value)} de fidelidade
+                      </p>
+                      <p className="text-text-muted mt-1 text-sm">
+                        {availableLoyaltyReward.minimumOrderValue > 0
+                          ? `Para pedidos de itens acima de ${formatCurrency(availableLoyaltyReward.minimumOrderValue)}.`
+                          : 'Sem pedido mínimo.'}
+                      </p>
+                    </div>
+                    <label className="flex min-h-11 shrink-0 items-center gap-2 text-sm font-semibold">
+                      <input
+                        type="checkbox"
+                        className="accent-pimenta h-5 w-5"
+                        checked={applyLoyaltyReward}
+                        disabled={Boolean(couponCode.trim())}
+                        onChange={(event) => setApplyLoyaltyReward(event.target.checked)}
+                      />
+                      Aplicar
+                    </label>
+                  </div>
+                  {couponCode.trim() ? (
+                    <p className="text-text-muted mt-3 text-sm">
+                      Remova o cupom na sacola para usar a fidelidade. Os dois não acumulam.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {identityMode === 'AUTHENTICATED' && initialAuthenticatedCustomer ? (
                 <div className="border-tinta/15 bg-papel rounded-2xl border p-4">
                   <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
