@@ -36,6 +36,7 @@ export interface AdminStoreEntitlementItem {
   consumerIdentityEnabled?: boolean;
   consumerConvenienceV2Enabled?: boolean;
   loyaltyEnabled?: boolean;
+  loyaltyAdvancedRewardsEnabled?: boolean;
 }
 
 export function StoreEntitlementsForm({

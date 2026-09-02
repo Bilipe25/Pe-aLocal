@@ -96,6 +96,11 @@ export default async function CustomerProfilePage({
               ? '1 benefício disponível'
               : `${result.loyalty.availableRewards} benefícios disponíveis`}
           </p>
+          <p className="text-text-secondary mt-1 text-sm">
+            {result.loyalty.usedRewards === 1
+              ? '1 benefício usado'
+              : `${result.loyalty.usedRewards} benefícios usados`}
+          </p>
         </section>
       ) : null}
       <section className="mt-7">

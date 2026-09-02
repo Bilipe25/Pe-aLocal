@@ -675,6 +675,83 @@ describe('checkout público v2', () => {
     },
   );
 
+  it('oferece a fidelidade somente na revisão e destaca a melhor opção', async () => {
+    const loyaltyQuote: CheckoutQuoteDto = {
+      ...quote,
+      loyaltyBenefits: [
+        {
+          id: 'reward-best',
+          type: 'FIXED_DISCOUNT',
+          title: 'R$ 10,00 de desconto',
+          savings: 1_000,
+          eligible: true,
+          reason: null,
+          expiresAt: null,
+          freeProductId: null,
+          recommended: true,
+        },
+        {
+          id: 'reward-other',
+          type: 'PERCENT_DISCOUNT',
+          title: '10% de desconto',
+          savings: 200,
+          eligible: true,
+          reason: null,
+          expiresAt: null,
+          freeProductId: null,
+          recommended: false,
+        },
+      ],
+      recommendedLoyaltyRewardId: 'reward-best',
+    };
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => loyaltyQuote });
+
+    const identification = renderCheckout({ loyaltyAdvancedEnabled: true });
+    expect(
+      screen.queryByRole('group', { name: 'Benefício de fidelidade' }),
+    ).not.toBeInTheDocument();
+    identification.unmount();
+
+    renderCheckout({ initialStep: 'review', loyaltyAdvancedEnabled: true });
+    expect(await screen.findByRole('group', { name: 'Benefício de fidelidade' })).toBeVisible();
+    expect(screen.getByText('Melhor para este pedido')).toBeVisible();
+    expect(screen.getByText('Ver outros benefícios (1)')).toBeVisible();
+  });
+
+  it('permite trocar o cupom pelo benefício recomendado sem voltar à sacola', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...quote,
+        coupon: { code: 'BEMVINDO10', discount: 200 },
+        couponDiscount: 200,
+        discount: 200,
+        total: 2_300,
+        loyaltyBenefits: [
+          {
+            id: 'reward-best',
+            type: 'FIXED_DISCOUNT',
+            title: 'R$ 10,00 de desconto',
+            savings: 0,
+            eligible: false,
+            reason: 'Remova o cupom para usar seu benefício de fidelidade.',
+            expiresAt: null,
+            freeProductId: null,
+            recommended: false,
+          },
+        ],
+      }),
+    });
+    renderCheckout({ initialStep: 'review', initialCouponCode: 'BEMVINDO10' });
+
+    const replace = await screen.findByRole('button', {
+      name: 'Usar fidelidade no lugar do cupom',
+    });
+    fireEvent.click(replace);
+
+    expect(mocks.setCouponCode).toHaveBeenCalledWith(null);
+  });
+
   it('mantém o cupom validado somente como desconto na revisão', async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,

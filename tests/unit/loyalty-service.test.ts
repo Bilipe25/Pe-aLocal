@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   processClaimedDeliveredOrders,
   processLoyaltyForOrder,
+  queueExpiringLoyaltyNotifications,
   restoreLoyaltyRewardForCancelledOrder,
 } from '@/server/services/loyalty.service';
 
@@ -22,6 +23,7 @@ function transaction() {
       findMany: vi.fn().mockResolvedValue([]),
     },
     $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: vi.fn().mockResolvedValue([{ now: new Date('2026-08-28T12:00:00.000Z') }]),
     loyaltyContribution: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 'contribution-a' }),
@@ -32,7 +34,14 @@ function transaction() {
         id: 'program-a',
         version: 1,
         requiredOrders: 5,
+        rewardType: 'FIXED_DISCOUNT',
         rewardValue: 1_000,
+        percentageBasisPoints: null,
+        maximumDiscountValue: null,
+        freeProductId: null,
+        freeProductNameSnapshot: null,
+        freeProductBaseValue: null,
+        validityDays: null,
         minimumOrderValue: 3_000,
       }),
     },
@@ -41,15 +50,27 @@ function transaction() {
         id: 'cycle-a',
         progress: 4,
         requiredOrders: 5,
+        rewardType: 'FIXED_DISCOUNT',
         rewardValue: 1_000,
+        percentageBasisPoints: null,
+        maximumDiscountValue: null,
+        freeProductId: null,
+        freeProductNameSnapshot: null,
+        freeProductBaseValue: null,
+        validityDays: null,
         minimumOrderValue: 3_000,
       }),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue({ id: 'cycle-a' }),
     },
     loyaltyReward: {
-      create: vi.fn().mockResolvedValue({ id: 'reward-a' }),
+      create: vi.fn().mockResolvedValue({ id: 'reward-a', expiresAt: null }),
+      findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    operationalOutboxEvent: {
+      create: vi.fn().mockResolvedValue({ id: 'event-a' }),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   };
 }
@@ -158,6 +179,13 @@ describe('progressão da Fidelidade V1', () => {
         minimumOrderValue: 3_000,
       }),
     });
+    expect(tx.operationalOutboxEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        aggregateId: 'reward-a',
+        eventType: 'LOYALTY_REWARD_EARNED',
+      }),
+      select: { id: true },
+    });
     expect(result).toMatchObject({ credited: true, rewardCreated: true, rewardId: 'reward-a' });
   });
 
@@ -201,7 +229,7 @@ describe('progressão da Fidelidade V1', () => {
 
   it('torna a restauração repetida um no-op seguro', async () => {
     const tx = transaction();
-    tx.loyaltyReward.updateMany.mockResolvedValueOnce({ count: 0 });
+    tx.loyaltyReward.updateMany.mockResolvedValue({ count: 0 });
     await expect(
       restoreLoyaltyRewardForCancelledOrder(tx as never, {
         tenantId: 'tenant-a',
@@ -209,5 +237,34 @@ describe('progressão da Fidelidade V1', () => {
         orderId: 'order-a',
       }),
     ).resolves.toBe(0);
+  });
+
+  it('gera o lembrete de expiração uma vez por benefício via outbox', async () => {
+    const tx = transaction();
+    tx.loyaltyReward.findMany.mockResolvedValueOnce([
+      {
+        id: 'reward-a',
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        consumerIdentityId: 'identity-a',
+        expiresAt: new Date('2026-08-31T12:00:00.000Z'),
+      },
+    ]);
+    tx.operationalOutboxEvent.createMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await queueExpiringLoyaltyNotifications(tx as never);
+
+    expect(result.queued).toBe(1);
+    expect(tx.operationalOutboxEvent.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skipDuplicates: true,
+        data: [
+          expect.objectContaining({
+            aggregateId: 'reward-a',
+            eventType: 'LOYALTY_REWARD_EXPIRING',
+          }),
+        ],
+      }),
+    );
   });
 });

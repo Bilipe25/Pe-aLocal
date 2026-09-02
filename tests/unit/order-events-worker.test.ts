@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   purgeProcessedOperationalOutboxEvents: vi.fn(),
   relayPendingOrderOutboxEvents: vi.fn(),
   relayPendingOperationalOutboxEvents: vi.fn(),
+  queueExpiringLoyaltyNotifications: vi.fn(),
   purgeProcessedOrderOutboxEvents: vi.fn(),
   purgeResolvedOrderOperationalSlaAlerts: vi.fn(),
   reconcileOrderOperationalSlaAlerts: vi.fn(),
@@ -43,6 +44,9 @@ vi.mock('@/server/services/operational-outbox.service', () => ({
   purgeProcessedOperationalOutboxEvents: mocks.purgeProcessedOperationalOutboxEvents,
   processOperationalOutboxMessage: mocks.processOperationalOutboxMessage,
   relayPendingOperationalOutboxEvents: mocks.relayPendingOperationalOutboxEvents,
+}));
+vi.mock('@/server/services/loyalty.service', () => ({
+  queueExpiringLoyaltyNotifications: mocks.queueExpiringLoyaltyNotifications,
 }));
 vi.mock('@/server/services/order-outbox-retention', () => ({
   purgeProcessedOrderOutboxEvents: mocks.purgeProcessedOrderOutboxEvents,
@@ -169,6 +173,7 @@ describe('order events worker', () => {
     });
     mocks.revokeExpiredWebPushSubscriptions.mockResolvedValue({ revoked: 0 });
     mocks.readWebPushSenderConfig.mockReturnValue(null);
+    mocks.queueExpiringLoyaltyNotifications.mockResolvedValue({ queued: 0, now: new Date(0) });
   });
 
   it('envia falha terminal explicitamente à DLQ antes de confirmar', async () => {
@@ -390,7 +395,7 @@ describe('order events worker', () => {
     expect(mocks.disconnect).toHaveBeenCalledOnce();
   });
 
-  it('fora da retenção executa apenas o ciclo temporal do SLA', async () => {
+  it('fora da retenção executa lembretes de fidelidade e o ciclo temporal do SLA', async () => {
     const env = environment();
     env.ORDER_OUTBOX_RETENTION_ENABLED = 'true';
 
@@ -398,6 +403,7 @@ describe('order events worker', () => {
 
     expect(mocks.createDatabaseClient).toHaveBeenCalledOnce();
     expect(mocks.purgeProcessedOrderOutboxEvents).not.toHaveBeenCalled();
+    expect(mocks.queueExpiringLoyaltyNotifications).toHaveBeenCalledOnce();
     expect(mocks.resolveInactiveOrderOperationalSlaAlerts).toHaveBeenCalledOnce();
     expect(mocks.reconcileOrderOperationalSlaAlerts).toHaveBeenCalledOnce();
   });

@@ -35,9 +35,21 @@ interface StorefrontMoreProps {
   hasVerifiedConsumer: boolean | Promise<boolean>;
   storeInfo: StorefrontMoreStoreInfo | Promise<StorefrontMoreStoreInfo>;
   loyaltyState?:
-    | { progress: number; requiredOrders: number; availableRewards: number }
+    | {
+        progress: number;
+        requiredOrders: number;
+        availableRewards: number;
+        promiseLabel?: string | null;
+        nearestExpiryLabel?: string | null;
+      }
     | null
-    | Promise<{ progress: number; requiredOrders: number; availableRewards: number } | null>;
+    | Promise<{
+        progress: number;
+        requiredOrders: number;
+        availableRewards: number;
+        promiseLabel?: string | null;
+        nearestExpiryLabel?: string | null;
+      } | null>;
 }
 
 function useStreamedValue<T>(value: T | Promise<T>): T {
@@ -323,9 +335,9 @@ function LoyaltyLink({
   const loyalty = useStreamedValue(state);
   if (!loyalty) return null;
   const description = loyalty.availableRewards
-    ? `${loyalty.availableRewards} ${loyalty.availableRewards === 1 ? 'benefício disponível' : 'benefícios disponíveis'}`
+    ? `${loyalty.availableRewards} ${loyalty.availableRewards === 1 ? 'benefício disponível' : 'benefícios disponíveis'}${loyalty.nearestExpiryLabel ? ` · use até ${loyalty.nearestExpiryLabel}` : ''}`
     : loyalty.progress > 0
-      ? `${loyalty.progress} de ${loyalty.requiredOrders} pedidos`
+      ? `${loyalty.progress} de ${loyalty.requiredOrders} pedidos${loyalty.promiseLabel ? ` · ${loyalty.promiseLabel}` : ''}`
       : 'Faça seus pedidos e ganhe benefícios';
   return (
     <Link href={href} className="storefront-more-row storefront-content-arrival">

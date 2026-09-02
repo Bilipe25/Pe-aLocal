@@ -113,7 +113,6 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
         consumerIdentityId: consumer.identityId,
       })
     : null;
-  const availableLoyaltyReward = loyaltyState?.rewards[0];
 
   return (
     <div className="storefront-checkout-page">
@@ -152,7 +151,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               )}
               initialCouponCode={parseCouponCode(query.coupon)}
               initialAuthenticatedCustomer={initialAuthenticatedCustomer}
-              availableLoyaltyReward={availableLoyaltyReward}
+              loyaltyAdvancedEnabled={loyaltyState?.advancedEnabled ?? false}
             />
           ) : (
             <div className="storefront-checkout-unavailable">

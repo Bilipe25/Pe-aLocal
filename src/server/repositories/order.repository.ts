@@ -29,10 +29,11 @@ import {
 } from '@/server/errors';
 import {
   calculateCheckoutQuote,
-  applyAuthorizedLoyaltyReward,
+  attachAuthorizedLoyaltyBenefits,
   applyAuthorizedPosManualDiscount,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
+import { getCheckoutLoyaltyRewards } from '@/server/services/loyalty.service';
 import {
   type CheckoutCustomerAddress,
   persistCheckoutCustomerAfterOrder,
@@ -53,6 +54,7 @@ import {
   createPosOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
+import { createLoyaltyNotificationEvent } from '@/server/services/operational-outbox.service';
 import {
   getOrCreateDiningSessionForCheckout,
   touchDiningSessionAfterOrder,
@@ -647,20 +649,12 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             409,
           );
         }
-        const reward = await tx.loyaltyReward.findFirst({
-          where: {
-            id: loyaltyRewardId,
-            tenantId: store.tenantId,
-            storeId: store.id,
-            consumerIdentityId: authenticatedIdentity.consumerIdentity.id,
-            status: 'AVAILABLE',
-          },
-          select: { id: true, value: true, minimumOrderValue: true },
+        const rewards = await getCheckoutLoyaltyRewards(tx, {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          consumerIdentityId: authenticatedIdentity.consumerIdentity.id,
         });
-        if (!reward) {
-          throw new CheckoutError('CART_INVALID', 'Este benefício não está mais disponível.', 409);
-        }
-        quote = applyAuthorizedLoyaltyReward(quote, reward);
+        quote = attachAuthorizedLoyaltyBenefits(quote, rewards, loyaltyRewardId, now);
       }
       const publicQuote = toPublicCheckoutQuote(quote);
 
@@ -1010,6 +1004,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             consumerIdentityId: authenticatedIdentity!.consumerIdentity.id,
             status: 'AVAILABLE',
             orderId: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
           data: { status: 'RESERVED', reservedAt: now },
         });
@@ -1158,6 +1153,14 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
             409,
           );
         }
+        await createLoyaltyNotificationEvent(tx, {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          consumerIdentityId: authenticatedIdentity!.consumerIdentity.id,
+          rewardId: loyaltyRewardId,
+          eventType: 'LOYALTY_REWARD_REDEEMED',
+          occurredAt: now,
+        });
         console.info(JSON.stringify({ event: 'loyalty_reward_redeemed', storeId: store.id }));
       }
 

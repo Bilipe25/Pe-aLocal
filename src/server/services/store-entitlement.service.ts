@@ -182,6 +182,7 @@ export async function updateStoreEntitlement(
             consumerIdentityEnabled: current.consumerIdentityEnabled,
             consumerConvenienceV2Enabled: current.consumerConvenienceV2Enabled,
             loyaltyEnabled: current.loyaltyEnabled,
+            loyaltyAdvancedRewardsEnabled: current.loyaltyAdvancedRewardsEnabled,
           },
           next: {
             ...parsed.data,

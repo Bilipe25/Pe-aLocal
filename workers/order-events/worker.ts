@@ -52,6 +52,7 @@ import {
   processOperationalOutboxMessage,
   relayPendingOperationalOutboxEvents,
 } from '../../src/server/services/operational-outbox.service';
+import { queueExpiringLoyaltyNotifications } from '../../src/server/services/loyalty.service';
 
 const CONSUMER_GROUP_CONCURRENCY = 3;
 const RETENTION_UTC_MINUTE = 17;
@@ -406,6 +407,14 @@ export default {
     const mercadoPagoEnabled = env.MERCADO_PAGO_RECONCILIATION_ENABLED === 'true';
     const db = database(env);
     try {
+      try {
+        const loyalty = await queueExpiringLoyaltyNotifications(db);
+        if (loyalty.queued > 0) console.info('[LOYALTY_EXPIRING_EVENTS_QUEUED]', loyalty);
+      } catch (error) {
+        console.error('[LOYALTY_EXPIRING_EVENTS_FAILED]', {
+          error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+        });
+      }
       if (mercadoPagoEnabled) {
         configureMercadoPagoRuntime(env);
         try {

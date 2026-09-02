@@ -186,6 +186,9 @@ enum OperationalOutboxEventType {
   DINING_REQUEST_RESOLVED
   DINING_SESSION_TRANSFERRED
   DINING_SESSION_CLOSED
+  LOYALTY_REWARD_EARNED
+  LOYALTY_REWARD_EXPIRING
+  LOYALTY_REWARD_REDEEMED
 }
 
 enum WebPushDispatchStatus {
@@ -263,6 +266,13 @@ enum LoyaltyRewardStatus {
   RESERVED
   REDEEMED
   CANCELLED
+  EXPIRED
+}
+
+enum LoyaltyRewardType {
+  FIXED_DISCOUNT
+  PERCENT_DISCOUNT
+  FREE_PRODUCT
 }
 
 enum PosDraftStatus {
@@ -523,7 +533,7 @@ model User {
   posDraftsCreated          PosDraft[]                    @relation("PosDraftCreatedBy")
   posDiscountsApplied       PosManualDiscountLedger[]     @relation("PosManualDiscountAppliedBy")
   posDiscountsAuthorized    PosManualDiscountLedger[]     @relation("PosManualDiscountAuthorizedBy")
-  loyaltyProgramsCreated    LoyaltyProgram[]               @relation("LoyaltyProgramCreatedBy")
+  loyaltyProgramsCreated    LoyaltyProgram[]              @relation("LoyaltyProgramCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -940,6 +950,7 @@ model StoreEntitlement {
   consumerIdentityEnabled        Boolean   @default(false)
   consumerConvenienceV2Enabled   Boolean   @default(false)
   loyaltyEnabled                 Boolean   @default(false)
+  loyaltyAdvancedRewardsEnabled  Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1574,13 +1585,13 @@ model ConsumerIdentity {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  customers           Customer[]
-  sessions            ConsumerSession[]
-  challenges          ConsumerVerificationChallenge[]
-  favorites           ConsumerFavorite[]
-  emailChangeRequests ConsumerEmailChangeRequest[]
-  loyaltyCycles       LoyaltyCycle[]
-  loyaltyRewards      LoyaltyReward[]
+  customers            Customer[]
+  sessions             ConsumerSession[]
+  challenges           ConsumerVerificationChallenge[]
+  favorites            ConsumerFavorite[]
+  emailChangeRequests  ConsumerEmailChangeRequest[]
+  loyaltyCycles        LoyaltyCycle[]
+  loyaltyRewards       LoyaltyReward[]
   loyaltyContributions LoyaltyContribution[]
 
   @@index([phoneVerifiedAt])
@@ -2061,7 +2072,7 @@ model Order {
   posManualDiscount              PosManualDiscountLedger?
   consumerVerificationChallenges ConsumerVerificationChallenge[]
   loyaltyContribution            LoyaltyContribution?
-  loyaltyReward                   LoyaltyReward?                   @relation("LoyaltyRewardOrder")
+  loyaltyReward                  LoyaltyReward?                  @relation("LoyaltyRewardOrder")
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -2093,22 +2104,29 @@ model Order {
 }
 
 model LoyaltyProgram {
-  id                String   @id @default(uuid())
-  tenantId          String
-  storeId           String
-  version           Int
-  requiredOrders    Int
-  rewardValue       Int
-  minimumOrderValue Int      @default(0)
-  isActive          Boolean  @default(false)
-  createdById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                      String            @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  version                 Int
+  requiredOrders          Int
+  rewardType              LoyaltyRewardType @default(FIXED_DISCOUNT)
+  rewardValue             Int?
+  percentageBasisPoints   Int?
+  maximumDiscountValue    Int?
+  freeProductId           String?
+  freeProductNameSnapshot String?           @db.VarChar(160)
+  freeProductBaseValue    Int?
+  validityDays            Int?
+  minimumOrderValue       Int               @default(0)
+  isActive                Boolean           @default(false)
+  createdById             String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
-  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store         Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  createdBy     User?                 @relation("LoyaltyProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  cycles        LoyaltyCycle[]
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store          @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdBy User?          @relation("LoyaltyProgramCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cycles    LoyaltyCycle[]
 
   @@unique([id, tenantId, storeId])
   @@unique([storeId, version])
@@ -2118,28 +2136,35 @@ model LoyaltyProgram {
 }
 
 model LoyaltyCycle {
-  id                 String             @id @default(uuid())
-  tenantId           String
-  storeId            String
-  consumerIdentityId String
-  programId          String
-  programVersion     Int
-  requiredOrders     Int
-  rewardValue        Int
-  minimumOrderValue  Int
-  progress           Int                @default(0)
-  status             LoyaltyCycleStatus @default(ACTIVE)
-  startedAt          DateTime           @default(now())
-  completedAt        DateTime?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                      String             @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  consumerIdentityId      String
+  programId               String
+  programVersion          Int
+  requiredOrders          Int
+  rewardType              LoyaltyRewardType  @default(FIXED_DISCOUNT)
+  rewardValue             Int?
+  percentageBasisPoints   Int?
+  maximumDiscountValue    Int?
+  freeProductId           String?
+  freeProductNameSnapshot String?            @db.VarChar(160)
+  freeProductBaseValue    Int?
+  validityDays            Int?
+  minimumOrderValue       Int
+  progress                Int                @default(0)
+  status                  LoyaltyCycleStatus @default(ACTIVE)
+  startedAt               DateTime           @default(now())
+  completedAt             DateTime?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store             Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  consumerIdentity  ConsumerIdentity      @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
-  program           LoyaltyProgram        @relation(fields: [programId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
-  contributions     LoyaltyContribution[]
-  reward            LoyaltyReward?
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store                 @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  consumerIdentity ConsumerIdentity      @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  program          LoyaltyProgram        @relation(fields: [programId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  contributions    LoyaltyContribution[]
+  reward           LoyaltyReward?
 
   @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, consumerIdentityId, status, startedAt])
@@ -2168,20 +2193,28 @@ model LoyaltyContribution {
 }
 
 model LoyaltyReward {
-  id                 String              @id @default(uuid())
-  tenantId           String
-  storeId            String
-  consumerIdentityId String
-  cycleId            String
-  value              Int
-  minimumOrderValue  Int
-  status             LoyaltyRewardStatus @default(AVAILABLE)
-  orderId            String?
-  reservedAt         DateTime?
-  redeemedAt         DateTime?
-  cancelledAt        DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                      String              @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  consumerIdentityId      String
+  cycleId                 String
+  rewardType              LoyaltyRewardType   @default(FIXED_DISCOUNT)
+  value                   Int?
+  percentageBasisPoints   Int?
+  maximumDiscountValue    Int?
+  freeProductId           String?
+  freeProductNameSnapshot String?             @db.VarChar(160)
+  freeProductBaseValue    Int?
+  minimumOrderValue       Int
+  status                  LoyaltyRewardStatus @default(AVAILABLE)
+  expiresAt               DateTime?
+  expiredAt               DateTime?
+  orderId                 String?
+  reservedAt              DateTime?
+  redeemedAt              DateTime?
+  cancelledAt             DateTime?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -2192,7 +2225,7 @@ model LoyaltyReward {
   @@unique([id, tenantId, storeId])
   @@unique([cycleId, tenantId, storeId])
   @@unique([orderId, tenantId, storeId])
-  @@index([tenantId, storeId, consumerIdentityId, status, createdAt])
+  @@index([tenantId, storeId, consumerIdentityId, status, expiresAt, createdAt], map: "loyalty_rewards_consumer_status_expiry_idx")
   @@index([tenantId, storeId, status, createdAt])
   @@map("loyalty_rewards")
 }
