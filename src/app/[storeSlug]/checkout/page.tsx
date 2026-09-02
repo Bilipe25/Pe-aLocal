@@ -17,6 +17,7 @@ import {
   getConsumerStoreScope,
   getCurrentConsumer,
 } from '@/server/services/consumer-auth.service';
+import { getConsumerLoyaltyState } from '@/server/services/loyalty.service';
 
 interface CheckoutPageProps {
   params: Promise<{ storeSlug: string }>;
@@ -105,6 +106,13 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
         address: consumer.customer.addresses[0] ?? null,
       }
     : undefined;
+  const loyaltyState = consumer
+    ? await getConsumerLoyaltyState({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        consumerIdentityId: consumer.identityId,
+      })
+    : null;
 
   return (
     <div className="storefront-checkout-page">
@@ -143,6 +151,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               )}
               initialCouponCode={parseCouponCode(query.coupon)}
               initialAuthenticatedCustomer={initialAuthenticatedCustomer}
+              loyaltyAdvancedEnabled={loyaltyState?.advancedEnabled ?? false}
             />
           ) : (
             <div className="storefront-checkout-unavailable">

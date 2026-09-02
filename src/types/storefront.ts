@@ -266,7 +266,8 @@ export type CheckoutQuoteAdjustmentType =
   | 'CART_DISCOUNT'
   | 'FREE_DELIVERY'
   | 'COUPON'
-  | 'MANUAL_DISCOUNT';
+  | 'MANUAL_DISCOUNT'
+  | 'LOYALTY';
 
 export interface CheckoutQuoteAdjustmentDto {
   type: CheckoutQuoteAdjustmentType;
@@ -283,6 +284,20 @@ export interface CheckoutQuoteCouponDto {
   discount: number;
 }
 
+export type LoyaltyBenefitTypeDto = 'FIXED_DISCOUNT' | 'PERCENT_DISCOUNT' | 'FREE_PRODUCT';
+
+export interface CheckoutLoyaltyBenefitDto {
+  id: string;
+  type: LoyaltyBenefitTypeDto;
+  title: string;
+  savings: number;
+  eligible: boolean;
+  reason: string | null;
+  expiresAt: string | null;
+  freeProductId: string | null;
+  recommended: boolean;
+}
+
 export interface CheckoutQuoteDto {
   quoteFingerprint: string;
   storeId: string;
@@ -294,6 +309,10 @@ export interface CheckoutQuoteDto {
   automaticDiscount?: number;
   couponDiscount?: number;
   manualDiscount?: number;
+  loyaltyDiscount?: number;
+  loyaltyBenefits?: CheckoutLoyaltyBenefitDto[];
+  recommendedLoyaltyRewardId?: string | null;
+  appliedLoyaltyRewardId?: string | null;
   discount: number;
   deliveryFee: number;
   total: number;

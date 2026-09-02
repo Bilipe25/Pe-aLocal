@@ -31,6 +31,16 @@ type DiningRoomEventInput = {
   occurredAt?: Date;
 };
 
+type LoyaltyNotificationEventInput = {
+  tenantId: string;
+  storeId: string;
+  consumerIdentityId: string;
+  rewardId: string;
+  eventType: 'LOYALTY_REWARD_EARNED' | 'LOYALTY_REWARD_EXPIRING' | 'LOYALTY_REWARD_REDEEMED';
+  occurredAt?: Date;
+  expiresAt?: Date | null;
+};
+
 export async function createDiningRoomOperationalEvent(
   tx: Prisma.TransactionClient,
   input: DiningRoomEventInput,
@@ -52,6 +62,32 @@ export async function createDiningRoomOperationalEvent(
         reason: input.reason,
         version: input.version,
         occurredAt: occurredAt.toISOString(),
+      },
+    },
+    select: { id: true },
+  });
+}
+
+export async function createLoyaltyNotificationEvent(
+  tx: Prisma.TransactionClient,
+  input: LoyaltyNotificationEventInput,
+) {
+  const occurredAt = input.occurredAt ?? new Date();
+  return tx.operationalOutboxEvent.create({
+    data: {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      aggregateType: 'LOYALTY_REWARD',
+      aggregateId: input.rewardId,
+      eventType: input.eventType,
+      aggregateVersion: 1,
+      schemaVersion: OPERATIONAL_EVENT_SCHEMA_VERSION,
+      occurredAt,
+      payload: {
+        consumerIdentityId: input.consumerIdentityId,
+        rewardId: input.rewardId,
+        occurredAt: occurredAt.toISOString(),
+        expiresAt: input.expiresAt?.toISOString() ?? null,
       },
     },
     select: { id: true },
@@ -188,6 +224,12 @@ export async function relayPendingOperationalOutboxEvents(
     WITH candidates AS (
       SELECT id FROM operational_outbox_events
       WHERE "availableAt" <= NOW()
+        AND "eventType" IN (
+          'DINING_REQUEST_OPENED',
+          'DINING_REQUEST_RESOLVED',
+          'DINING_SESSION_TRANSFERRED',
+          'DINING_SESSION_CLOSED'
+        )
         AND attempts < ${OUTBOX_MAX_ATTEMPTS}
         AND ("lockedAt" IS NULL OR "lockedAt" < ${staleLockedAt})
         AND (status = 'PENDING' OR (status = 'PROCESSING' AND ("queuedAt" IS NULL OR "queuedAt" < ${staleQueuedAt})))

@@ -23,12 +23,51 @@ import { getDb } from '@/server/database/client';
 import { CheckoutError, DomainError } from '@/server/errors';
 import { getEffectiveStoreAvailabilityForTenant } from '@/server/services/store-availability.service';
 import type {
+  CheckoutLoyaltyBenefitDto,
   CheckoutQuoteDto,
   CheckoutQuoteAdjustmentDto,
   CheckoutQuoteIssueDto,
   CheckoutQuoteLineDto,
   CheckoutQuoteOfferGroupDto,
 } from '@/types/storefront';
+
+export interface AuthorizedLoyaltyReward {
+  id: string;
+  rewardType: 'FIXED_DISCOUNT' | 'PERCENT_DISCOUNT' | 'FREE_PRODUCT';
+  value: number | null;
+  percentageBasisPoints: number | null;
+  maximumDiscountValue: number | null;
+  freeProductId: string | null;
+  freeProductNameSnapshot: string | null;
+  freeProductBaseValue: number | null;
+  minimumOrderValue: number;
+  expiresAt: Date | null;
+  createdAt: Date;
+  freeProductState?: 'AVAILABLE' | 'SOLD_OUT' | 'ARCHIVED';
+}
+
+interface LegacyAuthorizedLoyaltyReward {
+  id: string;
+  value: number;
+  minimumOrderValue: number;
+}
+
+function normalizeAuthorizedLoyaltyReward(
+  reward: AuthorizedLoyaltyReward | LegacyAuthorizedLoyaltyReward,
+): AuthorizedLoyaltyReward {
+  if ('rewardType' in reward) return reward;
+  return {
+    ...reward,
+    rewardType: 'FIXED_DISCOUNT',
+    percentageBasisPoints: null,
+    maximumDiscountValue: null,
+    freeProductId: null,
+    freeProductNameSnapshot: null,
+    freeProductBaseValue: null,
+    expiresAt: null,
+    createdAt: new Date(0),
+  };
+}
 
 type QuoteClient = Pick<
   Prisma.TransactionClient,
@@ -65,6 +104,7 @@ export interface ResolvedCheckoutQuote extends CheckoutQuoteDto {
   automaticDiscount: number;
   couponDiscount: number;
   manualDiscount: number;
+  loyaltyDiscount?: number;
   adjustments: CheckoutQuoteAdjustmentDto[];
   offerGroups: CheckoutQuoteOfferGroupDto[];
 }
@@ -111,6 +151,7 @@ export function assertQuoteFinancialInvariants(quote: {
   automaticDiscount: number;
   couponDiscount: number;
   manualDiscount?: number;
+  loyaltyDiscount?: number;
   discount: number;
   deliveryFee: number;
   total: number;
@@ -181,6 +222,7 @@ export function applyAuthorizedPosManualDiscount(
     automaticDiscount: quote.automaticDiscount,
     couponDiscount: quote.couponDiscount,
     manualDiscount: amount,
+    loyaltyDiscount: quote.loyaltyDiscount,
     discount,
     deliveryFee: quote.deliveryFee,
     total,
@@ -205,8 +247,222 @@ export function applyAuthorizedPosManualDiscount(
     quoteFingerprint,
     adjustments,
     manualDiscount: amount,
+    loyaltyDiscount: quote.loyaltyDiscount,
     discount,
     total,
+  };
+}
+
+type EvaluatedLoyaltyReward = {
+  reward: AuthorizedLoyaltyReward;
+  amount: number;
+  eligible: boolean;
+  reason: string | null;
+  title: string;
+};
+
+function loyaltyRewardTitle(reward: AuthorizedLoyaltyReward) {
+  if (reward.rewardType === 'FIXED_DISCOUNT') {
+    return `R$ ${((reward.value ?? 0) / 100).toFixed(2).replace('.', ',')} de desconto`;
+  }
+  if (reward.rewardType === 'PERCENT_DISCOUNT') {
+    return `${(reward.percentageBasisPoints ?? 0) / 100}% de desconto`;
+  }
+  return `${reward.freeProductNameSnapshot ?? 'Produto'} grátis`;
+}
+
+function evaluateLoyaltyReward(
+  quote: ResolvedCheckoutQuote,
+  reward: AuthorizedLoyaltyReward,
+  now: Date,
+): EvaluatedLoyaltyReward {
+  const title = loyaltyRewardTitle(reward);
+  if (reward.expiresAt && reward.expiresAt <= now) {
+    return { reward, amount: 0, eligible: false, reason: 'Este benefício expirou.', title };
+  }
+  if (quote.couponDiscount > 0 || quote.coupon) {
+    return {
+      reward,
+      amount: 0,
+      eligible: false,
+      reason: 'Remova o cupom para usar seu benefício de fidelidade.',
+      title,
+    };
+  }
+  if (quote.subtotal < reward.minimumOrderValue) {
+    return {
+      reward,
+      amount: 0,
+      eligible: false,
+      reason: `Disponível em pedidos de itens a partir de R$ ${(reward.minimumOrderValue / 100).toFixed(2).replace('.', ',')}.`,
+      title,
+    };
+  }
+  const eligibleSubtotal = Math.max(0, quote.subtotal - quote.automaticDiscount);
+  let amount = 0;
+  let reason: string | null = null;
+
+  if (reward.rewardType === 'FIXED_DISCOUNT') {
+    amount = Math.min(reward.value ?? 0, eligibleSubtotal);
+  } else if (reward.rewardType === 'PERCENT_DISCOUNT') {
+    const basisPoints = reward.percentageBasisPoints ?? 0;
+    const calculated = Math.floor(safeMultiply(eligibleSubtotal, basisPoints) / 10_000);
+    amount = Math.min(eligibleSubtotal, reward.maximumDiscountValue ?? calculated, calculated);
+  } else {
+    const line = quote.lines.find((candidate) => candidate.productId === reward.freeProductId);
+    if (!line) {
+      reason =
+        reward.freeProductState === 'SOLD_OUT'
+          ? 'Seu benefício continua disponível, mas este produto acabou por enquanto.'
+          : reward.freeProductState === 'ARCHIVED'
+            ? 'Seu benefício continua guardado. A loja precisa substituir este produto.'
+            : `Adicione ${reward.freeProductNameSnapshot ?? 'o produto'} ao pedido para usar.`;
+    } else {
+      const optionValue = line.options.reduce((total, option) => safeAdd(total, option.price), 0);
+      const currentBaseValue = Math.max(0, line.unitPrice - optionValue);
+      const automaticLineDiscount = quote.adjustments
+        .filter((adjustment) => adjustment.lineId === line.lineId && adjustment.type !== 'LOYALTY')
+        .reduce((total, adjustment) => safeAdd(total, adjustment.amount), 0);
+      const remainingBaseValue = Math.max(
+        0,
+        safeMultiply(currentBaseValue, line.quantity) - automaticLineDiscount,
+      );
+      const effectiveBaseValue = Math.floor(remainingBaseValue / line.quantity);
+      amount = Math.min(
+        reward.freeProductBaseValue ?? currentBaseValue,
+        currentBaseValue,
+        effectiveBaseValue,
+        eligibleSubtotal,
+      );
+    }
+  }
+
+  if (amount <= 0 && !reason) reason = 'Não há valor de itens elegível para este benefício.';
+  return { reward, amount, eligible: amount > 0 && reason === null, reason, title };
+}
+
+export function evaluateAuthorizedLoyaltyRewards(
+  quote: ResolvedCheckoutQuote,
+  rewards: AuthorizedLoyaltyReward[],
+  now = new Date(),
+) {
+  const evaluated = rewards.map((reward) => evaluateLoyaltyReward(quote, reward, now));
+  const recommended = [...evaluated]
+    .filter((item) => item.eligible)
+    .sort(
+      (left, right) =>
+        right.amount - left.amount ||
+        (left.reward.expiresAt?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+          (right.reward.expiresAt?.getTime() ?? Number.MAX_SAFE_INTEGER) ||
+        left.reward.createdAt.getTime() - right.reward.createdAt.getTime() ||
+        left.reward.id.localeCompare(right.reward.id),
+    )[0];
+  const options: CheckoutLoyaltyBenefitDto[] = evaluated.map((item) => ({
+    id: item.reward.id,
+    type: item.reward.rewardType,
+    title: item.title,
+    savings: item.amount,
+    eligible: item.eligible,
+    reason: item.reason,
+    expiresAt: item.reward.expiresAt?.toISOString() ?? null,
+    freeProductId: item.reward.freeProductId,
+    recommended: item.reward.id === recommended?.reward.id,
+  }));
+  return { evaluated, options, recommendedId: recommended?.reward.id ?? null };
+}
+
+/** Aplica um benefício já autenticado. Cupom e fidelidade não acumulam. */
+export function applyAuthorizedLoyaltyReward(
+  quote: ResolvedCheckoutQuote,
+  inputReward: AuthorizedLoyaltyReward | LegacyAuthorizedLoyaltyReward,
+  now = new Date(),
+): ResolvedCheckoutQuote {
+  const reward = normalizeAuthorizedLoyaltyReward(inputReward);
+  const evaluated = evaluateLoyaltyReward(quote, reward, now);
+  if (!evaluated.eligible) {
+    throw new CheckoutError(
+      quote.couponDiscount > 0 || quote.coupon ? 'COUPON_INVALID' : 'CART_INVALID',
+      evaluated.reason ?? 'Este benefício não está disponível para este pedido.',
+      422,
+    );
+  }
+  const amount = evaluated.amount;
+  const adjustments: CheckoutQuoteAdjustmentDto[] = [
+    ...quote.adjustments,
+    {
+      type: 'LOYALTY',
+      sourceId: reward.id,
+      sourceVersion: null,
+      label:
+        reward.rewardType === 'FREE_PRODUCT'
+          ? `Benefício de fidelidade: ${reward.freeProductNameSnapshot}`
+          : 'Benefício de fidelidade',
+      amount,
+      lineId:
+        reward.rewardType === 'FREE_PRODUCT'
+          ? quote.lines.find((line) => line.productId === reward.freeProductId)?.lineId
+          : undefined,
+    },
+  ];
+  const discount = safeAdd(quote.discount, amount);
+  const total = quote.total - amount;
+  assertQuoteFinancialInvariants({
+    subtotal: quote.subtotal,
+    automaticDiscount: quote.automaticDiscount,
+    couponDiscount: quote.couponDiscount,
+    manualDiscount: quote.manualDiscount,
+    loyaltyDiscount: amount,
+    discount,
+    deliveryFee: quote.deliveryFee,
+    total,
+    adjustments,
+    offerGroups: quote.offerGroups,
+  });
+  const quoteFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        baseQuoteFingerprint: quote.quoteFingerprint,
+        loyaltyRewardId: reward.id,
+        rewardType: reward.rewardType,
+        loyaltyValue: reward.value,
+        percentageBasisPoints: reward.percentageBasisPoints,
+        maximumDiscountValue: reward.maximumDiscountValue,
+        freeProductId: reward.freeProductId,
+        minimumOrderValue: reward.minimumOrderValue,
+        amount,
+        total,
+      }),
+    )
+    .digest('hex');
+  return {
+    ...quote,
+    quoteFingerprint,
+    adjustments,
+    loyaltyDiscount: amount,
+    discount,
+    total,
+  };
+}
+
+export function attachAuthorizedLoyaltyBenefits(
+  quote: ResolvedCheckoutQuote,
+  rewards: AuthorizedLoyaltyReward[],
+  selectedRewardId?: string,
+  now = new Date(),
+) {
+  const result = evaluateAuthorizedLoyaltyRewards(quote, rewards, now);
+  const selected = selectedRewardId
+    ? rewards.find((reward) => reward.id === selectedRewardId)
+    : undefined;
+  if (selectedRewardId && !selected) {
+    throw new CheckoutError('CART_INVALID', 'Este benefício não está mais disponível.', 409);
+  }
+  const priced = selected ? applyAuthorizedLoyaltyReward(quote, selected, now) : quote;
+  return {
+    ...priced,
+    loyaltyBenefits: result.options,
+    recommendedLoyaltyRewardId: result.recommendedId,
+    appliedLoyaltyRewardId: selected?.id ?? null,
   };
 }
 
@@ -1410,6 +1666,7 @@ export async function calculateCheckoutQuote(
     automaticDiscount,
     couponDiscount,
     manualDiscount: 0,
+    loyaltyDiscount: 0,
     discount,
     deliveryFee,
     total,
@@ -1451,6 +1708,7 @@ export async function calculateCheckoutQuote(
     automaticDiscount,
     couponDiscount,
     manualDiscount: 0,
+    loyaltyDiscount: 0,
     discount,
     deliveryFee,
     total,

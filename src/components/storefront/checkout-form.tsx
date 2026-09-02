@@ -255,6 +255,7 @@ export interface CheckoutFormProps {
       zipCode: string | null;
     } | null;
   };
+  loyaltyAdvancedEnabled?: boolean;
 }
 
 const STEPS: Array<{ id: CheckoutStep; label: string; shortLabel: string }> = [
@@ -345,6 +346,177 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   );
 }
 
+type LoyaltyBenefit = NonNullable<CheckoutQuoteDto['loyaltyBenefits']>[number];
+
+function LoyaltyBenefitOption({
+  benefit,
+  selected,
+  couponActive,
+  storeSlug,
+  onSelect,
+}: {
+  benefit: LoyaltyBenefit;
+  selected: boolean;
+  couponActive: boolean;
+  storeSlug: string;
+  onSelect: (rewardId: string) => void;
+}) {
+  const disabled = !benefit.eligible || couponActive;
+  const reasonId = `loyalty-benefit-${benefit.id}-reason`;
+  const describedBy = [couponActive ? 'loyalty-coupon-conflict' : null, reasonId]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    <div
+      className={cn('border-tinta/10 bg-papel rounded-xl border', disabled ? 'opacity-75' : null)}
+    >
+      <label
+        className={cn(
+          'flex min-h-14 items-start gap-3 p-3',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+        )}
+      >
+        <input
+          type="radio"
+          name="loyalty-benefit"
+          value={benefit.id}
+          className="accent-pimenta mt-1 h-5 w-5 shrink-0"
+          checked={selected}
+          disabled={disabled}
+          aria-describedby={describedBy || undefined}
+          onChange={() => onSelect(benefit.id)}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="text-tinta flex flex-wrap items-center gap-2 font-semibold">
+            {benefit.title}
+            {benefit.recommended ? (
+              <span className="bg-success-light text-success rounded-full px-2 py-0.5 text-xs">
+                Melhor para este pedido
+              </span>
+            ) : null}
+          </span>
+          <span id={reasonId} className="text-text-muted mt-0.5 block text-sm">
+            {benefit.eligible
+              ? `Você economiza ${formatCurrency(benefit.savings)}.`
+              : benefit.reason}
+          </span>
+        </span>
+      </label>
+      {!benefit.eligible &&
+      benefit.type === 'FREE_PRODUCT' &&
+      benefit.reason?.startsWith('Adicione') ? (
+        <Link
+          href={`/${storeSlug}#product-${benefit.freeProductId}`}
+          className="storefront-link mx-3 mb-2 inline-flex min-h-11 items-center font-semibold"
+        >
+          Adicionar ao pedido
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function LoyaltyBenefitsChooser({
+  benefits,
+  advancedEnabled,
+  selectedRewardId,
+  couponActive,
+  quoteLoading,
+  storeSlug,
+  onSelect,
+  onClear,
+  onReplaceCoupon,
+}: {
+  benefits: LoyaltyBenefit[];
+  advancedEnabled: boolean;
+  selectedRewardId: string | null;
+  couponActive: boolean;
+  quoteLoading: boolean;
+  storeSlug: string;
+  onSelect: (rewardId: string) => void;
+  onClear: () => void;
+  onReplaceCoupon: (rewardId: string) => void;
+}) {
+  if (benefits.length === 0) return null;
+  const available = advancedEnabled ? benefits : benefits.slice(0, 1);
+  const featured =
+    available.find((benefit) => benefit.id === selectedRewardId) ??
+    available.find((benefit) => benefit.recommended) ??
+    available[0]!;
+  const alternatives = available.filter((benefit) => benefit.id !== featured.id);
+  const couponBlocked = couponActive && featured.reason?.toLowerCase().includes('cupom');
+  return (
+    <fieldset className="border-tinta/10 bg-kraft rounded-2xl border p-4">
+      <legend className="text-tinta px-1 font-bold">Benefício de fidelidade</legend>
+      <p className="text-text-muted mt-1 text-sm">
+        Escolha agora, com o pedido completo. Você pode usar um benefício por pedido.
+      </p>
+      {couponActive ? (
+        <div
+          id="loyalty-coupon-conflict"
+          className="bg-warning-light text-tinta mt-3 rounded-xl p-3"
+        >
+          <p className="text-sm font-semibold">Cupom e fidelidade não acumulam.</p>
+          <p className="text-text-muted mt-1 text-sm">
+            Você pode manter o cupom ou trocá-lo pelo benefício abaixo.
+          </p>
+          {featured.eligible || couponBlocked ? (
+            <button
+              type="button"
+              className="storefront-link mt-2 min-h-11 text-sm font-semibold"
+              onClick={() => onReplaceCoupon(featured.id)}
+            >
+              Usar fidelidade no lugar do cupom
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="mt-3 grid gap-2">
+        <LoyaltyBenefitOption
+          benefit={featured}
+          selected={selectedRewardId === featured.id}
+          couponActive={couponActive}
+          storeSlug={storeSlug}
+          onSelect={onSelect}
+        />
+        {alternatives.length > 0 ? (
+          <details className="group">
+            <summary className="storefront-link flex min-h-11 cursor-pointer list-none items-center font-semibold">
+              Ver outros benefícios ({alternatives.length})
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {alternatives.map((benefit) => (
+                <LoyaltyBenefitOption
+                  key={benefit.id}
+                  benefit={benefit}
+                  selected={selectedRewardId === benefit.id}
+                  couponActive={couponActive}
+                  storeSlug={storeSlug}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          </details>
+        ) : null}
+        {selectedRewardId ? (
+          <button
+            type="button"
+            className="storefront-link min-h-11 justify-self-start font-semibold"
+            onClick={onClear}
+          >
+            Não usar benefício
+          </button>
+        ) : null}
+        {quoteLoading ? (
+          <p className="text-text-muted text-sm" role="status">
+            Atualizando o total do pedido…
+          </p>
+        ) : null}
+      </div>
+    </fieldset>
+  );
+}
+
 function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
   return (
     <div className="storefront-checkout-summary rounded-2xl p-4">
@@ -353,29 +525,44 @@ function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
         <h2 className="font-display text-tinta text-base font-bold">Resumo do pedido</h2>
       </div>
       <div className="mt-4 space-y-3">
-        {quote.lines.map((line) => (
-          <div key={line.lineId} className="flex items-start justify-between gap-3 text-sm">
-            <div className="min-w-0">
-              {line.offerGroupLineId ? (
-                <span className="text-brand-700 block text-xs font-semibold">
-                  Combo:{' '}
-                  {quote.offerGroups?.find((group) => group.lineId === line.offerGroupLineId)?.name}
-                </span>
-              ) : null}
-              <p className="text-tinta font-medium">
-                {line.quantity}× {line.productName}
-              </p>
-              {line.options.length > 0 && (
-                <p className="text-text-muted mt-1 break-words">
-                  {line.options.map((option) => option.name).join(', ')}
+        {quote.lines.map((line) => {
+          const loyaltyAdjustment = quote.adjustments?.find(
+            (adjustment) => adjustment.type === 'LOYALTY' && adjustment.lineId === line.lineId,
+          );
+          return (
+            <div key={line.lineId} className="flex items-start justify-between gap-3 text-sm">
+              <div className="min-w-0">
+                {line.offerGroupLineId ? (
+                  <span className="text-brand-700 block text-xs font-semibold">
+                    Combo:{' '}
+                    {
+                      quote.offerGroups?.find((group) => group.lineId === line.offerGroupLineId)
+                        ?.name
+                    }
+                  </span>
+                ) : null}
+                <p className="text-tinta font-medium">
+                  {line.quantity}× {line.productName}
                 </p>
-              )}
+                {loyaltyAdjustment ? (
+                  <span className="text-success mt-0.5 block text-xs font-semibold">
+                    Benefício de fidelidade · produto base grátis
+                  </span>
+                ) : null}
+                {line.options.length > 0 && (
+                  <p className="text-text-muted mt-1 break-words">
+                    {line.options.map((option) => option.name).join(', ')}
+                  </p>
+                )}
+              </div>
+              <span className="text-tinta shrink-0 font-mono font-bold">
+                {loyaltyAdjustment && loyaltyAdjustment.amount === line.itemTotal
+                  ? 'Grátis'
+                  : formatCurrency(line.itemTotal)}
+              </span>
             </div>
-            <span className="text-tinta shrink-0 font-mono font-bold">
-              {formatCurrency(line.itemTotal)}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <dl className="border-tinta/10 mt-4 space-y-2 border-t pt-4 text-sm">
         <div className="flex justify-between gap-3">
@@ -395,6 +582,14 @@ function QuoteSummary({ quote }: { quote: CheckoutQuoteDto }) {
             <dt className="text-success">Desconto {quote.coupon?.code}</dt>
             <dd className="text-success font-mono">
               − {formatCurrency(quote.couponDiscount ?? quote.coupon?.discount ?? 0)}
+            </dd>
+          </div>
+        )}
+        {(quote.loyaltyDiscount ?? 0) > 0 && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-success">Benefício de fidelidade</dt>
+            <dd className="text-success font-mono">
+              − {formatCurrency(quote.loyaltyDiscount ?? 0)}
             </dd>
           </div>
         )}
@@ -612,6 +807,7 @@ export function CheckoutForm({
   automaticRecognitionManaged = false,
   automaticRecognitionBootstrap,
   initialAuthenticatedCustomer,
+  loyaltyAdvancedEnabled = false,
 }: CheckoutFormProps) {
   const router = useRouter();
   const items = useCartStore((state) => state.items);
@@ -632,6 +828,7 @@ export function CheckoutForm({
   } | null>(null);
   const successNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [couponReviewError, setCouponReviewError] = useState<string | null>(null);
+  const [selectedLoyaltyRewardId, setSelectedLoyaltyRewardId] = useState<string | null>(null);
   const [changedQuote, setChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [acceptedChangedQuote, setAcceptedChangedQuote] = useState<CheckoutQuoteDto | null>(null);
   const [recognizedCustomer, setRecognizedCustomer] = useState<RecognizedCustomer | null>(null);
@@ -774,11 +971,13 @@ export function CheckoutForm({
       savedAddressReference:
         modality === 'DELIVERY' && savedAddressReference ? savedAddressReference : undefined,
       couponCode: couponCode.trim() || undefined,
+      loyaltyRewardId: selectedLoyaltyRewardId ?? undefined,
       items: items.map(cartItemToCheckoutLine),
     };
   }, [
     activeStoreId,
     couponCode,
+    selectedLoyaltyRewardId,
     deliveryZoneId,
     items,
     modality,
@@ -1607,6 +1806,7 @@ export function CheckoutForm({
                   </p>
                 </div>
               </header>
+
               {identityMode === 'AUTHENTICATED' && initialAuthenticatedCustomer ? (
                 <div className="border-tinta/15 bg-papel rounded-2xl border p-4">
                   <p className="text-text-muted text-xs font-semibold tracking-wide uppercase">
@@ -2252,6 +2452,36 @@ export function CheckoutForm({
                   </p>
                 </div>
               </header>
+
+              <LoyaltyBenefitsChooser
+                benefits={quote?.loyaltyBenefits ?? []}
+                advancedEnabled={loyaltyAdvancedEnabled}
+                selectedRewardId={selectedLoyaltyRewardId}
+                couponActive={Boolean(couponCode.trim())}
+                quoteLoading={quoteLoading}
+                storeSlug={storeSlug}
+                onSelect={(rewardId) => {
+                  setSelectedLoyaltyRewardId(rewardId);
+                  setAcceptedChangedQuote(null);
+                  setChangedQuote(null);
+                  idempotencyRef.current = null;
+                }}
+                onClear={() => {
+                  setSelectedLoyaltyRewardId(null);
+                  setAcceptedChangedQuote(null);
+                  setChangedQuote(null);
+                  idempotencyRef.current = null;
+                }}
+                onReplaceCoupon={(rewardId) => {
+                  setValue('couponCode', '', { shouldDirty: true });
+                  setCartCouponCode(null);
+                  setCouponReviewError(null);
+                  setSelectedLoyaltyRewardId(rewardId);
+                  setAcceptedChangedQuote(null);
+                  setChangedQuote(null);
+                  idempotencyRef.current = null;
+                }}
+              />
 
               {changedQuote && (
                 <div

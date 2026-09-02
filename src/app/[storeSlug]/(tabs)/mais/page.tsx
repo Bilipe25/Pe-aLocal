@@ -14,6 +14,7 @@ import {
   CONSUMER_SESSION_COOKIE,
   requireConsumerForStore,
 } from '@/server/services/consumer-auth.service';
+import { getConsumerLoyaltySummaryState } from '@/server/services/loyalty.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,51 @@ async function hasVerifiedConsumer(storeSlug: string) {
   }
 }
 
+async function getMoreLoyaltyState(store: {
+  id: string;
+  tenantId: string;
+  slug: string;
+  timeZone: string;
+}) {
+  const sessionToken = (await cookies()).get(CONSUMER_SESSION_COOKIE)?.value;
+  let identityId: string | null = null;
+  if (sessionToken) {
+    try {
+      const verified = await requireConsumerForStore({ storeSlug: store.slug, sessionToken });
+      identityId = verified.consumer.identityId;
+    } catch (error) {
+      if (!(error instanceof AuthenticationError) && !(error instanceof NotFoundError)) throw error;
+    }
+  }
+  const state = await getConsumerLoyaltySummaryState({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    consumerIdentityId: identityId,
+  });
+  if (!state) return null;
+  const promise = state.cycle ?? state.program;
+  const promiseLabel = !promise
+    ? null
+    : promise.rewardType === 'FIXED_DISCOUNT'
+      ? `${((promise.rewardValue ?? 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de desconto`
+      : promise.rewardType === 'PERCENT_DISCOUNT'
+        ? `${(promise.percentageBasisPoints ?? 0) / 100}% de desconto`
+        : `${promise.freeProductNameSnapshot ?? 'Produto'} grátis`;
+  return {
+    progress: state.cycle?.progress ?? 0,
+    requiredOrders: state.cycle?.requiredOrders ?? state.program?.requiredOrders ?? 0,
+    availableRewards: state.availableRewards,
+    promiseLabel,
+    nearestExpiryLabel: state.nearestExpiry
+      ? new Intl.DateTimeFormat('pt-BR', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: store.timeZone,
+        }).format(state.nearestExpiry)
+      : null,
+  };
+}
+
 export default async function MorePage({ params }: MorePageProps) {
   const { storeSlug } = await params;
   const store = await getPublicStoreBySlug(storeSlug);
@@ -69,6 +115,7 @@ export default async function MorePage({ params }: MorePageProps) {
     (offers) => offers.length,
   );
   const verifiedConsumerPromise = hasVerifiedConsumer(store.slug);
+  const loyaltyStatePromise = getMoreLoyaltyState(store);
   const fullAddress =
     store.address && 'street' in store.address
       ? {
@@ -134,6 +181,7 @@ export default async function MorePage({ params }: MorePageProps) {
         offerCount={offerCountPromise}
         hasVerifiedConsumer={verifiedConsumerPromise}
         storeInfo={storeInfoPromise}
+        loyaltyState={loyaltyStatePromise}
       />
     </>
   );

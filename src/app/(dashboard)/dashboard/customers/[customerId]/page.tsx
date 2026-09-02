@@ -83,6 +83,26 @@ export default async function CustomerProfilePage({
         <h2 className="font-bold">Contato</h2>
         <p className="mt-2 text-sm">{formatPhone(result.customer.phone)}</p>
       </section>
+      {result.loyalty ? (
+        <section className="border-border bg-surface mt-6 rounded-xl border p-4">
+          <h2 className="font-bold">Fidelidade</h2>
+          <p className="mt-2 font-mono text-xl font-bold">
+            {result.loyalty.cycle
+              ? `${result.loyalty.cycle.progress}/${result.loyalty.cycle.requiredOrders}`
+              : 'Pronto para começar'}
+          </p>
+          <p className="text-text-secondary mt-1 text-sm">
+            {result.loyalty.availableRewards === 1
+              ? '1 benefício disponível'
+              : `${result.loyalty.availableRewards} benefícios disponíveis`}
+          </p>
+          <p className="text-text-secondary mt-1 text-sm">
+            {result.loyalty.usedRewards === 1
+              ? '1 benefício usado'
+              : `${result.loyalty.usedRewards} benefícios usados`}
+          </p>
+        </section>
+      ) : null}
       <section className="mt-7">
         <h2 className="font-bold">Últimos pedidos</h2>
         {result.orders.length ? (

@@ -17,6 +17,7 @@ import {
   BadgePercent,
   ChartNoAxesCombined,
   ChefHat,
+  Gift,
   ChevronDown,
   Clock3,
   CirclePlus,
@@ -64,6 +65,7 @@ interface DashboardShellProps {
   canViewDiningRoom?: boolean;
   canViewReports?: boolean;
   canViewCustomers?: boolean;
+  canViewLoyalty?: boolean;
   merchantPush?: { publicVapidKey: string; storeId: string; storeName: string };
 }
 
@@ -116,6 +118,7 @@ function Navigation({
   canViewDiningRoom = false,
   canViewReports = false,
   canViewCustomers = false,
+  canViewLoyalty = false,
   appearance = 'light',
   onNavigate,
 }: {
@@ -128,6 +131,7 @@ function Navigation({
   canViewDiningRoom: boolean;
   canViewReports: boolean;
   canViewCustomers: boolean;
+  canViewLoyalty: boolean;
   appearance?: 'light' | 'dark';
   onNavigate?: () => void;
 }) {
@@ -172,6 +176,12 @@ function Navigation({
       label: 'Clientes',
       icon: UsersRound,
       hidden: !canViewCustomers,
+    },
+    {
+      href: activeStoreId ? '/dashboard/loyalty' : fallbackHref,
+      label: 'Fidelidade',
+      icon: Gift,
+      hidden: !canViewLoyalty,
     },
     {
       href: activeStoreId ? '/dashboard/offers' : fallbackHref,
@@ -491,6 +501,7 @@ export function DashboardShell({
   canViewDiningRoom = false,
   canViewReports = false,
   canViewCustomers = false,
+  canViewLoyalty = false,
   merchantPush,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -548,6 +559,7 @@ export function DashboardShell({
             canViewDiningRoom={canViewDiningRoom}
             canViewReports={canViewReports}
             canViewCustomers={canViewCustomers}
+            canViewLoyalty={canViewLoyalty}
             appearance="dark"
           />
         </div>
@@ -773,6 +785,7 @@ export function DashboardShell({
                       canViewDiningRoom={canViewDiningRoom}
                       canViewReports={canViewReports}
                       canViewCustomers={canViewCustomers}
+                      canViewLoyalty={canViewLoyalty}
                       onNavigate={() => setMenuOpen(false)}
                     />
                     {merchantPush && (

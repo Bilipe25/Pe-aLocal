@@ -76,8 +76,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
         canViewCustomers={Boolean(
           activeContext?.store.entitlement?.consumerIdentityEnabled &&
           activeContext?.session.tenantRole &&
-          (activeContext.session.tenantRole === 'OWNER' || activeContext.session.tenantRole === 'MANAGER') &&
-          hasTenantPermission(activeContext.session.tenantRole, Permission.VIEW_CUSTOMER_CONTACT)
+          (activeContext.session.tenantRole === 'OWNER' ||
+            activeContext.session.tenantRole === 'MANAGER') &&
+          hasTenantPermission(activeContext.session.tenantRole, Permission.VIEW_CUSTOMER_CONTACT),
+        )}
+        canViewLoyalty={Boolean(
+          activeContext?.store.entitlement?.loyaltyEnabled &&
+          activeContext?.session.tenantRole &&
+          (activeContext.session.tenantRole === 'OWNER' ||
+            activeContext.session.tenantRole === 'MANAGER') &&
+          hasTenantPermission(activeContext.session.tenantRole, Permission.VIEW_STORE_OPERATIONS),
         )}
         merchantPush={
           activeStore &&

@@ -29,9 +29,11 @@ import {
 } from '@/server/errors';
 import {
   calculateCheckoutQuote,
+  attachAuthorizedLoyaltyBenefits,
   applyAuthorizedPosManualDiscount,
   toPublicCheckoutQuote,
 } from '@/server/services/checkout-quote.service';
+import { getCheckoutLoyaltyRewards } from '@/server/services/loyalty.service';
 import {
   type CheckoutCustomerAddress,
   persistCheckoutCustomerAfterOrder,
@@ -52,6 +54,7 @@ import {
   createPosOrderFingerprint,
 } from '@/server/services/order-idempotency.service';
 import { appendOrderOutboxEvent } from '@/server/services/order-outbox.service';
+import { createLoyaltyNotificationEvent } from '@/server/services/operational-outbox.service';
 import {
   getOrCreateDiningSessionForCheckout,
   touchDiningSessionAfterOrder,
@@ -160,7 +163,13 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
           },
         },
         entitlement: {
-          select: { onlinePaymentsEnabled: true, dineInQrEnabled: true, posEnabled: true, consumerIdentityEnabled: true },
+          select: {
+            onlinePaymentsEnabled: true,
+            dineInQrEnabled: true,
+            posEnabled: true,
+            consumerIdentityEnabled: true,
+            loyaltyEnabled: true,
+          },
         },
         paymentProviderConnections: {
           where: { provider: 'MERCADO_PAGO', status: 'ACTIVE' },
@@ -354,6 +363,7 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
               select: {
                 consumerIdentity: {
                   select: {
+                    id: true,
                     customers: {
                       where: { tenantId: store.tenantId },
                       take: 1,
@@ -373,7 +383,8 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       }
       if (
         standardInput?.identityMode === 'AUTHENTICATED' &&
-        (!store.entitlement?.consumerIdentityEnabled || !authenticatedIdentity?.consumerIdentity.customers[0])
+        (!store.entitlement?.consumerIdentityEnabled ||
+          !authenticatedIdentity?.consumerIdentity.customers[0])
       ) {
         throw new CheckoutError(
           'CART_INVALID',
@@ -405,19 +416,19 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
                 customerPhone: authenticatedCustomer!.phone,
                 phoneNormalized: authenticatedCustomer!.phoneNormalized,
               }
-          : standardInput!.identityMode === 'RECOGNIZED'
-            ? {
-                customerId: recognizedIdentity!.customerId,
-                customerName: recognizedIdentity!.customerName,
-                customerPhone: recognizedIdentity!.customerPhone,
-                phoneNormalized: recognizedIdentity!.phoneNormalized,
-              }
-            : {
-                customerId: null,
-                customerName: standardInput!.customerName,
-                customerPhone: standardInput!.customerPhone,
-                phoneNormalized: normalizePhone(standardInput!.customerPhone),
-              };
+            : standardInput!.identityMode === 'RECOGNIZED'
+              ? {
+                  customerId: recognizedIdentity!.customerId,
+                  customerName: recognizedIdentity!.customerName,
+                  customerPhone: recognizedIdentity!.customerPhone,
+                  phoneNormalized: recognizedIdentity!.phoneNormalized,
+                }
+              : {
+                  customerId: null,
+                  customerName: standardInput!.customerName,
+                  customerPhone: standardInput!.customerPhone,
+                  phoneNormalized: normalizePhone(standardInput!.customerPhone),
+                };
       const idempotencyFingerprint = pos
         ? createPosOrderFingerprint(posInput!, {
             customerId: resolvedIdentity.customerId,
@@ -622,9 +633,29 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       );
       if (!baseQuote) throw new NotFoundError('Loja');
-      const quote = pos
+      let quote = pos
         ? applyAuthorizedPosManualDiscount(baseQuote, posInput!.manualDiscount)
         : baseQuote;
+      const loyaltyRewardId = standardInput?.loyaltyRewardId;
+      if (loyaltyRewardId) {
+        if (
+          standardInput?.identityMode !== 'AUTHENTICATED' ||
+          !store.entitlement?.loyaltyEnabled ||
+          !authenticatedIdentity
+        ) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Confirme seu acesso para usar o benefício.',
+            409,
+          );
+        }
+        const rewards = await getCheckoutLoyaltyRewards(tx, {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          consumerIdentityId: authenticatedIdentity.consumerIdentity.id,
+        });
+        quote = attachAuthorizedLoyaltyBenefits(quote, rewards, loyaltyRewardId, now);
+      }
       const publicQuote = toPublicCheckoutQuote(quote);
 
       if (quote.quoteFingerprint !== input.expectedQuoteFingerprint) {
@@ -896,7 +927,9 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       const adjustmentSourceIds = [
         ...new Set(
           adjustments.flatMap((adjustment) =>
-            adjustment.type !== 'COUPON' && adjustment.sourceId ? [adjustment.sourceId] : [],
+            adjustment.type !== 'COUPON' && adjustment.type !== 'LOYALTY' && adjustment.sourceId
+              ? [adjustment.sourceId]
+              : [],
           ),
         ),
       ].sort();
@@ -962,6 +995,27 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
       const orderItemIdByLineId = new Map(
         quote.lines.map((line) => [line.lineId, crypto.randomUUID()]),
       );
+      if (loyaltyRewardId) {
+        const reserved = await tx.loyaltyReward.updateMany({
+          where: {
+            id: loyaltyRewardId,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            consumerIdentityId: authenticatedIdentity!.consumerIdentity.id,
+            status: 'AVAILABLE',
+            orderId: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+          data: { status: 'RESERVED', reservedAt: now },
+        });
+        if (reserved.count !== 1) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este benefício acabou de ser reservado em outro pedido.',
+            409,
+          );
+        }
+      }
       const order = await tx.order.create({
         data: {
           tenantId: store.tenantId,
@@ -1075,6 +1129,40 @@ async function createOrderOnce(params: CreateOrderParams): Promise<CreateOrderRe
         },
       });
       if (!order.payment) throw new OrderPaymentConsistencyError();
+
+      if (loyaltyRewardId) {
+        const redeemed = await tx.loyaltyReward.updateMany({
+          where: {
+            id: loyaltyRewardId,
+            tenantId: store.tenantId,
+            storeId: store.id,
+            consumerIdentityId: authenticatedIdentity!.consumerIdentity.id,
+            status: 'RESERVED',
+            orderId: null,
+          },
+          data: {
+            status: 'REDEEMED',
+            orderId: order.id,
+            redeemedAt: now,
+          },
+        });
+        if (redeemed.count !== 1) {
+          throw new CheckoutError(
+            'CART_INVALID',
+            'Este benefício acabou de ser usado em outro pedido.',
+            409,
+          );
+        }
+        await createLoyaltyNotificationEvent(tx, {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          consumerIdentityId: authenticatedIdentity!.consumerIdentity.id,
+          rewardId: loyaltyRewardId,
+          eventType: 'LOYALTY_REWARD_REDEEMED',
+          occurredAt: now,
+        });
+        console.info(JSON.stringify({ event: 'loyalty_reward_redeemed', storeId: store.id }));
+      }
 
       if (canonicalOffers.length > 0) {
         await tx.storeOfferUsage.createMany({

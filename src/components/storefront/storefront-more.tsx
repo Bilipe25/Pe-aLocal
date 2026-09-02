@@ -34,6 +34,22 @@ interface StorefrontMoreProps {
   offerCount: number | Promise<number>;
   hasVerifiedConsumer: boolean | Promise<boolean>;
   storeInfo: StorefrontMoreStoreInfo | Promise<StorefrontMoreStoreInfo>;
+  loyaltyState?:
+    | {
+        progress: number;
+        requiredOrders: number;
+        availableRewards: number;
+        promiseLabel?: string | null;
+        nearestExpiryLabel?: string | null;
+      }
+    | null
+    | Promise<{
+        progress: number;
+        requiredOrders: number;
+        availableRewards: number;
+        promiseLabel?: string | null;
+        nearestExpiryLabel?: string | null;
+      } | null>;
 }
 
 function useStreamedValue<T>(value: T | Promise<T>): T {
@@ -222,6 +238,7 @@ export function StorefrontMore({
   offerCount,
   hasVerifiedConsumer,
   storeInfo,
+  loyaltyState = null,
 }: StorefrontMoreProps) {
   const catalogHref = `/${storeSlug}`;
 
@@ -260,15 +277,9 @@ export function StorefrontMore({
           <Suspense fallback={<StorefrontMoreRowLoading label="Carregando ofertas…" />}>
             <OffersLink offerCount={offerCount} catalogHref={catalogHref} />
           </Suspense>
-          <div className="storefront-more-row is-disabled" aria-disabled="true">
-            <MoreRowContent
-              icon={Gift}
-              title="Fidelidade"
-              description="Benefícios para clientes frequentes"
-              badge={<span className="storefront-more-coming-soon">Em breve</span>}
-              disabled
-            />
-          </div>
+          <Suspense fallback={<StorefrontMoreRowLoading label="Carregando fidelidade…" />}>
+            <LoyaltyLink state={loyaltyState} href={`${catalogHref}/loyalty`} />
+          </Suspense>
         </div>
       </section>
 
@@ -311,5 +322,26 @@ export function StorefrontMore({
         </div>
       </aside>
     </main>
+  );
+}
+
+function LoyaltyLink({
+  state,
+  href,
+}: {
+  state: StorefrontMoreProps['loyaltyState'];
+  href: string;
+}) {
+  const loyalty = useStreamedValue(state);
+  if (!loyalty) return null;
+  const description = loyalty.availableRewards
+    ? `${loyalty.availableRewards} ${loyalty.availableRewards === 1 ? 'benefício disponível' : 'benefícios disponíveis'}${loyalty.nearestExpiryLabel ? ` · use até ${loyalty.nearestExpiryLabel}` : ''}`
+    : loyalty.progress > 0
+      ? `${loyalty.progress} de ${loyalty.requiredOrders} pedidos${loyalty.promiseLabel ? ` · ${loyalty.promiseLabel}` : ''}`
+      : 'Faça seus pedidos e ganhe benefícios';
+  return (
+    <Link href={href} className="storefront-more-row storefront-content-arrival">
+      <MoreRowContent icon={Gift} title="Fidelidade" description={description} />
+    </Link>
   );
 }

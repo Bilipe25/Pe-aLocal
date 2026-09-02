@@ -181,6 +181,8 @@ export async function updateStoreEntitlement(
             posEnabled: current.posEnabled,
             consumerIdentityEnabled: current.consumerIdentityEnabled,
             consumerConvenienceV2Enabled: current.consumerConvenienceV2Enabled,
+            loyaltyEnabled: current.loyaltyEnabled,
+            loyaltyAdvancedRewardsEnabled: current.loyaltyAdvancedRewardsEnabled,
           },
           next: {
             ...parsed.data,

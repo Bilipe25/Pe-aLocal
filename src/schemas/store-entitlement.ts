@@ -35,6 +35,8 @@ export const storeEntitlementInputSchema = z
     posEnabled: z.boolean().default(false),
     consumerIdentityEnabled: z.boolean().default(false),
     consumerConvenienceV2Enabled: z.boolean().default(false),
+    loyaltyEnabled: z.boolean().default(false),
+    loyaltyAdvancedRewardsEnabled: z.boolean().default(false),
   })
   .strict()
   .superRefine((value, context) => {
@@ -43,6 +45,20 @@ export const storeEntitlementInputSchema = z
         code: 'custom',
         path: ['consumerConvenienceV2Enabled'],
         message: 'requer Conta do cliente e Clientes',
+      });
+    }
+    if (value.loyaltyEnabled && !value.consumerIdentityEnabled) {
+      context.addIssue({
+        code: 'custom',
+        path: ['loyaltyEnabled'],
+        message: 'requer Conta do cliente e Clientes',
+      });
+    }
+    if (value.loyaltyAdvancedRewardsEnabled && !value.loyaltyEnabled) {
+      context.addIssue({
+        code: 'custom',
+        path: ['loyaltyAdvancedRewardsEnabled'],
+        message: 'requer Fidelidade — Volte e ganhe',
       });
     }
   });
