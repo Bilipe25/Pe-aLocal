@@ -2,20 +2,38 @@ import 'server-only';
 
 import { Prisma } from '@prisma/client';
 
+import {
+  getCustomerRelationshipThresholds,
+  relationshipDaysSince,
+  type CustomerRelationshipSegment,
+} from '@/domain/customers/relationship';
 import { normalizePhone } from '@/lib/brazil';
+import {
+  customerRelationshipFilterSchema,
+  customerRelationshipSortSchema,
+} from '@/schemas/customer-relationship';
 import { getDb } from '@/server/database/client';
 import { AuthorizationError, NotFoundError } from '@/server/errors';
 import { isTenantAdmin, Permission } from '@/server/permissions';
-import { requireActiveStoreContext } from '@/server/services/store-context.service';
 import { getCustomerRepurchaseShortcuts } from '@/server/services/consumer-repurchase.service';
+import { refreshCustomerRelationshipSegments } from '@/server/services/customer-relationship.service';
 import { getCustomerLoyaltySummary } from '@/server/services/loyalty.service';
+import { requireActiveStoreContext } from '@/server/services/store-context.service';
 
-export type CustomerClassification = 'NEW' | 'RECURRING' | 'LAPSED' | null;
+export type CustomerClassification = CustomerRelationshipSegment | 'LAPSED' | null;
+
+type CustomerListInput = {
+  search?: string;
+  page?: number;
+  segment?: string;
+  sort?: string;
+};
 
 async function requireCustomersContext() {
   const context = await requireActiveStoreContext(Permission.VIEW_CUSTOMER_CONTACT);
-  if (!isTenantAdmin(context.session.tenantRole))
+  if (!isTenantAdmin(context.session.tenantRole)) {
     throw new AuthorizationError('Clientes está disponível para proprietários e gerentes.');
+  }
   if (!context.store.entitlement?.consumerIdentityEnabled) throw new NotFoundError('Página');
   return context;
 }
@@ -28,12 +46,14 @@ type CustomerRow = {
   lastOrderAt: Date | null;
   totalSpent: bigint;
   averageTicket: bigint;
-  classification: CustomerClassification;
+  classification: 'NEW' | 'RECURRING' | 'LAPSED' | null;
   totalRows: bigint;
 };
 
-export async function listCustomersV1(input: { search?: string; page?: number } = {}) {
-  const context = await requireCustomersContext();
+async function listCustomersLegacy(
+  context: Awaited<ReturnType<typeof requireCustomersContext>>,
+  input: CustomerListInput,
+) {
   const page = Math.max(1, input.page ?? 1);
   const search = input.search?.trim().slice(0, 80) ?? '';
   const phoneSearch = normalizePhone(search);
@@ -122,12 +142,16 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
   return {
     store: { id: context.store.id, name: context.store.name },
     items: rows.map((row) => ({
-      ...row,
+      id: row.id,
+      name: row.name,
       totalOrders: Number(row.totalOrders),
       completedOrders: Number(row.completedOrders),
+      lastOrderAt: row.lastOrderAt,
       totalSpent: Number(row.totalSpent),
       averageTicket: Number(row.averageTicket),
-      totalRows: undefined,
+      classification: row.classification as CustomerClassification,
+      averageDaysBetweenOrders: null,
+      lastOrderDaysAgo: row.lastOrderAt ? relationshipDaysSince(row.lastOrderAt) : null,
     })),
     total: Number(rows[0]?.totalRows ?? 0),
     page,
@@ -136,9 +160,121 @@ export async function listCustomersV1(input: { search?: string; page?: number } 
       recurring: Number(summaryRows[0]?.recurring ?? 0),
       lapsed: Number(summaryRows[0]?.lapsed ?? 0),
       returnedThisMonth: Number(summaryRows[0]?.returnedThisMonth ?? 0),
+      new: 0,
+      frequent: 0,
+      cooling: 0,
+      inactive: 0,
+      recovered: 0,
     },
     v2Enabled: Boolean(context.store.entitlement?.consumerConvenienceV2Enabled),
+    relationshipEnabled: false,
+    loyaltyEnabled: Boolean(context.store.entitlement?.loyaltyEnabled),
+    segment: 'ALL' as const,
+    sort: 'RECENT' as const,
   };
+}
+
+async function listCustomersRelationship(
+  context: Awaited<ReturnType<typeof requireCustomersContext>>,
+  input: CustomerListInput,
+) {
+  const page = Math.max(1, input.page ?? 1);
+  const search = input.search?.trim().slice(0, 80) ?? '';
+  const phoneSearch = normalizePhone(search);
+  const parsedSegment = customerRelationshipFilterSchema.safeParse(input.segment);
+  const parsedSort = customerRelationshipSortSchema.safeParse(input.sort);
+  const segment = parsedSegment.success ? parsedSegment.data : 'ALL';
+  const sort = parsedSort.success ? parsedSort.data : 'RECENT';
+  const tenantId = context.session.tenantId;
+  const storeId = context.store.id;
+  await refreshCustomerRelationshipSegments({ tenantId, storeId });
+  const where: Prisma.CustomerRelationshipSnapshotWhereInput = {
+    tenantId,
+    storeId,
+    ...(segment === 'ALL' ? {} : { segment }),
+    ...(search
+      ? {
+          customer: {
+            OR: [
+              { name: { startsWith: search, mode: 'insensitive' as const } },
+              ...(phoneSearch ? [{ phoneNormalized: { startsWith: phoneSearch } }] : []),
+            ],
+          },
+        }
+      : {}),
+  };
+  const orderBy: Prisma.CustomerRelationshipSnapshotOrderByWithRelationInput[] =
+    sort === 'FREQUENT'
+      ? [{ completedOrderCount: 'desc' }, { lastCompletedOrderAt: 'desc' }, { id: 'asc' }]
+      : sort === 'ATTENTION'
+        ? [{ lastCompletedOrderAt: 'asc' }, { id: 'asc' }]
+        : [{ lastCompletedOrderAt: 'desc' }, { id: 'asc' }];
+  const [snapshots, total, groups] = await Promise.all([
+    getDb().customerRelationshipSnapshot.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * 25,
+      take: 25,
+      select: {
+        completedOrderCount: true,
+        totalCompletedOrderValue: true,
+        averageOrderValue: true,
+        averageDaysBetweenOrders: true,
+        lastCompletedOrderAt: true,
+        segment: true,
+        customer: { select: { id: true, name: true } },
+      },
+    }),
+    getDb().customerRelationshipSnapshot.count({ where }),
+    getDb().customerRelationshipSnapshot.groupBy({
+      by: ['segment'],
+      where: { tenantId, storeId },
+      _count: { _all: true },
+    }),
+  ]);
+  const counts = Object.fromEntries(
+    groups.map((group) => [group.segment, group._count._all]),
+  ) as Partial<Record<CustomerRelationshipSegment, number>>;
+  return {
+    store: { id: storeId, name: context.store.name },
+    items: snapshots.map((snapshot) => ({
+      id: snapshot.customer.id,
+      name: snapshot.customer.name,
+      totalOrders: snapshot.completedOrderCount,
+      completedOrders: snapshot.completedOrderCount,
+      lastOrderAt: snapshot.lastCompletedOrderAt,
+      totalSpent: snapshot.totalCompletedOrderValue,
+      averageTicket: snapshot.averageOrderValue,
+      classification: snapshot.segment as CustomerClassification,
+      averageDaysBetweenOrders: snapshot.averageDaysBetweenOrders,
+      lastOrderDaysAgo: relationshipDaysSince(snapshot.lastCompletedOrderAt),
+    })),
+    total,
+    page,
+    summary: {
+      total: groups.reduce((sum, group) => sum + group._count._all, 0),
+      recurring: (counts.RETURNING ?? 0) + (counts.RECURRING ?? 0) + (counts.FREQUENT ?? 0),
+      lapsed: (counts.COOLING ?? 0) + (counts.INACTIVE ?? 0),
+      returnedThisMonth: counts.RECOVERED ?? 0,
+      new: counts.NEW ?? 0,
+      frequent: counts.FREQUENT ?? 0,
+      cooling: counts.COOLING ?? 0,
+      inactive: counts.INACTIVE ?? 0,
+      recovered: counts.RECOVERED ?? 0,
+    },
+    v2Enabled: Boolean(context.store.entitlement?.consumerConvenienceV2Enabled),
+    relationshipEnabled: true,
+    loyaltyEnabled: Boolean(context.store.entitlement?.loyaltyEnabled),
+    segment,
+    sort,
+  };
+}
+
+export async function listCustomersV1(input: CustomerListInput = {}) {
+  const context = await requireCustomersContext();
+  return context.store.entitlement?.customerRelationshipEnabled
+    ? listCustomersRelationship(context, input)
+    : listCustomersLegacy(context, input);
 }
 
 export async function getCustomerProfileV1(customerId: string) {
@@ -206,5 +342,34 @@ export async function getCustomerProfileV1(customerId: string) {
         consumerIdentityId: customer.consumerIdentityId,
       })
     : null;
-  return { customer, metrics: metrics ?? null, orders, mostOrdered, repurchase, loyalty };
+  const relationship =
+    context.store.entitlement?.customerRelationshipEnabled && customer.consumerIdentityId
+      ? await getDb().customerRelationshipSnapshot.findFirst({
+          where: {
+            tenantId: context.session.tenantId,
+            storeId: context.store.id,
+            customerId: customer.id,
+            consumerIdentityId: customer.consumerIdentityId,
+          },
+        })
+      : null;
+  return {
+    customer,
+    metrics: metrics ?? null,
+    orders,
+    mostOrdered,
+    repurchase,
+    loyalty,
+    relationship: relationship
+      ? {
+          ...relationship,
+          lastOrderDaysAgo: relationshipDaysSince(relationship.lastCompletedOrderAt),
+          thresholds: getCustomerRelationshipThresholds({
+            completedOrderCount: relationship.completedOrderCount,
+            averageDaysBetweenOrders: relationship.averageDaysBetweenOrders,
+          }),
+        }
+      : null,
+    relationshipEnabled: Boolean(context.store.entitlement?.customerRelationshipEnabled),
+  };
 }

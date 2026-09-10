@@ -37,6 +37,7 @@
     "db:payment:preflight": "node tools/verify-payment-consistency.mjs",
     "db:checkout-v2:preflight": "node tools/checkout-v2-preflight.mjs",
     "db:customer-recognition:preflight": "node tools/customer-recognition-preflight.mjs",
+    "db:customer-relationship:backfill": "tsx tools/customer-relationship-backfill.ts",
     "db:orders:preflight": "node tools/order-module-preflight.mjs",
     "db:customer-recognition:cleanup": "node tools/customer-recognition-cleanup.mjs",
     "db:consumer-identity:cleanup": "node tools/consumer-identity-cleanup.mjs",

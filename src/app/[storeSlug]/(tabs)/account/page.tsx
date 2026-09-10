@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
-import { MapPin, ReceiptText } from 'lucide-react';
+import { BellRing, MapPin, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
 
 import { ConsumerLogoutButton } from '@/components/storefront/consumer-account-actions';
@@ -70,6 +70,15 @@ export default async function ConsumerAccountPage({
             <MapPin className="text-brand-600" aria-hidden="true" />
             Meus endereços
           </Link>
+          {authorized.scope.entitlement?.customerRelationshipEnabled ? (
+            <Link
+              href={`/${store.slug}/account/communications`}
+              className="border-border bg-surface focus-visible:ring-brand-500 flex min-h-16 items-center gap-3 rounded-xl border p-4 font-semibold focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <BellRing className="text-brand-600" aria-hidden="true" />
+              Comunicações
+            </Link>
+          ) : null}
         </nav>
         {authorized.scope.entitlement?.consumerConvenienceV2Enabled && (
           <>

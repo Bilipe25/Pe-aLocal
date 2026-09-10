@@ -1,5 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const projectionMocks = vi.hoisted(() => ({
+  processLoyaltyForOrder: vi.fn(),
+  restoreLoyaltyRewardForCancelledOrder: vi.fn(),
+  processCustomerRelationshipForOrder: vi.fn(),
+}));
+
+vi.mock('@/server/services/loyalty.service', () => ({
+  processLoyaltyForOrder: projectionMocks.processLoyaltyForOrder,
+  restoreLoyaltyRewardForCancelledOrder: projectionMocks.restoreLoyaltyRewardForCancelledOrder,
+}));
+vi.mock('@/server/services/customer-relationship.service', () => ({
+  processCustomerRelationshipForOrder: projectionMocks.processCustomerRelationshipForOrder,
+}));
+
 import {
   processOrderOutboxMessage,
   relayPendingOrderOutboxEvents,
@@ -20,6 +34,7 @@ const payload = {
 function createDatabase(eventOverrides: Record<string, unknown> = {}) {
   const event = {
     id: eventId,
+    tenantId: 'tenant-a',
     storeId,
     orderId,
     aggregateVersion: 4,
@@ -37,6 +52,7 @@ function createDatabase(eventOverrides: Record<string, unknown> = {}) {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       updateManyAndReturn: vi.fn().mockResolvedValue([{ attempts: event.attempts + 1 }]),
     },
+    $transaction: vi.fn((operation) => operation({ kind: 'tx' })),
     $queryRaw: vi.fn(),
   };
   return { database, event };
@@ -45,6 +61,9 @@ function createDatabase(eventOverrides: Record<string, unknown> = {}) {
 describe('order outbox processor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    projectionMocks.processLoyaltyForOrder.mockResolvedValue({ credited: true });
+    projectionMocks.processCustomerRelationshipForOrder.mockResolvedValue({ updated: true });
+    projectionMocks.restoreLoyaltyRewardForCancelledOrder.mockResolvedValue(0);
   });
 
   it('reivindica, publica e conclui um evento uma única vez', async () => {
@@ -83,6 +102,35 @@ describe('order outbox processor', () => {
       ),
     ).resolves.toEqual({ action: 'ack', eventId });
     expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('projeta fidelidade e relacionamento uma vez no evento ORDER_COMPLETED', async () => {
+    const completedPayload = {
+      ...payload,
+      status: 'DELIVERED',
+      paymentStatus: 'PAID',
+    };
+    const { database } = createDatabase({
+      eventType: 'ORDER_COMPLETED',
+      payload: completedPayload,
+    });
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+
+    await expect(
+      processOrderOutboxMessage(
+        database as never,
+        publisher,
+        { schemaVersion: 1, eventId },
+        1,
+        'message-a',
+      ),
+    ).resolves.toEqual({ action: 'ack', eventId });
+
+    expect(projectionMocks.processLoyaltyForOrder).toHaveBeenCalledOnce();
+    expect(projectionMocks.processCustomerRelationshipForOrder).toHaveBeenCalledWith(
+      { kind: 'tx' },
+      { tenantId: 'tenant-a', storeId, orderId },
+    );
   });
 
   it('reagenda com backoff quando a publicação falha antes do limite', async () => {

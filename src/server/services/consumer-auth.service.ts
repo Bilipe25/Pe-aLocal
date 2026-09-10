@@ -30,6 +30,7 @@ import {
   isStorefrontDeviceToken,
 } from '@/server/services/customer-device-recognition.service';
 import { processClaimedDeliveredOrders } from '@/server/services/loyalty.service';
+import { processClaimedDeliveredRelationshipOrders } from '@/server/services/customer-relationship.service';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const SESSION_ACTIVITY_TOUCH_MS = 24 * 60 * 60 * 1_000;
@@ -112,6 +113,7 @@ export async function getConsumerStoreScope(storeSlug: string) {
         select: {
           consumerIdentityEnabled: true,
           consumerConvenienceV2Enabled: true,
+          customerRelationshipEnabled: true,
         },
       },
     },
@@ -727,6 +729,16 @@ export async function verifyConsumerCode(input: {
       await getDb().$transaction((tx) => processClaimedDeliveredOrders(tx, result.loyaltyClaim!));
     } catch (error) {
       console.error('[LOYALTY_SAFE_CLAIM_FAILED]', {
+        storeId: result.loyaltyClaim.storeId,
+        error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
+      });
+    }
+    try {
+      await getDb().$transaction((tx) =>
+        processClaimedDeliveredRelationshipOrders(tx, result.loyaltyClaim!),
+      );
+    } catch (error) {
+      console.error('[RELATIONSHIP_SAFE_CLAIM_FAILED]', {
         storeId: result.loyaltyClaim.storeId,
         error: error instanceof Error ? error.message.slice(0, 500) : 'unknown',
       });
