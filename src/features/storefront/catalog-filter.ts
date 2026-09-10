@@ -32,6 +32,7 @@ function compareText(
 export function sortCatalogProducts(
   products: readonly PublicStorefrontProductSummaryDto[],
   sort: CatalogSort,
+  promotionalPrices: ReadonlyMap<string, number> = new Map(),
 ): PublicStorefrontProductSummaryDto[] {
   const order = new Map(products.map((product, index) => [product.id, index]));
 
@@ -40,7 +41,9 @@ export function sortCatalogProducts(
     if (availabilityDifference !== 0) return availabilityDifference;
 
     if (sort === 'PRICE_ASC' || sort === 'PRICE_DESC') {
-      const priceDifference = left.basePrice - right.basePrice;
+      const priceDifference =
+        (promotionalPrices.get(left.id) ?? left.basePrice) -
+        (promotionalPrices.get(right.id) ?? right.basePrice);
       if (priceDifference !== 0) {
         return sort === 'PRICE_ASC' ? priceDifference : -priceDifference;
       }
@@ -63,6 +66,7 @@ export interface CatalogIndex {
 
 export function createCatalogIndex(
   categories: readonly PublicStorefrontCategoryDto[],
+  promotionalPrices: ReadonlyMap<string, number> = new Map(),
 ): CatalogIndex {
   const indexedCategories = categories.map((category) => {
     const normalizedProductText = new Map(
@@ -88,7 +92,11 @@ export function createCatalogIndex(
       return indexedCategories.flatMap((category) => {
         let orderedProducts = category.sortedProducts.get(filters.sort);
         if (!orderedProducts) {
-          orderedProducts = sortCatalogProducts(category.source.products, filters.sort);
+          orderedProducts = sortCatalogProducts(
+            category.source.products,
+            filters.sort,
+            promotionalPrices,
+          );
           category.sortedProducts.set(filters.sort, orderedProducts);
         }
 

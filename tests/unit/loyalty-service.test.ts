@@ -68,6 +68,9 @@ function transaction() {
       findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    consumerCommunicationPreference: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     operationalOutboxEvent: {
       create: vi.fn().mockResolvedValue({ id: 'event-a' }),
       createMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -248,6 +251,7 @@ describe('progressão da Fidelidade V1', () => {
         storeId: 'store-a',
         consumerIdentityId: 'identity-a',
         expiresAt: new Date('2026-08-31T12:00:00.000Z'),
+        consumerIdentity: { communicationPreferences: [] },
       },
     ]);
     tx.operationalOutboxEvent.createMany.mockResolvedValueOnce({ count: 1 });
@@ -266,5 +270,43 @@ describe('progressão da Fidelidade V1', () => {
         ],
       }),
     );
+  });
+
+  it('não cria avisos de benefício quando a pessoa os desativou', async () => {
+    const tx = transaction();
+    tx.consumerCommunicationPreference.findUnique.mockResolvedValueOnce({
+      benefitEarnedEnabled: false,
+      benefitExpiringEnabled: true,
+    });
+
+    await processLoyaltyForOrder(tx as never, {
+      tenantId: 'tenant-a',
+      storeId: 'store-a',
+      orderId: 'order-a',
+    });
+
+    expect(tx.operationalOutboxEvent.create).not.toHaveBeenCalled();
+    expect(tx.loyaltyReward.create).toHaveBeenCalledOnce();
+  });
+
+  it('não enfileira lembrete perto de vencer quando a preferência está desativada na Store', async () => {
+    const tx = transaction();
+    tx.loyaltyReward.findMany.mockResolvedValueOnce([
+      {
+        id: 'reward-a',
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        consumerIdentityId: 'identity-a',
+        expiresAt: new Date('2026-08-31T12:00:00.000Z'),
+        consumerIdentity: {
+          communicationPreferences: [{ storeId: 'store-a', benefitExpiringEnabled: false }],
+        },
+      },
+    ]);
+
+    await expect(queueExpiringLoyaltyNotifications(tx as never)).resolves.toMatchObject({
+      queued: 0,
+    });
+    expect(tx.operationalOutboxEvent.createMany).not.toHaveBeenCalled();
   });
 });

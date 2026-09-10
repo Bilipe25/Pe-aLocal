@@ -60,12 +60,19 @@ vi.mock('@/components/storefront/product-card', () => ({
     name,
     onClick,
     onPrefetchIntent,
+    promotionalPrice,
   }: {
     name: string;
     onClick: () => void;
     onPrefetchIntent?: () => void;
+    promotionalPrice?: number;
   }) => (
-    <button type="button" onClick={onClick} onPointerEnter={onPrefetchIntent}>
+    <button
+      type="button"
+      onClick={onClick}
+      onPointerEnter={onPrefetchIntent}
+      data-promotional-price={promotionalPrice}
+    >
       {name}
     </button>
   ),
@@ -79,6 +86,7 @@ vi.mock('@/components/storefront/product-modal', () => ({
     onRetry,
     onClose,
     storeOpen,
+    promotionalPrice,
   }: {
     product: { name: string };
     detail: { allowNotes: boolean } | null;
@@ -87,12 +95,14 @@ vi.mock('@/components/storefront/product-modal', () => ({
     onRetry: () => void;
     onClose: () => void;
     storeOpen: boolean;
+    promotionalPrice?: number | null;
   }) => (
     <div
       role="dialog"
       data-store-open={String(storeOpen)}
       data-detail-status={detailStatus}
       data-allow-notes={String(detail?.allowNotes ?? false)}
+      data-promotional-price={promotionalPrice}
     >
       {product.name}
       {detailError && <p>{detailError}</p>}
@@ -167,6 +177,36 @@ function response(body: unknown, status = 200) {
 }
 
 describe('catálogo público', () => {
+  it('mantém o preço promocional ao abrir o produto pela categoria', async () => {
+    render(
+      <CatalogView
+        categories={categories}
+        offers={[
+          {
+            kind: 'PRODUCT_PROMOTION',
+            id: 'promo',
+            version: 1,
+            product: categories[0].products[0],
+            regularPrice: 2500,
+            offerPrice: 2000,
+            savings: 500,
+          },
+        ]}
+        storeId="store-1"
+        storeSlug="loja-1"
+        storeOpen
+        customization={createDefaultCustomization()}
+        banners={[]}
+      />,
+    );
+    const card = screen.getByRole('button', { name: 'Burger da casa' });
+    expect(card).toHaveAttribute('data-promotional-price', '2000');
+    fireEvent.click(card);
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-promotional-price', '2000');
+    await waitFor(() =>
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-detail-status', 'success'),
+    );
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.cartState.storeId = null;

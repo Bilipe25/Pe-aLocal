@@ -275,6 +275,44 @@ enum LoyaltyRewardType {
   FREE_PRODUCT
 }
 
+enum CustomerRelationshipSegment {
+  NEW
+  RETURNING
+  RECURRING
+  FREQUENT
+  COOLING
+  INACTIVE
+  RECOVERED
+}
+
+enum CustomerReturnCampaignStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum CustomerReturnCampaignTarget {
+  COOLING
+  INACTIVE
+  COOLING_AND_INACTIVE
+}
+
+enum CustomerReturnRecipientStatus {
+  REWARDED
+  RETURNED
+  CONVERTED
+  EXPIRED
+}
+
+enum CustomerReturnNotificationStatus {
+  NOT_REQUESTED
+  PENDING
+  SENT
+  SKIPPED_NO_CONSENT
+  SKIPPED_CHANNEL_UNAVAILABLE
+  FAILED
+}
+
 enum PosDraftStatus {
   OPEN
   CONVERTED
@@ -534,6 +572,7 @@ model User {
   posDiscountsApplied       PosManualDiscountLedger[]     @relation("PosManualDiscountAppliedBy")
   posDiscountsAuthorized    PosManualDiscountLedger[]     @relation("PosManualDiscountAuthorizedBy")
   loyaltyProgramsCreated    LoyaltyProgram[]              @relation("LoyaltyProgramCreatedBy")
+  returnCampaignsCreated    CustomerReturnCampaign[]      @relation("CustomerReturnCampaignCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -614,6 +653,12 @@ model Tenant {
   loyaltyCycles                  LoyaltyCycle[]
   loyaltyContributions           LoyaltyContribution[]
   loyaltyRewards                 LoyaltyReward[]
+  customerRelationshipSnapshots  CustomerRelationshipSnapshot[]
+  customerRelationshipOrders     CustomerRelationshipProcessedOrder[]
+  customerReturnCampaigns        CustomerReturnCampaign[]
+  customerReturnRecipients       CustomerReturnCampaignRecipient[]
+  customerReturnOrders           CustomerReturnCampaignOrder[]
+  communicationPreferences       ConsumerCommunicationPreference[]
 
   @@map("tenants")
 }
@@ -717,6 +762,12 @@ model Store {
   loyaltyCycles                  LoyaltyCycle[]
   loyaltyContributions           LoyaltyContribution[]
   loyaltyRewards                 LoyaltyReward[]
+  customerRelationshipSnapshots  CustomerRelationshipSnapshot[]
+  customerRelationshipOrders     CustomerRelationshipProcessedOrder[]
+  customerReturnCampaigns        CustomerReturnCampaign[]
+  customerReturnRecipients       CustomerReturnCampaignRecipient[]
+  customerReturnOrders           CustomerReturnCampaignOrder[]
+  communicationPreferences       ConsumerCommunicationPreference[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -951,6 +1002,7 @@ model StoreEntitlement {
   consumerConvenienceV2Enabled   Boolean   @default(false)
   loyaltyEnabled                 Boolean   @default(false)
   loyaltyAdvancedRewardsEnabled  Boolean   @default(false)
+  customerRelationshipEnabled    Boolean   @default(false)
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
@@ -1565,6 +1617,8 @@ model Customer {
   recognitionAddressReferences CheckoutRecognitionAddressReference[]
   deviceRecognitions           CustomerDeviceRecognition[]
   verificationChallenges       ConsumerVerificationChallenge[]
+  relationshipSnapshots        CustomerRelationshipSnapshot[]
+  returnCampaignRecipients     CustomerReturnCampaignRecipient[]
 
   @@unique([tenantId, phone])
   @@unique([id, tenantId])
@@ -1585,14 +1639,18 @@ model ConsumerIdentity {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  customers            Customer[]
-  sessions             ConsumerSession[]
-  challenges           ConsumerVerificationChallenge[]
-  favorites            ConsumerFavorite[]
-  emailChangeRequests  ConsumerEmailChangeRequest[]
-  loyaltyCycles        LoyaltyCycle[]
-  loyaltyRewards       LoyaltyReward[]
-  loyaltyContributions LoyaltyContribution[]
+  customers                   Customer[]
+  sessions                    ConsumerSession[]
+  challenges                  ConsumerVerificationChallenge[]
+  favorites                   ConsumerFavorite[]
+  emailChangeRequests         ConsumerEmailChangeRequest[]
+  loyaltyCycles               LoyaltyCycle[]
+  loyaltyRewards              LoyaltyReward[]
+  loyaltyContributions        LoyaltyContribution[]
+  relationshipSnapshots       CustomerRelationshipSnapshot[]
+  relationshipProcessedOrders CustomerRelationshipProcessedOrder[]
+  returnCampaignRecipients    CustomerReturnCampaignRecipient[]
+  communicationPreferences    ConsumerCommunicationPreference[]
 
   @@index([phoneVerifiedAt])
   @@index([emailVerifiedAt])
@@ -2068,11 +2126,13 @@ model Order {
   operationalSlaAlerts           OrderOperationalSlaAlert[]
   mercadoPagoPayment             MercadoPagoPayment?
   orderOperationalSlaDeliveries  OrderOperationalSlaDelivery[]
-  convertedPosDrafts             PosDraft[]                      @relation("PosDraftConvertedOrder")
+  convertedPosDrafts             PosDraft[]                          @relation("PosDraftConvertedOrder")
   posManualDiscount              PosManualDiscountLedger?
   consumerVerificationChallenges ConsumerVerificationChallenge[]
   loyaltyContribution            LoyaltyContribution?
-  loyaltyReward                  LoyaltyReward?                  @relation("LoyaltyRewardOrder")
+  loyaltyReward                  LoyaltyReward?                      @relation("LoyaltyRewardOrder")
+  customerRelationshipProcessing CustomerRelationshipProcessedOrder?
+  customerReturnCampaignOrders   CustomerReturnCampaignOrder[]       @relation("CustomerReturnCampaignOrder")
 
   @@unique([storeId, idempotencyKey])
   @@unique([storeId, orderNumber])
@@ -2216,11 +2276,12 @@ model LoyaltyReward {
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
-  cycle            LoyaltyCycle     @relation(fields: [cycleId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
-  order            Order?           @relation("LoyaltyRewardOrder", fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  tenant                  Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store                   Store                            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  consumerIdentity        ConsumerIdentity                 @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  cycle                   LoyaltyCycle                     @relation(fields: [cycleId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  order                   Order?                           @relation("LoyaltyRewardOrder", fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  returnCampaignRecipient CustomerReturnCampaignRecipient? @relation("CustomerReturnCampaignReward")
 
   @@unique([id, tenantId, storeId])
   @@unique([cycleId, tenantId, storeId])
@@ -2228,6 +2289,182 @@ model LoyaltyReward {
   @@index([tenantId, storeId, consumerIdentityId, status, expiresAt, createdAt], map: "loyalty_rewards_consumer_status_expiry_idx")
   @@index([tenantId, storeId, status, createdAt])
   @@map("loyalty_rewards")
+}
+
+model CustomerRelationshipSnapshot {
+  id                       String                      @id @default(uuid())
+  tenantId                 String
+  storeId                  String
+  consumerIdentityId       String
+  customerId               String
+  firstCompletedOrderAt    DateTime
+  lastCompletedOrderAt     DateTime
+  completedOrderCount      Int                         @default(0)
+  totalCompletedOrderValue Int                         @default(0)
+  averageOrderValue        Int                         @default(0)
+  averageDaysBetweenOrders Float?
+  recentOrderFrequency     Int                         @default(0)
+  segment                  CustomerRelationshipSegment
+  segmentUpdatedAt         DateTime                    @default(now())
+  recoveredAt              DateTime?
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+
+  tenant             Tenant                               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store              Store                                @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  consumerIdentity   ConsumerIdentity                     @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  customer           Customer                             @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  processedOrders    CustomerRelationshipProcessedOrder[]
+  campaignRecipients CustomerReturnCampaignRecipient[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([tenantId, storeId, consumerIdentityId])
+  @@unique([tenantId, storeId, customerId])
+  @@index([tenantId, storeId, segment, lastCompletedOrderAt])
+  @@index([tenantId, storeId, lastCompletedOrderAt])
+  @@map("customer_relationship_snapshots")
+}
+
+model CustomerRelationshipProcessedOrder {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  storeId            String
+  snapshotId         String
+  consumerIdentityId String
+  orderId            String
+  completedAt        DateTime
+  orderValue         Int
+  createdAt          DateTime @default(now())
+
+  tenant           Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store                        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  snapshot         CustomerRelationshipSnapshot @relation(fields: [snapshotId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  consumerIdentity ConsumerIdentity             @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  order            Order                        @relation(fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([orderId, tenantId, storeId])
+  @@index([tenantId, storeId, consumerIdentityId, completedAt])
+  @@index([snapshotId, completedAt])
+  @@map("customer_relationship_processed_orders")
+}
+
+model ConsumerCommunicationPreference {
+  id                        String    @id @default(uuid())
+  tenantId                  String
+  storeId                   String
+  consumerIdentityId        String
+  benefitEarnedEnabled      Boolean   @default(true)
+  benefitExpiringEnabled    Boolean   @default(true)
+  storeOffersEnabled        Boolean   @default(false)
+  storeOffersConsentedAt    DateTime?
+  storeOffersUnsubscribedAt DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  consumerIdentity ConsumerIdentity @relation(fields: [consumerIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, storeId, consumerIdentityId])
+  @@index([consumerIdentityId, storeId])
+  @@map("consumer_communication_preferences")
+}
+
+model CustomerReturnCampaign {
+  id                      String                       @id @default(uuid())
+  tenantId                String
+  storeId                 String
+  status                  CustomerReturnCampaignStatus @default(ACTIVE)
+  target                  CustomerReturnCampaignTarget
+  rewardType              LoyaltyRewardType
+  rewardValue             Int?
+  percentageBasisPoints   Int?
+  maximumDiscountValue    Int?
+  freeProductId           String?
+  freeProductNameSnapshot String?                      @db.VarChar(160)
+  freeProductBaseValue    Int?
+  minimumOrderValue       Int                          @default(0)
+  validityDays            Int                          @default(7)
+  cooldownDays            Int                          @default(30)
+  audienceSize            Int                          @default(0)
+  startsAt                DateTime                     @default(now())
+  endsAt                  DateTime
+  createdById             String
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+
+  tenant     Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store      Store                             @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy  User                              @relation("CustomerReturnCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  recipients CustomerReturnCampaignRecipient[]
+  orders     CustomerReturnCampaignOrder[]
+
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, status, startsAt])
+  @@index([tenantId, storeId, endsAt])
+  @@index([createdById, createdAt])
+  @@map("customer_return_campaigns")
+}
+
+model CustomerReturnCampaignRecipient {
+  id                           String                           @id @default(uuid())
+  tenantId                     String
+  storeId                      String
+  campaignId                   String
+  snapshotId                   String
+  consumerIdentityId           String
+  customerId                   String
+  rewardId                     String                           @unique
+  status                       CustomerReturnRecipientStatus    @default(REWARDED)
+  marketingConsentAtActivation Boolean                          @default(false)
+  notificationStatus           CustomerReturnNotificationStatus @default(NOT_REQUESTED)
+  notifiedAt                   DateTime?
+  firstReturnedAt              DateTime?
+  convertedAt                  DateTime?
+  createdAt                    DateTime                         @default(now())
+  updatedAt                    DateTime                         @updatedAt
+
+  tenant           Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store                         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  campaign         CustomerReturnCampaign        @relation(fields: [campaignId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  snapshot         CustomerRelationshipSnapshot  @relation(fields: [snapshotId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  consumerIdentity ConsumerIdentity              @relation(fields: [consumerIdentityId], references: [id], onDelete: Restrict)
+  customer         Customer                      @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reward           LoyaltyReward                 @relation("CustomerReturnCampaignReward", fields: [rewardId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  orders           CustomerReturnCampaignOrder[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([campaignId, consumerIdentityId])
+  @@unique([rewardId, tenantId, storeId])
+  @@index([campaignId, status, createdAt])
+  @@index([tenantId, storeId, consumerIdentityId, createdAt])
+  @@index([tenantId, storeId, notificationStatus, createdAt])
+  @@map("customer_return_campaign_recipients")
+}
+
+model CustomerReturnCampaignOrder {
+  id          String   @id @default(uuid())
+  tenantId    String
+  storeId     String
+  campaignId  String
+  recipientId String
+  orderId     String
+  orderValue  Int
+  usedReward  Boolean  @default(false)
+  completedAt DateTime
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store                           @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  campaign  CustomerReturnCampaign          @relation(fields: [campaignId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  recipient CustomerReturnCampaignRecipient @relation(fields: [recipientId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  order     Order                           @relation("CustomerReturnCampaignOrder", fields: [orderId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([orderId, campaignId])
+  @@index([campaignId, completedAt])
+  @@index([recipientId, completedAt])
+  @@index([tenantId, storeId, orderId])
+  @@map("customer_return_campaign_orders")
 }
 
 model OrderInternalNote {

@@ -7,6 +7,7 @@ import {
   type OrderOutboxQueueMessage,
 } from '@/domain/orders/order-events';
 import type { OrderEventPublisher } from '@/lib/pusher/order-event-publisher';
+import { processCustomerRelationshipForOrder } from '@/server/services/customer-relationship.service';
 import {
   processLoyaltyForOrder,
   restoreLoyaltyRewardForCancelledOrder,
@@ -117,13 +118,18 @@ export async function processOrderOutboxMessage(
       throw new Error('Order event payload does not match its outbox aggregate.');
     }
     if (current.eventType === 'ORDER_COMPLETED') {
-      await db.$transaction((tx) =>
-        processLoyaltyForOrder(tx, {
+      await db.$transaction(async (tx) => {
+        await processLoyaltyForOrder(tx, {
           tenantId: current.tenantId,
           storeId: current.storeId,
           orderId: current.orderId,
-        }),
-      );
+        });
+        await processCustomerRelationshipForOrder(tx, {
+          tenantId: current.tenantId,
+          storeId: current.storeId,
+          orderId: current.orderId,
+        });
+      });
     } else if (current.eventType === 'ORDER_CANCELLED') {
       await db.$transaction((tx) =>
         restoreLoyaltyRewardForCancelledOrder(tx, {

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Gift, UserRoundSearch } from 'lucide-react';
 import { redirect } from 'next/navigation';
 
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
@@ -12,6 +12,7 @@ import {
 import { getStoreLocalDate } from '@/lib/time/store-time';
 import { getActiveStoreContext } from '@/server/services/store-context.service';
 import { getStoreOverview } from '@/server/services/store-settings.service';
+import { getCustomerRelationshipHomeInsights } from '@/server/services/customer-relationship.service';
 
 export const metadata = {
   title: 'Visão geral',
@@ -23,10 +24,11 @@ export default async function DashboardPage() {
   if (!activeStore) redirect('/dashboard/stores');
 
   const localDate = getStoreLocalDate(new Date(), activeStore.store.timeZone);
-  const [overview, ordersResult, metricsResult] = await Promise.all([
+  const [overview, ordersResult, metricsResult, relationshipInsights] = await Promise.all([
     getStoreOverview(activeStore.store.id),
     getActiveOrderCountsAction(),
     getDailyOrderMetricsAction({ localDate }),
+    getCustomerRelationshipHomeInsights(),
   ]);
   const store = overview.store;
 
@@ -51,6 +53,49 @@ export default async function DashboardPage() {
         orderCounts={ordersResult.success ? ordersResult.data : undefined}
         dailyMetrics={metricsResult.success ? metricsResult.data : undefined}
       />
+      {relationshipInsights &&
+      (relationshipInsights.attention > 0 || relationshipInsights.nearReward > 0) ? (
+        <section
+          className="border-border mt-6 divide-y rounded-xl border"
+          aria-labelledby="customer-insights-title"
+        >
+          <h2 id="customer-insights-title" className="px-4 pt-4 pb-3 font-bold">
+            Para cuidar hoje
+          </h2>
+          {relationshipInsights.attention > 0 ? (
+            <Link
+              href="/dashboard/customers?sort=ATTENTION"
+              className="hover:bg-surface-secondary focus-visible:ring-brand-500 flex min-h-16 items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <UserRoundSearch className="text-brand-600 size-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-sm">
+                <strong className="block font-semibold">
+                  {relationshipInsights.attention}{' '}
+                  {relationshipInsights.attention === 1 ? 'cliente está' : 'clientes estão'} há mais
+                  tempo sem voltar
+                </strong>
+                <span className="text-text-secondary">Ver quem precisa de atenção</span>
+              </span>
+            </Link>
+          ) : null}
+          {relationshipInsights.nearReward > 0 ? (
+            <Link
+              href="/dashboard/loyalty"
+              className="hover:bg-surface-secondary focus-visible:ring-brand-500 flex min-h-16 items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <Gift className="text-brand-600 size-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-sm">
+                <strong className="block font-semibold">
+                  {relationshipInsights.nearReward}{' '}
+                  {relationshipInsights.nearReward === 1 ? 'cliente está' : 'clientes estão'} a um
+                  pedido de ganhar um benefício
+                </strong>
+                <span className="text-text-secondary">Ver fidelidade</span>
+              </span>
+            </Link>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

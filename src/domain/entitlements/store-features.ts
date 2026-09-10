@@ -13,6 +13,13 @@ export const STORE_FEATURE_DEFINITIONS = {
     entitlementField: 'loyaltyAdvancedRewardsEnabled',
     implementationStatus: 'AVAILABLE',
   },
+  customerRelationship: {
+    key: 'customerRelationship',
+    label: 'Clientes — Relacionamento e recompra',
+    description: 'Mostra quem está sumindo e libera ações simples para trazer clientes de volta.',
+    entitlementField: 'customerRelationshipEnabled',
+    implementationStatus: 'AVAILABLE',
+  },
   consumerConvenienceV2: {
     key: 'consumerConvenienceV2',
     label: 'Recompra e conveniência V2',

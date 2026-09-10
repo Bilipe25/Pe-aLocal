@@ -2,7 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { Minus, Plus, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { OptionGroupSelector } from '@/components/storefront/option-group-selector';
@@ -10,6 +10,12 @@ import { ProductImage } from '@/components/storefront/product-image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency } from '@/lib/utils';
+import {
+  minimumRequiredOptionsPrice,
+  hasIncompleteOptions,
+  offerMatchesSearch,
+  offerStartingPrice,
+} from '@/features/storefront/offer-presentation';
 import {
   MAX_CART_ITEM_QUANTITY,
   useCartStore,
@@ -26,11 +32,20 @@ export function StorefrontOffers({
   offers,
   storeOpen,
   onProductClick,
+  showImages = true,
+  search = '',
 }: {
   offers: PublicStorefrontOfferDto[];
   storeOpen: boolean;
+  showImages?: boolean;
+  search?: string;
   onProductClick: (product: PublicStorefrontProductSummaryDto, promotionalPrice?: number) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  function restoreOfferFocus() {
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
   const [selectedCombo, setSelectedCombo] = useState<Extract<
     PublicStorefrontOfferDto,
     { kind: 'COMBO' }
@@ -39,7 +54,9 @@ export function StorefrontOffers({
     PublicStorefrontOfferDto,
     { kind: 'FLEXIBLE_COMBO' }
   > | null>(null);
-  if (offers.length === 0) return null;
+  const matchingOffers = offers.filter((offer) => offerMatchesSearch(offer, search));
+  const visibleOffers = showAll || search.trim() ? matchingOffers : matchingOffers.slice(0, 6);
+  if (matchingOffers.length === 0) return null;
   return (
     <>
       <section
@@ -52,87 +69,128 @@ export function StorefrontOffers({
             <h2 id="storefront-offers-title" className="storefront-section-title">
               Ofertas
             </h2>
-            <p className="text-text-secondary mt-1 text-sm">
-              Economia confirmada no fechamento do pedido.
+            <p className="storefront-offers-intro">
+              Escolha sua oferta e personalize os adicionais.
             </p>
           </div>
+          {matchingOffers.length > 6 && !search.trim() && (
+            <button
+              type="button"
+              className="storefront-offers-toggle"
+              aria-expanded={showAll}
+              aria-controls="storefront-offers-list"
+              onClick={() => setShowAll((current) => !current)}
+            >
+              {showAll ? 'Ver destaques' : `Ver todas (${matchingOffers.length})`}
+            </button>
+          )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {offers.map((offer) => {
+        <ul
+          id="storefront-offers-list"
+          className={
+            showAll || search.trim()
+              ? 'storefront-offers-track is-expanded'
+              : 'storefront-offers-track'
+          }
+        >
+          {visibleOffers.map((offer) => {
             const product = offer.kind === 'PRODUCT_PROMOTION' ? offer.product : null;
             const comboOffer = offer.kind === 'PRODUCT_PROMOTION' ? null : offer;
-            const name = product?.name ?? comboOffer!.name;
-            const imageUrl = product?.imageUrl ?? comboOffer!.imageUrl;
-            const imageAssetId = product?.imageAssetId ?? comboOffer!.imageAssetId;
+            const name = offer.kind === 'PRODUCT_PROMOTION' ? offer.product.name : offer.name;
+            const imageUrl =
+              offer.kind === 'PRODUCT_PROMOTION' ? offer.product.imageUrl : offer.imageUrl;
+            const imageAssetId =
+              offer.kind === 'PRODUCT_PROMOTION' ? offer.product.imageAssetId : offer.imageAssetId;
             const description =
-              offer.kind === 'COMBO'
+              comboOffer?.description ||
+              (offer.kind === 'COMBO'
                 ? offer.components
                     .map((component) => `${component.quantity}× ${component.product.name}`)
                     .join(' · ')
                 : offer.kind === 'FLEXIBLE_COMBO'
                   ? offer.groups.map((group) => `${group.quantity}× ${group.name}`).join(' · ')
-                  : product!.description;
+                  : product!.description);
+            const startingPrice = offerStartingPrice(offer);
+            const variablePrice =
+              offer.kind === 'FLEXIBLE_COMBO' || startingPrice > offer.offerPrice;
             return (
-              <button
-                key={`${offer.kind}-${offer.id}`}
-                type="button"
-                onClick={() => {
-                  if (offer.kind === 'COMBO') setSelectedCombo(offer);
-                  else if (offer.kind === 'FLEXIBLE_COMBO') setSelectedFlexibleCombo(offer);
-                  else onProductClick(offer.product, offer.offerPrice);
-                }}
-                className="border-border bg-surface focus-visible:ring-brand-500 overflow-hidden rounded-xl border text-left transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              >
-                <div className="bg-surface-secondary aspect-[16/9] overflow-hidden">
-                  <ProductImage
-                    name={name}
-                    imageUrl={imageUrl}
-                    imageAssetId={imageAssetId}
-                    width={640}
-                    sizes="(max-width: 639px) 100vw, 33vw"
-                  />
-                </div>
-                <div className="p-4">
-                  <span className="bg-success-light text-success inline-flex min-h-7 items-center rounded-full px-2.5 text-xs font-bold">
-                    Economize {formatCurrency(offer.savings)}
-                  </span>
-                  <h3 className="text-text-primary mt-3 text-base font-bold">{name}</h3>
-                  <p className="text-text-secondary mt-1 line-clamp-2 text-sm">{description}</p>
-                  <p className="mt-3 flex items-baseline gap-2">
-                    <span className="text-text-muted text-sm line-through">
-                      <span className="sr-only">Preço anterior: </span>
-                      {formatCurrency(offer.regularPrice)}
+              <li key={`${offer.kind}-${offer.id}`}>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    triggerRef.current = event.currentTarget;
+                    if (offer.kind === 'COMBO') setSelectedCombo(offer);
+                    else if (offer.kind === 'FLEXIBLE_COMBO') setSelectedFlexibleCombo(offer);
+                    else onProductClick(offer.product, offer.offerPrice);
+                  }}
+                  className="storefront-offer-card"
+                >
+                  {showImages && (
+                    <div className="storefront-offer-media">
+                      <ProductImage
+                        name={name}
+                        imageUrl={imageUrl}
+                        imageAssetId={imageAssetId}
+                        width={384}
+                        sizes="(max-width: 639px) 76vw, 280px"
+                      />
+                    </div>
+                  )}
+                  <div className="storefront-offer-copy">
+                    {offer.savings > 0 && !variablePrice && (
+                      <span className="storefront-offer-saving">
+                        Economize {formatCurrency(offer.savings)}
+                      </span>
+                    )}
+                    <h3 className="storefront-offer-name">{name}</h3>
+                    <p className="storefront-offer-description">{description}</p>
+                    <p className="storefront-offer-prices">
+                      {!variablePrice && offer.regularPrice > startingPrice && (
+                        <span className="storefront-price-previous">
+                          <span className="sr-only">Preço anterior: </span>
+                          {formatCurrency(offer.regularPrice)}
+                        </span>
+                      )}
+                      <strong>
+                        {variablePrice && (
+                          <span className="storefront-offer-from">A partir de </span>
+                        )}
+                        <span className="sr-only">Preço da oferta: </span>
+                        {formatCurrency(startingPrice)}
+                      </strong>
+                    </p>
+                    <span className="storefront-offer-action">
+                      {offer.kind === 'PRODUCT_PROMOTION'
+                        ? 'Ver produto'
+                        : offer.kind === 'FLEXIBLE_COMBO'
+                          ? 'Montar combo'
+                          : 'Escolher opções'}
                     </span>
-                    <strong className="text-text-primary text-lg">
-                      <span className="sr-only">Preço da oferta: </span>
-                      {formatCurrency(offer.offerPrice)}
-                    </strong>
-                  </p>
-                  <span className="text-brand-700 mt-3 block text-sm font-semibold">
-                    {offer.kind === 'PRODUCT_PROMOTION'
-                      ? 'Ver produto'
-                      : offer.kind === 'FLEXIBLE_COMBO'
-                        ? 'Montar combo'
-                        : 'Escolher opções'}
-                  </span>
-                </div>
-              </button>
+                  </div>
+                </button>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </section>
       {selectedCombo && (
         <ComboConfigurator
           offer={selectedCombo}
           storeOpen={storeOpen}
-          onClose={() => setSelectedCombo(null)}
+          onClose={() => {
+            setSelectedCombo(null);
+            restoreOfferFocus();
+          }}
         />
       )}
       {selectedFlexibleCombo && (
         <FlexibleComboConfigurator
           offer={selectedFlexibleCombo}
           storeOpen={storeOpen}
-          onClose={() => setSelectedFlexibleCombo(null)}
+          onClose={() => {
+            setSelectedFlexibleCombo(null);
+            restoreOfferFocus();
+          }}
         />
       )}
     </>
@@ -163,7 +221,14 @@ export function FlexibleComboConfigurator({
               (component) => component.comboItemId === choice.choiceId,
             ),
           );
-          return [group.groupId, existing?.choiceId ?? group.choices[0]!.choiceId];
+          const cheapest = [...group.choices].sort(
+            (left, right) =>
+              left.priceDelta +
+              minimumRequiredOptionsPrice(left.product) -
+              right.priceDelta -
+              minimumRequiredOptionsPrice(right.product),
+          )[0]!;
+          return [group.groupId, existing?.choiceId ?? cheapest.choiceId];
         }),
       ),
   );
@@ -229,12 +294,7 @@ export function FlexibleComboConfigurator({
   );
   const unitPrice = offer.offerPrice + choicesDelta + optionsPrice;
   const missingRequired = chosen.some(({ choice }) =>
-    choice.product.optionGroups
-      .filter((group) => group.isRequired)
-      .some(
-        (group) =>
-          (selected.get(choice.choiceId)?.get(group.id) ?? []).length < group.minSelections,
-      ),
+    hasIncompleteOptions(choice.product, selected.get(choice.choiceId)),
   );
   const portalContainer =
     typeof document === 'undefined'
@@ -297,18 +357,8 @@ export function FlexibleComboConfigurator({
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal container={portalContainer}>
         <Dialog.Overlay className="storefront-product-modal-overlay" />
-        <Dialog.Content className="storefront-product-modal">
-          <div className="storefront-product-modal-header">
-            <div className="storefront-product-modal-heading">
-              <Dialog.Title className="storefront-product-modal-title">{offer.name}</Dialog.Title>
-              <Dialog.Description className="storefront-product-modal-description">
-                Faça uma escolha em cada etapa. Adicionais aparecem no preço antes de incluir na
-                sacola.
-              </Dialog.Description>
-              <p className="text-text-primary mt-3 text-xl font-bold">
-                A partir de {formatCurrency(offer.offerPrice)}
-              </p>
-            </div>
+        <Dialog.Content className="storefront-product-modal storefront-combo-modal">
+          <div className="storefront-product-modal-actions">
             <Dialog.Close
               aria-label={`Fechar configuração de ${offer.name}`}
               className="storefront-product-modal-close"
@@ -316,71 +366,86 @@ export function FlexibleComboConfigurator({
               <X aria-hidden="true" />
             </Dialog.Close>
           </div>
-          <div className="storefront-product-modal-options space-y-7">
-            {chosen.map(({ group, choice }, groupIndex) => (
-              <section key={group.groupId} className="border-border border-b pb-7 last:border-b-0">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3 className="text-text-primary font-bold">{group.name}</h3>
-                  <span className="text-text-secondary text-xs">
-                    Etapa {groupIndex + 1} de {offer.groups.length}
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {group.choices.map((candidate) => (
-                    <label
-                      key={candidate.choiceId}
-                      className="border-border has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border p-3"
-                    >
-                      <input
-                        type="radio"
-                        name={`flexible-group-${group.groupId}`}
-                        value={candidate.choiceId}
-                        checked={choice.choiceId === candidate.choiceId}
-                        onChange={() =>
-                          setChoiceByGroup((current) =>
-                            new Map(current).set(group.groupId, candidate.choiceId),
-                          )
-                        }
-                        className="h-4 w-4"
-                      />
-                      <span className="text-text-primary flex-1 text-sm font-medium">
-                        {candidate.product.name}
-                      </span>
-                      {candidate.priceDelta > 0 && (
-                        <span className="text-text-secondary text-sm">
-                          + {formatCurrency(candidate.priceDelta * group.quantity)}
+          <div className="storefront-product-modal-scroll">
+            <div className="storefront-product-modal-header">
+              <div className="storefront-product-modal-heading">
+                <Dialog.Title className="storefront-product-modal-title">{offer.name}</Dialog.Title>
+                <Dialog.Description className="storefront-product-modal-description">
+                  Faça uma escolha em cada etapa. Adicionais aparecem no preço antes de incluir na
+                  sacola.
+                </Dialog.Description>
+                <p className="text-tinta mt-3 text-xl font-bold">
+                  A partir de {formatCurrency(offerStartingPrice(offer))}
+                </p>
+              </div>
+            </div>
+            <div className="storefront-product-modal-options space-y-7">
+              {chosen.map(({ group, choice }, groupIndex) => (
+                <section key={group.groupId} className="storefront-combo-component">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="text-tinta font-bold">{group.name}</h3>
+                    <span className="text-text-muted text-sm">
+                      Etapa {groupIndex + 1} de {offer.groups.length}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2" role="radiogroup" aria-label={group.name}>
+                    {group.choices.map((candidate) => (
+                      <label key={candidate.choiceId} className="storefront-combo-choice">
+                        <input
+                          type="radio"
+                          name={`flexible-group-${group.groupId}`}
+                          value={candidate.choiceId}
+                          checked={choice.choiceId === candidate.choiceId}
+                          onChange={() =>
+                            setChoiceByGroup((current) =>
+                              new Map(current).set(group.groupId, candidate.choiceId),
+                            )
+                          }
+                          className="h-4 w-4"
+                        />
+                        <span className="text-tinta min-w-0 flex-1 text-base font-medium break-words">
+                          {candidate.product.name}
                         </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-                {choice.product.optionGroups.map((optionGroup) => (
-                  <OptionGroupSelector
-                    key={optionGroup.id}
-                    group={optionGroup}
-                    selected={selected.get(choice.choiceId)?.get(optionGroup.id) ?? []}
-                    onChange={(options) => updateOptions(choice.choiceId, optionGroup.id, options)}
-                  />
-                ))}
-                {choice.product.allowNotes && (
-                  <div className="storefront-product-modal-notes mt-4">
-                    <label htmlFor={`flexible-note-${choice.choiceId}`}>
-                      Observação para {choice.product.name}
-                    </label>
-                    <Textarea
-                      id={`flexible-note-${choice.choiceId}`}
-                      rows={2}
-                      value={notes.get(choice.choiceId) ?? ''}
-                      onChange={(event) =>
-                        setNotes((current) =>
-                          new Map(current).set(choice.choiceId, event.target.value),
-                        )
+                        {candidate.priceDelta > 0 && (
+                          <span className="text-text-muted text-sm">
+                            + {formatCurrency(candidate.priceDelta * group.quantity)}
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  {choice.product.optionGroups.map((optionGroup) => (
+                    <OptionGroupSelector
+                      key={optionGroup.id}
+                      group={optionGroup}
+                      selected={selected.get(choice.choiceId)?.get(optionGroup.id) ?? []}
+                      onChange={(options) =>
+                        updateOptions(choice.choiceId, optionGroup.id, options)
                       }
                     />
-                  </div>
-                )}
-              </section>
-            ))}
+                  ))}
+                  {choice.product.allowNotes && (
+                    <div className="storefront-product-modal-notes mt-4">
+                      <label htmlFor={`flexible-note-${choice.choiceId}`}>
+                        Observação para {choice.product.name}
+                      </label>
+                      <Textarea
+                        id={`flexible-note-${choice.choiceId}`}
+                        rows={2}
+                        maxLength={500}
+                        className="storefront-product-modal-textarea"
+                        value={notes.get(choice.choiceId) ?? ''}
+                        onChange={(event) =>
+                          setNotes((current) =>
+                            new Map(current).set(choice.choiceId, event.target.value),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           </div>
           <div className="storefront-product-modal-footer">
             {!storeOpen && (
@@ -391,8 +456,12 @@ export function FlexibleComboConfigurator({
                 Selecione os complementos obrigatórios para continuar.
               </p>
             )}
-            <div className="storefront-product-modal-purchase-row">
-              <div className="storefront-product-modal-quantity" aria-label="Quantidade de combos">
+            <div className="storefront-product-modal-purchase">
+              <div
+                className="storefront-product-quantity"
+                role="group"
+                aria-label="Quantidade de combos"
+              >
                 <button
                   type="button"
                   onClick={() => setQuantity((value) => Math.max(1, value - 1))}
@@ -401,7 +470,9 @@ export function FlexibleComboConfigurator({
                 >
                   <Minus aria-hidden="true" />
                 </button>
-                <span>{quantity}</span>
+                <output aria-live="polite" aria-label="Quantidade">
+                  {quantity}
+                </output>
                 <button
                   type="button"
                   onClick={() =>
@@ -417,7 +488,7 @@ export function FlexibleComboConfigurator({
                 type="button"
                 onClick={saveCombo}
                 disabled={!storeOpen || missingRequired}
-                className="storefront-product-modal-add"
+                className="storefront-product-modal-cta"
               >
                 {cartItem ? 'Atualizar' : 'Adicionar'} · {formatCurrency(unitPrice * quantity)}
               </Button>
@@ -492,12 +563,7 @@ export function ComboConfigurator({
   );
   const unitPrice = offer.offerPrice + optionsPrice;
   const missingRequired = offer.components.some((component) =>
-    component.product.optionGroups
-      .filter((group) => group.isRequired)
-      .some(
-        (group) =>
-          (selected.get(component.comboItemId)?.get(group.id) ?? []).length < group.minSelections,
-      ),
+    hasIncompleteOptions(component.product, selected.get(component.comboItemId)),
   );
   const portalContainer =
     typeof document === 'undefined'
@@ -562,24 +628,8 @@ export function ComboConfigurator({
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal container={portalContainer}>
         <Dialog.Overlay className="storefront-product-modal-overlay" />
-        <Dialog.Content className="storefront-product-modal">
-          <div className="storefront-product-modal-header">
-            <div className="storefront-product-modal-heading">
-              <Dialog.Title className="storefront-product-modal-title">{offer.name}</Dialog.Title>
-              <Dialog.Description className="storefront-product-modal-description">
-                Configure cada produto. O preço especial não inclui adicionais.
-              </Dialog.Description>
-              <p className="mt-3 flex items-baseline gap-2">
-                <span className="text-text-muted line-through">
-                  <span className="sr-only">Preço anterior: </span>
-                  {formatCurrency(offer.regularPrice)}
-                </span>
-                <strong className="text-text-primary text-xl">
-                  <span className="sr-only">Preço da oferta: </span>
-                  {formatCurrency(offer.offerPrice)}
-                </strong>
-              </p>
-            </div>
+        <Dialog.Content className="storefront-product-modal storefront-combo-modal">
+          <div className="storefront-product-modal-actions">
             <Dialog.Close
               aria-label={`Fechar configuração de ${offer.name}`}
               className="storefront-product-modal-close"
@@ -587,42 +637,63 @@ export function ComboConfigurator({
               <X aria-hidden="true" />
             </Dialog.Close>
           </div>
-          <div className="storefront-product-modal-options space-y-6">
-            {offer.components.map((component) => (
-              <section
-                key={component.comboItemId}
-                className="border-border border-b pb-6 last:border-b-0"
-              >
-                <h3 className="text-text-primary font-bold">
-                  {component.quantity}× {component.product.name}
-                </h3>
-                {component.product.optionGroups.map((group) => (
-                  <OptionGroupSelector
-                    key={group.id}
-                    group={group}
-                    selected={selected.get(component.comboItemId)?.get(group.id) ?? []}
-                    onChange={(options) => updateOptions(component.comboItemId, group.id, options)}
-                  />
-                ))}
-                {component.product.allowNotes && (
-                  <div className="storefront-product-modal-notes mt-4">
-                    <label htmlFor={`combo-note-${component.comboItemId}`}>
-                      Observação para {component.product.name}
-                    </label>
-                    <Textarea
-                      id={`combo-note-${component.comboItemId}`}
-                      rows={2}
-                      value={notes.get(component.comboItemId) ?? ''}
-                      onChange={(event) =>
-                        setNotes((current) =>
-                          new Map(current).set(component.comboItemId, event.target.value),
-                        )
+          <div className="storefront-product-modal-scroll">
+            <div className="storefront-product-modal-header">
+              <div className="storefront-product-modal-heading">
+                <Dialog.Title className="storefront-product-modal-title">{offer.name}</Dialog.Title>
+                <Dialog.Description className="storefront-product-modal-description">
+                  Configure cada produto. O preço especial não inclui adicionais.
+                </Dialog.Description>
+                <p className="mt-3 flex items-baseline gap-2">
+                  <span className="text-text-muted line-through">
+                    <span className="sr-only">Preço anterior: </span>
+                    {formatCurrency(offer.regularPrice)}
+                  </span>
+                  <strong className="text-tinta text-xl">
+                    <span className="sr-only">Preço da oferta: </span>
+                    {formatCurrency(offer.offerPrice)}
+                  </strong>
+                </p>
+              </div>
+            </div>
+            <div className="storefront-product-modal-options space-y-6">
+              {offer.components.map((component) => (
+                <section key={component.comboItemId} className="storefront-combo-component">
+                  <h3 className="text-tinta font-bold">
+                    {component.quantity}× {component.product.name}
+                  </h3>
+                  {component.product.optionGroups.map((group) => (
+                    <OptionGroupSelector
+                      key={group.id}
+                      group={group}
+                      selected={selected.get(component.comboItemId)?.get(group.id) ?? []}
+                      onChange={(options) =>
+                        updateOptions(component.comboItemId, group.id, options)
                       }
                     />
-                  </div>
-                )}
-              </section>
-            ))}
+                  ))}
+                  {component.product.allowNotes && (
+                    <div className="storefront-product-modal-notes mt-4">
+                      <label htmlFor={`combo-note-${component.comboItemId}`}>
+                        Observação para {component.product.name}
+                      </label>
+                      <Textarea
+                        id={`combo-note-${component.comboItemId}`}
+                        rows={2}
+                        maxLength={500}
+                        className="storefront-product-modal-textarea"
+                        value={notes.get(component.comboItemId) ?? ''}
+                        onChange={(event) =>
+                          setNotes((current) =>
+                            new Map(current).set(component.comboItemId, event.target.value),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           </div>
           <div className="storefront-product-modal-footer">
             {!storeOpen && (
@@ -633,8 +704,12 @@ export function ComboConfigurator({
                 Selecione os complementos obrigatórios para continuar.
               </p>
             )}
-            <div className="storefront-product-modal-purchase-row">
-              <div className="storefront-product-modal-quantity" aria-label="Quantidade de combos">
+            <div className="storefront-product-modal-purchase">
+              <div
+                className="storefront-product-quantity"
+                role="group"
+                aria-label="Quantidade de combos"
+              >
                 <button
                   type="button"
                   onClick={() => setQuantity((value) => Math.max(1, value - 1))}
@@ -643,7 +718,9 @@ export function ComboConfigurator({
                 >
                   <Minus aria-hidden="true" />
                 </button>
-                <span>{quantity}</span>
+                <output aria-live="polite" aria-label="Quantidade">
+                  {quantity}
+                </output>
                 <button
                   type="button"
                   onClick={() =>
@@ -659,7 +736,7 @@ export function ComboConfigurator({
                 type="button"
                 onClick={addCombo}
                 disabled={!storeOpen || missingRequired}
-                className="storefront-product-modal-add"
+                className="storefront-product-modal-cta"
               >
                 {cartItem ? 'Atualizar' : 'Adicionar'} · {formatCurrency(unitPrice * quantity)}
               </Button>

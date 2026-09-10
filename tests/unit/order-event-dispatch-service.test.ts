@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   findMany: vi.fn(),
   updateMany: vi.fn(),
+  transaction: vi.fn(),
+  processLoyaltyForOrder: vi.fn(),
+  processCustomerRelationshipForOrder: vi.fn(),
+  restoreLoyaltyRewardForCancelledOrder: vi.fn(),
   triggerOrderUpdated: vi.fn(),
   triggerPaymentUpdated: vi.fn(),
 }));
@@ -13,38 +17,34 @@ vi.mock('@opennextjs/cloudflare', () => ({
 }));
 vi.mock('@/server/database/client', () => ({
   getDb: () => ({
+    $transaction: mocks.transaction,
     orderOutboxEvent: {
       findMany: mocks.findMany,
       updateMany: mocks.updateMany,
     },
   }),
 }));
+vi.mock('@/server/services/loyalty.service', () => ({
+  processLoyaltyForOrder: mocks.processLoyaltyForOrder,
+  restoreLoyaltyRewardForCancelledOrder: mocks.restoreLoyaltyRewardForCancelledOrder,
+}));
+vi.mock('@/server/services/customer-relationship.service', () => ({
+  processCustomerRelationshipForOrder: mocks.processCustomerRelationshipForOrder,
+}));
 
 import { dispatchCommittedOrderEvents } from '@/server/services/order-event-dispatch.service';
-
-const event = {
-  id: 'outbox-a',
-  eventType: 'ORDER_ACCEPTED',
-  payload: {
-    tenantId: 'tenant-a',
-    storeId: 'store-a',
-    orderId: 'order-a',
-    orderNumber: 12,
-    status: 'CONFIRMED',
-    paymentStatus: 'PENDING',
-    version: 4,
-    actorUserId: 'user-a',
-    changedAt: '2026-07-22T10:00:00.000Z',
-  },
-};
 
 describe('order event dispatcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.findMany.mockResolvedValue([event]);
+    mocks.findMany.mockResolvedValue([]);
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.triggerOrderUpdated.mockResolvedValue(undefined);
     mocks.triggerPaymentUpdated.mockResolvedValue(undefined);
+    mocks.transaction.mockImplementation((operation) => operation({ kind: 'tx' }));
+    mocks.processLoyaltyForOrder.mockResolvedValue({ credited: true });
+    mocks.processCustomerRelationshipForOrder.mockResolvedValue({ updated: true });
+    mocks.restoreLoyaltyRewardForCancelledOrder.mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -79,6 +79,31 @@ describe('order event dispatcher', () => {
     ).resolves.toEqual({ notificationPending: true });
 
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('projeta fidelidade e relacionamento no modo direct antes de encerrar o evento', async () => {
+    vi.stubEnv('ORDER_EVENT_PUBLISH_MODE', 'direct');
+    mocks.findMany.mockResolvedValueOnce([
+      {
+        tenantId: 'tenant-a',
+        storeId: 'store-a',
+        orderId: 'order-a',
+        eventType: 'ORDER_COMPLETED',
+      },
+    ]);
+
+    await expect(
+      dispatchCommittedOrderEvents({
+        eventIds: ['outbox-a'],
+        publishDirect: mocks.triggerOrderUpdated,
+      }),
+    ).resolves.toEqual({ notificationPending: false });
+
+    expect(mocks.processLoyaltyForOrder).toHaveBeenCalledWith(
+      { kind: 'tx' },
+      expect.objectContaining({ tenantId: 'tenant-a', storeId: 'store-a', orderId: 'order-a' }),
+    );
+    expect(mocks.processCustomerRelationshipForOrder).toHaveBeenCalledOnce();
   });
 
   it('agenda enqueue com waitUntil sem bloquear a resposta no modo outbox', async () => {

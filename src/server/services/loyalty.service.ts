@@ -463,11 +463,24 @@ export async function queueExpiringLoyaltyNotifications(
       storeId: true,
       consumerIdentityId: true,
       expiresAt: true,
+      consumerIdentity: {
+        select: {
+          communicationPreferences: {
+            select: { storeId: true, benefitExpiringEnabled: true },
+          },
+        },
+      },
     },
   });
-  if (rewards.length === 0) return { queued: 0, now };
+  const eligibleRewards = rewards.filter((reward) => {
+    const preference = reward.consumerIdentity.communicationPreferences.find(
+      (candidate) => candidate.storeId === reward.storeId,
+    );
+    return preference?.benefitExpiringEnabled !== false;
+  });
+  if (eligibleRewards.length === 0) return { queued: 0, now };
   const result = await client.operationalOutboxEvent.createMany({
-    data: rewards.map((reward) => ({
+    data: eligibleRewards.map((reward) => ({
       tenantId: reward.tenantId,
       storeId: reward.storeId,
       aggregateType: 'LOYALTY_REWARD',

@@ -7,6 +7,11 @@ import {
   type OrderOutboxQueueMessage,
 } from '@/domain/orders/order-events';
 import { getDb } from '@/server/database/client';
+import { processCustomerRelationshipForOrder } from '@/server/services/customer-relationship.service';
+import {
+  processLoyaltyForOrder,
+  restoreLoyaltyRewardForCancelledOrder,
+} from '@/server/services/loyalty.service';
 
 export type OrderEventPublishMode = 'direct' | 'dual' | 'outbox';
 
@@ -97,6 +102,37 @@ async function attemptDirectPublish(publish: () => Promise<void>) {
   }
 }
 
+async function attemptDirectProjection(eventIds: string[]) {
+  try {
+    const db = getDb();
+    const events = await db.orderOutboxEvent.findMany({
+      where: {
+        id: { in: eventIds },
+        eventType: { in: ['ORDER_COMPLETED', 'ORDER_CANCELLED'] },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { tenantId: true, storeId: true, orderId: true, eventType: true },
+    });
+    for (const event of events) {
+      await db.$transaction(async (tx) => {
+        if (event.eventType === 'ORDER_COMPLETED') {
+          await processLoyaltyForOrder(tx, event);
+          await processCustomerRelationshipForOrder(tx, event);
+        } else {
+          await restoreLoyaltyRewardForCancelledOrder(tx, event);
+        }
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error('[ORDER_EVENT_DIRECT_PROJECTION_FAILED]', {
+      eventIds,
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return false;
+  }
+}
+
 function deferEnqueue(eventIds: string[]) {
   try {
     const { ctx } = getCloudflareContext();
@@ -115,9 +151,12 @@ export async function dispatchCommittedOrderEvents(input: {
   const mode = getOrderEventPublishMode();
 
   if (mode === 'direct') {
-    const published = await attemptDirectPublish(input.publishDirect);
-    if (published) await markDirectlyProcessed(input.eventIds);
-    return { notificationPending: !published };
+    const [projected, published] = await Promise.all([
+      attemptDirectProjection(input.eventIds),
+      attemptDirectPublish(input.publishDirect),
+    ]);
+    if (projected && published) await markDirectlyProcessed(input.eventIds);
+    return { notificationPending: !projected || !published };
   }
 
   if (mode === 'outbox') {

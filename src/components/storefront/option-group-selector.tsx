@@ -1,6 +1,6 @@
 'use client';
 
-import type { KeyboardEvent } from 'react';
+import { useId, type KeyboardEvent } from 'react';
 
 import { formatCurrency } from '@/lib/utils';
 import type { SelectedOption } from '@/stores/cart-store';
@@ -14,8 +14,9 @@ interface OptionGroupSelectorProps {
 
 export function OptionGroupSelector({ group, selected, onChange }: OptionGroupSelectorProps) {
   const selectedIds = new Set(selected.map((option) => option.id));
-  const titleId = `option-group-${group.id}-title`;
-  const helpId = `option-group-${group.id}-help`;
+  const instanceId = useId();
+  const titleId = `option-group-${instanceId}-title`;
+  const helpId = `option-group-${instanceId}-help`;
 
   function handleToggle(option: { id: string; name: string; price: number }) {
     if (group.isMultiple) {

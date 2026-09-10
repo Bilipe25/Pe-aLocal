@@ -72,6 +72,22 @@ export async function createLoyaltyNotificationEvent(
   tx: Prisma.TransactionClient,
   input: LoyaltyNotificationEventInput,
 ) {
+  const preference = await tx.consumerCommunicationPreference.findUnique({
+    where: {
+      tenantId_storeId_consumerIdentityId: {
+        tenantId: input.tenantId,
+        storeId: input.storeId,
+        consumerIdentityId: input.consumerIdentityId,
+      },
+    },
+    select: { benefitEarnedEnabled: true, benefitExpiringEnabled: true },
+  });
+  if (
+    (input.eventType === 'LOYALTY_REWARD_EARNED' && preference?.benefitEarnedEnabled === false) ||
+    (input.eventType === 'LOYALTY_REWARD_EXPIRING' && preference?.benefitExpiringEnabled === false)
+  ) {
+    return null;
+  }
   const occurredAt = input.occurredAt ?? new Date();
   return tx.operationalOutboxEvent.create({
     data: {
