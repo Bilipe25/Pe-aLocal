@@ -74,6 +74,12 @@ function filters(overrides: Partial<CatalogFilterState> = {}): CatalogFilterStat
 }
 
 describe('filtros e ordenação do catálogo público', () => {
+  it('ordena pelo preço promocional sem alterar o preço-base do produto', () => {
+    const index = createCatalogIndex(categories, new Map([['featured', 1000]]));
+    const result = filterIndexedCatalog(index, filters({ sort: 'PRICE_ASC' }));
+    expect(result[0].products[0].id).toBe('featured');
+    expect(result[0].products[0].basePrice).toBe(3000);
+  });
   it.each(Object.entries(expectedOrders) as [CatalogSort, string[]][])(
     'preserva a ordenação determinística em %s',
     (sort, expected) => {

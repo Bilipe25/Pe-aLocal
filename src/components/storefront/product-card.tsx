@@ -11,6 +11,7 @@ interface ProductCardProps {
   name: string;
   description: string | null;
   basePrice: number;
+  promotionalPrice?: number;
   isFeatured: boolean;
   isSoldOut: boolean;
   imageUrl: string | null;
@@ -32,6 +33,7 @@ export function ProductCard({
   name,
   description,
   basePrice,
+  promotionalPrice,
   isFeatured,
   isSoldOut,
   imageUrl,
@@ -48,6 +50,7 @@ export function ProductCard({
   onFavoriteToggle,
 }: ProductCardProps) {
   const isDisabled = disabled || isSoldOut;
+  const hasPromotion = promotionalPrice !== undefined && promotionalPrice < basePrice;
   const resolvedVariant =
     variant ?? (presentation === 'GRID' ? ('compact' as const) : ('horizontal' as const));
   const imageSizes =
@@ -102,7 +105,18 @@ export function ProductCard({
             </span>
           )}
           {description && <span className="storefront-product-description">{description}</span>}
-          <span className="storefront-product-price">{formatCurrency(basePrice)}</span>
+          <span className="storefront-product-prices">
+            {hasPromotion && (
+              <span className="storefront-price-previous">
+                <span className="sr-only">Preço anterior: </span>
+                {formatCurrency(basePrice)}
+              </span>
+            )}
+            <span className="storefront-product-price">
+              {hasPromotion && <span className="sr-only">Preço da oferta: </span>}
+              {formatCurrency(hasPromotion ? promotionalPrice : basePrice)}
+            </span>
+          </span>
         </span>
       </button>
 

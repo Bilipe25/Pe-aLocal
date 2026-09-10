@@ -27,6 +27,7 @@ import { ScrollToTop } from '@/components/storefront/scroll-to-top';
 import { StoreBanners } from '@/components/storefront/store-banners';
 import { StorefrontFilters } from '@/components/storefront/storefront-filters';
 import { StorefrontOffers } from '@/components/storefront/storefront-offers';
+import { productPromotionPrices } from '@/features/storefront/offer-presentation';
 import { StorefrontSearch } from '@/components/storefront/storefront-search';
 import { storeAssetUrl } from '@/features/assets/urls';
 import {
@@ -250,7 +251,11 @@ export function CatalogView({
     };
   }, [getCatalogMemory, shellManagesStore, updateCatalogMemory]);
 
-  const catalogIndex = useMemo(() => createCatalogIndex(categories), [categories]);
+  const promotionalPrices = useMemo(() => productPromotionPrices(offers), [offers]);
+  const catalogIndex = useMemo(
+    () => createCatalogIndex(categories, promotionalPrices),
+    [categories, promotionalPrices],
+  );
   const productsById = useMemo(
     () =>
       new Map(
@@ -439,7 +444,7 @@ export function CatalogView({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     selectedProductIdRef.current = product.id;
     setSelectedProduct(product);
-    setSelectedPromotionalPrice(promotionalPrice ?? null);
+    setSelectedPromotionalPrice(promotionalPrice ?? promotionalPrices.get(product.id) ?? null);
     productDetailPrefetchQueueRef.current?.prioritizeExplicitRequest(product.id);
     void loadProductDetail(product);
   }
@@ -552,6 +557,7 @@ export function CatalogView({
       name={product.name}
       description={product.description}
       basePrice={product.basePrice}
+      promotionalPrice={promotionalPrices.get(product.id)}
       isFeatured={product.isFeatured}
       isSoldOut={product.isSoldOut}
       imageUrl={product.imageUrl}
@@ -788,7 +794,13 @@ export function CatalogView({
         </div>
       )}
 
-      <StorefrontOffers offers={offers} storeOpen={storeOpen} onProductClick={openProduct} />
+      <StorefrontOffers
+        offers={offers}
+        storeOpen={storeOpen}
+        onProductClick={openProduct}
+        showImages={customization.layout.showProductImages}
+        search={deferredSearch}
+      />
 
       {customization.layout.sectionOrder.map((section) => (
         <Fragment key={section}>{renderSection(section)}</Fragment>
